@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <StrideGraphicsApi>OpenGL</StrideGraphicsApi>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StbImageSharp" Version="2.30.0" />
+    <PackageReference Include="Stride.CommunityToolkit.Bepu" Version="1.0.0-preview.62" />
+    <PackageReference Include="Stride.CommunityToolkit.Linux" Version="1.0.0-preview.62" />
+  </ItemGroup>
+
+  <!-- Workaround: Stride's .ssdeps uses Windows backslash paths for Linux native libs, so the
+       NuGet resolver can't find native .so files at asset-compile time.
+       We set LD_LIBRARY_PATH in the MSBuild process before the asset compiler subprocess
+       launches; child processes inherit it, so the system loader finds the .so files.
+       Update paths below if you upgrade Stride packages (currently all 4.3.0.2507). -->
+  <UsingTask TaskName="SetProcessEnvVar" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <ParameterGroup>
+      <Name ParameterType="System.String" Required="true" />
+      <Value ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs">
+        System.Environment.SetEnvironmentVariable(Name, Value);
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="SetStrideNativeLibPathForLinux" BeforeTargets="StrideCompileAsset" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <SetProcessEnvVar Name="LD_LIBRARY_PATH" Value="$(NuGetPackageRoot)stride.textureconverter/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.physics/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.audio/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.navigation/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.assets/4.3.0.2507/runtimes/linux-x64/native:$([System.Environment]::GetEnvironmentVariable('LD_LIBRARY_PATH'))" />
+  </Target>
+
+</Project>
