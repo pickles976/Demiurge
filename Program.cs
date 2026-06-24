@@ -1,4 +1,4 @@
-﻿using StbImageSharp;
+using StbImageSharp;
 using Stride.CommunityToolkit.Bepu;
 using Stride.CommunityToolkit.Engine;
 using Stride.CommunityToolkit.Games;
@@ -11,6 +11,8 @@ using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
+using Stride.Rendering.Colors;
+using Stride.Rendering.Lights;
 
 
 float movementSpeed = 5f;
@@ -24,9 +26,15 @@ void Start(Scene rootScene)
 {
     game.AddGraphicsCompositor();
     game.Add3DCamera().Add3DCameraController();
-    game.AddDirectionalLight();
+    // game.AddDirectionalLight();
     game.Add3DCameraController();
     game.Add3DGround();
+
+    var directionalLight = CreateDirectionalLight("DirectionalLight");
+    directionalLight.Scene = rootScene;
+
+    var ambientLight = CreateAmbientLight();
+    ambientLight.Scene = rootScene;
 
     // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
     ImageResult img;
@@ -52,14 +60,22 @@ void Start(Scene rootScene)
     // Create a 3D sphere programmatically
     sphere = game.Create3DPrimitive(PrimitiveModelType.Sphere, new() { IncludeCollider = false });
     sphere.Transform.Position = new Vector3(0, 0.5f, 0);
-    sphere.Scene = rootScene;
 
     var cube = game.Create3DPrimitive(PrimitiveModelType.Cube, new Primitive3DEntityOptions {
         Material = material,
     });
 
-    cube.Scene = rootScene;
-    entity.Scene = rootScene;
+    var ak = new Entity("AK47") { new ModelComponent(LoadModel("assets/models/ak47.gltf")) };
+    ak.Transform.Position = new Vector3(0, 1.0f, 0);
+    ak.Scene = rootScene;
+
+    var basil = new Entity("BASIL") { new ModelComponent(LoadModel("assets/models/basil.gltf")) };
+    basil.Transform.Position = new Vector3(1.0f, 0.5f, 0);
+    basil.Scene = rootScene;
+
+    // sphere.Scene = rootScene;
+    // cube.Scene = rootScene;
+    // entity.Scene = rootScene;
 }
 
 void Update(Scene scene, GameTime time)
@@ -70,4 +86,43 @@ void Update(Scene scene, GameTime time)
     // Move the sphere using keyboard input
     if (game.Input.IsKeyDown(Keys.Left)) sphere.Transform.Position.X -= movementSpeed * deltaTime;
     if (game.Input.IsKeyDown(Keys.Right)) sphere.Transform.Position.X += movementSpeed * deltaTime;
+}
+
+Model LoadModel(string gltfPath)
+{
+    var contentPath = Path.ChangeExtension(Path.GetRelativePath("assets", gltfPath), null);
+    return game.Content.Load<Model>(contentPath);
+}
+
+Entity CreateAmbientLight()
+{
+    return new Entity("Ambient Light") { new LightComponent { Intensity = 1.0f, Type = new LightAmbient() } };
+}
+
+Entity CreateDirectionalLight(string? entityName = "Directional Light")
+{
+    var entity = new Entity(entityName)
+    {
+        new LightComponent
+        {
+            Intensity =  20.0f,
+            Type = new LightDirectional
+            {
+                Color = new ColorRgbProvider(Color.White),
+                Shadow =
+                {
+                    Enabled = true,
+                    Size = LightShadowMapSize.Large,
+                    Filter = new LightShadowMapFilterTypePcf { FilterSize = LightShadowMapFilterTypePcfSize.Filter5x5 },
+                    PartitionMode = new LightDirectionalShadowMap.PartitionLogarithmic(),
+                    ComputeTransmittance = false
+                }
+            }
+        }
+    };
+
+    entity.Transform.Position = new Vector3(0, 2.0f, 0);
+    entity.Transform.Rotation = Quaternion.RotationX(MathUtil.DegreesToRadians(-30.0f)) * Quaternion.RotationY(MathUtil.DegreesToRadians(-180.0f));
+
+    return entity;
 }

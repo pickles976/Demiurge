@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,9 +9,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="NoiseDotNet" Version="1.0.2" />
+    <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
     <PackageReference Include="StbImageSharp" Version="2.30.0" />
     <PackageReference Include="Stride.CommunityToolkit.Bepu" Version="1.0.0-preview.62" />
     <PackageReference Include="Stride.CommunityToolkit.Linux" Version="1.0.0-preview.62" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The build tool under tools/ is its own project; don't compile it as part of the game. -->
+    <Compile Remove="tools/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <GltfAsset Include="assets/**/*.gltf" />
   </ItemGroup>
 
   <!-- Workaround: Stride's .ssdeps uses Windows backslash paths for Linux native libs, so the
@@ -33,6 +44,23 @@
 
   <Target Name="SetStrideNativeLibPathForLinux" BeforeTargets="StrideCompileAsset" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
     <SetProcessEnvVar Name="LD_LIBRARY_PATH" Value="$(NuGetPackageRoot)stride.textureconverter/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.physics/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.audio/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.navigation/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.assets/4.3.0.2507/runtimes/linux-x64/native:$([System.Environment]::GetEnvironmentVariable('LD_LIBRARY_PATH'))" />
+  </Target>
+
+  <!-- Runs the GltfAssetGenerator tool before Stride compiles assets.
+       The tool scans assets/ for .gltf files and generates the full Stride asset chain:
+         .png/.jpg   - extracted texture images
+         .sdtex      - texture asset descriptors
+         .sdmat      - material asset descriptors
+         .sdm3d      - model asset descriptors (with Materials list)
+         .sdpkg      - package manifest with model RootAssets
+       Drop a .gltf into assets/ and dotnet run — no other steps required.
+       GUIDs are deterministic MD5 hashes of content paths. -->
+  <Target Name="SyncStrideGltfAssets"
+          BeforeTargets="StrideCompileAsset"
+          Inputs="@(GltfAsset)"
+          Outputs="$(MSBuildProjectDirectory)/.stride-assets.stamp">
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/tools/GltfAssetGenerator/GltfAssetGenerator.csproj&quot; -- &quot;$(MSBuildProjectDirectory)&quot; &quot;$(MSBuildProjectName)&quot;" />
+    <Touch Files="$(MSBuildProjectDirectory)/.stride-assets.stamp" AlwaysCreate="true" />
   </Target>
 
 </Project>

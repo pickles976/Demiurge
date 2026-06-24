@@ -1,0 +1,18 @@
+!Package
+SerializedVersion: {Assets: 3.1.0.0}
+Meta:
+    Name: DemiurgeSharp
+    Version: 1.0.0.0
+    Authors: []
+    Owners: []
+    Dependencies: null
+AssetFolders:
+    -   Path: !dir assets
+ResourceFolders: []
+OutputGroupDirectories: {}
+ExplicitFolders: []
+Bundles: []
+TemplateFolders: []
+RootAssets:
+    - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
+    - b0011f70-9ec5-566c-dfba-08c579c22923:models/basil
