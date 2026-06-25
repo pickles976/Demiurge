@@ -4,14 +4,11 @@ dotnet clean
 dotnet restore --no-cache
 dotnet build --no-incremental
 
-1. Generate a map with perlin noise
-2. Simple UI for playing with noise
-3. Move the player
-4. Camera controls
+1. Move the player
+2. Camera controls
+3. Generate a map with perlin noise
+4. Simple UI for playing with noise
 5. Shooting
-
-### Camera Controls
-https://www.youtube.com/watch?v=ijN3gobR6Zo&t=1s
 
 ### Shooting
 - [ ] add litte white dot

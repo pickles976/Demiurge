@@ -14,6 +14,7 @@ using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
 using Stride.Rendering.Colors;
 using Stride.Rendering.Lights;
+using MyGame;
 
 
 float movementSpeed = 5f;
@@ -79,6 +80,12 @@ void Start(Scene rootScene)
     basil.Add(basilAnimations);
     basilAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/basil_anim_walk"));
     basilAnimations.Play("walk");
+
+    // Attach the SyncScript defined in Test.cs
+    // basil.Add(new SampleSyncScript());
+
+    // Move BASIL with WASD
+    basil.Add(new WasdMovementScript { Speed = movementSpeed });
 
     basil.Scene = rootScene;
 
