@@ -1,9 +1,10 @@
-using StbImageSharp;
+﻿using StbImageSharp;
 using Stride.CommunityToolkit.Bepu;
 using Stride.CommunityToolkit.Engine;
 using Stride.CommunityToolkit.Games;
 using Stride.CommunityToolkit.Rendering.ProceduralModels;
 using Stride.Core.Mathematics;
+using Stride.Animations;
 using Stride.Engine;
 using Stride.Input;
 using Stride.Games;
@@ -71,7 +72,26 @@ void Start(Scene rootScene)
 
     var basil = new Entity("BASIL") { new ModelComponent(LoadModel("assets/models/basil.gltf")) };
     basil.Transform.Position = new Vector3(1.0f, 0.5f, 0);
+
+    // Animations are compiled as standalone AnimationClips (see GltfAssetGenerator).
+    // Register the "walk" clip on an AnimationComponent and play it.
+    var basilAnimations = new AnimationComponent();
+    basil.Add(basilAnimations);
+    basilAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/basil_anim_walk"));
+    basilAnimations.Play("walk");
+
     basil.Scene = rootScene;
+
+    // // Rigged Sketchfab model with four skeletal clips; play the walk cycle.
+    // var girl = new Entity("GIRL") { new ModelComponent(LoadModel("assets/models/girl_mechanic/scene.gltf")) };
+    // girl.Transform.Position = new Vector3(-1.0f, 0.5f, 0);
+
+    // var girlAnimations = new AnimationComponent();
+    // girl.Add(girlAnimations);
+    // girlAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/girl_mechanic/scene_anim_root_Girl_walk"));
+    // girlAnimations.Play("walk");
+
+    // girl.Scene = rootScene;
 
     // sphere.Scene = rootScene;
     // cube.Scene = rootScene;

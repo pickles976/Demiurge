@@ -29,7 +29,10 @@ foreach (var gltfPath in gltfFiles)
     var fileName = Path.GetFileName(gltfPath);
     var modelGuid = ComputeGuid(contentPath);
 
-    var gltf = SharpGLTF.Schema2.ModelRoot.Load(gltfPath);
+    // Skip strict schema validation: real-world exports (e.g. Sketchfab) often have
+    // benign spec violations like a byteStride on animation sampler accessors.
+    var gltf = SharpGLTF.Schema2.ModelRoot.Load(gltfPath,
+        new SharpGLTF.Schema2.ReadSettings { Validation = SharpGLTF.Validation.ValidationMode.Skip });
 
     // 1. Extract images -> .png/.jpg and .sdtex
     var imageContentPaths = new List<string>();
@@ -98,7 +101,14 @@ foreach (var gltfPath in gltfFiles)
         matNames.Add(matName);
     }
 
-    // 3. Write .sdm3d with Materials list
+    // A skeleton is required for animation: Stride only emits per-node animation
+    // curves when the AnimationAsset references a Skeleton, and skinned meshes need
+    // it to deform at runtime. Generate one whenever the source has animations or a skin.
+    var needsSkeleton = gltf.LogicalAnimations.Count > 0 || gltf.LogicalSkins.Count > 0;
+    var skeletonContentPath = contentPath + "_skeleton";
+    var skeletonGuid = ComputeGuid(skeletonContentPath);
+
+    // 3. Write .sdm3d with Materials list (and a Skeleton reference when needed).
     var materialsYaml = "Materials:\n";
     for (int i = 0; i < matGuids.Count; i++)
     {
@@ -107,11 +117,58 @@ foreach (var gltfPath in gltfFiles)
     if (matGuids.Count == 0)
         materialsYaml = "Materials: []\n";
 
+    var skeletonRefYaml = needsSkeleton ? $"Skeleton: {skeletonGuid}:{skeletonContentPath}\n" : "";
+
     var sdm3dPath = Path.ChangeExtension(gltfPath, ".sdm3d");
-    var sdm3d = $"!Model\nId: {modelGuid}\nSerializedVersion: {{Stride: 2.0.0}}\nTags: []\nSource: !file {fileName}\n{materialsYaml}";
+    var sdm3d = $"!Model\nId: {modelGuid}\nSerializedVersion: {{Stride: 2.0.0}}\nTags: []\nSource: !file {fileName}\n{skeletonRefYaml}{materialsYaml}";
     WriteIfChanged(sdm3dPath, sdm3d);
 
     rootAssetLines.Add("    - " + modelGuid + ":" + contentPath);
+
+    // 4. Write the .sdskel. An empty Nodes list makes Stride import the full node
+    //    hierarchy with every node preserved (and node names de-duplicated internally).
+    if (needsSkeleton)
+    {
+        var sdskel =
+            $"!Skeleton\n" +
+            $"Id: {skeletonGuid}\n" +
+            $"SerializedVersion: {{Stride: 2.0.0}}\n" +
+            $"Tags: []\n" +
+            $"Source: !file {fileName}\n" +
+            $"Nodes: []\n";
+        var sdskelPath = Path.Combine(dir, baseName + "_skeleton.sdskel");
+        WriteIfChanged(sdskelPath, sdskel);
+        rootAssetLines.Add("    - " + skeletonGuid + ":" + skeletonContentPath);
+    }
+
+    // 5. Generate .sdanim per animation. Each references the skeleton (so per-node
+    //    curves are emitted) and selects its source clip via AnimationStack (the
+    //    animation's index in the glTF). The content path is models/<base>_anim_<name>
+    //    so runtime code can load it by the source animation's name.
+    for (int i = 0; i < gltf.LogicalAnimations.Count; i++)
+    {
+        var animation = gltf.LogicalAnimations[i];
+        var rawName = string.IsNullOrEmpty(animation.Name) ? ("anim" + i) : animation.Name;
+        var safeName = SanitizeName(rawName);
+        var animContentPath = contentPath + "_anim_" + safeName;
+        var animGuid = ComputeGuid(animContentPath);
+
+        var sdanim =
+            $"!Animation\n" +
+            $"Id: {animGuid}\n" +
+            $"SerializedVersion: {{Stride: 2.0.0}}\n" +
+            $"Tags: []\n" +
+            $"Source: !file {fileName}\n" +
+            $"AnimationStack: {i}\n" +
+            $"Skeleton: {skeletonGuid}:{skeletonContentPath}\n" +
+            $"RepeatMode: LoopInfinite\n" +
+            $"Type: !StandardAnimationAssetType {{}}\n";
+
+        var sdanimPath = Path.Combine(dir, baseName + "_anim_" + safeName + ".sdanim");
+        WriteIfChanged(sdanimPath, sdanim);
+
+        rootAssetLines.Add("    - " + animGuid + ":" + animContentPath);
+    }
 }
 
 // 4. Rewrite .sdpkg with current RootAssets (idempotent)
@@ -144,4 +201,12 @@ static void WriteIfChanged(string path, string content)
 {
     if (!File.Exists(path) || File.ReadAllText(path) != content)
         File.WriteAllText(path, content);
+}
+
+static string SanitizeName(string name)
+{
+    var sb = new StringBuilder(name.Length);
+    foreach (var c in name)
+        sb.Append(char.IsLetterOrDigit(c) || c == '_' ? c : '_');
+    return sb.ToString();
 }

@@ -4,8 +4,6 @@ dotnet clean
 dotnet restore --no-cache
 dotnet build --no-incremental
 
-- [ ] play walking animation
-
 1. Generate a map with perlin noise
 2. Simple UI for playing with noise
 3. Move the player

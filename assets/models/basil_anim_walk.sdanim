@@ -1,0 +1,9 @@
+!Animation
+Id: a1c56e77-66f0-a126-0d59-09f8b711dc66
+SerializedVersion: {Stride: 2.0.0}
+Tags: []
+Source: !file basil.gltf
+AnimationStack: 0
+Skeleton: 99b92c6e-cd39-8272-1a84-02c107b83c28:models/basil_skeleton
+RepeatMode: LoopInfinite
+Type: !StandardAnimationAssetType {}

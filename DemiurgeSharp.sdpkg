@@ -16,3 +16,11 @@ TemplateFolders: []
 RootAssets:
     - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
     - b0011f70-9ec5-566c-dfba-08c579c22923:models/basil
+    - 99b92c6e-cd39-8272-1a84-02c107b83c28:models/basil_skeleton
+    - a1c56e77-66f0-a126-0d59-09f8b711dc66:models/basil_anim_walk
+    - 4761db22-7d0f-8ad9-9003-ddaf911b0204:models/girl_mechanic/scene
+    - 47faf99e-e050-546a-d445-83b54b27558e:models/girl_mechanic/scene_skeleton
+    - 1d79b27e-9f2d-3f45-8bf4-1e17a2a3acf0:models/girl_mechanic/scene_anim_root_Girl_Idle
+    - 6885036b-ddb2-50ae-21b9-045b8c007a2d:models/girl_mechanic/scene_anim_root_Girl_run
+    - 610cab72-2bc7-6a79-46e3-705696eec7c7:models/girl_mechanic/scene_anim_root_Girl_walk
+    - 4203ccb2-5690-b126-3135-5fea9c32f011:models/girl_mechanic/scene_anim_root_Girl_pose1
