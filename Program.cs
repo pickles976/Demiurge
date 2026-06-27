@@ -15,10 +15,25 @@ using Stride.Rendering.Materials.ComputeColors;
 using Stride.Rendering.Colors;
 using Stride.Rendering.Lights;
 using MyGame;
+using Stride.BepuPhysics;
+using Stride.Core.Diagnostics;
+
+using Stride.UI; // This was added
+using Stride.UI.Controls; // This was added
+using Stride.UI.Panels;
+using Stride.CommunityToolkit.Rendering.Compositing;
+using Stride.CommunityToolkit.Helpers; // This was added
+
+SpriteFont? font = null; // This was added
 
 
 float movementSpeed = 5f;
 Entity? sphere = null;
+
+Entity? basil = null;
+
+CameraComponent? camera = null;
+BepuSimulation? simulation = null;
 
 using var game = new Game();
 
@@ -26,11 +41,12 @@ game.Run(start: Start, update: Update);
 
 void Start(Scene rootScene)
 {
-    game.AddGraphicsCompositor();
-    game.Add3DCamera().Add3DCameraController();
+    game.AddGraphicsCompositor().AddCleanUIStage();;
+    // game.Add3DCamera().Add3DCameraController();
     // game.AddDirectionalLight();
-    game.Add3DCameraController();
     game.Add3DGround();
+    game.AddProfiler();
+    game.AddGroundGizmo(position: new Vector3(-5, 0.1f, -5), showAxisName: true);
 
     var directionalLight = CreateDirectionalLight("DirectionalLight");
     directionalLight.Scene = rootScene;
@@ -55,11 +71,6 @@ void Start(Scene rootScene)
         }
     });
 
-    var entity = game.Create3DPrimitive(PrimitiveModelType.Capsule, new() {});
-
-    entity.Transform.Position = new Vector3(0, 8, 0);
-
-    // Create a 3D sphere programmatically
     sphere = game.Create3DPrimitive(PrimitiveModelType.Sphere, new() { IncludeCollider = false });
     sphere.Transform.Position = new Vector3(0, 0.5f, 0);
 
@@ -71,48 +82,71 @@ void Start(Scene rootScene)
     ak.Transform.Position = new Vector3(0, 1.0f, 0);
     ak.Scene = rootScene;
 
-    var basil = new Entity("BASIL") { new ModelComponent(LoadModel("assets/models/basil.gltf")) };
-    basil.Transform.Position = new Vector3(1.0f, 0.5f, 0);
+    var player = CreatePlayer();
+    player.Scene = rootScene;
 
-    // Animations are compiled as standalone AnimationClips (see GltfAssetGenerator).
-    // Register the "walk" clip on an AnimationComponent and play it.
-    var basilAnimations = new AnimationComponent();
-    basil.Add(basilAnimations);
-    basilAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/basil_anim_walk"));
-    basilAnimations.Play("walk");
+    var cameraEntity = game.Add3DCamera();   // no controller
+    cameraEntity.Add(new ThirdPersonCameraScript { Player = player });
 
-    // Attach the SyncScript defined in Test.cs
-    // basil.Add(new SampleSyncScript());
 
-    // Move BASIL with WASD
-    basil.Add(new WasdMovementScript { Speed = movementSpeed });
+    var uiEntity = CreateUI();
+    uiEntity.Scene = rootScene;
 
-    basil.Scene = rootScene;
+    camera = rootScene.GetCamera();
+    simulation = camera?.Entity.GetSimulation();
 
-    // // Rigged Sketchfab model with four skeletal clips; play the walk cycle.
-    // var girl = new Entity("GIRL") { new ModelComponent(LoadModel("assets/models/girl_mechanic/scene.gltf")) };
-    // girl.Transform.Position = new Vector3(-1.0f, 0.5f, 0);
+    if (simulation != null)
+    {
+        Console.WriteLine("Simulation Started");
+    }
+    
 
-    // var girlAnimations = new AnimationComponent();
-    // girl.Add(girlAnimations);
-    // girlAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/girl_mechanic/scene_anim_root_Girl_walk"));
-    // girlAnimations.Play("walk");
 
-    // girl.Scene = rootScene;
-
-    // sphere.Scene = rootScene;
-    // cube.Scene = rootScene;
-    // entity.Scene = rootScene;
 }
 
 void Update(Scene scene, GameTime time)
 {
-    if (sphere == null) return;
-    var deltaTime = (float)time.Elapsed.TotalSeconds;
 
-    // Move the sphere using keyboard input
-    if (game.Input.IsKeyDown(Keys.Left)) sphere.Transform.Position.X -= movementSpeed * deltaTime;
-    if (game.Input.IsKeyDown(Keys.Right)) sphere.Transform.Position.X += movementSpeed * deltaTime;
+    game.DebugTextSystem.Print($"Entities: {scene.Entities.Count}", new Int2(50, 50));
+
+    if (camera == null || simulation == null || !game.Input.HasMouse) return;
+
+    if (game.Input.IsMouseButtonPressed(MouseButton.Left))
+    {
+        // Physics
+        // Check for collisions with physics-based entities using raycasting
+        var hitResult = camera.Raycast(game.Input.MousePosition, 100f, out HitInfo hitInfo);
+
+        if (hitResult)
+        {
+            var message = $"Hit: {hitInfo.Collidable.Entity.Name}";
+            Console.WriteLine(message);
+
+            GlobalLogger.GetLogger("Program.cs").Info(message); // This was added
+
+            var rigidBody = hitInfo.Collidable.Entity.Get<BodyComponent>();
+
+            if (rigidBody != null)
+            {
+                var direction = new Vector3(0, 3, 0); // Apply impulse upward
+                rigidBody.Awake = true;
+                rigidBody.ApplyImpulse(direction, Vector3.Zero);
+            }
+        }
+        else
+        {
+            Console.WriteLine("No hit detected.");
+        }
+
+        // Check for intersections with non-physical entities using ray picking
+        var ray = camera.GetPickRay(game.Input.MousePosition);
+
+        if (basil?.Get<ModelComponent>().BoundingBox.Intersects(ref ray) ?? false)
+        {
+            Console.WriteLine("Basil hit!");
+        }
+    }
+
 }
 
 Model LoadModel(string gltfPath)
@@ -152,4 +186,55 @@ Entity CreateDirectionalLight(string? entityName = "Directional Light")
     entity.Transform.Rotation = Quaternion.RotationX(MathUtil.DegreesToRadians(-30.0f)) * Quaternion.RotationY(MathUtil.DegreesToRadians(-180.0f));
 
     return entity;
+}
+
+Entity CreateUI()
+{
+    // This below was added: Create and display a UI text block
+    font = game.Content.Load<SpriteFont>("StrideDefaultFont");
+    var canvas = new Canvas
+    {
+        Width = 300,
+        Height = 100,
+        BackgroundColor = new Color(248, 177, 149, 100),
+        HorizontalAlignment = HorizontalAlignment.Left,
+        VerticalAlignment = VerticalAlignment.Bottom,
+    };
+
+    canvas.Children.Add(new TextBlock
+    {
+        Text = "Hello, Stride!",
+        TextColor = Color.White,
+        Font = font,
+        TextSize = 24,
+        Margin = new Thickness(3, 3, 3, 0),
+    });
+
+    var uiEntity = new Entity
+    {
+        new UIComponent
+        {
+            Page = new UIPage { RootElement = canvas },
+            RenderGroup = RenderGroup.Group31 // Used to render AddCleanUIStage()
+        }
+    };
+
+    return uiEntity;
+
+}
+
+Entity CreatePlayer()
+{
+    var player = new Entity("BASIL") { new ModelComponent(LoadModel("assets/models/basil.gltf")) };
+    player.Transform.Position = new Vector3(1.0f, 0.5f, 0);
+
+    var playerAnimations = new AnimationComponent();
+    player.Add(playerAnimations);
+    playerAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/basil_anim_walk"));
+    playerAnimations.Play("walk");
+
+    // Move BASIL with WASD
+    player.Add(new WasdMovementScript { Speed = movementSpeed });
+
+    return player;
 }

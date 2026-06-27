@@ -4,13 +4,13 @@ dotnet clean
 dotnet restore --no-cache
 dotnet build --no-incremental
 
-1. Move the player
+1. ~~Move the player~~
 2. Camera controls
+    - [ ] replicate camera functionality
+    - [ ] replicate player functionality
 3. Generate a map with perlin noise
 4. Simple UI for playing with noise
 5. Shooting
-
-### Shooting
 - [ ] add litte white dot
 - [ ] aimline
 - [ ] reticle
@@ -38,7 +38,6 @@ dotnet build --no-incremental
 
 6. Networking
 - [ ] separate out client and backend
-
 - [ ] BIG REFACTOR
 Where does UI live? How much should each of these modules know about each other?
 
