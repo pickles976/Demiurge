@@ -14,7 +14,7 @@ using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
 using Stride.Rendering.Colors;
 using Stride.Rendering.Lights;
-using MyGame;
+
 using Stride.BepuPhysics;
 using Stride.Core.Diagnostics;
 
@@ -24,10 +24,11 @@ using Stride.UI.Panels;
 using Stride.CommunityToolkit.Rendering.Compositing;
 using Stride.CommunityToolkit.Helpers; // This was added
 
+using Demiurge;
+
 SpriteFont? font = null; // This was added
 
 
-float movementSpeed = 5f;
 Entity? sphere = null;
 
 Entity? basil = null;
@@ -46,11 +47,15 @@ game.Run(start: Start, update: Update);
 
 void Start(Scene rootScene)
 {
-    game.AddGraphicsCompositor().AddCleanUIStage();;
+    var compositor = game.AddGraphicsCompositor();
+    compositor.AddCleanUIStage();
+    compositor.AddSceneRenderer(new LineSceneRenderer());
 
     // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
     game.Window.FullscreenIsBorderlessWindow = true;
     game.GraphicsDeviceManager.IsFullScreen = true;
+    game.GraphicsDeviceManager.PreferredBackBufferWidth = 1920;
+    game.GraphicsDeviceManager.PreferredBackBufferHeight = 1080;
     game.GraphicsDeviceManager.ApplyChanges();
     // game.Add3DCamera().Add3DCameraController();
     // game.AddDirectionalLight();
@@ -93,15 +98,21 @@ void Start(Scene rootScene)
     ak.Scene = rootScene;
 
     var player = CreatePlayer();
-    player.Scene = rootScene;
 
     var cameraEntity = game.Add3DCamera();   // no controller
+    LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
     cameraEntity.Add(new ThirdPersonCameraScript { Player = player });
     cameraEntity.Add(new CursorReticleScript());
+    // cameraEntity.Add(new LookaheadDebugScript());
+
+    player.Add(new PlayerScript {CameraEntity = cameraEntity});
 
 
     var uiEntity = CreateUI();
     uiEntity.Scene = rootScene;
+
+    player.Scene = rootScene;
+
 
     camera = rootScene.GetCamera();
     simulation = camera?.Entity.GetSimulation();
@@ -243,9 +254,6 @@ Entity CreatePlayer()
     player.Add(playerAnimations);
     playerAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/basil_anim_walk"));
     playerAnimations.Play("walk");
-
-    // Move BASIL with WASD
-    player.Add(new WasdMovementScript { Speed = movementSpeed });
 
     return player;
 }

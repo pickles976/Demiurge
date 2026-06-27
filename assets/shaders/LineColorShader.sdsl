@@ -1,0 +1,35 @@
+// Antialiased line shader for the debug line renderer (see LineRenderer.cs).
+//
+// Each line segment is expanded CPU-side into a thin screen-space quad. Vertices
+// arrive already in clip space, so the vertex stage just forwards them. The pixel
+// stage feathers the alpha based on the signed distance from the line centerline
+// (carried in Edge), giving smooth edges and controllable thickness.
+//
+//   Edge.x = signed distance from centerline, in pixels (varies across the width)
+//   Edge.y = core half-width, in pixels (constant per segment)
+//   Edge.z = feather width, in pixels (constant per segment)
+//
+// The AA transition is centered on the nominal edge (half the feather inside, half
+// outside), so a line of width W really measures W pixels and only blurs across the
+// ~feather-pixel transition band.
+//
+// No shader parameters, so this stays independent of generated shader-key classes.
+shader LineColorShader : ShaderBase
+{
+    stage stream float4 Position : POSITION;
+    stage stream float4 Color : COLOR;
+    stage stream float3 Edge : TEXCOORD0;
+
+    stage override void VSMain()
+    {
+        streams.ShadingPosition = streams.Position;
+    }
+
+    stage override void PSMain()
+    {
+        float coverage = saturate((streams.Edge.y - abs(streams.Edge.x)) / max(streams.Edge.z, 1e-4) + 0.5);
+        float4 color = streams.Color;
+        color.a *= coverage;
+        streams.ColorTarget = color;
+    }
+};

@@ -4,20 +4,14 @@ dotnet clean
 dotnet restore --no-cache
 dotnet build --no-incremental
 
+`dotnet run --project Client`
+
 1. ~~Move the player~~
-2. Camera controls
-    - [x] fullscreen
-    - [x] math utils
-    - [ ] player state
-    - [ ] replicate camera functionality
-        - [ ] rotation
-        - [ ] lookahead aiming
-    - [ ] replicate player functionality
-        - [ ] move relative to camera
-        - [ ] only play walk cycle when moving
-    - [ ] player looks at mouse by default
+2. ~~Camera controls~~
 3. Shooting
-- [ ] add litte white dot
+- [x] add litte white dot
+- [ ] only play walk cycle when moving
+- [ ] player looks at mouse by default
 - [ ] aimline
 - [ ] reticle
 - [ ] add gun

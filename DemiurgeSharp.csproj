@@ -19,6 +19,10 @@
   <ItemGroup>
     <!-- The build tool under tools/ is its own project; don't compile it as part of the game. -->
     <Compile Remove="tools/**/*.cs" />
+    <!-- Source lives under Client/ (and later Common/, Server/), never at the repo root.
+         Excluding root-level .cs prevents a stray file (e.g. a re-created Program.cs) from
+         being compiled and clashing with the real entry point. -->
+    <Compile Remove="*.cs" />
   </ItemGroup>
 
   <ItemGroup>
