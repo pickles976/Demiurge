@@ -6,11 +6,17 @@ dotnet build --no-incremental
 
 1. ~~Move the player~~
 2. Camera controls
+    - [x] fullscreen
+    - [x] math utils
+    - [ ] player state
     - [ ] replicate camera functionality
+        - [ ] rotation
+        - [ ] lookahead aiming
     - [ ] replicate player functionality
-3. Generate a map with perlin noise
-4. Simple UI for playing with noise
-5. Shooting
+        - [ ] move relative to camera
+        - [ ] only play walk cycle when moving
+    - [ ] player looks at mouse by default
+3. Shooting
 - [ ] add litte white dot
 - [ ] aimline
 - [ ] reticle
@@ -41,7 +47,10 @@ dotnet build --no-incremental
 - [ ] BIG REFACTOR
 Where does UI live? How much should each of these modules know about each other?
 
-7. PVP Mechanics
+7. Generate a map with perlin noise
+8. Simple UI for playing with noise
+
+9. PVP Mechanics
 - [ ] shooting at targets (add a crate)
 - [ ] add raycast (bullet tracers are just for visualization)
 - [ ] Player health
@@ -50,20 +59,20 @@ Where does UI live? How much should each of these modules know about each other?
     - [ ] destroy crates when HP < 0.0
     - [ ] add this logic to players
     - [ ] add health pack pickups
-8. Play around with scripting
+10. Play around with scripting
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 
-9. Add inventory and pickups
+11. Add inventory and pickups
     - [ ] AK
     - [ ] sniper rifle
     - [ ] shotgun
-10. Create a simple free-for-all demo for testing
+12. Create a simple free-for-all demo for testing
     - [ ] load a map from a PNG
     - [ ] random spawns
     - [ ] fixed health kit locations
     
-11. Bug Fixes from FFA demo
-12. Player art
+13. Bug Fixes from FFA demo
+14. Player art
     - [x] create guy with blockbench
     https://bevy.org/examples/animation/animated-mesh/
     - [ ] hook up animation controller

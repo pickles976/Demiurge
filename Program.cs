@@ -37,11 +37,21 @@ BepuSimulation? simulation = null;
 
 using var game = new Game();
 
+// NOTE: do NOT set GraphicsDeviceManager.IsFullScreen here (before Run). On the
+// SDL/Linux backend that creates an exclusive-fullscreen swapchain whose pixel
+// format resolves to None, causing a DivideByZero in InitDefaultRenderTarget.
+// Fullscreen is enabled as a borderless window inside Start() instead.
+
 game.Run(start: Start, update: Update);
 
 void Start(Scene rootScene)
 {
     game.AddGraphicsCompositor().AddCleanUIStage();;
+
+    // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
+    game.Window.FullscreenIsBorderlessWindow = true;
+    game.GraphicsDeviceManager.IsFullScreen = true;
+    game.GraphicsDeviceManager.ApplyChanges();
     // game.Add3DCamera().Add3DCameraController();
     // game.AddDirectionalLight();
     game.Add3DGround();
@@ -87,6 +97,7 @@ void Start(Scene rootScene)
 
     var cameraEntity = game.Add3DCamera();   // no controller
     cameraEntity.Add(new ThirdPersonCameraScript { Player = player });
+    cameraEntity.Add(new CursorReticleScript());
 
 
     var uiEntity = CreateUI();

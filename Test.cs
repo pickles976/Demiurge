@@ -1,16 +1,13 @@
-using System;
-using System.Text;
-using System.Threading.Tasks;
 using Stride.Core.Mathematics;
 using Stride.Input;
 using Stride.Engine;
-using Silk.NET.SDL;
-using Stride.CommunityToolkit.Engine;
-
-// float WedgeProduct(Vector2 first, Vector2 second)
-// {
-// 	return (first.X * second.Y) - (first.Y * second.X);
-// }
+using Stride.Graphics;
+using Stride.Rendering;
+using Stride.Rendering.Sprites;
+using Stride.UI.Controls;
+using Stride.UI.Panels;
+using Texture = Stride.Graphics.Texture;
+using PixelFormat = Stride.Graphics.PixelFormat;
 
 namespace MyGame
 {
@@ -69,13 +66,13 @@ namespace MyGame
 		{
 			var deltaTime = (float)Game.UpdateTime.Elapsed.TotalSeconds;
 			// var screenCenterPosition = new Vector2(Game.Window.ClientBounds.Width / 2.0f, Game.Window.ClientBounds.Height / 2.0f);
-			var mousePos = Input.MousePosition + new Vector2(0.5f, 0.5f);
+			// Center on (0.5, 0.5) so the angle is measured around the screen center,
+			// and flip Y so the axis matches Bevy's top-left/Y-down cursor convention.
+			var centered = Input.MousePosition - new Vector2(0.5f, 0.5f);
+			var mousePos = new Vector2(centered.X, -centered.Y);
 
 			// Calculate angular mouse displacement while middle mouse button held
 			if (Input.IsMouseButtonDown(MouseButton.Middle)) {
-
-				Console.WriteLine(mousePos);
-				// Console.WriteLine(screenCenterPosition);
 
 				var startVector = PreviousMousePosition;
 				startVector.Normalize();
@@ -83,16 +80,11 @@ namespace MyGame
 				var endVector = mousePos;
 				endVector.Normalize();
 
-				// Console.WriteLine($"Start: {startVector}");
-				// Console.WriteLine($"End: {endVector}");
-
-
-				var cross = (startVector.X * endVector.Y) - (startVector.Y * endVector.X);
+				var cross = startVector.Wedge(endVector);
 				var dot = Vector2.Dot(startVector, endVector);
 				var angularDisplacement = MathF.Atan2(dot, cross) - MathF.PI / 2.0f;
 
-
-				Angle += angularDisplacement * deltaTime * RotationSpeed;
+				Angle -= angularDisplacement * deltaTime * RotationSpeed;
 			}
 
 			// Figure out where to set the look-ahead position
@@ -130,6 +122,78 @@ namespace MyGame
 			Entity.Transform.Position = Vector3.Lerp(Entity.Transform.Position,
 			desiredPosition, LerpSpeed);
 			Entity.Transform.Rotation = desiredRotation;
+		}
+	}
+
+	// Draws a ring at the cursor position, like Bevy's draw_reticle gizmos.
+	public class CursorReticleScript : SyncScript
+	{
+		public int Size { get; set; } = 32;
+		public float Thickness { get; set; } = 3.0f;
+
+		private ImageElement _reticle = null!;
+
+		public override void Start()
+		{
+			var texture = CreateRingTexture(GraphicsDevice, Size, Thickness);
+
+			_reticle = new ImageElement
+			{
+				// IsTransparent enables alpha blending; without it the cut-out (alpha 0)
+				// pixels render opaque white and you get a box instead of a ring.
+				Source = new SpriteFromTexture { Texture = texture, IsTransparent = true },
+				Width = Size,
+				Height = Size,
+			};
+			// Canvas defaults to absolute positioning; opt into RelativePosition so the
+			// per-frame normalized cursor position is actually honored.
+			_reticle.DependencyProperties.Set(Canvas.UseAbsolutePositionPropertyKey, false);
+			// Pin the element's center to its position so it sits ON the cursor.
+			_reticle.DependencyProperties.Set(Canvas.PinOriginPropertyKey, new Vector3(0.5f, 0.5f, 0f));
+
+			var canvas = new Canvas();
+			canvas.Children.Add(_reticle);
+
+			Entity.Add(new UIComponent
+			{
+				Page = new UIPage { RootElement = canvas },
+				RenderGroup = RenderGroup.Group31, // matches AddCleanUIStage()
+			});
+		}
+
+		public override void Update()
+		{
+			var mousePos = Input.MousePosition;
+			_reticle.DependencyProperties.Set(Canvas.RelativePositionPropertyKey, new Vector3(mousePos.X, mousePos.Y, 0f));
+		}
+
+		// White ring on a transparent background, RGBA8
+		private static Texture CreateRingTexture(GraphicsDevice device, int size, float thickness)
+		{
+			var data = new byte[size * size * 4];
+			float center = size / 2f;
+			float radius = center - 1f;
+
+			for (int y = 0; y < size; y++)
+			for (int x = 0; x < size; x++)
+			{
+				float dx = x + 0.5f - center;
+				float dy = y + 0.5f - center;
+				float dist = MathF.Sqrt(dx * dx + dy * dy);
+				bool ring = dist <= radius && dist >= radius - thickness;
+
+				// Premultiplied alpha: Stride's UI blends src·1 + dst·(1−srcA), so
+				// transparent pixels must be (0,0,0,0) — not white-with-zero-alpha, or
+				// their RGB gets added and fills the whole quad into a box.
+				byte v = (byte)(ring ? 255 : 0);
+				int i = (y * size + x) * 4;
+				data[i + 0] = v;
+				data[i + 1] = v;
+				data[i + 2] = v;
+				data[i + 3] = v;
+			}
+
+			return Texture.New2D(device, size, size, PixelFormat.R8G8B8A8_UNorm_SRgb, data);
 		}
 	}
 
