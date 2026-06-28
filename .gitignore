@@ -3,4 +3,5 @@ obj
 *.sdtex
 *.sdmat
 *.sdm3d
+*.sdanim
 .claude

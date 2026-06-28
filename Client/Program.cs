@@ -99,15 +99,6 @@ void Start(Scene rootScene)
 
     var player = CreatePlayer();
 
-    var cameraEntity = game.Add3DCamera();   // no controller
-    LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
-    cameraEntity.Add(new ThirdPersonCameraScript { Player = player });
-    cameraEntity.Add(new CursorReticleScript());
-    // cameraEntity.Add(new LookaheadDebugScript());
-
-    player.Add(new PlayerScript {CameraEntity = cameraEntity});
-
-
     var uiEntity = CreateUI();
     uiEntity.Scene = rootScene;
 
@@ -247,13 +238,27 @@ Entity CreateUI()
 
 Entity CreatePlayer()
 {
-    var player = new Entity("BASIL") { new ModelComponent(LoadModel("assets/models/basil.gltf")) };
-    player.Transform.Position = new Vector3(1.0f, 0.5f, 0);
 
+    // Add Animations
     var playerAnimations = new AnimationComponent();
-    player.Add(playerAnimations);
-    playerAnimations.Animations.Add("walk", game.Content.Load<AnimationClip>("models/basil_anim_walk"));
-    playerAnimations.Play("walk");
+    playerAnimations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/basil_anim_Walk"));
+    playerAnimations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/basil_anim_Idle"));
+
+    // Add Camera
+    var cameraEntity = game.Add3DCamera();
+    LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
+
+    var player = new Entity("BASIL") { 
+        new ModelComponent(LoadModel("assets/models/basil.gltf")),
+        new PlayerScript {CameraEntity = cameraEntity},
+        playerAnimations
+    };
+    player.Transform.Position = new Vector3(1.0f, 0.0f, 0);
+
+    cameraEntity.Add(new ThirdPersonCameraScript { PlayerEntity = player });
+    cameraEntity.Add(new CursorReticleScript());
+    // cameraEntity.Add(new LookaheadDebugScript());
+
 
     return player;
 }

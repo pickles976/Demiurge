@@ -9,6 +9,7 @@ using Stride.UI.Panels;
 using Texture = Stride.Graphics.Texture;
 using PixelFormat = Stride.Graphics.PixelFormat;
 using Stride.CommunityToolkit.Engine;
+using SharpGLTF.Schema2;
 
 namespace Demiurge
 {
@@ -23,7 +24,7 @@ namespace Demiurge
 		public float Angle { get; set; } = 0.0f; // Rotation angle
 
 		// Aiming Look-ahead
-		public required Entity Player {get; set;}
+		public required Entity PlayerEntity {get; set;}
 		public Vector3 Target { get; set; } = new Vector3(0, 0, 0);
 
 		public float LookAheadRadiusFar { get; set; } = AppConstants.LookAheadRadiusFar;
@@ -42,7 +43,13 @@ namespace Demiurge
 
 		public override void Update()
 		{
-			var deltaTime = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+			UpdateCameraTransform(dt);
+			DrawAimLine();
+		}
+
+		private void UpdateCameraTransform(float dt)
+		{
 			// Center on (0.5, 0.5) so the angle is measured around the screen center,
 			// and flip Y so the axis matches Bevy's top-left/Y-down cursor convention.
 			var centered = Input.MousePosition - new Vector2(0.5f, 0.5f);
@@ -61,7 +68,7 @@ namespace Demiurge
 				var dot = Vector2.Dot(startVector, endVector);
 				var angularDisplacement = MathF.Atan2(dot, cross) - MathF.PI / 2.0f;
 
-				Angle += angularDisplacement * deltaTime * RotationSpeed;
+				Angle += angularDisplacement * dt * RotationSpeed;
 			}
 
 			// Figure out where to set the look-ahead position
@@ -69,7 +76,7 @@ namespace Demiurge
 			var distance = lookaheadOffset.Length();
 
 			// Aiming vs non-aiming lookahead
-			var playerScript = Player.GetComponent<PlayerScript>();
+			var playerScript = PlayerEntity.GetComponent<PlayerScript>();
 			var scale = playerScript?.State.HasFlag(PlayerStateFlags.Aiming) switch
 			{
 				false => 
@@ -90,7 +97,7 @@ namespace Demiurge
 			var offset = new Vector3(norm.X, 0.0f, norm.Y);
 			var rigRotation = Quaternion.RotationY(Angle);
 			Vector3.Transform(ref offset, ref rigRotation, out var rotatedOffset);
-			Target = Player.Transform.Position + rotatedOffset;
+			Target = PlayerEntity.Transform.Position + rotatedOffset;
 			PreviousMousePosition = mousePos;
 
 			// FollowCamera::get_desired_camera_position()
@@ -108,6 +115,22 @@ namespace Demiurge
 			Entity.Transform.Position = Vector3.Lerp(Entity.Transform.Position,
 			desiredPosition, LerpSpeed);
 			Entity.Transform.Rotation = desiredRotation;
+
+		}
+
+		private void DrawAimLine()
+		{
+
+			if (PlayerEntity == null) return;
+
+			if (PlayerEntity.GetComponent<PlayerScript>().State.HasFlag(PlayerStateFlags.Aiming))
+			{
+				var cursor = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
+				var barrelScreenPos = MathExtensions.WorldToScreen(PlayerEntity.Transform.Position, Entity.GetComponent<CameraComponent>().ViewProjectionMatrix, Game.Window.ClientBounds);
+				Console.WriteLine(Input.MousePosition);
+				LineRenderer.DrawLine2D(barrelScreenPos, cursor, Color.White);       // draw_aim_line
+			}
+
 		}
 	}
 

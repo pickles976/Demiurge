@@ -1,6 +1,7 @@
 using Stride.Core.Mathematics;
 using Stride.Input;
 using Stride.Engine;
+using Stride.CommunityToolkit.Engine;
 
 namespace Demiurge
 {
@@ -51,12 +52,15 @@ namespace Demiurge
 				.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
 				.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right));
 
-			MovePlayer(dt);
-			// DrawAimLine();
+
+			// TODO: handle intent when we go to networking
+			Vector3 intent = GenerateMovementIntent();
+			PlayAnimations();
+			UpdateTransform(intent, dt);
 		
 		}
 
-		private void MovePlayer(float dt)
+		private Vector3 GenerateMovementIntent()
 		{
 			var camRot = CameraEntity.Transform.Rotation;
 			var forward = MathExtensions.FlattenY(camRot * -Vector3.UnitZ); // Stride camera looks down -Z
@@ -70,7 +74,7 @@ namespace Demiurge
 
 			bool moving = direction.LengthSquared() > 0f;
 			State = State.With(PlayerStateFlags.Moving, moving);
-			if (!moving) return;
+			if (!moving) return Vector3.Zero;
 
 			direction.Normalize();
 
@@ -79,25 +83,59 @@ namespace Demiurge
 				State.HasFlag(PlayerStateFlags.Sprinting) ? SprintSpeed :
 				Speed;
 
-			var pos = Entity.Transform.Position + direction * speed * dt;
+			
 			// pos.Y = chunkMap.GetHeight(pos) + MeshHeightOffset;   // your terrain hook
-			Entity.Transform.Position = pos;
 
-			// face movement direction (Rust: atan2(x, z))
-			float yaw = MathF.Atan2(direction.X, direction.Z);
-			Entity.Transform.Rotation = Quaternion.RotationY(yaw);
+			return direction * speed;
+
 		}
 
-		// private void DrawAimLine()
-		// {
-		// 	if (State.HasFlag(PlayerStateFlags.Aiming))
-		// 	{
-		// 		var cursor = ScreenToCentered(Input.MousePosition); // your 2D convention
-		// 		LineRenderer.DrawPoint2D(cursor, Color.White, size: 10f);            // draw_reticle
-		// 		LineRenderer.DrawLine2D(barrelScreenPos, cursor, Color.White);       // draw_aim_line
-		// 	}
+		private void PlayAnimations()
+		{
+			var animationPlayer = Entity.GetComponent<AnimationComponent>();
 
-		// }
+			if (animationPlayer == null) return;
+
+			if (State.HasFlag(PlayerStateFlags.Moving)) {
+				if (!animationPlayer.IsPlaying("Walk")) {
+    				animationPlayer.Play("Walk");
+				}
+			} 
+			else
+			{
+				animationPlayer.Play("Idle");
+			}
+		}
+
+		private void UpdateTransform(Vector3 intent, float dt)
+		{
+
+			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
+
+
+			if (State.HasFlag(PlayerStateFlags.Aiming) || !State.HasFlag(PlayerStateFlags.Moving))
+			{
+				if (CameraEntity == null) return;
+				if (CameraEntity.GetComponent<ThirdPersonCameraScript>() == null) return;
+
+				// TODO: fix this
+				// Face towards Mouse
+				var target = CameraEntity.GetComponent<ThirdPersonCameraScript>().Target;
+
+				var lookDir = target - Entity.Transform.Position;
+
+				float yaw = MathF.Atan2(lookDir.X, lookDir.Z);
+				Entity.Transform.Rotation = Quaternion.RotationY(yaw);
+
+			} else
+			{
+				// face movement direction (Rust: atan2(x, z))
+				float yaw = MathF.Atan2(intent.X, intent.Z);
+				Entity.Transform.Rotation = Quaternion.RotationY(yaw);
+			}
+
+
+		}
 
 		private static Entity SpawnGun(Entity owner) => throw new NotImplementedException();
 

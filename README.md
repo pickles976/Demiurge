@@ -10,17 +10,19 @@ dotnet build --no-incremental
 2. ~~Camera controls~~
 3. Shooting
 - [x] add litte white dot
-- [ ] only play walk cycle when moving
-- [ ] player looks at mouse by default
-- [ ] aimline
-- [ ] reticle
+- [x] only play walk cycle when moving
+- [x] player looks at mouse by default
+    - [x] look at mouse while standing still
+    - [x] look in direction of movement while walking
+    - [x] look at mouse while aiming
+- [x] aimline
 - [ ] add gun
     - [ ] press "F" to spawn and despawn gun
     - [ ] parent gun to player
+- [ ] aim line originate at gun barrel end
+- [ ] reticle
 - [ ] spawn bullets
-    - [ ] aim line originate at gun barrel end
-- [ ] actually spawn bullet entities
-- [ ] delete bullets
+- [ ] despawn bullets with timer
 - [ ] gun config
     - [ ] rate of fire
     - [ ] magazine capacity
