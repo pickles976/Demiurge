@@ -241,15 +241,15 @@ Entity CreatePlayer()
 
     // Add Animations
     var playerAnimations = new AnimationComponent();
-    playerAnimations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/basil_anim_Walk"));
-    playerAnimations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/basil_anim_Idle"));
+    playerAnimations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/cat_orange_anim_Walk"));
+    playerAnimations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/cat_orange_anim_Idle"));
 
     // Add Camera
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
 
-    var player = new Entity("BASIL") { 
-        new ModelComponent(LoadModel("assets/models/basil.gltf")),
+    var player = new Entity("CAT") { 
+        new ModelComponent(LoadModel("assets/models/cat_orange.gltf")),
         new PlayerScript {CameraEntity = cameraEntity},
         playerAnimations
     };

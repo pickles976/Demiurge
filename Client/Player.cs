@@ -2,6 +2,7 @@ using Stride.Core.Mathematics;
 using Stride.Input;
 using Stride.Engine;
 using Stride.CommunityToolkit.Engine;
+using Stride.Animations;
 
 namespace Demiurge
 {
@@ -28,9 +29,9 @@ namespace Demiurge
 
 	public class PlayerScript : SyncScript
 	{
-		public float Speed       { get; set; } = 2f;
+		public float Speed       { get; set; } = 3f;
 		public float SlowSpeed   { get; set; } = 1f;
-		public float SprintSpeed { get; set; } = 3f;
+		public float SprintSpeed { get; set; } = 4f;
 
 		// ---- runtime state ----
 		public PlayerStateFlags State { get; private set; }
@@ -42,6 +43,8 @@ namespace Demiurge
     	public Entity? EquippedWeapon { get; private set; }
 
 		public required Entity CameraEntity { get; set; }
+
+		private PlayingAnimation? CurrentAnimation { get; set; }
 
         public override void Update()
         {
@@ -98,13 +101,16 @@ namespace Demiurge
 
 			if (State.HasFlag(PlayerStateFlags.Moving)) {
 				if (!animationPlayer.IsPlaying("Walk")) {
-    				animationPlayer.Play("Walk");
+    				CurrentAnimation = animationPlayer.Play("Walk");
 				}
 			} 
 			else
 			{
-				animationPlayer.Play("Idle");
+				CurrentAnimation = animationPlayer.Play("Idle");
 			}
+
+			CurrentAnimation?.TimeFactor = State.HasFlag(PlayerStateFlags.Sprinting) ? 2.0f : 1.0f;
+
 		}
 
 		private void UpdateTransform(Vector3 intent, float dt)

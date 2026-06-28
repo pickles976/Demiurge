@@ -15,7 +15,7 @@ Bundles: []
 TemplateFolders: []
 RootAssets:
     - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
-    - b0011f70-9ec5-566c-dfba-08c579c22923:models/basil
-    - 99b92c6e-cd39-8272-1a84-02c107b83c28:models/basil_skeleton
-    - 045a7f9d-fb72-ecc0-0782-9e3bb7029d4b:models/basil_anim_Walk
-    - 21052f27-790c-d19f-43c3-cbea67909d24:models/basil_anim_Idle
+    - a9c9c33d-d0f7-8e22-959a-0ad5c3538937:models/cat_orange
+    - e13f8a9e-58fb-0f01-4923-3b3bd3d82899:models/cat_orange_skeleton
+    - fb7c8408-a6cd-ed2a-6b12-059c4acce042:models/cat_orange_anim_Walk
+    - b2a11960-b4e4-a0b3-3854-b8e81642cd37:models/cat_orange_anim_Idle

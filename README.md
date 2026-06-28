@@ -70,14 +70,14 @@ Where does UI live? How much should each of these modules know about each other?
 13. Bug Fixes from FFA demo
 14. Player art
     - [x] create guy with blockbench
-    https://bevy.org/examples/animation/animated-mesh/
-    - [ ] hook up animation controller
+    - [x] hook up animation controller
     - [ ] add animations
+        - [ ] idle
         - [ ] aiming
-        - [ ] walking (unarmed)
+        - [x] walking (unarmed)
         - [ ] walking (armed)
         - [ ] crouching 
-        - [ ] sprinting 
+        - [x] sprinting 
 13. Generate meshes for chunks + performance enhancements
 14. Create water, ground, and grass shaders
 15. Create structures

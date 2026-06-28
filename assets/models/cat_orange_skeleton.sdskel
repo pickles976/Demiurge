@@ -1,0 +1,6 @@
+!Skeleton
+Id: e13f8a9e-58fb-0f01-4923-3b3bd3d82899
+SerializedVersion: {Stride: 2.0.0}
+Tags: []
+Source: !file cat_orange.gltf
+Nodes: []

@@ -20,3 +20,5 @@ Metal Highlight - #808080
 For guns:
 - move the gun so that the origin is wherever you want the gun to be held
 - find the barrel offset by moving the pivot point to the barrel, taking that position, and dividing by the export scale (usually 16)
+
+https://lospec.com/gallery/erika1001/tea-character-portrait
