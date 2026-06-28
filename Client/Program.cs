@@ -243,6 +243,7 @@ Entity CreatePlayer()
     var playerAnimations = new AnimationComponent();
     playerAnimations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/cat_orange_anim_Walk"));
     playerAnimations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/cat_orange_anim_Idle"));
+    playerAnimations.Animations.Add("Aiming", game.Content.Load<AnimationClip>("models/cat_orange_anim_Aiming"));
 
     // Add Camera
     var cameraEntity = game.Add3DCamera();

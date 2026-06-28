@@ -16,9 +16,11 @@ dotnet build --no-incremental
     - [x] look in direction of movement while walking
     - [x] look at mouse while aiming
 - [x] aimline
-- [ ] add gun
-    - [ ] press "F" to spawn and despawn gun
-    - [ ] parent gun to player
+- [x] add gun
+    - [x] press "F" to spawn gun
+    - [x] parent gun to player
+    - [x] fix gun rotation1
+    - [x] despawn gun
 - [ ] aim line originate at gun barrel end
 - [ ] reticle
 - [ ] spawn bullets
@@ -38,6 +40,10 @@ dotnet build --no-incremental
 
 - [ ] clean up player aiming logic and stuff
 
+- [ ] shooting at targets (add a crate)
+- [ ] add raycast (bullet tracers are just for visualization)
+- [ ] exploding boxes
+
 6. Networking
 - [ ] separate out client and backend
 - [ ] BIG REFACTOR
@@ -47,8 +53,6 @@ Where does UI live? How much should each of these modules know about each other?
 8. Simple UI for playing with noise
 
 9. PVP Mechanics
-- [ ] shooting at targets (add a crate)
-- [ ] add raycast (bullet tracers are just for visualization)
 - [ ] Player health
     - [ ] spawn crates with health
     - [ ] damage crates when hit by bullet
