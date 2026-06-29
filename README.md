@@ -22,20 +22,19 @@ dotnet build --no-incremental
     - [x] fix gun rotation1
     - [x] despawn gun
 - [x] aim line originate at gun barrel end
-- [ ] spawn bullets
-    - [ ] use particle system
-- [ ] gun config
-    - [ ] rate of fire
-    - [ ] magazine capacity
-    - [ ] reloading
-- [ ] reticle
+- [x] spawn bullets
+    - [x] use particle system
+- [x] gun config
+    - [x] rate of fire
+    - [x] magazine capacity
+    - [x] reloading
 - [ ] add UI
     - [ ] ammo count
     - [ ] reloading prompt
-- [ ] spread
+    - [ ] only start reload when user presses R
+- [ ] reticle
 - [ ] add muzzle flare
 - [ ] add sound
-- [ ] tune reticle and accuracy
 
 - [ ] clean up player aiming logic and stuff
 

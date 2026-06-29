@@ -50,6 +50,9 @@ void Start(Scene rootScene)
     var compositor = game.AddGraphicsCompositor();
     compositor.AddCleanUIStage();
     compositor.AddSceneRenderer(new LineSceneRenderer());
+    // AddGraphicsCompositor() does NOT include particle rendering; add it explicitly
+    // or ParticleSystemComponents simulate but never draw.
+    game.AddParticleRenderer();
 
     // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
     game.Window.FullscreenIsBorderlessWindow = true;
@@ -62,6 +65,8 @@ void Start(Scene rootScene)
     game.Add3DGround();
     game.AddProfiler();
     game.AddGroundGizmo(position: new Vector3(-5, 0.1f, -5), showAxisName: true);
+
+    ParticleExample.CreateAtOrigin().Scene = rootScene;
 
     var directionalLight = CreateDirectionalLight("DirectionalLight");
     directionalLight.Scene = rootScene;
@@ -93,16 +98,16 @@ void Start(Scene rootScene)
         Material = material,
     });
 
-    var ak = new Entity("AK47") { new ModelComponent(LoadModel("assets/models/ak47.gltf")) };
-    ak.Transform.Position = new Vector3(0, 1.0f, 0);
-    ak.Scene = rootScene;
-
     var player = CreatePlayer();
 
     var uiEntity = CreateUI();
     uiEntity.Scene = rootScene;
 
     player.Scene = rootScene;
+
+    // Drives bullet-tracer fade/expiry once per frame (see TracerManager).
+    var tracerSystem = new Entity("TracerSystem") { new TracerSystem() };
+    tracerSystem.Scene = rootScene;
 
 
     camera = rootScene.GetCamera();

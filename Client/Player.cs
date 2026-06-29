@@ -130,16 +130,14 @@ namespace Demiurge
 			// bone, so a heavy AimBlendWeight makes the overlay dominate the arm bones it
 			// shares with the base while leaving untouched bones at 100% locomotion.
 			// Applied instantly (no fade) - on/off the moment aim state changes.
-			bool aiming = State.HasFlag(PlayerStateFlags.Aiming);
-
-			if (aiming && (EquippedWeapon != null) && (_aimOverlay == null || !anim.PlayingAnimations.Contains(_aimOverlay)))
+			if ((EquippedWeapon != null) && (_aimOverlay == null || !anim.PlayingAnimations.Contains(_aimOverlay)))
 			{
 				_aimOverlay = anim.Blend("Aiming", AimBlendWeight, TimeSpan.Zero);
 				_aimOverlay.BlendOperation = AnimationBlendOperation.LinearBlend;
 				_aimOverlay.RepeatMode = AnimationRepeatMode.LoopInfinite;
 				_aimOverlay.Weight = AimBlendWeight;
 			}
-			else if (!aiming && _aimOverlay != null)
+			else if (EquippedWeapon == null && _aimOverlay != null)
 			{
 				anim.PlayingAnimations.Remove(_aimOverlay);
 				_aimOverlay = null;
