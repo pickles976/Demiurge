@@ -21,14 +21,14 @@ dotnet build --no-incremental
     - [x] parent gun to player
     - [x] fix gun rotation1
     - [x] despawn gun
-- [ ] aim line originate at gun barrel end
-- [ ] reticle
+- [x] aim line originate at gun barrel end
 - [ ] spawn bullets
-- [ ] despawn bullets with timer
+    - [ ] use particle system
 - [ ] gun config
     - [ ] rate of fire
     - [ ] magazine capacity
     - [ ] reloading
+- [ ] reticle
 - [ ] add UI
     - [ ] ammo count
     - [ ] reloading prompt
@@ -36,12 +36,12 @@ dotnet build --no-incremental
 - [ ] add muzzle flare
 - [ ] add sound
 - [ ] tune reticle and accuracy
-- [ ] add collision to ground, aim gun towards ground
 
 - [ ] clean up player aiming logic and stuff
 
 - [ ] shooting at targets (add a crate)
 - [ ] add raycast (bullet tracers are just for visualization)
+- [ ] add collision to ground, aim gun towards ground
 - [ ] exploding boxes
 
 6. Networking

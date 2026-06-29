@@ -132,7 +132,7 @@ namespace Demiurge
 			// Applied instantly (no fade) - on/off the moment aim state changes.
 			bool aiming = State.HasFlag(PlayerStateFlags.Aiming);
 
-			if (aiming && (_aimOverlay == null || !anim.PlayingAnimations.Contains(_aimOverlay)))
+			if (aiming && (EquippedWeapon != null) && (_aimOverlay == null || !anim.PlayingAnimations.Contains(_aimOverlay)))
 			{
 				_aimOverlay = anim.Blend("Aiming", AimBlendWeight, TimeSpan.Zero);
 				_aimOverlay.BlendOperation = AnimationBlendOperation.LinearBlend;

@@ -12,7 +12,7 @@ namespace Demiurge
     {
 
         // -------- Config Variables ---------
-        private float rateOfFire = 10.0f;
+        private float _rateOfFire = 10.0f;
         public int magazineCapacity = 30;
         public float reloadTime = 1.5f;
         public float accuracy = 0.0f;
@@ -22,46 +22,47 @@ namespace Demiurge
         // -------- Runtime Variables ---------
         public float currentAmmo;
         
-        private bool isReloading = false;
-        private float shotTimer = 0.0f;
-        private float reloadTimer = 0.0f;
+        private bool _isReloading = false;
+        private float _shotTimer = 0.0f;
+        private float _reloadTimer = 0.0f;
 
         public Entity? PlayerEntity { get; set; }
 
-        public bool isBetweenShots()
+        public bool IsBetweenShots()
         {
-            return shotTimer < 1.0f / rateOfFire;
+            return _shotTimer < 1.0f / _rateOfFire;
         }
 
-        public bool isReloadFinished()
+        public bool IsReloadFinished()
         {
-            return reloadTimer > reloadTime;
+            return _reloadTimer > reloadTime;
         }
 
-        private void incrementShotTimer(float dt)
+        private void IncrementShotTimer(float dt)
         {   
-            shotTimer += dt;
+            _shotTimer += dt;
         }
 
-        private void incrementReloadTimer(float dt)
+        private void IncrementReloadTimer(float dt)
         {
-            reloadTimer +=  dt;
+            _reloadTimer +=  dt;
         }
 
-        public void beginReloading()
+        public void BeginReloading()
         {
-            reloadTimer = 0.0f;
-            isReloading = true;
+            _reloadTimer = 0.0f;
+            _isReloading = true;
         }
 
-        public void onTriggerPull()
+        public void OnTriggerPull()
         {
-            if (currentAmmo == 0 || isBetweenShots())
+
+            if (currentAmmo == 0 || IsBetweenShots())
             {
                 return;
             }
 
-            shotTimer = 0.0f;
+            _shotTimer = 0.0f;
             currentAmmo -= 1;
 
             // TODO: get barrel position and spawn bullet
@@ -70,26 +71,46 @@ namespace Demiurge
 
         public override void Update()
         {
+            var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+            if (Input.IsMouseButtonDown(MouseButton.Left)) OnTriggerPull();
             DrawAimLine();
+            UpdateState(dt);
+        }
+
+        private void UpdateState(float dt)
+        {
+            if (currentAmmo == 0 && !_isReloading) BeginReloading();
+            if (IsBetweenShots()) IncrementShotTimer(dt);
+            if (_isReloading) IncrementReloadTimer(dt);
+            if (IsReloadFinished())
+            {
+                currentAmmo = magazineCapacity;
+                _isReloading = false;
+            }
+        }
+
+        private Vector3 GetBarrelPosition()
+        {
+            var transform = Entity.Transform;
+            transform.UpdateWorldMatrix();
+            Matrix world = transform.WorldMatrix;
+            return Vector3.TransformCoordinate(barrelEnd, world);
         }
 
         private void DrawAimLine()
 		{
 
-			if (PlayerEntity == null) return;
+            if (PlayerEntity is null) return;
+            if (PlayerEntity.GetComponent<PlayerScript>() is not { } playerScript) return;
+            if (playerScript.CameraEntity.GetComponent<CameraComponent>() is not { } camera) return;
 
-            // TODO: how do I clean this up?
-			var playerScript = PlayerEntity.GetComponent<PlayerScript>();
 
-            if (playerScript == null) return;
-
-            // TODO: get barrel position
 
 			if (playerScript.State.HasFlag(PlayerStateFlags.Aiming))
 			{
-				var cursor = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
-				var barrelScreenPos = MathExtensions.WorldToScreen(PlayerEntity.Transform.Position, playerScript.CameraEntity.GetComponent<CameraComponent>().ViewProjectionMatrix, Game.Window.ClientBounds);
-				LineRenderer.DrawLine2D(barrelScreenPos, cursor, Color.White);       // draw_aim_line
+				var cursorPos = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
+				var barrelScreenPos = MathExtensions.WorldToScreen(GetBarrelPosition(), camera.ViewProjectionMatrix, Game.Window.ClientBounds);
+				LineRenderer.DrawLine2D(barrelScreenPos, cursorPos, Color.White);
 			}
 
 		}

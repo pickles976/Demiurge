@@ -1,4 +1,5 @@
 using Stride.Core.Mathematics;
+using Stride.Rendering;
 
 namespace Demiurge 
 {
@@ -67,6 +68,7 @@ namespace Demiurge
         {
             return MousePosToScreenCoords(WorldToMouse(worldPosition, viewProj), rect);
         }
+
     }
 
 }
