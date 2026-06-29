@@ -10,14 +10,15 @@ dotnet build --no-incremental
 2. ~~Camera controls~~
 3. Shooting
 
+- [ ] shooting at targets
+    - [x] add a dummy
+    - [ ] add raycast (bullet tracers are just for visualization)
+    - [ ] log when dummy is hit
+    - [ ] add collision to ground, aim gun towards ground
+    - [ ] emit particles from dummy when hit
+
 - [ ] clean up player aiming logic and stuff
     - [ ] point gun at stuff
-
-- [ ] shooting at targets
-    - [ ] add a crate
-    - [ ] add raycast (bullet tracers are just for visualization)
-    - [ ] add collision to ground, aim gun towards ground
-    - [ ] destroy crate and emit particles when hit
 
 6. Networking
 - [ ] separate out client and backend

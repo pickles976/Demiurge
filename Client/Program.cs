@@ -99,12 +99,15 @@ void Start(Scene rootScene)
     });
 
     var player = CreatePlayer();
+    player.Scene = rootScene;
+
+    var dummy = CreateDummy();
+    dummy.Scene = rootScene;
 
     // TODO: update
     var uiEntity = HUD.CreateUI(game);
     uiEntity.Scene = rootScene;
 
-    player.Scene = rootScene;
 
     // Drives bullet-tracer fade/expiry once per frame (see TracerManager).
     var tracerSystem = new Entity("TracerSystem") { new TracerSystem() };
@@ -239,4 +242,15 @@ Entity CreatePlayer()
 
 
     return player;
+}
+
+Entity CreateDummy()
+{
+
+    var dummy = new Entity("DUMMY") { 
+        new ModelComponent(LoadModel("assets/models/dummy.gltf")),
+    };
+    dummy.Transform.Position = new Vector3(1.0f, 0.0f, 0);
+
+    return dummy;
 }
