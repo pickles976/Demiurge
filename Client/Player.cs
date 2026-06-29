@@ -200,7 +200,10 @@ namespace Demiurge
 			}
 			; // already holding one
 
-			var ak = new Entity("AK47") { new ModelComponent(Content.Load<Model>("models/ak47")) };
+			var ak = new Entity("AK47") { 
+				new ModelComponent(Content.Load<Model>("models/ak47")),
+				new GunScript { PlayerEntity = Entity }
+			};
 
 			// Link the gun to the owner's "right_hand" bone. The ModelNodeLinkProcessor
 			// drives the gun's world transform from the bone each frame (after skinning),

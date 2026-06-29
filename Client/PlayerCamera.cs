@@ -45,7 +45,6 @@ namespace Demiurge
 		{
 			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
 			UpdateCameraTransform(dt);
-			DrawAimLine();
 		}
 
 		private void UpdateCameraTransform(float dt)
@@ -118,20 +117,6 @@ namespace Demiurge
 
 		}
 
-		private void DrawAimLine()
-		{
-
-			if (PlayerEntity == null) return;
-
-			if (PlayerEntity.GetComponent<PlayerScript>().State.HasFlag(PlayerStateFlags.Aiming))
-			{
-				var cursor = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
-				var barrelScreenPos = MathExtensions.WorldToScreen(PlayerEntity.Transform.Position, Entity.GetComponent<CameraComponent>().ViewProjectionMatrix, Game.Window.ClientBounds);
-				Console.WriteLine(Input.MousePosition);
-				LineRenderer.DrawLine2D(barrelScreenPos, cursor, Color.White);       // draw_aim_line
-			}
-
-		}
 	}
 
 	// Draws a ring at the cursor position, like Bevy's draw_reticle gizmos.
