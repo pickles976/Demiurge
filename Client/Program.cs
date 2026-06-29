@@ -114,8 +114,8 @@ void Start(Scene rootScene)
     camera = rootScene.GetCamera();
     simulation = camera?.Entity.GetSimulation();
 
-    // Simple 2D sound playback (see SoundManager).
-    game.Services.AddService(new SoundManager());
+    // OpenAL audio (see SoundManager); the camera is the 3D listener.
+    game.Services.AddService(new SoundManager(camera?.Entity));
 
     if (simulation != null)
     {

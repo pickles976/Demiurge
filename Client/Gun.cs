@@ -1,4 +1,3 @@
-using Stride.Audio;
 using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Input;
@@ -39,8 +38,8 @@ namespace Demiurge
         private IPlayerStatus _status = null!;
 
         // Positional shot SFX, played through the shared SoundManager (no emitter on the gun).
+        private const string ShotSoundPath = "assets/sfx/ak47_shot.wav";
         private SoundManager _soundManager = null!;
-        private Sound _shotSound = null!;
 
         public bool IsBetweenShots()
         {
@@ -77,7 +76,7 @@ namespace Demiurge
             currentAmmo -= 1;
             PublishAmmo();
 
-            _soundManager.Play(_shotSound);
+            _soundManager.Play(ShotSoundPath); // TEMP: 2D test (full volume, no attenuation)
             SpawnTracer();
         }
 
@@ -119,7 +118,6 @@ namespace Demiurge
 
             // Positional shot audio (compiled from assets/sfx/ak47_shot.ogg).
             _soundManager = Services.GetSafeServiceAs<SoundManager>();
-            _shotSound = Content.Load<Sound>("sfx/ak47_shot");
 
             PublishAmmo();
             GameEvents.WeaponEquipped.Broadcast();
