@@ -9,69 +9,58 @@ dotnet build --no-incremental
 1. ~~Move the player~~
 2. ~~Camera controls~~
 3. Shooting
-- [x] add litte white dot
-- [x] only play walk cycle when moving
-- [x] player looks at mouse by default
-    - [x] look at mouse while standing still
-    - [x] look in direction of movement while walking
-    - [x] look at mouse while aiming
-- [x] aimline
-- [x] add gun
-    - [x] press "F" to spawn gun
-    - [x] parent gun to player
-    - [x] fix gun rotation1
-    - [x] despawn gun
-- [x] aim line originate at gun barrel end
-- [x] spawn bullets
-    - [x] use particle system
-- [x] gun config
-    - [x] rate of fire
-    - [x] magazine capacity
-    - [x] reloading
-- [ ] add UI
-    - [ ] ammo count
-    - [ ] reloading prompt
-    - [ ] only start reload when user presses R
-- [ ] reticle
+
+GET SOUND WORKING
+- [ ] force use alsa instead of pipewire
+
 - [ ] add muzzle flare
-- [ ] add sound
 
 - [ ] clean up player aiming logic and stuff
+    - [ ] gun just shoots forward unless we are aiming
+    - [ ] draw a reticle when aiming
 
-- [ ] shooting at targets (add a crate)
-- [ ] add raycast (bullet tracers are just for visualization)
-- [ ] add collision to ground, aim gun towards ground
-- [ ] exploding boxes
+- [ ] shooting at targets
+    - [ ] add a crate
+    - [ ] add raycast (bullet tracers are just for visualization)
+    - [ ] add collision to ground, aim gun towards ground
+    - [ ] destroy crate and emit particles when hit
 
 6. Networking
 - [ ] separate out client and backend
-- [ ] BIG REFACTOR
-Where does UI live? How much should each of these modules know about each other?
+    - [ ] hardcode IP into game for now
+    - [ ] sync players
+    - [ ] sync weapon spawning
+    - [ ] sync gun visuals and sounds
+    - [ ] add a login screen to client
 
-7. Generate a map with perlin noise
-8. Simple UI for playing with noise
+7. Host server and test with buddies
+- [ ] digital ocean droplet
+- [ ] hook up scrungy.com domain name
 
-9. PVP Mechanics
+8. Generate a map with perlin noise
+9. Simple UI for playing with noise
+
+10. PVP Mechanics
 - [ ] Player health
     - [ ] spawn crates with health
     - [ ] damage crates when hit by bullet
     - [ ] destroy crates when HP < 0.0
     - [ ] add this logic to players
     - [ ] add health pack pickups
-10. Play around with scripting
+11. Play around with scripting
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 
-11. Add inventory and pickups
+12. Add inventory and pickups
     - [ ] AK
     - [ ] sniper rifle
     - [ ] shotgun
-12. Create a simple free-for-all demo for testing
+13. Create a simple free-for-all demo for testing
     - [ ] load a map from a PNG
     - [ ] random spawns
     - [ ] fixed health kit locations
     
-13. Bug Fixes from FFA demo
-14. Player art
+14. Bug Fixes from FFA demo
+15. Player art
     - [x] create guy with blockbench
     - [x] hook up animation controller
     - [ ] add animations
@@ -81,10 +70,10 @@ Where does UI live? How much should each of these modules know about each other?
         - [ ] walking (armed)
         - [ ] crouching 
         - [x] sprinting 
-13. Generate meshes for chunks + performance enhancements
-14. Create water, ground, and grass shaders
-15. Create structures
-16. CTF gamemode
+16. Generate meshes for chunks + performance enhancements
+17. Create water, ground, and grass shaders
+18. Create structures
+19. CTF gamemode
 
 Debug Stuff
 - [ ] debug draw chunk borders

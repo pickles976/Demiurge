@@ -1,3 +1,5 @@
+using Stride.Audio;
+using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Input;
 using Stride.Engine;
@@ -25,13 +27,20 @@ namespace Demiurge
         public Vector3 barrelEnd = new Vector3(0.0f, 1.5f / 16.0f, 14.75f / 16.0f);
 
         // -------- Runtime Variables ---------
-        public float currentAmmo;
+        public float currentAmmo = 30;
         
         private bool _isReloading = false;
         private float _shotTimer = 0.0f;
         private float _reloadTimer = 0.0f;
 
         public Entity? PlayerEntity { get; set; }
+
+        // Shared state the HUD reads (resolved in Start). The gun never references the HUD.
+        private IPlayerStatus _status = null!;
+
+        // Positional shot SFX, played through the shared SoundManager (no emitter on the gun).
+        private SoundManager _soundManager = null!;
+        private Sound _shotSound = null!;
 
         public bool IsBetweenShots()
         {
@@ -62,13 +71,13 @@ namespace Demiurge
         public void OnTriggerPull()
         {
 
-            Console.WriteLine(currentAmmo);
-
             if (currentAmmo == 0 || IsBetweenShots()) return;
 
             _shotTimer = 0.0f;
             currentAmmo -= 1;
+            PublishAmmo();
 
+            _soundManager.Play(_shotSound);
             SpawnTracer();
         }
 
@@ -100,6 +109,32 @@ namespace Demiurge
             TracerManager.Spawn(barrel, endpoint, Color.Yellow, tracerLifetime);
         }
 
+        public override void Start()
+        {
+            base.Start();
+            // Resolve shared state and seed it from this gun's config.
+            _status = Services.GetSafeServiceAs<IPlayerStatus>();
+            _status.WeaponEquipped = true;
+            _status.MagazineCapacity = magazineCapacity;
+
+            // Positional shot audio (compiled from assets/sfx/ak47_shot.ogg).
+            _soundManager = Services.GetSafeServiceAs<SoundManager>();
+            _shotSound = Content.Load<Sound>("sfx/ak47_shot");
+
+            PublishAmmo();
+            GameEvents.WeaponEquipped.Broadcast();
+        }
+
+        /// <summary>
+        /// Writes the current ammo into shared state (B) and broadcasts the change
+        /// signal (A) so the HUD re-reads. Call after any change to currentAmmo.
+        /// </summary>
+        private void PublishAmmo()
+        {
+            _status.CurrentAmmo = (int)currentAmmo;
+            GameEvents.AmmoChanged.Broadcast();
+        }
+
 
         public override void Update()
         {
@@ -107,6 +142,13 @@ namespace Demiurge
             if (Input.IsMouseButtonDown(MouseButton.Left)) OnTriggerPull();
             DrawAimLine();
             UpdateState(dt);
+        }
+
+        public override void Cancel()
+        {
+            base.Cancel();
+            _status.WeaponEquipped = false;
+            GameEvents.WeaponEquipped.Broadcast();
         }
 
         private void UpdateState(float dt)
@@ -119,6 +161,7 @@ namespace Demiurge
                 {
                     currentAmmo = magazineCapacity;
                     _isReloading = false;
+                    PublishAmmo();
                 }
             }
         }

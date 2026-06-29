@@ -171,6 +171,44 @@ foreach (var gltfPath in gltfFiles)
     }
 }
 
+// Audio: generate a .sdsnd descriptor per source file so Content.Load<Sound> works.
+// Same conventions as the model assets above: descriptor sits next to its source,
+// deterministic GUID from the content path, and it's added to the package RootAssets.
+var audioFiles = new[] { "*.ogg", "*.wav", "*.mp3" }
+    .SelectMany(pattern => Directory.GetFiles(assetsDir, pattern, SearchOption.AllDirectories))
+    .ToArray();
+Array.Sort(audioFiles);
+
+foreach (var audioPath in audioFiles)
+{
+    var rel = audioPath.Substring(assetsDir.Length).TrimStart(sep);
+    var contentPath = Path.ChangeExtension(rel, null).Replace('\\', '/');
+    var fileName = Path.GetFileName(audioPath);
+    var soundGuid = ComputeGuid(contentPath);
+
+    // Spatialized: false. Stride's spatialized path builds a native 3D OpenAL source,
+    // which requires MONO audio; a stereo source flagged spatialized is invalid and on
+    // this Linux/OpenAL build breaks (freezes on per-frame Apply3D, crashes on dispose).
+    // SoundManager positions sounds itself via Pan/Volume, so a plain 2D (non-spatialized)
+    // source is both correct and stable.
+    // StreamFromDisk: false keeps short SFX in memory (set true for long music tracks).
+    var sdsnd =
+        $"!Sound\n" +
+        $"Id: {soundGuid}\n" +
+        $"SerializedVersion: {{Stride: 2.0.0}}\n" +
+        $"Tags: []\n" +
+        $"Source: !file {fileName}\n" +
+        $"SampleRate: 44100\n" +
+        $"CompressionRatio: 10\n" +
+        $"StreamFromDisk: false\n" +
+        $"Spatialized: false\n";
+
+    var sdsndPath = Path.ChangeExtension(audioPath, ".sdsnd");
+    WriteIfChanged(sdsndPath, sdsnd);
+
+    rootAssetLines.Add("    - " + soundGuid + ":" + contentPath);
+}
+
 // 4. Rewrite .sdpkg with current RootAssets (idempotent)
 var rootAssets = rootAssetLines.Count > 0
     ? "RootAssets:\n" + string.Join("\n", rootAssetLines) + "\n"

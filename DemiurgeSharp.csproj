@@ -27,6 +27,9 @@
 
   <ItemGroup>
     <GltfAsset Include="assets/**/*.gltf" />
+    <AudioAsset Include="assets/**/*.ogg" />
+    <AudioAsset Include="assets/**/*.wav" />
+    <AudioAsset Include="assets/**/*.mp3" />
   </ItemGroup>
 
   <!-- Workaround: Stride's .ssdeps uses Windows backslash paths for Linux native libs, so the
@@ -61,7 +64,7 @@
        GUIDs are deterministic MD5 hashes of content paths. -->
   <Target Name="SyncStrideGltfAssets"
           BeforeTargets="StrideCompileAsset"
-          Inputs="@(GltfAsset)"
+          Inputs="@(GltfAsset);@(AudioAsset)"
           Outputs="$(MSBuildProjectDirectory)/.stride-assets.stamp">
     <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/tools/GltfAssetGenerator/GltfAssetGenerator.csproj&quot; -- &quot;$(MSBuildProjectDirectory)&quot; &quot;$(MSBuildProjectName)&quot;" />
     <Touch Files="$(MSBuildProjectDirectory)/.stride-assets.stamp" AlwaysCreate="true" />

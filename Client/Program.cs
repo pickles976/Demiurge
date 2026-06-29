@@ -26,9 +26,6 @@ using Stride.CommunityToolkit.Helpers; // This was added
 
 using Demiurge;
 
-SpriteFont? font = null; // This was added
-
-
 Entity? sphere = null;
 
 Entity? basil = null;
@@ -53,6 +50,9 @@ void Start(Scene rootScene)
     // AddGraphicsCompositor() does NOT include particle rendering; add it explicitly
     // or ParticleSystemComponents simulate but never draw.
     game.AddParticleRenderer();
+
+    // Shared player state read by the HUD and written by the gun (resolved via Services).
+    game.Services.AddService<IPlayerStatus>(new PlayerStatus());
 
     // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
     game.Window.FullscreenIsBorderlessWindow = true;
@@ -100,7 +100,8 @@ void Start(Scene rootScene)
 
     var player = CreatePlayer();
 
-    var uiEntity = CreateUI();
+    // TODO: update
+    var uiEntity = HUD.CreateUI(game);
     uiEntity.Scene = rootScene;
 
     player.Scene = rootScene;
@@ -112,6 +113,9 @@ void Start(Scene rootScene)
 
     camera = rootScene.GetCamera();
     simulation = camera?.Entity.GetSimulation();
+
+    // Simple 2D sound playback (see SoundManager).
+    game.Services.AddService(new SoundManager());
 
     if (simulation != null)
     {
@@ -206,40 +210,6 @@ Entity CreateDirectionalLight(string? entityName = "Directional Light")
     return entity;
 }
 
-Entity CreateUI()
-{
-    // This below was added: Create and display a UI text block
-    font = game.Content.Load<SpriteFont>("StrideDefaultFont");
-    var canvas = new Canvas
-    {
-        Width = 300,
-        Height = 100,
-        BackgroundColor = new Color(248, 177, 149, 100),
-        HorizontalAlignment = HorizontalAlignment.Left,
-        VerticalAlignment = VerticalAlignment.Bottom,
-    };
-
-    canvas.Children.Add(new TextBlock
-    {
-        Text = "Hello, Stride!",
-        TextColor = Color.White,
-        Font = font,
-        TextSize = 24,
-        Margin = new Thickness(3, 3, 3, 0),
-    });
-
-    var uiEntity = new Entity
-    {
-        new UIComponent
-        {
-            Page = new UIPage { RootElement = canvas },
-            RenderGroup = RenderGroup.Group31 // Used to render AddCleanUIStage()
-        }
-    };
-
-    return uiEntity;
-
-}
 
 Entity CreatePlayer()
 {
