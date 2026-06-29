@@ -60,7 +60,6 @@ void Start(Scene rootScene)
     game.GraphicsDeviceManager.PreferredBackBufferWidth = 1920;
     game.GraphicsDeviceManager.PreferredBackBufferHeight = 1080;
     game.GraphicsDeviceManager.ApplyChanges();
-    // game.Add3DCamera().Add3DCameraController();
     // game.AddDirectionalLight();
     game.Add3DGround();
     game.AddProfiler();
@@ -73,6 +72,7 @@ void Start(Scene rootScene)
 
     var ambientLight = CreateAmbientLight();
     ambientLight.Scene = rootScene;
+
 
     // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
     ImageResult img;
@@ -219,6 +219,8 @@ Entity CreatePlayer()
     playerAnimations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/cat_orange_anim_Walk"));
     playerAnimations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/cat_orange_anim_Idle"));
     playerAnimations.Animations.Add("Aiming", game.Content.Load<AnimationClip>("models/cat_orange_anim_Aiming"));
+    playerAnimations.Animations.Add("Crouch", game.Content.Load<AnimationClip>("models/cat_orange_anim_Crouch"));
+    playerAnimations.Animations.Add("CrouchWalk", game.Content.Load<AnimationClip>("models/cat_orange_anim_CrouchWalk"));
 
     // Add Camera
     var cameraEntity = game.Add3DCamera();

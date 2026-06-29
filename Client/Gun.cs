@@ -76,7 +76,7 @@ namespace Demiurge
             currentAmmo -= 1;
             PublishAmmo();
 
-            _soundManager.Play(ShotSoundPath); // TEMP: 2D test (full volume, no attenuation)
+            _soundManager.PlayOneShotSpatial(ShotSoundPath, GetBarrelPosition());
             SpawnTracer();
         }
 
@@ -116,7 +116,7 @@ namespace Demiurge
             _status.WeaponEquipped = true;
             _status.MagazineCapacity = magazineCapacity;
 
-            // Positional shot audio (compiled from assets/sfx/ak47_shot.ogg).
+            // Positional shot audio, played through the shared OpenAL SoundManager.
             _soundManager = Services.GetSafeServiceAs<SoundManager>();
 
             PublishAmmo();

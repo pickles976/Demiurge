@@ -1,23 +1,30 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using Silk.NET.OpenAL;
 using Stride.Engine;
 using SVector3 = Stride.Core.Mathematics.Vector3;
-using Stride.Core.Mathematics;
 
 namespace Demiurge
 {
+    /// <summary>Handle to a continuous (looping) sound, used to stop or adjust it later.</summary>
+    public readonly struct SoundHandle
+    {
+        internal readonly uint Source;
+        internal SoundHandle(uint source) => Source = source;
+    }
+
     /// <summary>
-    /// Audio via OpenAL directly (Silk.NET.OpenAL), bypassing Stride's audio entirely —
-    /// Stride's native layer deadlocks on this platform (see AUDIO.md). OpenAL itself is
-    /// fine, so we drive the same system library ourselves.
+    /// Audio via OpenAL directly (Silk.NET.OpenAL), bypassing Stride's audio — Stride's
+    /// native layer deadlocks on this platform (see AUDIO.md). OpenAL itself is fine.
     ///
-    /// Loads 16-bit PCM WAV files, caches one OpenAL buffer per file, and round-robins a
-    /// fixed pool of sources. <see cref="Play(string)"/> is non-positional; <see
-    /// cref="Play(string, SVector3)"/> places the sound in 3D relative to the listener
-    /// (the camera). Mono WAVs spatialize; stereo WAVs play un-positioned (OpenAL rule).
+    /// API:
+    ///   PlayOneShot / PlayOneShotSpatial      — fire-and-forget SFX (2D / positioned)
+    ///   PlayContinuous / PlayContinuousSpatial — looping sounds; return a <see cref="SoundHandle"/>
+    ///   StopContinuous(handle)                 — stop a looping sound
+    ///   SetPosition(handle, ...)               — move a live looping spatial sound
+    /// All play methods take an optional volume (gain). For pitch/speed variants, use
+    /// separate pre-rendered clips (OpenAL's only rate control couples pitch and speed).
+    ///
+    /// Loads 16-bit PCM WAV; mono spatializes, stereo plays un-positioned (OpenAL rule).
     /// </summary>
     public sealed unsafe class SoundManager : IDisposable
     {
@@ -25,65 +32,101 @@ namespace Demiurge
         private readonly ALContext _alc;
         private readonly Device* _device;
         private readonly Context* _context;
-        private readonly Entity? _listener;          // camera; drives 3D listener pose
+        private readonly Entity? _listener;            // camera; drives the 3D listener pose
 
         private readonly Dictionary<string, uint> _buffers = new();
-        private readonly uint[] _sources;
+        private readonly uint[] _oneShots;             // round-robin pool for fire-and-forget
         private int _next;
+        private readonly HashSet<uint> _continuous = new(); // dedicated sources, freed on stop
+
+        /// <summary>World distance at which a spatial sound is at full volume; falloff scales from here.</summary>
+        public float SpatialReferenceDistance = 10f;
+        /// <summary>How quickly spatial sounds attenuate past the reference distance.</summary>
+        public float SpatialRolloffFactor = 1f;
 
         public SoundManager(Entity? listener = null, int voices = 32)
         {
             _listener = listener;
-
             _alc = ALContext.GetApi(soft: false);
             _al = AL.GetApi(soft: false);
 
             _device = _alc.OpenDevice("");
-            Console.WriteLine($"[OAL] OpenDevice -> {((nint)_device):x}");
             if (_device == null)
                 throw new InvalidOperationException("OpenAL: failed to open the default audio device.");
             _context = _alc.CreateContext(_device, null);
-            bool made = _alc.MakeContextCurrent(_context);
-            Console.WriteLine($"[OAL] CreateContext -> {((nint)_context):x}, MakeCurrent -> {made}, ctxErr={_alc.GetError(_device)}");
-
-            _sources = new uint[voices];
-            for (int i = 0; i < voices; i++)
-                _sources[i] = _al.GenSource();
-            Console.WriteLine($"[OAL] generated {voices} sources, alErr={_al.GetError()}");
-        }
-
-        private void Err(string stage)
-        {
-            var e = _al.GetError();
-            if (e != AudioError.NoError) Console.WriteLine($"[OAL] ERROR after {stage}: {e}");
-        }
-
-        /// <summary>Play a sound non-positionally (centered, full volume).</summary>
-        public void Play(string wavPath) => PlayInternal(wavPath, null);
-
-        /// <summary>Play a sound positioned in world space relative to the listener (camera).</summary>
-        public void Play(string wavPath, SVector3 worldPosition) => PlayInternal(wavPath, worldPosition);
-
-        private void PlayInternal(string wavPath, SVector3? worldPos)
-        {
-            // OpenAL's "current context" is process-global; Stride's audio system shares the
-            // library, so make ours current before our calls target our device.
             _alc.MakeContextCurrent(_context);
 
-            uint buffer = GetBuffer(wavPath);
+            _oneShots = new uint[voices];
+            for (int i = 0; i < voices; i++)
+                _oneShots[i] = _al.GenSource();
+        }
 
-            uint source = _sources[_next];
-            _next = (_next + 1) % _sources.Length;
+        // ---- Fire-and-forget ----
 
-            // Stopping the source (safe in real OpenAL) lets us (re)assign the buffer, and
-            // a still-playing voice we cycle back to is simply restarted.
-            _al.SourceStop(source); Err("SourceStop");
-            _al.SetSourceProperty(source, SourceInteger.Buffer, (int)buffer); Err("SetBuffer");
+        public void PlayOneShot(string wavPath, float volume = 1f)
+            => OneShot(wavPath, null, volume);
+
+        public void PlayOneShotSpatial(string wavPath, SVector3 position, float volume = 1f)
+            => OneShot(wavPath, position, volume);
+
+        private void OneShot(string wavPath, SVector3? pos, float volume)
+        {
+            EnsureContext();
+            uint source = _oneShots[_next];
+            _next = (_next + 1) % _oneShots.Length;
+            Configure(source, GetBuffer(wavPath), pos, volume, looping: false);
+            _al.SourcePlay(source);
+        }
+
+        // ---- Continuous (looping) ----
+
+        public SoundHandle PlayContinuous(string wavPath, float volume = 1f)
+            => Continuous(wavPath, null, volume);
+
+        public SoundHandle PlayContinuousSpatial(string wavPath, SVector3 position, float volume = 1f)
+            => Continuous(wavPath, position, volume);
+
+        private SoundHandle Continuous(string wavPath, SVector3? pos, float volume)
+        {
+            EnsureContext();
+            uint source = _al.GenSource();
+            _continuous.Add(source);
+            Configure(source, GetBuffer(wavPath), pos, volume, looping: true);
+            _al.SourcePlay(source);
+            return new SoundHandle(source);
+        }
+
+        public void StopContinuous(SoundHandle handle)
+        {
+            if (!_continuous.Remove(handle.Source)) return; // already stopped / invalid
+            EnsureContext();
+            _al.SourceStop(handle.Source);
+            _al.DeleteSource(handle.Source);
+        }
+
+        /// <summary>Move a live looping spatial sound (e.g. an engine that's moving).</summary>
+        public void SetPosition(SoundHandle handle, SVector3 position)
+        {
+            if (!_continuous.Contains(handle.Source)) return;
+            EnsureContext();
+            _al.SetSourceProperty(handle.Source, SourceVector3.Position, position.X, position.Y, position.Z);
+        }
+
+        // ---- internals ----
+
+        private void Configure(uint source, uint buffer, SVector3? worldPos, float volume, bool looping)
+        {
+            _al.SourceStop(source); // lets us (re)assign the buffer; restarts a recycled voice
+            _al.SetSourceProperty(source, SourceInteger.Buffer, (int)buffer);
+            _al.SetSourceProperty(source, SourceFloat.Gain, volume);
+            _al.SetSourceProperty(source, SourceBoolean.Looping, looping);
 
             if (worldPos is { } p)
             {
                 UpdateListener();
                 _al.SetSourceProperty(source, SourceBoolean.SourceRelative, false);
+                _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, SpatialReferenceDistance);
+                _al.SetSourceProperty(source, SourceFloat.RolloffFactor, SpatialRolloffFactor);
                 _al.SetSourceProperty(source, SourceVector3.Position, p.X, p.Y, p.Z);
             }
             else
@@ -92,15 +135,13 @@ namespace Demiurge
                 _al.SetSourceProperty(source, SourceBoolean.SourceRelative, true);
                 _al.SetSourceProperty(source, SourceVector3.Position, 0f, 0f, 0f);
             }
-            Err("SetPosition");
-
-            _al.SourcePlay(source); Err("SourcePlay");
-            _al.GetSourceProperty(source, GetSourceInteger.SourceState, out int st);
-            _al.GetListenerProperty(ListenerVector3.Position, out var lp);
-            Console.WriteLine($"[OAL] play buf={buffer} src={source} pos={worldPos} state={(SourceState)st} listener={lp}");
         }
 
-        // Sync the OpenAL listener to the camera's world pose before a positional play.
+        // OpenAL's "current context" is process-global and Stride shares the library, so
+        // make ours current before issuing calls.
+        private void EnsureContext() => _alc.MakeContextCurrent(_context);
+
+        // Sync the OpenAL listener to the camera's world pose.
         private void UpdateListener()
         {
             if (_listener == null) return;
@@ -130,7 +171,6 @@ namespace Demiurge
             uint buffer = _al.GenBuffer();
             fixed (byte* ptr = data)
                 _al.BufferData(buffer, format, ptr, data.Length, sampleRate);
-            Console.WriteLine($"[OAL] loaded {wavPath}: fmt={format} bytes={data.Length} rate={sampleRate} buf={buffer} alErr={_al.GetError()}");
 
             _buffers[wavPath] = buffer;
             return buffer;
@@ -173,7 +213,7 @@ namespace Demiurge
             if (data == null)
                 throw new InvalidDataException($"WAV has no data chunk: {path}");
 
-            BufferFormat format = (channels, bits) switch
+            return ((channels, bits) switch
             {
                 (1, 8) => BufferFormat.Mono8,
                 (1, 16) => BufferFormat.Mono16,
@@ -181,13 +221,13 @@ namespace Demiurge
                 (2, 16) => BufferFormat.Stereo16,
                 _ => throw new NotSupportedException(
                     $"Unsupported WAV format ({channels}ch/{bits}bit): {path}. Use 16-bit PCM."),
-            };
-            return (format, data, sampleRate);
+            }, data, sampleRate);
         }
 
         public void Dispose()
         {
-            foreach (var s in _sources) _al.DeleteSource(s);
+            foreach (var s in _oneShots) _al.DeleteSource(s);
+            foreach (var s in _continuous) _al.DeleteSource(s);
             foreach (var b in _buffers.Values) _al.DeleteBuffer(b);
             _alc.MakeContextCurrent(null);
             _alc.DestroyContext(_context);

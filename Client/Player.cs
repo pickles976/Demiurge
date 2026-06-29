@@ -62,6 +62,7 @@ namespace Demiurge
 
 
 			if (Input.IsKeyPressed(Keys.F)) SpawnGun(Entity);
+			if (Input.IsKeyPressed(Keys.LeftCtrl)) State ^= PlayerStateFlags.Crouching;
 
 			// TODO: handle intent when we go to networking
 			Vector3 intent = GenerateMovementIntent();
@@ -110,7 +111,10 @@ namespace Demiurge
 			// Must stay at index 0 so overlays blend on top of it. We only (re)create
 			// it when the clip actually changes, otherwise it would restart every frame
 			// and wipe the aiming overlay.
-			string baseClip = State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle";
+			string baseClip = State.HasFlag(PlayerStateFlags.Crouching) ? 
+				(State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
+				(State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
+
 			bool baseMissing = CurrentAnimation == null || !anim.PlayingAnimations.Contains(CurrentAnimation);
 			if (baseMissing || CurrentAnimation!.Name != baseClip)
 			{
@@ -163,7 +167,7 @@ namespace Demiurge
 			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
 
 
-			if (State.HasFlag(PlayerStateFlags.Aiming) || !State.HasFlag(PlayerStateFlags.Moving))
+			if (EquippedWeapon != null || !State.HasFlag(PlayerStateFlags.Moving))
 			{
 				if (CameraEntity == null) return;
 				if (CameraEntity.GetComponent<ThirdPersonCameraScript>() == null) return;
@@ -177,7 +181,8 @@ namespace Demiurge
 				float yaw = MathF.Atan2(lookDir.X, lookDir.Z);
 				Entity.Transform.Rotation = Quaternion.RotationY(yaw);
 
-			} else
+			} 
+			else
 			{
 				// face movement direction (Rust: atan2(x, z))
 				float yaw = MathF.Atan2(intent.X, intent.Z);

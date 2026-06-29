@@ -10,14 +10,8 @@ dotnet build --no-incremental
 2. ~~Camera controls~~
 3. Shooting
 
-GET SOUND WORKING
-- [ ] force use alsa instead of pipewire
-
-- [ ] add muzzle flare
-
 - [ ] clean up player aiming logic and stuff
-    - [ ] gun just shoots forward unless we are aiming
-    - [ ] draw a reticle when aiming
+    - [ ] point gun at stuff
 
 - [ ] shooting at targets
     - [ ] add a crate
@@ -60,20 +54,10 @@ GET SOUND WORKING
     - [ ] fixed health kit locations
     
 14. Bug Fixes from FFA demo
-15. Player art
-    - [x] create guy with blockbench
-    - [x] hook up animation controller
-    - [ ] add animations
-        - [ ] idle
-        - [ ] aiming
-        - [x] walking (unarmed)
-        - [ ] walking (armed)
-        - [ ] crouching 
-        - [x] sprinting 
-16. Generate meshes for chunks + performance enhancements
-17. Create water, ground, and grass shaders
-18. Create structures
-19. CTF gamemode
+15. Generate meshes for chunks + performance enhancements
+16. Create water, ground, and grass shaders
+17. Create structures
+18. CTF gamemode
 
 Debug Stuff
 - [ ] debug draw chunk borders
