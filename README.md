@@ -52,6 +52,7 @@ https://github.com/stride3d/stride/issues/2496
 12. Bug Fixes from FFA demo
 13. Generate meshes for chunks + performance enhancements
 14. Create water, ground, and grass shaders
+https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
 - [ ] grass
     - [ ] compute shader
     - [ ] no asset, just direct geometry
