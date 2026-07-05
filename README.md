@@ -6,19 +6,20 @@ dotnet build --no-incremental
 
 `dotnet run --project Client`
 
+NOTES:
+- particle system broken
+https://github.com/stride3d/stride/issues/2496
+
+
 1. ~~Move the player~~
 2. ~~Camera controls~~
+
 3. Shooting
 
 - [ ] shooting at targets
     - [x] add a dummy
-    - [ ] add raycast (bullet tracers are just for visualization)
-    - [ ] log when dummy is hit
-    - [ ] add collision to ground, aim gun towards ground
-    - [ ] emit particles from dummy when hit
-
-- [ ] clean up player aiming logic and stuff
-    - [ ] point gun at stuff
+    - [x] add raycast (bullet tracers are just for visualization)
+    - [x] log when dummy is hit
 
 6. Networking
 - [ ] separate out client and backend
@@ -57,6 +58,15 @@ dotnet build --no-incremental
 14. Bug Fixes from FFA demo
 15. Generate meshes for chunks + performance enhancements
 16. Create water, ground, and grass shaders
+- [ ] grass
+    - [ ] compute shader
+    - [ ] no asset, just direct geometry
+    - [ ] simplex noise
+        - [ ] height
+        - [ ] color
+    - [ ] animate wind
+    - [ ] squish the grass
+
 17. Create structures
 18. CTF gamemode
 
@@ -66,3 +76,13 @@ Debug Stuff
 - generate textures with noise
 - generate trees with noise
 - create a water shader for tiles
+
+Areola vid
+https://www.youtube.com/watch?v=Y0Ko0kvwfgA
+
+https://nicogo1705.github.io/AssetStore/asset?id=com.nicogo.grass
+nicogo1705.github.io/AssetStore/asset?id=com.nicogo.marching-cube-compute-shader
+
+
+SDSL overview
+https://hackmd.io/@vN9HDo5XQAGVCM_epmoJBA/S1LxeorWT

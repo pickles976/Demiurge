@@ -41,6 +41,9 @@ namespace Demiurge
         private const string ShotSoundPath = "assets/sfx/ak47_shot.wav";
         private SoundManager _soundManager = null!;
 
+        // Physics simulation for the barrel raycast (stage 2 of Shoot). Resolved in Start.
+        private BepuSimulation? _simulation;
+
         public bool IsBetweenShots()
         {
             return _shotTimer < 1.0f / _rateOfFire;
@@ -77,32 +80,53 @@ namespace Demiurge
             PublishAmmo();
 
             _soundManager.PlayOneShotSpatial(ShotSoundPath, GetBarrelPosition());
-            SpawnTracer();
+            Shoot();
         }
 
         /// <summary>
-        /// Emits one client-side tracer streak from the barrel toward where the cursor
-        /// is aiming. Purely visual; damage is the server's authoritative raycast.
+        /// Two-stage shot. Stage 1 (intent): a ray from the camera through the cursor
+        /// picks the aim point. Stage 2 (ballistics): a ray from the barrel to that
+        /// aim point decides what the bullet actually hits — anything sitting between
+        /// the muzzle and the aim point stops it first. The tracer ends at the real
+        /// impact point. Client-side only; damage stays the server's authoritative
+        /// raycast.
         /// </summary>
-        private void SpawnTracer()
+        private void Shoot()
         {
             if (!TryGetPlayerAndCamera(out _, out var camera)) return;
 
             var barrel = GetBarrelPosition();
             var mouse = Input.MousePosition;
 
-            Vector3 endpoint;
-            if (camera.Raycast(mouse, maxRange, out HitInfo hit))
+            // Stage 1: cursor ray -> aim point.
+            Vector3 target;
+            if (camera.Raycast(mouse, maxRange, out HitInfo cursorHit))
             {
-                endpoint = hit.Point;
+                target = cursorHit.Point;
             }
             else
             {
-                // Miss: shoot to a far point along the cursor ray.
+                // Miss: aim at a far point along the cursor ray.
                 var ray = camera.ScreenToWorldRaySegment(mouse);
                 var dir = ray.End - ray.Start;
                 dir.Normalize();
-                endpoint = ray.Start + dir * maxRange;
+                target = ray.Start + dir * maxRange;
+            }
+
+            // Stage 2: barrel ray -> actual impact.
+            var endpoint = target;
+            var toTarget = target - barrel;
+            var dist = toTarget.Length();
+            if (_simulation != null && dist > 1e-4f)
+            {
+                toTarget /= dist;
+                // +epsilon so the ray can reach the surface the cursor ray already found.
+                if (_simulation.RayCast(barrel, toTarget, dist + 0.01f, out HitInfo barrelHit))
+                {
+                    endpoint = barrelHit.Point;   // bullet stops where IT hits, not where the cursor aimed
+                    if (barrelHit.Collidable.Entity.Name == "DUMMY")
+                        Console.WriteLine("DUMMY hit!");
+                }
             }
 
             TracerManager.Spawn(barrel, endpoint, Color.Yellow, tracerLifetime);
@@ -118,6 +142,8 @@ namespace Demiurge
 
             // Positional shot audio, played through the shared OpenAL SoundManager.
             _soundManager = Services.GetSafeServiceAs<SoundManager>();
+
+            _simulation = Entity.GetSimulation();
 
             PublishAmmo();
             GameEvents.WeaponEquipped.Broadcast();

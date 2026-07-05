@@ -10,6 +10,8 @@ using Stride.Input;
 using Stride.Games;
 using Stride.Graphics;
 using Stride.Rendering;
+using Stride.Rendering.Compositing;
+using Stride.Rendering.Images;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
 using Stride.Rendering.Colors;
@@ -25,6 +27,7 @@ using Stride.CommunityToolkit.Rendering.Compositing;
 using Stride.CommunityToolkit.Helpers; // This was added
 
 using Demiurge;
+using Stride.BepuPhysics.Definitions.Colliders;
 
 Entity? sphere = null;
 
@@ -47,9 +50,18 @@ void Start(Scene rootScene)
     var compositor = game.AddGraphicsCompositor();
     compositor.AddCleanUIStage();
     compositor.AddSceneRenderer(new LineSceneRenderer());
+    // SSR (LocalReflections) is enabled by default and allocates R11G11B10_Float
+    // buffers, a format missing from Stride's Vulkan backend (throws on the first
+    // frame). We don't use screen-space reflections; turn them off.
+    if (((ForwardRenderer)compositor.SingleView).PostEffects is PostProcessingEffects postFx)
+        postFx.LocalReflections.Enabled = false;
     // AddGraphicsCompositor() does NOT include particle rendering; add it explicitly
     // or ParticleSystemComponents simulate but never draw.
-    game.AddParticleRenderer();
+    // DISABLED: ParticleEmitterRenderFeature crashes with an AccessViolationException
+    // on the Vulkan backend (known engine bug, see stride3d/stride#2496 — the official
+    // particle samples crash the same way on Linux). Re-enable once Stride fixes it
+    // or if we return to OpenGL.
+    // game.AddParticleRenderer();
 
     // Shared player state read by the HUD and written by the gun (resolved via Services).
     game.Services.AddService<IPlayerStatus>(new PlayerStatus());
@@ -61,11 +73,36 @@ void Start(Scene rootScene)
     game.GraphicsDeviceManager.PreferredBackBufferHeight = 1080;
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
-    game.Add3DGround();
-    game.AddProfiler();
+
+    // Apply custom shader
+    var ground = game.Add3DGround();
+    var groundMaterial = Material.New(game.GraphicsDevice, new MaterialDescriptor
+    {
+        Attributes =
+        {
+            Diffuse = new MaterialDiffuseMapFeature(new ComputeShaderClassColor
+            {
+                MixinReference = "TestShader"
+            }),
+            DiffuseModel = new MaterialDiffuseLambertModelFeature(),
+        }
+    });
+
+    ground.Get<ModelComponent>().Materials[0] = groundMaterial;
+
+
+
+    // DISABLED: the profiler overlay draws through FastTextRenderer, which crashes on
+    // Vulkan (use-after-unmap bug: FastTextRenderer.Initialize reads back a mapped
+    // pointer after UnmapSubresource; still broken in Stride master). DebugTextSystem
+    // uses the same renderer — see the disabled Print call in Update(). Use the UI/HUD
+    // (TextBlock) for on-screen text instead; it renders through SpriteBatch, which is fine.
+    // game.AddProfiler();
     game.AddGroundGizmo(position: new Vector3(-5, 0.1f, -5), showAxisName: true);
 
-    ParticleExample.CreateAtOrigin().Scene = rootScene;
+    // Disabled along with AddParticleRenderer above (Vulkan particle crash); without
+    // the render feature this would simulate invisibly and waste CPU.
+    // ParticleExample.CreateAtOrigin().Scene = rootScene;
 
     var directionalLight = CreateDirectionalLight("DirectionalLight");
     directionalLight.Scene = rootScene;
@@ -108,10 +145,17 @@ void Start(Scene rootScene)
     var uiEntity = HUD.CreateUI(game);
     uiEntity.Scene = rootScene;
 
+    // Entity/FPS counters, top-left (UI-based replacement for the Vulkan-broken
+    // profiler overlay and DebugTextSystem — see the disabled calls above/below).
+    HUD.CreateDebugStats(game).Scene = rootScene;
+
 
     // Drives bullet-tracer fade/expiry once per frame (see TracerManager).
     var tracerSystem = new Entity("TracerSystem") { new TracerSystem() };
     tracerSystem.Scene = rootScene;
+
+    // var grassField = GrassField.Create(game, center: Vector3.Zero, sizeX: 50f, sizeZ: 50f, cellSize: 0.5f);
+    // grassField.Scene = rootScene;
 
 
     camera = rootScene.GetCamera();
@@ -132,7 +176,9 @@ void Start(Scene rootScene)
 void Update(Scene scene, GameTime time)
 {
 
-    game.DebugTextSystem.Print($"Entities: {scene.Entities.Count}", new Int2(50, 50));
+    // DISABLED: DebugTextSystem draws through FastTextRenderer, which crashes on Vulkan
+    // (see the AddProfiler comment in Start()). Replaced by HUD.CreateDebugStats.
+    // game.DebugTextSystem.Print($"Entities: {scene.Entities.Count}", new Int2(50, 50));
 
     if (camera == null || simulation == null || !game.Input.HasMouse) return;
 
@@ -249,6 +295,19 @@ Entity CreateDummy()
 
     var dummy = new Entity("DUMMY") { 
         new ModelComponent(LoadModel("assets/models/dummy.gltf")),
+        new BodyComponent
+        {
+            Collider = new CompoundCollider
+            {
+                Colliders =
+                {
+                    // Roughly humanoid; entity origin is at the feet, so lift the
+                    // box's center to half its height.
+                    new BoxCollider { Size = new Vector3(0.6f, 1.8f, 0.6f),
+                                    PositionLocal = new Vector3(0, 0.9f, 0) }
+                }
+            }
+        }
     };
     dummy.Transform.Position = new Vector3(1.0f, 0.0f, 0);
 

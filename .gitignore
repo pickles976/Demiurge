@@ -1,5 +1,7 @@
 bin
 obj
+# glslangValidator deployed from the NuGet cache by the DeployGlslangValidator target
+/linux-x64/
 *.sdtex
 *.sdmat
 *.sdm3d

@@ -13,9 +13,17 @@
 // outside), so a line of width W really measures W pixels and only blurs across the
 // ~feather-pixel transition band.
 //
-// No shader parameters, so this stays independent of generated shader-key classes.
+// Parameters are bound by name from LineRenderer (runtime ParameterKeys), so this
+// stays independent of generated shader-key classes.
+//
+// AlphaScale exists for two reasons: it's a global fade knob, and Stride's Vulkan
+// backend throws in CreatePipelineLayout ("Sequence contains no elements") for any
+// shader with zero resource bindings — at least one bound parameter is required.
 shader LineColorShader : ShaderBase
 {
+    // Global alpha multiplier (1 = opaque). Also Vulkan's required >=1 binding.
+    stage float AlphaScale;
+
     stage stream float4 Position : POSITION;
     stage stream float4 Color : COLOR;
     stage stream float3 Edge : TEXCOORD0;
@@ -29,7 +37,7 @@ shader LineColorShader : ShaderBase
     {
         float coverage = saturate((streams.Edge.y - abs(streams.Edge.x)) / max(streams.Edge.z, 1e-4) + 0.5);
         float4 color = streams.Color;
-        color.a *= coverage;
+        color.a *= coverage * AlphaScale;
         streams.ColorTarget = color;
     }
 };

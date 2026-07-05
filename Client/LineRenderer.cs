@@ -133,6 +133,11 @@ namespace Demiurge
     /// </summary>
     public class LineSceneRenderer : SceneRendererBase
     {
+        // Bound by name so we stay independent of generated shader-key classes
+        // (see the header comment in LineColorShader.sdsl for why this exists).
+        private static readonly ValueParameterKey<float> AlphaScaleKey =
+            ParameterKeys.NewValue(1f, "LineColorShader.AlphaScale");
+
         private EffectInstance _effect = null!;
         private MutablePipelineState _pipelineState = null!;
         private Buffer? _vertexBuffer;
@@ -144,6 +149,7 @@ namespace Demiurge
 
             var effectSystem = Services.GetSafeServiceAs<EffectSystem>();
             _effect = new EffectInstance(effectSystem.LoadEffect("LineColorShader").WaitForResult());
+            _effect.Parameters.Set(AlphaScaleKey, 1f);
             _pipelineState = new MutablePipelineState(GraphicsDevice);
         }
 

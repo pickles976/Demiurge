@@ -5,7 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <StrideGraphicsApi>OpenGL</StrideGraphicsApi>
+    <StrideGraphicsApi>Vulkan</StrideGraphicsApi>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -55,6 +55,15 @@
 
   <Target Name="SetStrideNativeLibPathForLinux" BeforeTargets="StrideCompileAsset" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
     <SetProcessEnvVar Name="LD_LIBRARY_PATH" Value="$(NuGetPackageRoot)stride.textureconverter/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.physics/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.audio/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.navigation/4.3.0.2507/runtimes/linux-x64/native:$(NuGetPackageRoot)stride.assets/4.3.0.2507/runtimes/linux-x64/native:$([System.Environment]::GetEnvironmentVariable('LD_LIBRARY_PATH'))" />
+  </Target>
+
+  <!-- Vulkan runtime shader compilation shells out to 'linux-x64/glslangValidator.bin'
+       relative to the process working directory (= project root under `dotnet run`).
+       NuGet doesn't deploy that contentFile for transitive package references, so copy
+       it from the package cache ourselves. cp -p preserves the executable bit, which
+       MSBuild's Copy task can drop. Same version-pinning caveat as above. -->
+  <Target Name="DeployGlslangValidator" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Exec Command="mkdir -p '$(MSBuildProjectDirectory)/linux-x64' &amp;&amp; cp -p '$(NuGetPackageRoot)stride.shaders.compiler/4.3.0.2507/contentFiles/any/any/linux-x64/glslangValidator.bin' '$(MSBuildProjectDirectory)/linux-x64/'" />
   </Target>
 
   <!-- Runs the GltfAssetGenerator tool before Stride compiles assets.

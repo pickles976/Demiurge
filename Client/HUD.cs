@@ -75,6 +75,43 @@ namespace Demiurge
             return uiEntity;
         }
 
+        /// <summary>
+        /// Entity/FPS readout, top-left. Replaces game.AddProfiler() and
+        /// DebugTextSystem.Print, whose FastTextRenderer crashes on Vulkan (see
+        /// Program.cs); this renders through the UI system instead, which is fine.
+        /// </summary>
+        public static Entity CreateDebugStats(Game game)
+        {
+            var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
+
+            var statsText = new TextBlock
+            {
+                Text = "",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 18,
+                Margin = new Thickness(8, 4, 8, 4),
+            };
+
+            var canvas = new Canvas
+            {
+                BackgroundColor = new Color(0, 0, 0, 100),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            canvas.Children.Add(statsText);
+
+            return new Entity("DebugStats")
+            {
+                new UIComponent
+                {
+                    Page = new UIPage { RootElement = canvas },
+                    RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
+                },
+                new DebugStatsScript { StatsText = statsText },
+            };
+        }
+
         private static Texture LoadTexture(Game game, string path)
         {
             ImageResult img;
@@ -82,6 +119,31 @@ namespace Demiurge
                 img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
             return Texture.New2D(game.GraphicsDevice, img.Width, img.Height,
                 PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
+        }
+
+        /// <summary>
+        /// Rebuilds the stats string only when a value changes, so steady-state
+        /// frames allocate nothing.
+        /// </summary>
+        public class DebugStatsScript : SyncScript
+        {
+            public TextBlock StatsText { get; set; } = null!;
+
+            private int _lastEntityCount = -1;
+            private int _lastFps = -1;
+
+            public override void Update()
+            {
+                int entityCount = Entity.Scene.Entities.Count;
+                int fps = (int)Game.DrawTime.FramePerSecond;
+
+                if (entityCount == _lastEntityCount && fps == _lastFps)
+                    return;
+
+                _lastEntityCount = entityCount;
+                _lastFps = fps;
+                StatsText.Text = $"Entities: {entityCount}   FPS: {fps}";
+            }
         }
 
         /// <summary>
