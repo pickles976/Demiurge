@@ -28,6 +28,16 @@ using Stride.CommunityToolkit.Helpers; // This was added
 
 using Demiurge;
 using Stride.BepuPhysics.Definitions.Colliders;
+using Riptide.Utils;
+
+// Init riptide message logging
+var Log = GlobalLogger.GetLogger("Program");
+RiptideLogger.Initialize(
+      msg => Log.Debug(msg),
+      msg => Log.Info(msg),
+      msg => Log.Warning(msg),
+      msg => Log.Error(msg),
+      false);
 
 Entity? sphere = null;
 
@@ -170,11 +180,15 @@ void Start(Scene rootScene)
     }
     
 
+    NetworkManager.Connect();
+
 
 }
 
 void Update(Scene scene, GameTime time)
 {
+
+    NetworkManager.Update();
 
     // DISABLED: DebugTextSystem draws through FastTextRenderer, which crashes on Vulkan
     // (see the AddProfiler comment in Start()). Replaced by HUD.CreateDebugStats.
@@ -191,9 +205,7 @@ void Update(Scene scene, GameTime time)
         if (hitResult)
         {
             var message = $"Hit: {hitInfo.Collidable.Entity.Name}";
-            Console.WriteLine(message);
-
-            GlobalLogger.GetLogger("Program.cs").Info(message); // This was added
+            Log.Debug(message);
 
             var rigidBody = hitInfo.Collidable.Entity.Get<BodyComponent>();
 

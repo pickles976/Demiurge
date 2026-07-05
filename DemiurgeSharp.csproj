@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="NoiseDotNet" Version="1.0.2" />
+    <PackageReference Include="RiptideNetworking.Riptide" Version="2.2.1" />
     <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
     <PackageReference Include="StbImageSharp" Version="2.30.0" />
     <PackageReference Include="Stride.CommunityToolkit.Bepu" Version="1.0.0-preview.62" />
@@ -24,6 +25,7 @@
     <!-- Source lives under Client/ (and later Common/, Server/), never at the repo root.
          Excluding root-level .cs prevents a stray file (e.g. a re-created Program.cs) from
          being compiled and clashing with the real entry point. -->
+    <Compile Remove="Server/**/*.cs" />
     <Compile Remove="*.cs" />
   </ItemGroup>
 
@@ -75,10 +77,7 @@
          .sdpkg      - package manifest with model RootAssets
        Drop a .gltf into assets/ and dotnet run — no other steps required.
        GUIDs are deterministic MD5 hashes of content paths. -->
-  <Target Name="SyncStrideGltfAssets"
-          BeforeTargets="StrideCompileAsset"
-          Inputs="@(GltfAsset)"
-          Outputs="$(MSBuildProjectDirectory)/.stride-assets.stamp">
+  <Target Name="SyncStrideGltfAssets" BeforeTargets="StrideCompileAsset" Inputs="@(GltfAsset)" Outputs="$(MSBuildProjectDirectory)/.stride-assets.stamp">
     <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/tools/GltfAssetGenerator/GltfAssetGenerator.csproj&quot; -- &quot;$(MSBuildProjectDirectory)&quot; &quot;$(MSBuildProjectName)&quot;" />
     <Touch Files="$(MSBuildProjectDirectory)/.stride-assets.stamp" AlwaysCreate="true" />
   </Target>

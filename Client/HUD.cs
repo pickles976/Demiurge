@@ -90,8 +90,22 @@ namespace Demiurge
                 TextColor = Color.White,
                 Font = font,
                 TextSize = 18,
-                Margin = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(8, 4, 8, 0),
             };
+
+            // Last message from the server (see NetworkManager.HandleWelcome).
+            var serverText = new TextBlock
+            {
+                Text = "Server: —",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 18,
+                Margin = new Thickness(8, 2, 8, 4),
+            };
+
+            var statsPanel = new StackPanel { Orientation = Orientation.Vertical };
+            statsPanel.Children.Add(statsText);
+            statsPanel.Children.Add(serverText);
 
             var canvas = new Canvas
             {
@@ -99,7 +113,7 @@ namespace Demiurge
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
             };
-            canvas.Children.Add(statsText);
+            canvas.Children.Add(statsPanel);
 
             return new Entity("DebugStats")
             {
@@ -108,7 +122,7 @@ namespace Demiurge
                     Page = new UIPage { RootElement = canvas },
                     RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
                 },
-                new DebugStatsScript { StatsText = statsText },
+                new DebugStatsScript { StatsText = statsText, ServerText = serverText },
             };
         }
 
@@ -128,12 +142,25 @@ namespace Demiurge
         public class DebugStatsScript : SyncScript
         {
             public TextBlock StatsText { get; set; } = null!;
+            public TextBlock ServerText { get; set; } = null!;
+
+            // A+B pattern: the signal says "re-read", the value lives on NetworkManager.
+            private readonly EventReceiver _serverMessage = new(GameEvents.ServerMessageReceived);
 
             private int _lastEntityCount = -1;
             private int _lastFps = -1;
 
+            public override void Start()
+            {
+                // Initial paint, in case the welcome arrived before this script started.
+                RefreshServerText();
+            }
+
             public override void Update()
             {
+                if (_serverMessage.TryReceive())
+                    RefreshServerText();
+
                 int entityCount = Entity.Scene.Entities.Count;
                 int fps = (int)Game.DrawTime.FramePerSecond;
 
@@ -143,6 +170,11 @@ namespace Demiurge
                 _lastEntityCount = entityCount;
                 _lastFps = fps;
                 StatsText.Text = $"Entities: {entityCount}   FPS: {fps}";
+            }
+
+            private void RefreshServerText()
+            {
+                ServerText.Text = $"Server: {NetworkManager.LastServerMessage}";
             }
         }
 

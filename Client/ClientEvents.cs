@@ -11,5 +11,7 @@ namespace Demiurge
         // The value itself lives in the service (B), so the event carries no payload —
         // it's purely a notification that something changed.
         public static readonly EventKey AmmoChanged = new("Game", "AmmoChanged");
+
+        public static readonly EventKey ServerMessageReceived = new ("Game", "ServerMessageReceived");
     }
 }
