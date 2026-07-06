@@ -6,6 +6,7 @@ using Riptide;
 using Stride.Animations;
 using Stride.CommunityToolkit.Engine;
 using Stride.Engine;
+using Stride.Engine.Events;
 
 namespace Demiurge.GameClient
 {
@@ -16,6 +17,8 @@ namespace Demiurge.GameClient
 
         internal static Game Game { get; set; }
         internal static Scene RootScene {get; set;}
+
+        internal static EventReceiver<Vector3> InputEvent = new(GameEvents.PlayerInput);
 
         private Vector3 position;
         private readonly ushort id;
@@ -33,11 +36,13 @@ namespace Demiurge.GameClient
         {
             foreach (PlayerHandle player in List.Values)
             {
-                var inputScript = player.playerEntity.GetComponent<PlayerInputScript>();
-                if (inputScript == null) return;
-                Vector3 intent = inputScript.intent;
-                player.position += intent * PlayerData.Speed * dt;
-                player.SendPosition();
+                if (player.id == NetworkManager.ClientId)
+                {
+                    InputEvent.TryReceive(out Vector3 intent);
+                    player.position += intent * PlayerData.Speed * dt;
+                    player.SendPosition();
+                    player.playerEntity.GetComponent<PlayerVisualScript>().SetPosition(player.position);
+                }
             }
         }
 
@@ -57,6 +62,7 @@ namespace Demiurge.GameClient
             if (List.TryGetValue(id, out PlayerHandle player))
             {
                 player.position = position;
+                player.playerEntity.GetComponent<PlayerVisualScript>().SetPosition(position);
             }
         }
 
@@ -65,19 +71,10 @@ namespace Demiurge.GameClient
         {
             ushort id = message.GetUShort();
             Vector3 position = message.GetVector3();
-
-            if (id == NetworkManager.ClientId)
-            {
-                List.Add(id, new PlayerHandle(id, position, CreatePlayer(true, position)));
-            }
-            // TODO: fix this why does it delete our player input script?
-            // else
-            // {
-            //     List.Add(id, new PlayerHandle(id, position, CreatePlayer(false, position)));
-            // }
+            List.Add(id, new PlayerHandle(id, position, CreatePlayer(position)));
         }
 
-        static Entity CreatePlayer(bool isLocalPlayer, Vector3 position)
+        static Entity CreatePlayer(Vector3 position)
         {
 
             // Add Animations
@@ -88,37 +85,14 @@ namespace Demiurge.GameClient
             playerAnimations.Animations.Add("Crouch", Game.Content.Load<AnimationClip>("models/cat_orange_anim_Crouch"));
             playerAnimations.Animations.Add("CrouchWalk", Game.Content.Load<AnimationClip>("models/cat_orange_anim_CrouchWalk"));
 
-            Entity player;
-
             // TODO: pull this out to the object registry and sync with messages
-            if (isLocalPlayer)
-            {
-                var cameraEntity = Game.Add3DCamera();
-                LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
-
-                player = new Entity("CAT") {
-                    new ModelComponent(GLTFLoader.LoadModel(Game, "assets/models/cat_orange.gltf")),
-                    new PlayerInputScript {CameraEntity = cameraEntity},
-                    new PlayerVisualScript {},
-                    playerAnimations
-                };
-
-                cameraEntity.Add(new ThirdPersonCameraScript { PlayerEntity = player });
-                cameraEntity.Add(new CursorReticleScript());
-
-            }
-            else
-            {
-                player = new Entity("CAT") {
-                    new ModelComponent(GLTFLoader.LoadModel(Game, "assets/models/cat_orange.gltf")),
-                    new PlayerVisualScript {},
-                    playerAnimations
-                };
-            }
-
+            Entity player = new Entity("CAT") {
+                new ModelComponent(GLTFLoader.LoadModel(Game, "assets/models/cat_orange.gltf")),
+                new PlayerVisualScript {},
+                playerAnimations
+            };
             player.Transform.Position = new Vector3(1.0f, 0.0f, 0);
             player.Scene = RootScene;
-
 
             return player;
         }

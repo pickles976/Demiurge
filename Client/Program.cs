@@ -179,6 +179,13 @@ void Start(Scene rootScene)
     {
         Console.WriteLine("Simulation Started");
     }
+
+    var cameraEntity = game.Add3DCamera();
+    LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
+    cameraEntity.Add(new InputScript {CameraEntity = cameraEntity});
+    // TODO: connect to player
+    // cameraEntity.Add(new ThirdPersonCameraScript());
+    cameraEntity.Add(new CursorReticleScript());
     
 
     PlayerHandle.RootScene = rootScene;

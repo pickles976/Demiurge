@@ -8,47 +8,6 @@ using Stride.Rendering;
 namespace Demiurge
 {
 
-	public class PlayerInputScript : SyncScript {
-		// NOTE: this HAS to be a syncscript so we can read input 
-		// this depends on the Stride game engine lifecycle
-
-
-		// TODO: decouple this camera from the player bullshit
-		public required Entity CameraEntity { get; set; }
-
-		public Vector3 intent {get; set;} = Vector3.Zero;
-
-		public override void Update()
-        {
-        
-			// if (Input.IsKeyPressed(Keys.LeftCtrl)) playerData.State ^= PlayerStateFlags.Crouching;
-			intent = GenerateMovementIntent();
-		
-		}
-
-		private Vector3 GenerateMovementIntent()
-		{
-			var camRot = CameraEntity.Transform.Rotation;
-			var forward = MathExtensions.FlattenY(camRot * -Vector3.UnitZ); // Stride camera looks down -Z
-			var right   = MathExtensions.FlattenY(camRot *  Vector3.UnitX);
-
-			var direction = Vector3.Zero;
-			if (Input.IsKeyDown(Keys.W)) direction += forward;
-			if (Input.IsKeyDown(Keys.S)) direction -= forward;
-			if (Input.IsKeyDown(Keys.D)) direction += right;
-			if (Input.IsKeyDown(Keys.A)) direction -= right;
-
-			bool moving = direction.LengthSquared() > 0f;
-			if (!moving) return Vector3.Zero;
-
-			direction.Normalize();
-
-			return direction;
-
-		}
-		
-	}
-
 	public class PlayerVisualScript : SyncScript
 	{
 
@@ -76,6 +35,11 @@ namespace Demiurge
 			PlayAnimations();
 			UpdateTransform(intent, dt);
 		
+		}
+
+		public void SetPosition(Vector3 position)
+		{
+			Entity.Transform.Position = position;
 		}
 
 		private void UpdateTransform(Vector3 intent, float dt)

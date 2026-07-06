@@ -20,6 +20,7 @@ https://github.com/stride3d/stride/issues/2496
 - [ ] separate out client and backend
     - [x] connect and send message
     - [x] spawn player
+    - [ ] input reading
     - [ ] move this player
     - [ ] sync player movement
     - [ ] sync gun spawning
