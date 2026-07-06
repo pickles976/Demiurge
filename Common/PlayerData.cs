@@ -24,14 +24,5 @@ namespace Demiurge
           => on ? flags | flag : flags & ~flag;
 	}
 
-    public class PlayerConfig
-    {
-     	public static float Speed       { get; set; } = 3f;
-		public static float SlowSpeed   { get; set; } = 1f;
-		public static float SprintSpeed { get; set; } = 4f;
-
-    }
-
-
 
 }

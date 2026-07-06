@@ -39,26 +39,6 @@ namespace Demiurge
 		{
 
 			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
-
-			// TODO: access camera target
-			// if (EquippedWeapon != null || !State.HasFlag(PlayerStateFlags.Moving))
-			// {
-			// 	// TODO: fix this
-			// 	// Face towards Mouse
-			// 	var target = CameraEntity.GetComponent<ThirdPersonCameraScript>().Target;
-
-			// 	var lookDir = target - Entity.Transform.Position;
-
-			// 	float yaw = MathF.Atan2(lookDir.X, lookDir.Z);
-			// 	Entity.Transform.Rotation = Quaternion.RotationY(yaw);
-
-			// } 
-			// else
-			// {
-			// 	float yaw = MathF.Atan2(intent.X, intent.Z);
-			// 	Entity.Transform.Rotation = Quaternion.RotationY(yaw);
-			// }
-
 		}
 
 		private void PlayAnimations()

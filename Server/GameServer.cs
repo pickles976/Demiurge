@@ -4,7 +4,10 @@ namespace Demiurge.GameServer
 {
     internal class GameServer
     {
-        private readonly Server server = new();   // Riptide's Server, now private
+        private readonly Server server = new();
+        private readonly GameWorld world;
+
+        public GameServer() => world = new GameWorld(server);
 
         public void Start()
         {
@@ -14,35 +17,32 @@ namespace Demiurge.GameServer
             server.Start(NetworkConfig.Port, maxClientCount: 100, useMessageHandlers: false);
         }
 
-        public void Update()
-        {
-            server.Update();
-            PlayerHandle.SendPositions(server);   // transitional — see note below
-        }
+        public void PumpNetwork() => server.Update();
+
+        public void Tick(float dt) => world.Tick(dt);
 
         public void Stop() => server.Stop();
 
         private void OnClientConnected(object? sender, ServerConnectedEventArgs e)
         {
-            Message msg = Message.Create(MessageSendMode.Reliable, (ushort)ServerToClientId.Welcome);
+            Message msg = Message.Create(MessageSendMode.Reliable, ServerToClientId.Welcome);
             msg.AddSerializable(new WelcomeData { ClientId = e.Client.Id });
             server.Send(msg, e.Client.Id);
 
-            new PlayerHandle(e.Client.Id, server);   // transitional
+            world.AddPlayer(e.Client.Id);
         }
 
         private void OnClientDisconnected(object? sender, ServerDisconnectedEventArgs e)
         {
-            PlayerHandle.List.Remove(e.Client.Id);   // you currently never remove players
+            world.RemovePlayer(e.Client.Id);
         }
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {
             switch ((ClientToServerId)e.MessageId)
             {
-                case ClientToServerId.PlayerPosition:
-                    if (PlayerHandle.List.TryGetValue(e.FromConnection.Id, out var player))
-                        player.ApplyPosition(e.Message.GetSerializable<ClientPositionData>());
+                case ClientToServerId.PlayerInput:
+                    world.ApplyInput(e.FromConnection.Id, e.Message.GetSerializable<PlayerInputData>());
                     break;
             }
         }

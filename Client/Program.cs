@@ -31,6 +31,7 @@ using Stride.BepuPhysics.Definitions.Colliders;
 using Riptide.Utils;
 using Demiurge.GameClient;
 using Silk.NET.OpenXR;
+using Microsoft.Win32;
 
 // Init riptide message logging
 var Log = GlobalLogger.GetLogger("Program");
@@ -188,14 +189,12 @@ void Start(Scene rootScene)
         Console.WriteLine("Simulation Started");
     }
 
-
     var viewFactory = new PlayerViewFactory(game, rootScene, registry);
 
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
     cameraEntity.Add(new LocalPlayerController {CameraEntity = cameraEntity, Registry = registry});
-    // TODO: connect to player
-    cameraEntity.Add(new ThirdPersonCameraScript());
+    cameraEntity.Add(new ThirdPersonCameraScript{Registry = registry});
     cameraEntity.Add(new CursorReticleScript());
 
     network.Connect();

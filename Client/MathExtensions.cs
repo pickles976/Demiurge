@@ -25,7 +25,7 @@ namespace Demiurge
         public static float Wedge(this Vector2 a, Vector2 b)
             => a.X * b.Y - a.Y * b.X;
 
-        public static Vector3 FlattenY(Vector3 v)
+        public static Vector3 FlattenY(this Vector3 v)
         {
             v.Y = 0f;
             v.Normalize();

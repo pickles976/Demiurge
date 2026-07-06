@@ -28,6 +28,9 @@ namespace Demiurge
 
 		public float LerpSpeed { get; set; } = 0.05f;
 
+		// Sim-layer source for the followed player; set by whoever attaches this script.
+		public PlayerRegistry? Registry { get; init; }
+
 		public override void Start()
 		{
 			// Input.LockMousePosition(forceCenter: true);
@@ -42,6 +45,9 @@ namespace Demiurge
 
 		private void UpdateCameraTransform(float dt)
 		{
+			var local = Registry?.LocalPlayer;
+			if (local == null) return;   // not connected / not spawned yet
+
 			// Center on (0.5, 0.5) so the angle is measured around the screen center,
 			// and flip Y so the axis matches Bevy's top-left/Y-down cursor convention.
 			var centered = Input.MousePosition - new Vector2(0.5f, 0.5f);
@@ -69,7 +75,7 @@ namespace Demiurge
 
 			// Aiming vs non-aiming lookahead
 
-			var scale = PlayerHandle.GetPlayerForThisClient().State.HasFlag(PlayerStateFlags.Aiming) switch
+			var scale = local.State.HasFlag(PlayerStateFlags.Aiming) switch
 			{
 				false => 
 					MathExtensions.Step(
@@ -88,7 +94,7 @@ namespace Demiurge
 			var offset = new Vector3(norm.X, 0.0f, norm.Y);
 			var rigRotation = Quaternion.RotationY(Angle);
 			Vector3.Transform(ref offset, ref rigRotation, out var rotatedOffset);
-			Target = PlayerHandle.GetPlayerForThisClient().position + rotatedOffset;
+			Target = local.Position.ToStride() + rotatedOffset;
 			PreviousMousePosition = mousePos;
 
 			// FollowCamera::get_desired_camera_position()

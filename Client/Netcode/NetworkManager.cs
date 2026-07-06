@@ -29,10 +29,10 @@ namespace Demiurge.GameClient
         public void Update() => client.Update();
 
         // The ONLY place the rest of the client can send from.
-        public void SendPosition(Vector3 position)
+        public void SendInput(PlayerInputData input)
         {
-            Message message = Message.Create(MessageSendMode.Unreliable, ClientToServerId.PlayerPosition);
-            message.AddSerializable(new ClientPositionData { Position = position });
+            Message message = Message.Create(MessageSendMode.Unreliable, ClientToServerId.PlayerInput);
+            message.AddSerializable(input);
             client.Send(message);
         }
 

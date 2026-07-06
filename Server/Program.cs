@@ -1,31 +1,45 @@
-using Riptide;
+using System.Diagnostics;
 using Riptide.Utils;
-using Demiurge;
 
 namespace Demiurge.GameServer
-  {
-      internal class Program
-      {
-          private static void Main()
-          {
-              RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine,
-                  Console.WriteLine, Console.WriteLine, includeTimestamps: true);
+{
+    internal class Program
+    {
+        private const float TickRate = 30f;
+        private const float FixedDt = 1f / TickRate;
 
-              var gameServer = new GameServer();
-              gameServer.Start();
+        private static void Main()
+        {
+            RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine,
+                Console.WriteLine, Console.WriteLine, includeTimestamps: true);
 
-              bool running = true;
-              Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+            var gameServer = new GameServer();
+            gameServer.Start();
 
-              while (running)
-              {
-                  gameServer.Update();     // pumps Riptide + (later) ticks the world
-                  Thread.Sleep(10);        // replaced by the fixed-tick loop in Phase 6
-              }
+            bool running = true;
+            Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
 
-              gameServer.Stop();
-          }
-      }
-  }
+            var clock = Stopwatch.StartNew();
+            double accumulator = 0, lastTime = 0;
 
+            while (running)
+            {
+                double now = clock.Elapsed.TotalSeconds;
+                accumulator += now - lastTime;
+                lastTime = now;
 
+                gameServer.PumpNetwork();          // pump Riptide every iteration
+
+                while (accumulator >= FixedDt)     // simulate in fixed steps
+                {
+                    gameServer.Tick(FixedDt);
+                    accumulator -= FixedDt;
+                }
+
+                Thread.Sleep(1);
+            }
+
+            gameServer.Stop();
+        }
+    }
+}

@@ -19,10 +19,15 @@ https://github.com/stride3d/stride/issues/2496
 3. ~~Shooting~~
 
 4. Networking
-- [ ] separate out client and backend
+- [x] separate out client and backend
     - [x] connect and send message
     - [x] spawn player
-    - [ ] refactor player stuff
+    - [x] refactor player stuff
+- [x] networking diagram
+- [ ] sync rotation
+- [ ] sync animations
+- [ ] dead-reckoning client-side prediction for other players
+
 - [ ] object syncing registry
 - [ ] guns and stuff
 

@@ -21,8 +21,7 @@ namespace Demiurge
 
     public enum ClientToServerId : ushort
     {
-        // empty until Phase 3 (Input)
-        PlayerPosition
+        PlayerInput = 1,
     }
 
     public static class MessageExtensions

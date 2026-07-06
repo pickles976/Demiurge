@@ -29,6 +29,13 @@ public class PlayerRegistry
 
     private void OnPlayerPosition(PlayerPositionData data)
     {
-        if (players.TryGetValue(data.PlayerId, out var player)) player.Position = data.Position;
+        // Prediction owns the local player's position until reconciliation is in;
+        // the server also excludes us from the broadcast, so this is a belt-and-braces guard.
+        if (data.PlayerId == network.ClientId) return;
+
+        if (players.TryGetValue(data.PlayerId, out var player)) {
+            player.Position = data.Position;
+            player.Yaw = data.Yaw;
+        }
     }
 }

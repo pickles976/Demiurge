@@ -15,6 +15,5 @@ namespace Demiurge
         // it's purely a notification that something changed.
         public static readonly EventKey AmmoChanged = new("Game", "AmmoChanged");
 
-        public static readonly EventKey ServerMessageReceived = new ("Game", "ServerMessageReceived");
     }
 }

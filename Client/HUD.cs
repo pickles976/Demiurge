@@ -145,21 +145,22 @@ namespace Demiurge
             public TextBlock StatsText { get; set; } = null!;
             public TextBlock ServerText { get; set; } = null!;
 
-            // A+B pattern: the signal says "re-read", the value lives on NetworkManager.
-            private readonly EventReceiver _serverMessage = new(GameEvents.ServerMessageReceived);
+            private NetworkManager _network = null!;
 
             private int _lastEntityCount = -1;
             private int _lastFps = -1;
+            private ushort _lastClientId;
 
             public override void Start()
             {
+                _network = Services.GetSafeServiceAs<NetworkManager>();
                 // Initial paint, in case the welcome arrived before this script started.
                 RefreshServerText();
             }
 
             public override void Update()
             {
-                if (_serverMessage.TryReceive())
+                if (_network.ClientId != _lastClientId)
                     RefreshServerText();
 
                 int entityCount = Entity.Scene.Entities.Count;
@@ -175,7 +176,8 @@ namespace Demiurge
 
             private void RefreshServerText()
             {
-                ServerText.Text = $"Client ID: {NetworkManager.ClientId}";
+                _lastClientId = _network.ClientId;
+                ServerText.Text = $"Client ID: {_lastClientId}";
             }
         }
 
