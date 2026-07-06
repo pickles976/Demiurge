@@ -8,66 +8,21 @@ using Stride.Rendering;
 namespace Demiurge
 {
 
-	[Flags]
-	public enum PlayerStateFlags
-	{
-		None      = 0,
-		Moving    = 1 << 0,
-		Sprinting = 1 << 1,
-		Crouching = 1 << 2,
-		Jumping   = 1 << 3,
-		Aiming    = 1 << 4,
-		Shooting  = 1 << 5,
-		Reloading = 1 << 6,
-	}
-
-	public static class PlayerStateFlagExtensions
-	{
-		public static PlayerStateFlags With(this PlayerStateFlags flags, PlayerStateFlags flag, bool on)
-          => on ? flags | flag : flags & ~flag;
-	}
+	public class PlayerInputScript : SyncScript {
+		// NOTE: this HAS to be a syncscript so we can read input 
+		// this depends on the Stride game engine lifecycle
 
 
-	public class PlayerScript : SyncScript
-	{
-		public float Speed       { get; set; } = 3f;
-		public float SlowSpeed   { get; set; } = 1f;
-		public float SprintSpeed { get; set; } = 4f;
-
-		// ---- runtime state ----
-		public PlayerStateFlags State { get; private set; }
-
-		private const PlayerStateFlags SlowingStates =
-			PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
-			PlayerStateFlags.Shooting  | PlayerStateFlags.Reloading;
-
-    	public Entity? EquippedWeapon { get; private set; }
-
+		// TODO: decouple this camera from the player bullshit
 		public required Entity CameraEntity { get; set; }
 
-		private PlayingAnimation? CurrentAnimation { get; set; }
+		public Vector3 intent {get; set;} = Vector3.Zero;
 
-
-		public float AimBlendWeight { get; set; } = 1000f;
-		private PlayingAnimation? _aimOverlay;
-
-        public override void Update()
+		public override void Update()
         {
         
-			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
-
-			State = State
-				.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
-				.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right));
-
-
-			if (Input.IsKeyPressed(Keys.F)) SpawnGun(Entity);
-			if (Input.IsKeyPressed(Keys.LeftCtrl)) State ^= PlayerStateFlags.Crouching;
-
-			// TODO: handle intent when we go to networking
-			Vector3 intent = GenerateMovementIntent();
-			PlayAnimations();
-			UpdateTransform(intent, dt);
+			// if (Input.IsKeyPressed(Keys.LeftCtrl)) playerData.State ^= PlayerStateFlags.Crouching;
+			intent = GenerateMovementIntent();
 		
 		}
 
@@ -84,20 +39,68 @@ namespace Demiurge
 			if (Input.IsKeyDown(Keys.A)) direction -= right;
 
 			bool moving = direction.LengthSquared() > 0f;
-			State = State.With(PlayerStateFlags.Moving, moving);
 			if (!moving) return Vector3.Zero;
 
 			direction.Normalize();
 
-			float speed =
-				(State & SlowingStates) != 0 ? SlowSpeed :
-				State.HasFlag(PlayerStateFlags.Sprinting) ? SprintSpeed :
-				Speed;
+			return direction;
 
-			
-			// pos.Y = chunkMap.GetHeight(pos) + MeshHeightOffset;   // your terrain hook
+		}
+		
+	}
 
-			return direction * speed;
+	public class PlayerVisualScript : SyncScript
+	{
+
+		public PlayerData playerData = new PlayerData();
+
+		public Entity? EquippedWeapon { get; private set; }
+
+
+		private PlayingAnimation? CurrentAnimation { get; set; }
+
+		public Vector3 intent {get; set;} = Vector3.Zero;
+
+		public float AimBlendWeight { get; set; } = 1000f;
+		private PlayingAnimation? _aimOverlay;
+
+        public override void Update()
+        {
+        
+			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+
+			playerData.State = playerData.State
+				.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
+				.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right));
+
+			PlayAnimations();
+			UpdateTransform(intent, dt);
+		
+		}
+
+		private void UpdateTransform(Vector3 intent, float dt)
+		{
+
+			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
+
+			// TODO: worry about rotation later
+			// if (EquippedWeapon != null || !playerData.State.HasFlag(PlayerStateFlags.Moving))
+			// {
+			// 	// TODO: fix this
+			// 	// Face towards Mouse
+			// 	var target = CameraEntity.GetComponent<ThirdPersonCameraScript>().Target;
+
+			// 	var lookDir = target - Entity.Transform.Position;
+
+			// 	float yaw = MathF.Atan2(lookDir.X, lookDir.Z);
+			// 	Entity.Transform.Rotation = Quaternion.RotationY(yaw);
+
+			// } 
+			// else
+			// {
+			// 	float yaw = MathF.Atan2(intent.X, intent.Z);
+			// 	Entity.Transform.Rotation = Quaternion.RotationY(yaw);
+			// }
 
 		}
 
@@ -111,9 +114,9 @@ namespace Demiurge
 			// Must stay at index 0 so overlays blend on top of it. We only (re)create
 			// it when the clip actually changes, otherwise it would restart every frame
 			// and wipe the aiming overlay.
-			string baseClip = State.HasFlag(PlayerStateFlags.Crouching) ? 
-				(State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
-				(State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
+			string baseClip = playerData.State.HasFlag(PlayerStateFlags.Crouching) ? 
+				(playerData.State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
+				(playerData.State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
 
 			bool baseMissing = CurrentAnimation == null || !anim.PlayingAnimations.Contains(CurrentAnimation);
 			if (baseMissing || CurrentAnimation!.Name != baseClip)
@@ -148,47 +151,16 @@ namespace Demiurge
 			}
 
 			// ---- playback speed (applies to the locomotion layer) ----
-			if ((State & SlowingStates) != 0)
+			if ((playerData.State & PlayerData.SlowingStates) != 0)
 			{
 				CurrentAnimation!.TimeFactor = 0.75f;
-			} else if (State.HasFlag(PlayerStateFlags.Sprinting))
+			} else if (playerData.State.HasFlag(PlayerStateFlags.Sprinting))
 			{
 				CurrentAnimation!.TimeFactor = 2.0f;
 			} else
 			{
 				CurrentAnimation!.TimeFactor = 1.0f;
 			}
-
-		}
-
-		private void UpdateTransform(Vector3 intent, float dt)
-		{
-
-			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
-
-
-			if (EquippedWeapon != null || !State.HasFlag(PlayerStateFlags.Moving))
-			{
-				if (CameraEntity == null) return;
-				if (CameraEntity.GetComponent<ThirdPersonCameraScript>() == null) return;
-
-				// TODO: fix this
-				// Face towards Mouse
-				var target = CameraEntity.GetComponent<ThirdPersonCameraScript>().Target;
-
-				var lookDir = target - Entity.Transform.Position;
-
-				float yaw = MathF.Atan2(lookDir.X, lookDir.Z);
-				Entity.Transform.Rotation = Quaternion.RotationY(yaw);
-
-			} 
-			else
-			{
-				// face movement direction (Rust: atan2(x, z))
-				float yaw = MathF.Atan2(intent.X, intent.Z);
-				Entity.Transform.Rotation = Quaternion.RotationY(yaw);
-			}
-
 
 		}
 

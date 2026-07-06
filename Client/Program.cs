@@ -29,6 +29,7 @@ using Stride.CommunityToolkit.Helpers; // This was added
 using Demiurge;
 using Stride.BepuPhysics.Definitions.Colliders;
 using Riptide.Utils;
+using Demiurge.GameClient;
 
 // Init riptide message logging
 var Log = GlobalLogger.GetLogger("Program");
@@ -47,6 +48,9 @@ CameraComponent? camera = null;
 BepuSimulation? simulation = null;
 
 using var game = new Game();
+
+// TODO: cleanup
+PlayerHandle.Game = game;
 
 // NOTE: do NOT set GraphicsDeviceManager.IsFullScreen here (before Run). On the
 // SDL/Linux backend that creates an exclusive-fullscreen swapchain whose pixel
@@ -77,10 +81,10 @@ void Start(Scene rootScene)
     game.Services.AddService<IPlayerStatus>(new PlayerStatus());
 
     // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
-    game.Window.FullscreenIsBorderlessWindow = true;
-    game.GraphicsDeviceManager.IsFullScreen = true;
-    game.GraphicsDeviceManager.PreferredBackBufferWidth = 1920;
-    game.GraphicsDeviceManager.PreferredBackBufferHeight = 1080;
+    // game.Window.FullscreenIsBorderlessWindow = true;
+    // game.GraphicsDeviceManager.IsFullScreen = true;
+    game.GraphicsDeviceManager.PreferredBackBufferWidth = 1280;
+    game.GraphicsDeviceManager.PreferredBackBufferHeight = 720;
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
 
@@ -99,8 +103,6 @@ void Start(Scene rootScene)
     });
 
     ground.Get<ModelComponent>().Materials[0] = groundMaterial;
-
-
 
     // DISABLED: the profiler overlay draws through FastTextRenderer, which crashes on
     // Vulkan (use-after-unmap bug: FastTextRenderer.Initialize reads back a mapped
@@ -145,8 +147,8 @@ void Start(Scene rootScene)
         Material = material,
     });
 
-    var player = CreatePlayer();
-    player.Scene = rootScene;
+    // var player = CreatePlayer();
+    // player.Scene = rootScene;
 
     var dummy = CreateDummy();
     dummy.Scene = rootScene;
@@ -167,7 +169,6 @@ void Start(Scene rootScene)
     // var grassField = GrassField.Create(game, center: Vector3.Zero, sizeX: 50f, sizeZ: 50f, cellSize: 0.5f);
     // grassField.Scene = rootScene;
 
-
     camera = rootScene.GetCamera();
     simulation = camera?.Entity.GetSimulation();
 
@@ -180,6 +181,7 @@ void Start(Scene rootScene)
     }
     
 
+    PlayerHandle.RootScene = rootScene;
     NetworkManager.Connect();
 
 
@@ -187,7 +189,7 @@ void Start(Scene rootScene)
 
 void Update(Scene scene, GameTime time)
 {
-
+    PlayerHandle.Update((float)time.Elapsed.TotalSeconds);
     NetworkManager.Update();
 
     // DISABLED: DebugTextSystem draws through FastTextRenderer, which crashes on Vulkan
@@ -232,12 +234,6 @@ void Update(Scene scene, GameTime time)
 
 }
 
-Model LoadModel(string gltfPath)
-{
-    var contentPath = Path.ChangeExtension(Path.GetRelativePath("assets", gltfPath), null);
-    return game.Content.Load<Model>(contentPath);
-}
-
 Entity CreateAmbientLight()
 {
     return new Entity("Ambient Light") { new LightComponent { Intensity = 1.0f, Type = new LightAmbient() } };
@@ -271,42 +267,11 @@ Entity CreateDirectionalLight(string? entityName = "Directional Light")
     return entity;
 }
 
-
-Entity CreatePlayer()
-{
-
-    // Add Animations
-    var playerAnimations = new AnimationComponent();
-    playerAnimations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/cat_orange_anim_Walk"));
-    playerAnimations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/cat_orange_anim_Idle"));
-    playerAnimations.Animations.Add("Aiming", game.Content.Load<AnimationClip>("models/cat_orange_anim_Aiming"));
-    playerAnimations.Animations.Add("Crouch", game.Content.Load<AnimationClip>("models/cat_orange_anim_Crouch"));
-    playerAnimations.Animations.Add("CrouchWalk", game.Content.Load<AnimationClip>("models/cat_orange_anim_CrouchWalk"));
-
-    // Add Camera
-    var cameraEntity = game.Add3DCamera();
-    LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
-
-    var player = new Entity("CAT") { 
-        new ModelComponent(LoadModel("assets/models/cat_orange.gltf")),
-        new PlayerScript {CameraEntity = cameraEntity},
-        playerAnimations
-    };
-    player.Transform.Position = new Vector3(1.0f, 0.0f, 0);
-
-    cameraEntity.Add(new ThirdPersonCameraScript { PlayerEntity = player });
-    cameraEntity.Add(new CursorReticleScript());
-    // cameraEntity.Add(new LookaheadDebugScript());
-
-
-    return player;
-}
-
 Entity CreateDummy()
 {
 
     var dummy = new Entity("DUMMY") { 
-        new ModelComponent(LoadModel("assets/models/dummy.gltf")),
+        new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")),
         new BodyComponent
         {
             Collider = new CompoundCollider

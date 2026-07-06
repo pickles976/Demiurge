@@ -19,7 +19,8 @@ https://github.com/stride3d/stride/issues/2496
 4. Networking
 - [ ] separate out client and backend
     - [x] connect and send message
-    - [ ] spawn players
+    - [x] spawn player
+    - [ ] move this player
     - [ ] sync player movement
     - [ ] sync gun spawning
     - [ ] sync shooting

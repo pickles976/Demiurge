@@ -70,18 +70,18 @@ namespace Demiurge
             _isReloading = true;
         }
 
-        public void OnTriggerPull()
-        {
+        // public void OnTriggerPull()
+        // {
 
-            if (currentAmmo == 0 || IsBetweenShots()) return;
+        //     if (currentAmmo == 0 || IsBetweenShots()) return;
 
-            _shotTimer = 0.0f;
-            currentAmmo -= 1;
-            PublishAmmo();
+        //     _shotTimer = 0.0f;
+        //     currentAmmo -= 1;
+        //     PublishAmmo();
 
-            _soundManager.PlayOneShotSpatial(ShotSoundPath, GetBarrelPosition());
-            Shoot();
-        }
+        //     _soundManager.PlayOneShotSpatial(ShotSoundPath, GetBarrelPosition());
+        //     Shoot();
+        // }
 
         /// <summary>
         /// Two-stage shot. Stage 1 (intent): a ray from the camera through the cursor
@@ -91,46 +91,46 @@ namespace Demiurge
         /// impact point. Client-side only; damage stays the server's authoritative
         /// raycast.
         /// </summary>
-        private void Shoot()
-        {
-            if (!TryGetPlayerAndCamera(out _, out var camera)) return;
+        // private void Shoot()
+        // {
+        //     if (!TryGetPlayerAndCamera(out _, out var camera)) return;
 
-            var barrel = GetBarrelPosition();
-            var mouse = Input.MousePosition;
+        //     var barrel = GetBarrelPosition();
+        //     var mouse = Input.MousePosition;
 
-            // Stage 1: cursor ray -> aim point.
-            Vector3 target;
-            if (camera.Raycast(mouse, maxRange, out HitInfo cursorHit))
-            {
-                target = cursorHit.Point;
-            }
-            else
-            {
-                // Miss: aim at a far point along the cursor ray.
-                var ray = camera.ScreenToWorldRaySegment(mouse);
-                var dir = ray.End - ray.Start;
-                dir.Normalize();
-                target = ray.Start + dir * maxRange;
-            }
+        //     // Stage 1: cursor ray -> aim point.
+        //     Vector3 target;
+        //     if (camera.Raycast(mouse, maxRange, out HitInfo cursorHit))
+        //     {
+        //         target = cursorHit.Point;
+        //     }
+        //     else
+        //     {
+        //         // Miss: aim at a far point along the cursor ray.
+        //         var ray = camera.ScreenToWorldRaySegment(mouse);
+        //         var dir = ray.End - ray.Start;
+        //         dir.Normalize();
+        //         target = ray.Start + dir * maxRange;
+        //     }
 
-            // Stage 2: barrel ray -> actual impact.
-            var endpoint = target;
-            var toTarget = target - barrel;
-            var dist = toTarget.Length();
-            if (_simulation != null && dist > 1e-4f)
-            {
-                toTarget /= dist;
-                // +epsilon so the ray can reach the surface the cursor ray already found.
-                if (_simulation.RayCast(barrel, toTarget, dist + 0.01f, out HitInfo barrelHit))
-                {
-                    endpoint = barrelHit.Point;   // bullet stops where IT hits, not where the cursor aimed
-                    if (barrelHit.Collidable.Entity.Name == "DUMMY")
-                        Console.WriteLine("DUMMY hit!");
-                }
-            }
+        //     // Stage 2: barrel ray -> actual impact.
+        //     var endpoint = target;
+        //     var toTarget = target - barrel;
+        //     var dist = toTarget.Length();
+        //     if (_simulation != null && dist > 1e-4f)
+        //     {
+        //         toTarget /= dist;
+        //         // +epsilon so the ray can reach the surface the cursor ray already found.
+        //         if (_simulation.RayCast(barrel, toTarget, dist + 0.01f, out HitInfo barrelHit))
+        //         {
+        //             endpoint = barrelHit.Point;   // bullet stops where IT hits, not where the cursor aimed
+        //             if (barrelHit.Collidable.Entity.Name == "DUMMY")
+        //                 Console.WriteLine("DUMMY hit!");
+        //         }
+        //     }
 
-            TracerManager.Spawn(barrel, endpoint, Color.Yellow, tracerLifetime);
-        }
+        //     TracerManager.Spawn(barrel, endpoint, Color.Yellow, tracerLifetime);
+        // }
 
         public override void Start()
         {
@@ -163,71 +163,71 @@ namespace Demiurge
         public override void Update()
         {
             var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
-            if (Input.IsMouseButtonDown(MouseButton.Left)) OnTriggerPull();
-            DrawAimLine();
-            UpdateState(dt);
+            // if (Input.IsMouseButtonDown(MouseButton.Left)) OnTriggerPull();
+            // DrawAimLine();
+            // UpdateState(dt);
         }
 
-        public override void Cancel()
-        {
-            base.Cancel();
-            _status.WeaponEquipped = false;
-            GameEvents.WeaponEquipped.Broadcast();
-        }
+        // public override void Cancel()
+        // {
+        //     base.Cancel();
+        //     _status.WeaponEquipped = false;
+        //     GameEvents.WeaponEquipped.Broadcast();
+        // }
 
-        private void UpdateState(float dt)
-        {
-            if (currentAmmo == 0 && !_isReloading) BeginReloading();
-            if (IsBetweenShots()) IncrementShotTimer(dt);
-            if (_isReloading) {
-                IncrementReloadTimer(dt);
-                if (IsReloadFinished())
-                {
-                    currentAmmo = magazineCapacity;
-                    _isReloading = false;
-                    PublishAmmo();
-                }
-            }
-        }
+        // private void UpdateState(float dt)
+        // {
+        //     if (currentAmmo == 0 && !_isReloading) BeginReloading();
+        //     if (IsBetweenShots()) IncrementShotTimer(dt);
+        //     if (_isReloading) {
+        //         IncrementReloadTimer(dt);
+        //         if (IsReloadFinished())
+        //         {
+        //             currentAmmo = magazineCapacity;
+        //             _isReloading = false;
+        //             PublishAmmo();
+        //         }
+        //     }
+        // }
 
-        private Vector3 GetBarrelPosition()
-        {
-            var transform = Entity.Transform;
-            transform.UpdateWorldMatrix();
-            Matrix world = transform.WorldMatrix;
-            return Vector3.TransformCoordinate(barrelEnd, world);
-        }
+        // private Vector3 GetBarrelPosition()
+        // {
+        //     var transform = Entity.Transform;
+        //     transform.UpdateWorldMatrix();
+        //     Matrix world = transform.WorldMatrix;
+        //     return Vector3.TransformCoordinate(barrelEnd, world);
+        // }
 
-        /// <summary>
-        /// Resolves the owning player's script and active camera via
-        /// PlayerEntity -> PlayerScript -> CameraEntity -> CameraComponent.
-        /// Returns false (with nulls) if any link is missing.
-        /// </summary>
-        private bool TryGetPlayerAndCamera(out PlayerScript playerScript, out CameraComponent camera)
-        {
-            playerScript = null!;
-            camera = null!;
-            if (PlayerEntity is null) return false;
-            if (PlayerEntity.GetComponent<PlayerScript>() is not { } ps) return false;
-            if (ps.CameraEntity.GetComponent<CameraComponent>() is not { } cam) return false;
-            playerScript = ps;
-            camera = cam;
-            return true;
-        }
+        // /// <summary>
+        // /// Resolves the owning player's script and active camera via
+        // /// PlayerEntity -> PlayerScript -> CameraEntity -> CameraComponent.
+        // /// Returns false (with nulls) if any link is missing.
+        // /// </summary>
+        // private bool TryGetPlayerAndCamera(out PlayerVisualScript playerScript, out CameraComponent camera)
+        // {
+        //     playerScript = null!;
+        //     camera = null!;
+        //     if (PlayerEntity is null) return false;
+        //     if (PlayerEntity.GetComponent<PlayerVisualScript>() is not { } ps) return false;
+        //     if (PlayerEntity.GetComponent<PlayerInputScript>().CameraEntity is not { } cam) return false;
+        //     playerScript = ps;
+        //     camera = cam;
+        //     return true;
+        // }
 
-        private void DrawAimLine()
-		{
+        // private void DrawAimLine()
+		// {
 
-            if (!TryGetPlayerAndCamera(out var playerScript, out var camera)) return;
+        //     if (!TryGetPlayerAndCamera(out var playerScript, out var camera)) return;
 
-			if (playerScript.State.HasFlag(PlayerStateFlags.Aiming))
-			{
-				var cursorPos = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
-				var barrelScreenPos = MathExtensions.WorldToScreen(GetBarrelPosition(), camera.ViewProjectionMatrix, Game.Window.ClientBounds);
-				LineRenderer.DrawLine2D(barrelScreenPos, cursorPos, new Color(1.0f, 1.0f, 1.0f, 0.25f));
-			}
+		// 	if (playerScript.playerData.State.HasFlag(PlayerStateFlags.Aiming))
+		// 	{
+		// 		var cursorPos = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
+		// 		var barrelScreenPos = MathExtensions.WorldToScreen(GetBarrelPosition(), camera.ViewProjectionMatrix, Game.Window.ClientBounds);
+		// 		LineRenderer.DrawLine2D(barrelScreenPos, cursorPos, new Color(1.0f, 1.0f, 1.0f, 0.25f));
+		// 	}
 
-		}
+		// }
         
     }
 

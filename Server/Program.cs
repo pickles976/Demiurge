@@ -3,41 +3,51 @@ using Riptide.Utils;
 using Demiurge;
 
 
-
-Dictionary<ushort, string> players = new Dictionary<ushort, string>();
-
-// Start
-RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine, Console.WriteLine, Console.WriteLine, includeTimestamps: true);
-
-Server server = new Server();
-
-server.ClientConnected += (object sender, ServerConnectedEventArgs e) =>
+namespace Demiurge.GameServer
 {
-    Message msg = Message.Create(MessageSendMode.Reliable, (ushort)ServerToClientId.Welcome);
-    msg.AddString($"Welcome! You are client {e.Client.Id}.");
-    server.Send(msg, e.Client.Id);
-
-    foreach (ushort id in players.Keys)
+    internal class Program
     {
-        if (id != e.Client.Id)
+
+        internal static Server Server {get; private set; }
+
+        private static void Main()
         {
-            server.Send(Message.Create(MessageSendMode.Reliable, ServerToClientId.SpawnPlayer), id);
+            
+            // Dictionary<ushort, string> players = new Dictionary<ushort, string>();
+
+            // Start
+            RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine, Console.WriteLine, Console.WriteLine, includeTimestamps: true);
+
+            Server = new Server();
+            Server.Start(NetworkConfig.Port, maxClientCount: 100);
+
+            Server.ClientConnected += (object sender, ServerConnectedEventArgs e) =>
+            {
+                Message msg = Message.Create(MessageSendMode.Reliable, (ushort)ServerToClientId.Welcome);
+                // Let the client know their ID
+                msg.AddUShort(e.Client.Id);
+                Server.Send(msg, e.Client.Id);
+
+                new PlayerHandle(e.Client.Id);
+            };
+
+
+            bool running = true;
+            Console.CancelKeyPress += (_,e) => {e.Cancel = true; running = false; };
+
+            // Update
+            while (running)
+            {
+                Server.Update();
+                PlayerHandle.SendPositions();
+                Thread.Sleep(10);
+            }
+
+            Server.Stop();
+
         }
+
+
     }
-
-
-};
-
-server.Start(NetworkConfig.Port, maxClientCount: 100);
-
-bool running = true;
-Console.CancelKeyPress += (_,e) => {e.Cancel = true; running = false; };
-
-// Update
-while (running)
-{
-    server.Update();
-    Thread.Sleep(10);
 }
 
-server.Stop();

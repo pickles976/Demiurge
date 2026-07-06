@@ -1,4 +1,5 @@
 using System.IO;
+using Demiurge.GameClient;
 using StbImageSharp;
 using Stride.Core;
 using Stride.Core.Mathematics;
@@ -174,7 +175,7 @@ namespace Demiurge
 
             private void RefreshServerText()
             {
-                ServerText.Text = $"Server: {NetworkManager.LastServerMessage}";
+                ServerText.Text = $"Client ID: {NetworkManager.ClientId}";
             }
         }
 

@@ -1,27 +1,27 @@
 using Riptide;
 using Stride.Core.Diagnostics;
 
-namespace Demiurge
+namespace Demiurge.GameClient
 {
     public static class NetworkManager
     {
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
-        private static Client? _client;
+        internal static Client Client;
 
-        /// <summary>Last message text from the server ("B" in the A+B pattern).</summary>
-        public static string LastServerMessage { get; private set; } = "—";
+        /// The id of this client that was assigned by the server during this session
+        public static ushort ClientId { get; private set; } = 0;
 
         public static void Connect()
         {
-            _client = new Client();
-            _client.Connected += (_, _) => Log.Info("Connected to server");
-            _client.ConnectionFailed += (_, _) => Log.Warning("Connection to server failed");
-            _client.Disconnected += (_, _) => Log.Info("Disconnected from server");
-            _client.Connect($"127.0.0.1:{NetworkConfig.Port}");
+            Client = new Client();
+            Client.Connected += (_, _) => Log.Info("Connected to server");
+            Client.ConnectionFailed += (_, _) => Log.Warning("Connection to server failed");
+            Client.Disconnected += (_, _) => Log.Info("Disconnected from server");
+            Client.Connect($"127.0.0.1:{NetworkConfig.Port}");
         }
 
         /// <summary>Pump once per frame from Program.cs Update().</summary>
-        public static void Update() => _client?.Update();
+        public static void Update() => Client?.Update();
 
         // Riptide finds this by reflection via the attribute. It MUST be static —
         // Riptide throws NonStaticHandlerException otherwise. The ushort here must
@@ -30,8 +30,8 @@ namespace Demiurge
         private static void HandleWelcome(Message message)
         {
             // Reads must happen in the same order as the Adds on the server.
-            LastServerMessage = message.GetString();
-            Log.Info($"Server says: {LastServerMessage}");
+            ClientId = message.GetUShort();
+            Log.Info($"Server says: Welcome! Your Client ID is: {ClientId}");
             GameEvents.ServerMessageReceived.Broadcast();   // "A": the signal
         }
     }

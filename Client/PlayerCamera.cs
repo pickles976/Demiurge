@@ -1,15 +1,7 @@
 using Stride.Core.Mathematics;
 using Stride.Input;
 using Stride.Engine;
-using Stride.Graphics;
-using Stride.Rendering;
-using Stride.Rendering.Sprites;
-using Stride.UI.Controls;
-using Stride.UI.Panels;
-using Texture = Stride.Graphics.Texture;
-using PixelFormat = Stride.Graphics.PixelFormat;
 using Stride.CommunityToolkit.Engine;
-using SharpGLTF.Schema2;
 
 namespace Demiurge
 {
@@ -75,8 +67,8 @@ namespace Demiurge
 			var distance = lookaheadOffset.Length();
 
 			// Aiming vs non-aiming lookahead
-			var playerScript = PlayerEntity.GetComponent<PlayerScript>();
-			var scale = playerScript?.State.HasFlag(PlayerStateFlags.Aiming) switch
+			var playerScript = PlayerEntity.GetComponent<PlayerVisualScript>();
+			var scale = playerScript?.playerData.State.HasFlag(PlayerStateFlags.Aiming) switch
 			{
 				false => 
 					MathExtensions.Step(
