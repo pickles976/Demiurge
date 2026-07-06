@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Demiurge
 {
     /// <summary>
@@ -10,6 +12,8 @@ namespace Demiurge
     /// </summary>
     public interface IPlayerStatus
     {
+        public Vector3 position {get; set; }
+        
         bool WeaponEquipped { get; set; }
         int CurrentAmmo { get; set; }
         int MagazineCapacity { get; set; }
@@ -17,6 +21,7 @@ namespace Demiurge
 
     public sealed class PlayerStatus : IPlayerStatus
     {
+        public Vector3 position {get; set; }
         public bool WeaponEquipped { get; set; }
         public int CurrentAmmo { get; set; }
         public int MagazineCapacity { get; set; }

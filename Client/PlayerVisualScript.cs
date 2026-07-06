@@ -11,14 +11,16 @@ namespace Demiurge
 	public class PlayerVisualScript : SyncScript
 	{
 
-		public PlayerData playerData = new PlayerData();
+		public PlayerStateFlags State;
+
+		public const PlayerStateFlags SlowingStates =
+			PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
+			PlayerStateFlags.Shooting  | PlayerStateFlags.Reloading;
 
 		public Entity? EquippedWeapon { get; private set; }
 
 
 		private PlayingAnimation? CurrentAnimation { get; set; }
-
-		public Vector3 intent {get; set;} = Vector3.Zero;
 
 		public float AimBlendWeight { get; set; } = 1000f;
 		private PlayingAnimation? _aimOverlay;
@@ -28,13 +30,11 @@ namespace Demiurge
         
 			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
 
-			playerData.State = playerData.State
+			State = State
 				.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
 				.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right));
 
 			PlayAnimations();
-			UpdateTransform(intent, dt);
-		
 		}
 
 		public void SetPosition(Vector3 position)
@@ -47,8 +47,8 @@ namespace Demiurge
 
 			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
 
-			// TODO: worry about rotation later
-			// if (EquippedWeapon != null || !playerData.State.HasFlag(PlayerStateFlags.Moving))
+			// TODO: access camera target
+			// if (EquippedWeapon != null || !State.HasFlag(PlayerStateFlags.Moving))
 			// {
 			// 	// TODO: fix this
 			// 	// Face towards Mouse
@@ -78,9 +78,9 @@ namespace Demiurge
 			// Must stay at index 0 so overlays blend on top of it. We only (re)create
 			// it when the clip actually changes, otherwise it would restart every frame
 			// and wipe the aiming overlay.
-			string baseClip = playerData.State.HasFlag(PlayerStateFlags.Crouching) ? 
-				(playerData.State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
-				(playerData.State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
+			string baseClip = State.HasFlag(PlayerStateFlags.Crouching) ? 
+				(State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
+				(State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
 
 			bool baseMissing = CurrentAnimation == null || !anim.PlayingAnimations.Contains(CurrentAnimation);
 			if (baseMissing || CurrentAnimation!.Name != baseClip)
@@ -115,10 +115,10 @@ namespace Demiurge
 			}
 
 			// ---- playback speed (applies to the locomotion layer) ----
-			if ((playerData.State & PlayerData.SlowingStates) != 0)
+			if ((State & SlowingStates) != 0)
 			{
 				CurrentAnimation!.TimeFactor = 0.75f;
-			} else if (playerData.State.HasFlag(PlayerStateFlags.Sprinting))
+			} else if (State.HasFlag(PlayerStateFlags.Sprinting))
 			{
 				CurrentAnimation!.TimeFactor = 2.0f;
 			} else

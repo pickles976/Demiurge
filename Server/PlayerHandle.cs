@@ -56,6 +56,7 @@ namespace Demiurge.GameServer
             if (List.TryGetValue(fromClientId, out PlayerHandle player))
                 player.position = message.GetVector3();
         }
+
     }
 }
 

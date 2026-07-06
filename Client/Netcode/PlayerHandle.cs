@@ -1,10 +1,10 @@
 
 
 using System.Numerics;
-using BepuPhysics.Trees;
 using Riptide;
 using Stride.Animations;
 using Stride.CommunityToolkit.Engine;
+using Stride.Core;
 using Stride.Engine;
 using Stride.Engine.Events;
 
@@ -20,10 +20,12 @@ namespace Demiurge.GameClient
 
         internal static EventReceiver<Vector3> InputEvent = new(GameEvents.PlayerInput);
 
-        private Vector3 position;
+        public Vector3 position;
         private readonly ushort id;
 
         private Entity playerEntity;
+        public PlayerStateFlags State { get; set; }
+
 
         internal PlayerHandle(ushort clientId, Vector3 position, Entity playerEntity)
         {
@@ -95,6 +97,19 @@ namespace Demiurge.GameClient
             player.Scene = RootScene;
 
             return player;
+        }
+
+        public static PlayerHandle GetPlayerForThisClient()
+        {
+            foreach(PlayerHandle player in List.Values)
+            {
+                if (player.id == NetworkManager.ClientId)
+                {
+                    return player;
+                }
+            }
+
+            throw new Exception("Player Handle does not exist for this client!");
         }
 
     }

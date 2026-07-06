@@ -26,21 +26,10 @@ namespace Demiurge
 
     public class PlayerData
     {
-        public static float Speed       { get; set; } = 3f;
+     	public static float Speed       { get; set; } = 3f;
 		public static float SlowSpeed   { get; set; } = 1f;
 		public static float SprintSpeed { get; set; } = 4f;
 
-		// ---- runtime state ----
-		public PlayerStateFlags State { get; set; }
-
-		public const PlayerStateFlags SlowingStates =
-			PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
-			PlayerStateFlags.Shooting  | PlayerStateFlags.Reloading;
-
-        public Vector3 position;
-        public Quaternion rotation;
-
-    	public NetworkID? EquippedWeaponNetworkId { get; private set; }
     }
 
 
