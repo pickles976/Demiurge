@@ -69,6 +69,8 @@ namespace Demiurge
             return MousePosToScreenCoords(WorldToMouse(worldPosition, viewProj), rect);
         }
 
+        public static Stride.Core.Mathematics.Vector3 ToStride(this System.Numerics.Vector3 v) => new(v.X, v.Y, v.Z);
+
     }
 
 }

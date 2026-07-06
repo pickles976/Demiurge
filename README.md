@@ -12,6 +12,8 @@ https://github.com/stride3d/stride/issues/2496
 `dotnet run --project Server/DemiurgeServer.csproj` -- server
 
 
+`dotnet build DemiurgeSharp.slnx`
+
 1. ~~Move the player~~
 2. ~~Camera controls~~
 3. ~~Shooting~~
@@ -20,11 +22,9 @@ https://github.com/stride3d/stride/issues/2496
 - [ ] separate out client and backend
     - [x] connect and send message
     - [x] spawn player
-    - [ ] input reading
-    - [ ] move this player
-    - [ ] sync player movement
-    - [ ] sync gun spawning
-    - [ ] sync shooting
+    - [ ] refactor player stuff
+- [ ] object syncing registry
+- [ ] guns and stuff
 
 5. Generate a map with perlin noise
 6. Simple UI for playing with noise

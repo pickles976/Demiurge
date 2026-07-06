@@ -27,13 +27,6 @@ namespace Demiurge
 
         public override void Update()
         {
-        
-			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
-
-			State = State
-				.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
-				.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right));
-
 			PlayAnimations();
 		}
 

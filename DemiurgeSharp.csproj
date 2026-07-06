@@ -22,14 +22,13 @@
   <ItemGroup>
     <!-- The build tool under tools/ is its own project; don't compile it as part of the game. -->
     <Compile Remove="tools/**/*.cs" />
-    <!-- Source lives under Client/ (and later Common/, Server/), never at the repo root.
-         Excluding root-level .cs prevents a stray file (e.g. a re-created Program.cs) from
-         being compiled and clashing with the real entry point. -->
     <Compile Remove="Server/**/*.cs" />
+    <Compile Remove="Common/**/*.cs" />
     <Compile Remove="*.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="Common/DemiurgeCommon.csproj" /> 
     <GltfAsset Include="assets/**/*.gltf" />
     <!-- Audio is loaded directly by OpenAL (see SoundManager), not through Stride's content
          pipeline. Deploy .wav files alongside the build so they're available at runtime. -->

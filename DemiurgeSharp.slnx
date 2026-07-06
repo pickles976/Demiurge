@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/Common/">
+    <Project Path="Common/DemiurgeCommon.csproj" />
+  </Folder>
+  <Folder Name="/Server/">
+    <Project Path="Server/DemiurgeServer.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/GltfAssetGenerator/GltfAssetGenerator.csproj" />
+  </Folder>
+  <Project Path="DemiurgeSharp.csproj" />
+</Solution>

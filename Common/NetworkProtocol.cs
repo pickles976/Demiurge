@@ -1,4 +1,3 @@
-global using NetworkID = long;
 using System.Numerics;
 using Riptide;
 

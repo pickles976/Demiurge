@@ -1,38 +1,55 @@
+using System.Numerics;
 using Riptide;
 using Stride.Core.Diagnostics;
 
 namespace Demiurge.GameClient
 {
-    public static class NetworkManager
+    public class NetworkManager
     {
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
-        internal static Client Client;
+        private readonly Client client = new();
 
         /// The id of this client that was assigned by the server during this session
-        public static ushort ClientId { get; private set; } = 0;
+        public ushort ClientId { get; private set; }
 
-        public static void Connect()
+        // Netcode -> Simulation boundary
+        public event Action<PlayerSpawnData>? PlayerSpawned;
+        public event Action<PlayerPositionData>? PlayerPositionReceived;
+
+
+
+        public void Connect()
         {
-            Client = new Client();
-            Client.Connected += (_, _) => Log.Info("Connected to server");
-            Client.ConnectionFailed += (_, _) => Log.Warning("Connection to server failed");
-            Client.Disconnected += (_, _) => Log.Info("Disconnected from server");
-            Client.Connect($"127.0.0.1:{NetworkConfig.Port}");
+            client.MessageReceived += OnMessageReceived;
+            client.Connected += (_, _) => Log.Info("Connected to server");
+            client.Connect($"127.0.0.1:{NetworkConfig.Port}", useMessageHandlers: false);
         }
 
         /// <summary>Pump once per frame from Program.cs Update().</summary>
-        public static void Update() => Client?.Update();
+        public void Update() => client.Update();
 
-        // Riptide finds this by reflection via the attribute. It MUST be static —
-        // Riptide throws NonStaticHandlerException otherwise. The ushort here must
-        // match what the server put in Message.Create.
-        [MessageHandler((ushort)ServerToClientId.Welcome)]
-        private static void HandleWelcome(Message message)
+        // The ONLY place the rest of the client can send from.
+        public void SendPosition(Vector3 position)
         {
-            // Reads must happen in the same order as the Adds on the server.
-            ClientId = message.GetUShort();
-            Log.Info($"Server says: Welcome! Your Client ID is: {ClientId}");
-            GameEvents.ServerMessageReceived.Broadcast();   // "A": the signal
+            Message message = Message.Create(MessageSendMode.Unreliable, ClientToServerId.PlayerPosition);
+            message.AddSerializable(new ClientPositionData { Position = position });
+            client.Send(message);
+        }
+
+        private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
+        {
+            switch ((ServerToClientId)e.MessageId)
+            {
+                case ServerToClientId.Welcome:
+                    ClientId = e.Message.GetSerializable<WelcomeData>().ClientId;
+                    break;
+                case ServerToClientId.PlayerSpawn:
+                    PlayerSpawned?.Invoke(e.Message.GetSerializable<PlayerSpawnData>());
+                    break;
+                case ServerToClientId.PlayerPosition:
+                    PlayerPositionReceived?.Invoke(e.Message.GetSerializable<PlayerPositionData>());
+                    break;
+            }
         }
     }
 }

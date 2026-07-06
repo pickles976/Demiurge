@@ -2,52 +2,30 @@ using Riptide;
 using Riptide.Utils;
 using Demiurge;
 
-
 namespace Demiurge.GameServer
-{
-    internal class Program
-    {
+  {
+      internal class Program
+      {
+          private static void Main()
+          {
+              RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine,
+                  Console.WriteLine, Console.WriteLine, includeTimestamps: true);
 
-        internal static Server Server {get; private set; }
+              var gameServer = new GameServer();
+              gameServer.Start();
 
-        private static void Main()
-        {
-            
-            // Dictionary<ushort, string> players = new Dictionary<ushort, string>();
+              bool running = true;
+              Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
 
-            // Start
-            RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine, Console.WriteLine, Console.WriteLine, includeTimestamps: true);
+              while (running)
+              {
+                  gameServer.Update();     // pumps Riptide + (later) ticks the world
+                  Thread.Sleep(10);        // replaced by the fixed-tick loop in Phase 6
+              }
 
-            Server = new Server();
-            Server.Start(NetworkConfig.Port, maxClientCount: 100);
+              gameServer.Stop();
+          }
+      }
+  }
 
-            Server.ClientConnected += (object sender, ServerConnectedEventArgs e) =>
-            {
-                Message msg = Message.Create(MessageSendMode.Reliable, (ushort)ServerToClientId.Welcome);
-                // Let the client know their ID
-                msg.AddUShort(e.Client.Id);
-                Server.Send(msg, e.Client.Id);
-
-                new PlayerHandle(e.Client.Id);
-            };
-
-
-            bool running = true;
-            Console.CancelKeyPress += (_,e) => {e.Cancel = true; running = false; };
-
-            // Update
-            while (running)
-            {
-                Server.Update();
-                PlayerHandle.SendPositions();
-                Thread.Sleep(10);
-            }
-
-            Server.Stop();
-
-        }
-
-
-    }
-}
 

@@ -37,16 +37,14 @@ namespace Demiurge.GameServer
         private Message CreateSpawnMessage()
         {
             Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.PlayerSpawn);
-            message.AddUShort(id);
-            message.AddVector3(position);
+            message.AddSerializable(new PlayerSpawnData { PlayerId = id, Position = position });
             return message;
         }
 
         internal void SendPosition()
         {
             Message message = Message.Create(MessageSendMode.Unreliable, ServerToClientId.PlayerPosition);
-            message.AddUShort(id);
-            message.AddVector3(position);
+            message.AddSerializable(new PlayerPositionData {Position = position, PlayerId = id});
             Program.Server.SendToAll(message, id);
         }
 
@@ -54,7 +52,7 @@ namespace Demiurge.GameServer
         private static void HandlePosition(ushort fromClientId, Message message)
         {
             if (List.TryGetValue(fromClientId, out PlayerHandle player))
-                player.position = message.GetVector3();
+                player.position = message.GetSerializable<ClientPositionData>().Position;
         }
 
     }

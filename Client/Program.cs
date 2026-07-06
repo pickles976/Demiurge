@@ -30,6 +30,7 @@ using Demiurge;
 using Stride.BepuPhysics.Definitions.Colliders;
 using Riptide.Utils;
 using Demiurge.GameClient;
+using Silk.NET.OpenXR;
 
 // Init riptide message logging
 var Log = GlobalLogger.GetLogger("Program");
@@ -40,6 +41,7 @@ RiptideLogger.Initialize(
       msg => Log.Error(msg),
       false);
 
+
 Entity? sphere = null;
 
 Entity? basil = null;
@@ -49,15 +51,21 @@ BepuSimulation? simulation = null;
 
 using var game = new Game();
 
-// TODO: cleanup
-PlayerHandle.Game = game;
+
+// how does this work?
+var network = new NetworkManager();
+var registry = new PlayerRegistry(network);
+
+game.Services.AddService(network);
+game.Services.AddService(registry);
+
+game.Run(start: Start, update: Update);
 
 // NOTE: do NOT set GraphicsDeviceManager.IsFullScreen here (before Run). On the
 // SDL/Linux backend that creates an exclusive-fullscreen swapchain whose pixel
 // format resolves to None, causing a DivideByZero in InitDefaultRenderTarget.
 // Fullscreen is enabled as a borderless window inside Start() instead.
 
-game.Run(start: Start, update: Update);
 
 void Start(Scene rootScene)
 {
@@ -180,24 +188,24 @@ void Start(Scene rootScene)
         Console.WriteLine("Simulation Started");
     }
 
+
+    var viewFactory = new PlayerViewFactory(game, rootScene, registry);
+
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
-    cameraEntity.Add(new InputScript {CameraEntity = cameraEntity});
+    cameraEntity.Add(new LocalPlayerController {CameraEntity = cameraEntity, Registry = registry});
     // TODO: connect to player
-    // cameraEntity.Add(new ThirdPersonCameraScript());
+    cameraEntity.Add(new ThirdPersonCameraScript());
     cameraEntity.Add(new CursorReticleScript());
-    
 
-    PlayerHandle.RootScene = rootScene;
-    NetworkManager.Connect();
+    network.Connect();
 
 
 }
 
 void Update(Scene scene, GameTime time)
 {
-    PlayerHandle.Update((float)time.Elapsed.TotalSeconds);
-    NetworkManager.Update();
+    network.Update();
 
     // DISABLED: DebugTextSystem draws through FastTextRenderer, which crashes on Vulkan
     // (see the AddProfiler comment in Start()). Replaced by HUD.CreateDebugStats.
