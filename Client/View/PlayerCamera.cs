@@ -20,9 +20,6 @@ namespace Demiurge
 		// Aiming Look-ahead
 		public Vector3 Target { get; set; } = new Vector3(0, 0, 0);
 
-		public float LookAheadRadiusFar { get; set; } = AppConstants.LookAheadRadiusFar;
-		public float LookAheadRadiusNear { get; set; } = AppConstants.LookAheadRadiusNear;
-
 		public float RotationSpeed { get; set; } = 20.0f;
 		public Vector2 PreviousMousePosition { get; set; } = new Vector2(0, 0);
 

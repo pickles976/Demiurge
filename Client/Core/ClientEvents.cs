@@ -1,12 +1,9 @@
-using System.Numerics;
 using Stride.Engine.Events;
 
 namespace Demiurge
 {
     public static class GameEvents
     {
-
-        public static readonly EventKey<Vector3> PlayerInput = new("Game", "PlayerInput");
 
         public static readonly EventKey WeaponEquipped = new("Game", "WeaponEquipped");
 

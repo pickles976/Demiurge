@@ -18,18 +18,21 @@ https://github.com/stride3d/stride/issues/2496
 2. ~~Camera controls~~
 3. ~~Shooting~~
 
-4. Networking
-- [x] separate out client and backend
-    - [x] connect and send message
-    - [x] spawn player
-    - [x] refactor player stuff
+4. Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)
+- [x] separate out client and backend (netcode / sim / view layers)
 - [x] networking diagram
-- [ ] sync rotation
-- [ ] sync animations
-- [ ] dead-reckoning client-side prediction for other players
+- [x] server-authoritative movement (inputs up, positions down, shared PlayerMovement.Step)
+- [x] sync rotation
+- [ ] sync animations: send InputButtons up, server derives PlayerStateFlags, broadcast State down
+- [ ] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
+- [ ] prediction reconciliation (server acks Sequence, client replays unacked inputs)
+- [ ] validate inputs server-side (clamp Intent to unit length, sanity-check flags)
 
-- [ ] object syncing registry
-- [ ] guns and stuff
+- [ ] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
+
+- [ ] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
+- [ ] sync shooting (server-authoritative hitscan + lag compensation)
+- [ ] sync health and stuff
 
 5. Generate a map with perlin noise
 6. Simple UI for playing with noise

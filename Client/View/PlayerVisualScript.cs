@@ -1,9 +1,6 @@
-using Stride.Core.Mathematics;
-using Stride.Input;
 using Stride.Engine;
 using Stride.CommunityToolkit.Engine;
 using Stride.Animations;
-using Stride.Rendering;
 
 namespace Demiurge
 {
@@ -13,13 +10,6 @@ namespace Demiurge
 
 		public PlayerStateFlags State;
 
-		public const PlayerStateFlags SlowingStates =
-			PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
-			PlayerStateFlags.Shooting  | PlayerStateFlags.Reloading;
-
-		public Entity? EquippedWeapon { get; private set; }
-
-
 		private PlayingAnimation? CurrentAnimation { get; set; }
 
 		public float AimBlendWeight { get; set; } = 1000f;
@@ -28,17 +18,6 @@ namespace Demiurge
         public override void Update()
         {
 			PlayAnimations();
-		}
-
-		public void SetPosition(Vector3 position)
-		{
-			Entity.Transform.Position = position;
-		}
-
-		private void UpdateTransform(Vector3 intent, float dt)
-		{
-
-			Entity.Transform.Position = Entity.Transform.Position + intent * dt;
 		}
 
 		private void PlayAnimations()
@@ -74,21 +53,23 @@ namespace Demiurge
 			// bone, so a heavy AimBlendWeight makes the overlay dominate the arm bones it
 			// shares with the base while leaving untouched bones at 100% locomotion.
 			// Applied instantly (no fade) - on/off the moment aim state changes.
-			if ((EquippedWeapon != null) && (_aimOverlay == null || !anim.PlayingAnimations.Contains(_aimOverlay)))
+			// State-driven (not weapon-driven) so it also plays for remote players.
+			bool aiming = State.HasFlag(PlayerStateFlags.Aiming);
+			if (aiming && (_aimOverlay == null || !anim.PlayingAnimations.Contains(_aimOverlay)))
 			{
 				_aimOverlay = anim.Blend("Aiming", AimBlendWeight, TimeSpan.Zero);
 				_aimOverlay.BlendOperation = AnimationBlendOperation.LinearBlend;
 				_aimOverlay.RepeatMode = AnimationRepeatMode.LoopInfinite;
 				_aimOverlay.Weight = AimBlendWeight;
 			}
-			else if (EquippedWeapon == null && _aimOverlay != null)
+			else if (!aiming && _aimOverlay != null)
 			{
 				anim.PlayingAnimations.Remove(_aimOverlay);
 				_aimOverlay = null;
 			}
 
 			// ---- playback speed (applies to the locomotion layer) ----
-			if ((State & SlowingStates) != 0)
+			if ((State & PlayerMovement.SlowingStates) != 0)
 			{
 				CurrentAnimation!.TimeFactor = 0.75f;
 			} else if (State.HasFlag(PlayerStateFlags.Sprinting))
@@ -100,42 +81,6 @@ namespace Demiurge
 			}
 
 		}
-
-		private void SpawnGun(Entity owner)
-		{
-			if (EquippedWeapon != null)
-			{
-				EquippedWeapon.SetParent(null);
-				EquippedWeapon.Scene = null;
-				EquippedWeapon = null;
-				return;
-			}
-			; // already holding one
-
-			var ak = new Entity("AK47") { 
-				new ModelComponent(Content.Load<Model>("models/ak47")),
-				new GunScript { PlayerEntity = Entity }
-			};
-
-			// Link the gun to the owner's "right_hand" bone. The ModelNodeLinkProcessor
-			// drives the gun's world transform from the bone each frame (after skinning),
-			// so it follows the hand animation. Transform.Position/Rotation act as a local
-			// offset relative to the bone, not the owner's root.
-			var link = ak.GetOrCreate<ModelNodeLinkComponent>();
-			link.Target = owner.GetComponent<ModelComponent>();
-			link.NodeName = "right_hand";
-
-			// Vec3::new(0.0, 1.5 / 16.0, 14.75 / 16.0) barrel
-			// Vec3::new(0.0f, -0.425f / 16.0f, 4.75f / 16.0f)
-			// 4.75f / 16.0f
-
-			owner.AddChild(ak); // keeps it in the scene and tied to the owner's lifecycle
-			ak.Transform.Position = new Vector3(0.0f, -3.75f / 16.0f, 0.425f / 16.0f); // tweak to seat the grip in the hand
-			ak.Transform.Rotation = Quaternion.RotationX(MathF.PI / 2.0f) * Quaternion.RotationZ(MathF.PI);
-
-			EquippedWeapon = ak;
-		}
-
 
 	}
 
