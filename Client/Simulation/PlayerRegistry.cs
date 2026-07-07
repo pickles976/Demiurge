@@ -34,9 +34,16 @@ public class PlayerRegistry
         if (data.PlayerId == network.ClientId) return;
 
         if (players.TryGetValue(data.PlayerId, out var player)) {
-            player.Position = data.Position;
-            player.Yaw = data.Yaw;
-            player.State = data.State;
+
+            if (player is not RemotePlayer) return;
+
+            // Make Compiler happy
+            RemotePlayer remotePlayer = (RemotePlayer)player;
+
+            remotePlayer.StoreSnapshot(data.Tick, data.Position);
+            remotePlayer.Position = data.Position;
+            remotePlayer.Yaw = data.Yaw;
+            remotePlayer.State = data.State;
         }
     }
 }

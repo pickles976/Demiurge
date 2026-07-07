@@ -21,7 +21,17 @@ public class PlayerViewScript : SyncScript
 
     public override void Update()
     {
-        Entity.Transform.Position = Player.Position.ToStride();
+
+        if (Player is RemotePlayer remote)
+        {
+            double renderTick = remote.NewestTick + remote.SecondsSinceNewestSnapshot * NetworkConfig.TickRate - 3.0;
+            Entity.Transform.Position = remote.GetInterpolatedPosition(renderTick).ToStride();
+        }
+        else
+        {
+            Entity.Transform.Position = Player.Position.ToStride();
+        }
+
         Entity.Transform.Rotation = Quaternion.RotationY(Player.Yaw);
         State = Player.State;
 

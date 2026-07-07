@@ -24,15 +24,17 @@ https://github.com/stride3d/stride/issues/2496
 - [x] server-authoritative movement (inputs up, positions down, shared PlayerMovement.Step)
 - [x] sync rotation
 - [x] sync animations: send InputButtons up, server derives outcome flags (Shooting/Reloading/Jumping) in shared Common code, broadcast State down — see NETWORKING_TODO.md §3 (inputs vs outcomes)
-- [ ] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
-- [ ] prediction reconciliation (server acks Sequence, client replays unacked inputs)
-- [ ] validate inputs server-side: clamp Intent to unit length (the real speed hack), drop Moving from the wire (derive from Intent); button-like flags (Sprint/Crouch/Aim) stay client-sent until they gain a cost like stamina
+- [x] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
+- [ ] local player reconciliation with server
+- [ ] validate inputs server-side: clamp Intent to unit length (the real speed hack), 
 
 - [ ] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
-
 - [ ] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
 - [ ] sync shooting (server-authoritative hitscan + lag compensation)
 - [ ] sync health and stuff
+
+- [ ] simulate latency and jitter
+- [ ] client proxy for ensuring state sync works
 
 5. Generate a map with perlin noise
 6. Simple UI for playing with noise

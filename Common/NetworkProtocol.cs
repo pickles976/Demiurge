@@ -7,6 +7,11 @@ namespace Demiurge
     public static class NetworkConfig
     {
         public const ushort Port = 7777;
+
+        /// <summary>Server simulation ticks per second. Everything tick-related —
+        /// the server's fixed timestep, snapshot history windows, renderTick math —
+        /// must derive from this so client and server can't drift apart.</summary>
+        public const int TickRate = 30;
     }
 
     // One enum per direction. The ushort value IS the wire protocol —

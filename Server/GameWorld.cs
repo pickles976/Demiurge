@@ -7,6 +7,8 @@ namespace Demiurge.GameServer
         private readonly Dictionary<ushort, ServerPlayer> players = new();
         private readonly Server server;
 
+        private uint _Tick = 0;
+
         public GameWorld(Server server) => this.server = server;
 
         public void AddPlayer(ushort clientId)
@@ -31,6 +33,8 @@ namespace Demiurge.GameServer
 
         public void Tick(float dt)
         {
+            _Tick++;
+
             foreach (var player in players.Values)
                 player.Position = PlayerMovement.Step(player.Position, player.PendingIntent, player.State, dt);
 
@@ -52,6 +56,7 @@ namespace Demiurge.GameServer
                 message.AddSerializable(
                     new PlayerPositionData { 
                         PlayerId = player.Id, 
+                        Tick=_Tick,
                         Position = player.Position, 
                         Yaw = player.Yaw, 
                         State = player.State });
