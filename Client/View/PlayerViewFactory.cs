@@ -29,7 +29,6 @@ public class PlayerViewFactory
         {
             new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf")),
             new PlayerViewScript {Player = player},
-            new PlayerVisualScript(),
             animations,
         };
         entity.Transform.Position = player.Position.ToStride();

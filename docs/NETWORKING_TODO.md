@@ -168,7 +168,66 @@ Read book **ch. 5 (Object Replication)** before building — it covers this
 create/update/destroy trio, plus partial updates with dirty flags, which you'll
 want as soon as objects have more state than a position.
 
-### 3. Roadmap from the book
+### 3. State flags: inputs vs outcomes (who computes `PlayerStateFlags`?)
+
+Today the client computes all flags in `LocalPlayerController`, sends them in
+`PlayerInputData`, and `GameWorld.ApplyInput` trusts them verbatim. Before
+wiring up shooting/reloading/jumping, decide flag by flag who the authority is.
+The useful distinction is not client vs server — it's **inputs vs outcomes**:
+
+- **Input-like flags** (`Sprinting`, `Crouching`, `Aiming`) are just "is a
+  button held." The client *is* the authority on its own buttons, so sending
+  these is fine — claiming `Sprinting` without holding shift isn't even a
+  detectable lie, since it's indistinguishable from a player who always holds
+  shift. This holds **only while the flag has no cost or precondition**: add a
+  stamina bar and `Sprinting` becomes an outcome the server must own.
+- **Outcome-like flags** (`Shooting`, `Reloading`, `Jumping`, and even
+  `Moving`) are *results of game rules* — fire-rate cooldowns, ammo, reload
+  timers, being grounded. Letting the client assert an outcome means letting it
+  assert a rule was satisfied. The server should derive these from discrete
+  *actions* ("fire pressed", "jump pressed") plus its own timers/resources.
+  `Moving` is the degenerate case: it's derivable server-side as
+  `intent != Vector3.Zero`, so it shouldn't be on the wire at all — that's a
+  bit the client can only use to lie.
+
+**Why contradiction-checking isn't enough.** It's tempting to think the server
+can just reject nonsense like `Crouching | Sprinting`. It can — but cheaters
+don't send contradictions, they send plausible packets, and mostly they cheat
+by **omission**. `PlayerMovement.SlowingStates` makes `Aiming`/`Shooting`/
+`Reloading` drop you to `SlowSpeed`; a hacked client that aims and fires
+normally but *never sets those bits* strafes at `SprintSpeed` while shooting
+accurately, and its packet stream is indistinguishable from a legit hip-firing
+player. Contradiction checks are a **blacklist** (enumerate every invalid
+combo, re-audit whenever mechanics change). Server-side derivation is a
+**whitelist**: invalid states can't exist because the server only produces
+states its own rules generated — there's nothing to detect.
+
+**The real cost: prediction.** Flags feed `PlayerMovement.Step`, so they affect
+predicted position. Whatever the server derives, the client must derive
+*identically* during prediction and replay, or every reload causes a speed
+misprediction and a visible reconciliation snap. "Server-side flags" therefore
+means the derivation (cooldowns, reload duration, grounded checks) becomes
+another pure shared function in `Common`, run by both sides — the same seam as
+`PlayerMovement.Step`. That's real machinery, which is why the plan is a
+hybrid:
+
+1. **Now, cheaply:** clamp `Intent` to unit length in `GameWorld.ApplyInput`
+   (the first-order hole — `Intent = (100, 0, 0)` is a 30× speed hack, far
+   worse than any flag game), drop `Moving` from the wire and derive it
+   server-side, and normalize contradictory combos while you're there.
+2. **Keep `Sprinting`/`Crouching`/`Aiming` client-sent.** They're inputs today.
+   The trigger to migrate one server-side is the moment it gains a cost or
+   precondition (stamina, etc.).
+3. **When wiring up shooting/reloading/jumping, never send them as claimed
+   state.** Send the *action* (edge-triggered "fire/reload/jump pressed" bits
+   in the input message); shared pure code in `Common` derives the resulting
+   flags from action + timers, identically on both sides. The `Gun.cs` comment
+   about routing shooting through the server already points this way.
+
+Book **ch. 10 (Security)** covers the general principle: validate inputs,
+derive outcomes.
+
+### 4. Roadmap from the book
 
 In order, each mapped to where it lands in this repo:
 
@@ -183,9 +242,8 @@ In order, each mapped to where it lands in this repo:
 4. **Ch. 7 — Latency & reliability** → mostly covered by Riptide (it provides
    reliable/unreliable channels), but read it to understand what Riptide does
    under the hood; add an RTT display to the HUD (`Client.RTT` in Riptide).
-5. **Ch. 10 — Security** → server-side input validation: clamp `Intent` to unit
-   length in `GameWorld.ApplyInput` (right now a hacked client can send
-   `Intent = (100, 0, 0)` and speed-hack), sanity-check state flags.
+5. **Ch. 10 — Security** → item 3 above (clamp `Intent`, derive outcome flags
+   server-side instead of trusting claimed state).
 6. **Ch. 9 — Scalability / interest management** → only relevant once worlds are
    big: send updates only for nearby players/objects.
 

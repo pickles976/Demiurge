@@ -17,7 +17,6 @@ flowchart TB
         subgraph view["View layer (Stride)"]
             PVF[PlayerViewFactory]
             PVS["PlayerViewScript<br/>(copies sim → transform)"]
-            VIS["PlayerVisualScript<br/>(animations, driven by State)"]
             LPC["LocalPlayerController<br/>(reads keyboard/mouse)"]
         end
         subgraph sim["Simulation layer (plain C#)"]
