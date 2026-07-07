@@ -49,7 +49,12 @@ namespace Demiurge.GameServer
             foreach (var player in players.Values)
             {
                 Message message = Message.Create(MessageSendMode.Unreliable, ServerToClientId.PlayerPosition);
-                message.AddSerializable(new PlayerPositionData { PlayerId = player.Id, Position = player.Position, Yaw = player.Yaw });
+                message.AddSerializable(
+                    new PlayerPositionData { 
+                        PlayerId = player.Id, 
+                        Position = player.Position, 
+                        Yaw = player.Yaw, 
+                        State = player.State });
                 server.SendToAll(message, player.Id);   // second arg: don't echo to the owner
             }
         }

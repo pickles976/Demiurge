@@ -36,6 +36,7 @@ public class PlayerRegistry
         if (players.TryGetValue(data.PlayerId, out var player)) {
             player.Position = data.Position;
             player.Yaw = data.Yaw;
+            player.State = data.State;
         }
     }
 }

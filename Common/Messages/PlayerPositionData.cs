@@ -8,12 +8,15 @@ namespace Demiurge
         public ushort PlayerId;
         public Vector3 Position;
 
+        public PlayerStateFlags State;
+
         public float Yaw;
 
         public void Serialize(Message message)
         {
             message.AddUShort(PlayerId);
             message.AddVector3(Position);
+            message.AddUShort((ushort)State);
             message.AddFloat(Yaw);
         }
 
@@ -21,6 +24,7 @@ namespace Demiurge
         {
             PlayerId = message.GetUShort();
             Position = message.GetVector3();
+            State = (PlayerStateFlags)message.GetUShort();
             Yaw = message.GetFloat();
         }
     }

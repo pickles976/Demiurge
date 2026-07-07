@@ -23,7 +23,7 @@ https://github.com/stride3d/stride/issues/2496
 - [x] networking diagram
 - [x] server-authoritative movement (inputs up, positions down, shared PlayerMovement.Step)
 - [x] sync rotation
-- [ ] sync animations: send InputButtons up, server derives outcome flags (Shooting/Reloading/Jumping) in shared Common code, broadcast State down — see NETWORKING_TODO.md §3 (inputs vs outcomes)
+- [x] sync animations: send InputButtons up, server derives outcome flags (Shooting/Reloading/Jumping) in shared Common code, broadcast State down — see NETWORKING_TODO.md §3 (inputs vs outcomes)
 - [ ] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
 - [ ] prediction reconciliation (server acks Sequence, client replays unacked inputs)
 - [ ] validate inputs server-side: clamp Intent to unit length (the real speed hack), drop Moving from the wire (derive from Intent); button-like flags (Sprint/Crouch/Aim) stay client-sent until they gain a cost like stamina

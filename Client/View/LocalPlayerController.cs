@@ -21,7 +21,8 @@ public class LocalPlayerController : SyncScript
 		local.State = local.State
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
 			.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
-			.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right));
+			.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right))
+			.With(PlayerStateFlags.Crouching, Input.IsKeyDown(Keys.LeftCtrl));
 
 
 		// Rotation

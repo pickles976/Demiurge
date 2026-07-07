@@ -92,8 +92,8 @@ void Start(Scene rootScene)
     // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
     // game.Window.FullscreenIsBorderlessWindow = true;
     // game.GraphicsDeviceManager.IsFullScreen = true;
-    game.GraphicsDeviceManager.PreferredBackBufferWidth = 1280;
-    game.GraphicsDeviceManager.PreferredBackBufferHeight = 720;
+    game.GraphicsDeviceManager.PreferredBackBufferWidth = 800;
+    game.GraphicsDeviceManager.PreferredBackBufferHeight = 600;
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
 
