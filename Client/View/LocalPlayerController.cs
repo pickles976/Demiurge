@@ -15,7 +15,6 @@ public class LocalPlayerController : SyncScript
 
 		// Position
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
-		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
 
 		// State
 		local.State = local.State
@@ -27,7 +26,6 @@ public class LocalPlayerController : SyncScript
 
 		// Rotation
 		var camera = CameraEntity.Get<ThirdPersonCameraScript>();
-
 		if (camera != null && (local.State.HasFlag(PlayerStateFlags.Aiming) || !local.State.HasFlag(PlayerStateFlags.Moving)))
 		{
 			// Face the camera's look-ahead target
@@ -39,6 +37,9 @@ public class LocalPlayerController : SyncScript
 			// Face movement direction; keep the old yaw when intent is zero
 			local.Yaw = MathF.Atan2(intent.X, intent.Z);
 		}
+
+		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
+
 	}
 
 	private Vector3 ComputeIntent()

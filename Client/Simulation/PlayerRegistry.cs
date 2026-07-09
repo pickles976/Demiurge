@@ -39,21 +39,21 @@ public class PlayerRegistry
 
     private void OnPlayerPosition(PlayerPositionData data)
     {
-        // Prediction owns the local player's position until reconciliation is in;
-        // the server also excludes us from the broadcast, so this is a belt-and-braces guard.
-        if (data.PlayerId == network.ClientId) return;
 
-        if (players.TryGetValue(data.PlayerId, out var player)) {
+        if (!players.TryGetValue(data.PlayerId, out var player)) return;
 
-            if (player is not RemotePlayer) return;
-
-            // Make Compiler happy
-            RemotePlayer remotePlayer = (RemotePlayer)player;
-
-            remotePlayer.StoreSnapshot(data.Tick, data.Position);
-            remotePlayer.Position = data.Position;
-            remotePlayer.Yaw = data.Yaw;
-            remotePlayer.State = data.State;
+        switch (player)
+        {
+            case LocalPlayer local:
+                local.Reconcile(data.Position, data.LastProcessedSequence);
+                break;
+            case RemotePlayer remote:
+                remote.StoreSnapshot(data.Tick, data.Position);
+                remote.Position = data.Position;
+                remote.Yaw = data.Yaw;
+                remote.State = data.State;
+                break;
         }
+
     }
 }

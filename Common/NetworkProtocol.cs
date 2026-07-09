@@ -12,6 +12,7 @@ namespace Demiurge
         /// the server's fixed timestep, snapshot history windows, renderTick math —
         /// must derive from this so client and server can't drift apart.</summary>
         public const int TickRate = 30;
+        public const float FixedDt = 1f / TickRate;
     }
 
     // One enum per direction. The ushort value IS the wire protocol —

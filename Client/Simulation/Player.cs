@@ -56,14 +56,41 @@ public class RemotePlayer : Player
 public class LocalPlayer : Player
 {
     private readonly NetworkManager network;
+    private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
     private uint sequence;
+    private float accumulator;
 
     public LocalPlayer(NetworkManager network) => this.network = network;
 
     public void Update(Vector3 intent, float dt)
     {
-        // Predict locally with the same function the server runs authoritatively.
-        Position = PlayerMovement.Step(Position, intent, State, dt);
-        network.SendInput(new PlayerInputData { Sequence = sequence++, Intent = intent, State = State, Yaw = Yaw });
+        // Sample input at FixedDt now
+        accumulator += dt;
+        while (accumulator >= NetworkConfig.FixedDt)
+        {
+            accumulator -= NetworkConfig.FixedDt;
+            var move = new PlayerInputData {Sequence = sequence++, Intent = intent, State = State, Yaw = Yaw};
+            Position = PlayerMovement.Step(Position, move.Intent, move.State, NetworkConfig.FixedDt); //predict
+            pendingMoves.Enqueue(move);
+            network.SendInput(move);
+        }
+    }
+
+    public void Reconcile(Vector3 serverPosition, uint lastProcessedSequence)
+    {
+        while (pendingMoves.Count > 0 && pendingMoves.Peek().Sequence <= lastProcessedSequence)
+              pendingMoves.Dequeue();                     // server already simulated these
+
+        var predicted = Position;
+
+        Position = serverPosition;                      // snap to authority...
+        foreach (var move in pendingMoves)              // ...then re-apply what it hasn't seen
+            Position = PlayerMovement.Step(Position, move.Intent, move.State, NetworkConfig.FixedDt);
+
+        // Diagnostic: in the happy path replay reproduces the prediction exactly.
+        // Any hit here means client and server sims disagreed (or a bug).
+        float error = Vector3.Distance(predicted, Position);
+        if (error > 0.001f)
+            Console.WriteLine($"[Reconcile] correction of {error:F4} at seq {lastProcessedSequence}");
     }
 }

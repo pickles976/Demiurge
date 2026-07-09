@@ -13,6 +13,9 @@ namespace Demiurge
 
         public float Yaw;
 
+        // Only used by the player that generated the input
+        public uint LastProcessedSequence;
+
         public void Serialize(Message message)
         {
             message.AddUShort(PlayerId);
@@ -20,6 +23,7 @@ namespace Demiurge
             message.AddVector3(Position);
             message.AddUShort((ushort)State);
             message.AddFloat(Yaw);
+            message.AddUInt(LastProcessedSequence);
         }
 
         public void Deserialize(Message message)
@@ -29,6 +33,7 @@ namespace Demiurge
             Position = message.GetVector3();
             State = (PlayerStateFlags)message.GetUShort();
             Yaw = message.GetFloat();
+            LastProcessedSequence = message.GetUInt();
         }
     }
 }

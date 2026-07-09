@@ -22,14 +22,25 @@ public class PlayerViewScript : SyncScript
     public override void Update()
     {
 
-        if (Player is RemotePlayer remote)
+        switch (Player)
         {
-            double renderTick = remote.NewestTick + (remote.SecondsSinceNewestSnapshot * NetworkConfig.TickRate) - 3.0;
-            Entity.Transform.Position = remote.GetInterpolatedPosition(renderTick).ToStride();
-        }
-        else
-        {
-            Entity.Transform.Position = Player.Position.ToStride();
+            case RemotePlayer remote:
+                double renderTick = remote.NewestTick + (remote.SecondsSinceNewestSnapshot * NetworkConfig.TickRate) - 3.0;
+                Entity.Transform.Position = remote.GetInterpolatedPosition(renderTick).ToStride();
+                break;
+            case LocalPlayer local:
+                // Sim position moves in 30Hz steps and jumps on reconciliation corrections;
+                // ease the visual toward it, but snap if the error is too big to glide.
+                var target = local.Position.ToStride();
+                var current = Entity.Transform.Position;
+                float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+
+                if ((target - current).LengthSquared() > 2f * 2f)
+                    Entity.Transform.Position = target;
+                else
+                    Entity.Transform.Position = Vector3.Lerp(current, target, 1f - MathF.Exp(-20f * dt));
+                break;
+
         }
 
         Entity.Transform.Rotation = Quaternion.RotationY(Player.Yaw);

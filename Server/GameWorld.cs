@@ -9,6 +9,9 @@ namespace Demiurge.GameServer
 
         private uint _Tick = 0;
 
+        private const int MaxQueuedMoves = 3;
+
+
         public GameWorld(Server server) => this.server = server;
 
         public void AddPlayer(ushort clientId)
@@ -34,9 +37,10 @@ namespace Demiurge.GameServer
         public void ApplyInput(ushort clientId, PlayerInputData input)
         {
             if (!players.TryGetValue(clientId, out var player)) return;
-            player.PendingIntent = input.Intent;
-            player.State = input.State;
-            player.Yaw = input.Yaw;
+            if (input.Sequence <= player.LastReceivedSequence) return; // dupe or out of order
+
+            player.LastReceivedSequence = input.Sequence;
+            player.PendingMoves.Enqueue(input);
         }
 
         public void Tick(float dt)
@@ -44,7 +48,25 @@ namespace Demiurge.GameServer
             _Tick++;
 
             foreach (var player in players.Values)
-                player.Position = PlayerMovement.Step(player.Position, player.PendingIntent, player.State, dt);
+            {
+                
+                int toProcess = player.PendingMoves.Count > MaxQueuedMoves ? 2 : 1;
+                bool processedAny = false;
+
+                for (int i  = 0; i< toProcess && player.PendingMoves.TryDequeue(out var move); i++)
+                {
+                    player.Position = PlayerMovement.Step(player.Position, move.Intent, move.State, dt);
+                    player.State = move.State;
+                    player.Yaw = move.Yaw;
+                    player.LastIntent = move.Intent;
+                    player.LastProcessedSequence = move.Sequence;
+                    processedAny = true;
+                }
+
+                if (!processedAny) // starved: assume input hasn't changed
+                    player.Position = PlayerMovement.Step(player.Position, player.LastIntent, player.State, dt);
+                
+            }
 
             BroadcastPositions();
         }
@@ -67,8 +89,9 @@ namespace Demiurge.GameServer
                         Tick=_Tick,
                         Position = player.Position, 
                         Yaw = player.Yaw, 
-                        State = player.State });
-                server.SendToAll(message, player.Id);   // second arg: don't echo to the owner
+                        State = player.State,
+                        LastProcessedSequence = player.LastProcessedSequence });
+                server.SendToAll(message); 
             }
         }
     }
