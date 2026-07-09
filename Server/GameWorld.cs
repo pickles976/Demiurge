@@ -21,7 +21,15 @@ namespace Demiurge.GameServer
             server.SendToAll(CreateSpawnMessage(player));      // announce the newcomer
         }
 
-        public void RemovePlayer(ushort clientId) => players.Remove(clientId);
+        public void RemovePlayer(ushort clientId) {
+            players.Remove(clientId);
+            Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.PlayerDespawn);
+            message.AddSerializable(
+                new PlayerDespawnData { 
+                    PlayerId = clientId, 
+                    Tick=_Tick});
+            server.SendToAll(message);
+        }
 
         public void ApplyInput(ushort clientId, PlayerInputData input)
         {

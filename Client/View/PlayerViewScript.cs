@@ -24,7 +24,7 @@ public class PlayerViewScript : SyncScript
 
         if (Player is RemotePlayer remote)
         {
-            double renderTick = remote.NewestTick + remote.SecondsSinceNewestSnapshot * NetworkConfig.TickRate - 3.0;
+            double renderTick = remote.NewestTick + (remote.SecondsSinceNewestSnapshot * NetworkConfig.TickRate) - 3.0;
             Entity.Transform.Position = remote.GetInterpolatedPosition(renderTick).ToStride();
         }
         else

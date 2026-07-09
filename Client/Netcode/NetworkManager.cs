@@ -14,6 +14,7 @@ namespace Demiurge.GameClient
 
         // Netcode -> Simulation boundary
         public event Action<PlayerSpawnData>? PlayerSpawned;
+        public event Action<PlayerDespawnData>? PlayerDespawned;
         public event Action<PlayerPositionData>? PlayerPositionReceived;
 
 
@@ -45,6 +46,9 @@ namespace Demiurge.GameClient
                     break;
                 case ServerToClientId.PlayerSpawn:
                     PlayerSpawned?.Invoke(e.Message.GetSerializable<PlayerSpawnData>());
+                    break;
+                case ServerToClientId.PlayerDespawn:
+                    PlayerDespawned?.Invoke(e.Message.GetSerializable<PlayerDespawnData>());
                     break;
                 case ServerToClientId.PlayerPosition:
                     PlayerPositionReceived?.Invoke(e.Message.GetSerializable<PlayerPositionData>());

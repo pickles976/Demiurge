@@ -111,36 +111,6 @@ reconciliation and lag compensation.
 
 ## Next steps
 
-### 1. Client-side interpolation of remote players
-
-**Problem:** the server broadcasts positions at 30 Hz but the client renders at
-~60+ FPS, so remote players currently teleport in small steps, and network
-jitter makes it worse.
-
-**Approach (Valve/Gambetta style):** render remote players slightly *in the
-past*, smoothly interpolating between two known server snapshots.
-
-Steps:
-
-1. **Stamp updates with the server tick.** Add `uint Tick` to
-   `PlayerPositionData`. `GameWorld.Tick` needs a tick counter (move the counter
-   from `Program`'s loop into `GameWorld`, or pass it in).
-2. **Buffer snapshots in the sim layer.** `RemotePlayer` replaces its single
-   `Position` with a small queue of `(uint Tick, Vector3 Position)` snapshots.
-   `PlayerRegistry.OnPlayerPosition` enqueues instead of overwriting (handlers
-   stay thin). Trim entries older than ~1 second.
-3. **Interpolate at render time.** Give `RemotePlayer` a method like
-   `GetInterpolatedPosition(double renderTick)`: find the two snapshots
-   bracketing `renderTick` and lerp between them. `renderTick` = newest tick
-   minus an interpolation delay of ~3 ticks (100 ms at 30 Hz).
-4. **The view consumes it.** `PlayerViewScript.Update` calls the method for
-   remote players. The local player is untouched (prediction owns it).
-5. **Handle buffer underrun.** If fewer than two snapshots exist, clamp to the
-   newest one. (Extrapolation/dead reckoning is a later refinement — book ch. 8.)
-
-Everything lands in `RemotePlayer` + `PlayerViewScript`. No protocol change
-beyond the tick field, no server change beyond stamping it.
-
 ### 2. Object registry (synced non-player objects)
 
 Copy the player pipeline; solve the two problems players got for free:

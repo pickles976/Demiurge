@@ -25,27 +25,41 @@ https://github.com/stride3d/stride/issues/2496
 - [x] sync rotation
 - [x] sync animations: send InputButtons up, server derives outcome flags (Shooting/Reloading/Jumping) in shared Common code, broadcast State down — see NETWORKING_TODO.md §3 (inputs vs outcomes)
 - [x] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
-- [ ] local player reconciliation with server
+- [x] delete on disconnect
+
+- [ ] client-side prediction with true authoritative server
+    - [ ] track RTT for each client
+
 - [ ] validate inputs server-side: clamp Intent to unit length (the real speed hack), 
 
 - [ ] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
 - [ ] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
+
 - [ ] sync shooting (server-authoritative hitscan + lag compensation)
+
+- [ ] rpcs for sound
 - [ ] sync health and stuff
 
 - [ ] simulate latency and jitter
 - [ ] client proxy for ensuring state sync works
 
-5. Generate a map with perlin noise
-6. Simple UI for playing with noise
+- [ ] add some more objects and stuff to flesh out multiplayer
 
-7. PVP Mechanics
+A. Interpolate remote players
+B. Predict Local players
+C. Rollback for PvP actions
+
+5. PVP Mechanics
 - [ ] Player health
     - [ ] spawn crates with health
     - [ ] damage crates when hit by bullet
     - [ ] destroy crates when HP < 0.0
     - [ ] add this logic to players
     - [ ] add health pack pickups
+
+6. Generate a map with perlin noise
+7. Simple UI for playing with noise
+
 8. Play around with scripting
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 

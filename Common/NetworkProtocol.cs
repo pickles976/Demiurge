@@ -20,6 +20,7 @@ namespace Demiurge
     {
         Welcome = 1,
         PlayerSpawn,
+        PlayerDespawn,
         PlayerPosition,
         PlayerStatus,
     }

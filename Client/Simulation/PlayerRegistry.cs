@@ -1,3 +1,4 @@
+using System.Diagnostics.Tracing;
 using Demiurge;
 using Demiurge.GameClient;
 
@@ -8,12 +9,14 @@ public class PlayerRegistry
 
     public LocalPlayer? LocalPlayer {get; private set;}
     public event Action<Player>? PlayerJoined; // sim -> view boundary
+    public event Action<Player>? PlayerLeft;
 
     // Add listeners
     public PlayerRegistry(NetworkManager network)
     {
         this.network = network;
         network.PlayerSpawned += OnPlayerSpawned;
+        network.PlayerDespawned += OnPlayerDespawned;
         network.PlayerPositionReceived += OnPlayerPosition;
     }
 
@@ -25,6 +28,13 @@ public class PlayerRegistry
 
         players[data.PlayerId] = player;
         PlayerJoined?.Invoke(player);
+    }
+
+    private void OnPlayerDespawned(PlayerDespawnData data)
+    {
+        Player player = players[data.PlayerId];
+        players.Remove(data.PlayerId);
+        PlayerLeft?.Invoke(player);
     }
 
     private void OnPlayerPosition(PlayerPositionData data)

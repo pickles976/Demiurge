@@ -14,6 +14,7 @@ public class PlayerViewFactory
         this.game = game;
         this.scene = scene;
         registry.PlayerJoined += CreatePlayerView;
+        registry.PlayerLeft += DestroyPlayerView;
     }
 
     private void CreatePlayerView(Player player)
@@ -33,5 +34,17 @@ public class PlayerViewFactory
         };
         entity.Transform.Position = player.Position.ToStride();
         entity.Scene = scene;
+    }
+
+    private void DestroyPlayerView(Player player)
+    {
+
+        // Remove entity from the scene heirarchy
+        if (scene.Entities.FirstOrDefault(e => e.Name == $"Player_{player.Id}") is {} playerEntity)
+        {
+            scene.Entities.Remove(playerEntity);
+            playerEntity.Scene = null;
+        }
+
     }
 }
