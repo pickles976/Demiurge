@@ -78,8 +78,9 @@ public class LocalPlayer : Player
 
     public void Reconcile(Vector3 serverPosition, uint lastProcessedSequence)
     {
+        // Discard all pending moves the server has already simulated 
         while (pendingMoves.Count > 0 && pendingMoves.Peek().Sequence <= lastProcessedSequence)
-              pendingMoves.Dequeue();                     // server already simulated these
+              pendingMoves.Dequeue();
 
         var predicted = Position;
 

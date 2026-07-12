@@ -56,6 +56,7 @@ using var game = new Game();
 // how does this work?
 var network = new NetworkManager();
 var registry = new PlayerRegistry(network);
+var objectRegistry = new ObjectRegistry(network);
 
 game.Services.AddService(network);
 game.Services.AddService(registry);
@@ -190,6 +191,7 @@ void Start(Scene rootScene)
     }
 
     var viewFactory = new PlayerViewFactory(game, rootScene, registry);
+    var ObjectViewFactory = new ObjectViewFactory(game, rootScene, objectRegistry);
 
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();

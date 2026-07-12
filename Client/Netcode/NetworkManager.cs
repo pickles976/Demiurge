@@ -17,6 +17,11 @@ namespace Demiurge.GameClient
         public event Action<PlayerDespawnData>? PlayerDespawned;
         public event Action<PlayerPositionData>? PlayerPositionReceived;
 
+        public event Action<ObjectSpawnData>? ObjectSpawned;
+        public event Action<ObjectDespawnData>? ObjectDespawned;
+        public event Action<ObjectStateData>? ObjectStateReceived;
+
+
 
 
         public void Connect()
@@ -52,6 +57,15 @@ namespace Demiurge.GameClient
                     break;
                 case ServerToClientId.PlayerPosition:
                     PlayerPositionReceived?.Invoke(e.Message.GetSerializable<PlayerPositionData>());
+                    break;
+                case ServerToClientId.ObjectSpawn:
+                    ObjectSpawned?.Invoke(e.Message.GetSerializable<ObjectSpawnData>());
+                    break;
+                case ServerToClientId.ObjectDespawn:
+                    ObjectDespawned?.Invoke(e.Message.GetSerializable<ObjectDespawnData>());
+                    break;
+                case ServerToClientId.ObjectState:
+                    ObjectStateReceived?.Invoke(e.Message.GetSerializable<ObjectStateData>());
                     break;
             }
         }

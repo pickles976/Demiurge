@@ -16,6 +16,9 @@ namespace Demiurge
         // authoritatively, and reconciliation will replay it. Keep it side-effect free.
         public static Vector3 Step(Vector3 position, Vector3 intent, PlayerStateFlags flags, float dt)
         {
+
+            intent.Y = 0f; 
+            
             if (intent != Vector3.Zero) 
                 intent = Vector3.Normalize(intent);
 

@@ -29,20 +29,20 @@ https://github.com/stride3d/stride/issues/2496
 
 - [x] client-side prediction with true authoritative server
 - [x] validate inputs server-side: clamp Intent to unit length (the real speed hack), 
-- [ ] simulate latency and jitter
 
 - [ ] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
 - [ ] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
-
 - [ ] sync shooting (server-authoritative hitscan + lag compensation)
     - [ ] rewind
 
-- [ ] rpcs for sound
-- [ ] sync health and stuff
+- [ ] add health component to players
 
+- [ ] simulate latency and jitter
 - [ ] client proxy for ensuring state sync works
-
 - [ ] add some more objects and stuff to flesh out multiplayer
+
+    - [ ] grenade
+    - [ ] pistol
 
 A. Interpolate remote players
 B. Predict Local players

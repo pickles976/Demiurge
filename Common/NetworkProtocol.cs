@@ -24,6 +24,9 @@ namespace Demiurge
         PlayerDespawn,
         PlayerPosition,
         PlayerStatus,
+        ObjectSpawn,
+        ObjectDespawn,
+        ObjectState
     }
 
     public enum ClientToServerId : ushort
