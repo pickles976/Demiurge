@@ -10,6 +10,8 @@ public class NetObject
 
     public TransformState Transform;   // fields: mutable structs (see ServerObject)
     public HealthState Health;
+    public WeaponState Weapon;
+    public OwnerState Owner;
 
     public SnapshotBuffer Snapshots { get; } = new();
 }

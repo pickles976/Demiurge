@@ -13,6 +13,10 @@ using Demiurge;
       public event Action<NetObject>? ObjectSpawned;   // sim -> view boundary
       public event Action<NetObject>? ObjectDespawned;
 
+      /// <summary>Read-only view of the live objects, for view-layer queries
+      /// (tracer hit tests). Netcode writes, view reads — same contract as ever.</summary>
+      public IEnumerable<NetObject> Objects => objects.Values;
+
       public ObjectRegistry(NetworkManager network)
       {
           network.ObjectSpawned += OnSpawn;
@@ -24,9 +28,15 @@ using Demiurge;
       {
           if (objects.ContainsKey(data.NetworkId)) return;
 
+          // Copy EVERY component from the spawn bundle (unmasked ones are just
+          // defaults). Forgetting a new component here leaves it zeroed on the
+          // client while the wire delivered it fine — exactly the bug this line
+          // pattern already caused once with Weapon/Owner.
           var obj = new NetObject { NetworkId = data.NetworkId, Type = data.Type, Has = data.State.Mask };
           obj.Transform = data.State.Transform;
           obj.Health = data.State.Health;
+          obj.Weapon = data.State.Weapon;
+          obj.Owner = data.State.Owner;
           objects[data.NetworkId] = obj;
 
           if (pendingUpdates.Remove(data.NetworkId, out var queued))
@@ -67,5 +77,9 @@ using Demiurge;
           }
           if (data.State.Mask.HasFlag(NetComponents.Health))
               obj.Health = data.State.Health;
+          if (data.State.Mask.HasFlag(NetComponents.Weapon))
+              obj.Weapon = data.State.Weapon;
+          if (data.State.Mask.HasFlag(NetComponents.Owner))
+              obj.Owner = data.State.Owner;
       }
   }

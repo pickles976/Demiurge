@@ -26,12 +26,15 @@ namespace Demiurge
         PlayerStatus,
         ObjectSpawn,
         ObjectDespawn,
-        ObjectState
+        ObjectState,
+        PlayerFired
     }
 
     public enum ClientToServerId : ushort
     {
         PlayerInput = 1,
+        PlayerFire,
+        PlayerReload
     }
 
     public static class MessageExtensions

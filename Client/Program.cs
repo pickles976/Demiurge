@@ -58,6 +58,20 @@ var network = new NetworkManager();
 var registry = new PlayerRegistry(network);
 var objectRegistry = new ObjectRegistry(network);
 
+// Bridge the two registries: an EquippedWeapon object owned by our client id IS
+// the local player's weapon. Sim-to-sim glue lives here in the composition root.
+objectRegistry.ObjectSpawned += obj =>
+{
+    if (obj.Type == Demiurge.ObjectType.EquippedWeapon && obj.Owner.PlayerId == network.ClientId
+        && registry.LocalPlayer is { } local)
+        local.Equip(obj);
+};
+objectRegistry.ObjectDespawned += obj =>
+{
+    if (obj.Type == Demiurge.ObjectType.EquippedWeapon && registry.LocalPlayer is { } local)
+        local.Unequip(obj);   // no-ops unless it was actually ours
+};
+
 game.Services.AddService(network);
 game.Services.AddService(registry);
 
@@ -198,6 +212,8 @@ void Start(Scene rootScene)
     cameraEntity.Add(new LocalPlayerController {CameraEntity = cameraEntity, Registry = registry});
     cameraEntity.Add(new ThirdPersonCameraScript{Registry = registry});
     cameraEntity.Add(new CursorReticleScript());
+    cameraEntity.Add(new AimLineScript { Registry = registry });
+    cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
 
     network.Connect();
 

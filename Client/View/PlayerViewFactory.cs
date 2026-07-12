@@ -3,6 +3,7 @@ using Demiurge;
 using Demiurge.GameClient;
 using Stride.Animations;
 using Stride.Engine;
+using Stride.Core.Mathematics;
 
 public class PlayerViewFactory
 {
@@ -47,4 +48,5 @@ public class PlayerViewFactory
         }
 
     }
+
 }

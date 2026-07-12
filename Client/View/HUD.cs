@@ -182,41 +182,48 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Combines the A+B pattern: holds no reference to the gun. It reads the shared
-        /// <see cref="IPlayerStatus"/> service (B) for the values, and only re-reads when
-        /// the <see cref="GameEvents.AmmoChanged"/> signal (A) fires — not every frame.
+        /// Ammo readout for the local player. Reads the sim directly (the same
+        /// netcode-writes-view-reads contract as the other view scripts) and repaints
+        /// only when a value changes, so steady-state frames allocate nothing.
+        /// Hidden until the local player spawns — every player carries a gun now,
+        /// so "weapon equipped" is simply "spawned".
         /// </summary>
         public class HudScript : SyncScript
         {
             public TextBlock AmmoText { get; set; } = null!;
             public Canvas canvas {get; set; } = null!;
 
-            private readonly EventReceiver _weaponChanged = new(GameEvents.WeaponEquipped);
+            private PlayerRegistry _registry = null!;
 
-            // Non-generic signal receiver. None = latest-wins (we only care that it changed).
-            private readonly EventReceiver _ammoChanged = new(GameEvents.AmmoChanged);
-            private IPlayerStatus _status = null!;
+            private int _lastAmmo = -1;
+            private bool _lastReloading;
+            private bool _lastVisible;
 
             public override void Start()
             {
-                _status = Services.GetSafeServiceAs<IPlayerStatus>();
-                Refresh(); // initial paint, in case the gun broadcast before we started
+                _registry = Services.GetSafeServiceAs<PlayerRegistry>();
+                canvas.Visibility = Visibility.Collapsed;   // until spawn
             }
 
             public override void Update()
             {
-                if (_weaponChanged.TryReceive())
-                    Refresh();
+                var local = _registry.LocalPlayer;
 
+                bool visible = local is { IsArmed: true };
+                if (visible != _lastVisible)
+                {
+                    _lastVisible = visible;
+                    canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                }
+                if (local is not { IsArmed: true }) return;
 
-                if (_ammoChanged.TryReceive())
-                    Refresh();
-            }
+                if (local.Ammo == _lastAmmo && local.IsReloading == _lastReloading) return;
+                _lastAmmo = local.Ammo;
+                _lastReloading = local.IsReloading;
 
-            private void Refresh()
-            {
-                canvas.Visibility = _status.WeaponEquipped ? Visibility.Visible : Visibility.Collapsed;
-                AmmoText.Text = $"{_status.CurrentAmmo}/{_status.MagazineCapacity}";
+                AmmoText.Text = local.IsReloading
+                    ? "RELOADING"
+                    : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
             }
         }
     }

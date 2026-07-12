@@ -30,19 +30,19 @@ https://github.com/stride3d/stride/issues/2496
 - [x] client-side prediction with true authoritative server
 - [x] validate inputs server-side: clamp Intent to unit length (the real speed hack), 
 
-- [ ] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
-- [ ] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
+- [x] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
+- [x] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
+    - [x] create a little spinning AK-47 pickup
+    - [x] add client-side pickup logic
+- [ ] consolidate player and object logic, add health to players
+
 - [ ] sync shooting (server-authoritative hitscan + lag compensation)
     - [ ] rewind
 
-- [ ] add health component to players
-
 - [ ] simulate latency and jitter
 - [ ] client proxy for ensuring state sync works
-- [ ] add some more objects and stuff to flesh out multiplayer
 
-    - [ ] grenade
-    - [ ] pistol
+Go through and trace the object syncing logic and document how it works
 
 A. Interpolate remote players
 B. Predict Local players
@@ -51,21 +51,20 @@ C. Rollback for PvP actions
 5. PVP Mechanics
 - [ ] Player health
     - [ ] spawn crates with health
-    - [ ] damage crates when hit by bullet
-    - [ ] destroy crates when HP < 0.0
-    - [ ] add this logic to players
     - [ ] add health pack pickups
+    - [ ] pistol pickup
+    - [ ] grenade pickup
+    - [ ] sniper rifle
+    - [ ] shotgun
 
 6. Generate a map with perlin noise
 7. Simple UI for playing with noise
+7a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
 
 8. Play around with scripting
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 
-9. Add inventory and pickups
-    - [ ] AK
-    - [ ] sniper rifle
-    - [ ] shotgun
+9. Add inventory UI
 10. Host server and test with buddies
 - [ ] digital ocean droplet
 - [ ] hook up scrungy.com domain name

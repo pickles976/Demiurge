@@ -21,6 +21,8 @@ namespace Demiurge.GameClient
         public event Action<ObjectDespawnData>? ObjectDespawned;
         public event Action<ObjectStateData>? ObjectStateReceived;
 
+        public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
+
 
 
 
@@ -41,6 +43,19 @@ namespace Demiurge.GameClient
             message.AddSerializable(input);
             client.Send(message);
         }
+
+        public void SendFire(PlayerFireData fire)
+        {
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerFire);
+            message.AddSerializable(fire);
+            client.Send(message);
+        }
+
+        public void SendReload()
+        {
+            client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerReload));
+        }
+
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {
@@ -66,6 +81,9 @@ namespace Demiurge.GameClient
                     break;
                 case ServerToClientId.ObjectState:
                     ObjectStateReceived?.Invoke(e.Message.GetSerializable<ObjectStateData>());
+                    break;
+                case ServerToClientId.PlayerFired:
+                    PlayerFired?.Invoke(e.Message.GetSerializable<PlayerFiredData>());
                     break;
             }
         }

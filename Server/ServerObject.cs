@@ -12,5 +12,7 @@ namespace Demiurge.GameServer
         public NetComponents Dirty;
         public TransformState Transform;
         public HealthState Health;
+        public WeaponState Weapon;
+        public OwnerState Owner;
     }
 }

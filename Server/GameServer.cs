@@ -44,6 +44,12 @@ namespace Demiurge.GameServer
                 case ClientToServerId.PlayerInput:
                     world.ApplyInput(e.FromConnection.Id, e.Message.GetSerializable<PlayerInputData>());
                     break;
+                case ClientToServerId.PlayerFire:
+                    world.ApplyFire(e.FromConnection.Id, e.Message.GetSerializable<PlayerFireData>());
+                    break;
+                case ClientToServerId.PlayerReload:
+                    world.ApplyReload(e.FromConnection.Id);
+                    break;
             }
         }
     }

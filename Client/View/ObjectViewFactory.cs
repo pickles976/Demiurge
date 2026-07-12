@@ -21,6 +21,12 @@ public class ObjectViewFactory
                                           new() { IncludeCollider = false }),
             [ObjectType.TrainingDummy] = _ => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
+            [ObjectType.WeaponPickup] = obj => new Entity {
+                  new ModelComponent(GLTFLoader.LoadModel(game, WeaponCosmetics.Get(obj.Weapon.Type).ModelPath)),
+                  new PickupBobScript { Object = obj } },
+            [ObjectType.EquippedWeapon] = obj => new Entity {
+                  new ModelComponent(GLTFLoader.LoadModel(game, WeaponCosmetics.Get(obj.Weapon.Type).ModelPath)),
+                  new WeaponAttachScript { Object = obj } },
         };
         registry.ObjectSpawned += CreateView;
         registry.ObjectDespawned += DestroyView;
@@ -35,7 +41,11 @@ public class ObjectViewFactory
 
         // Attach view behavior per component the object HAS — the mask decides,
         // not the type. A new type with Health gets a health view for free.
-        if (obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
+        // Exception: a builder may install its own transform presenter (the
+        // pickup's bob/spin), which then owns the entity transform instead.
+        bool customTransformView = entity.Get<PickupBobScript>() != null;
+        if (obj.Has.HasFlag(NetComponents.Transform) && !customTransformView)
+            entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
 
         entity.Transform.Position = obj.Transform.Position.ToStride();
