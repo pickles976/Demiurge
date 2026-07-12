@@ -48,7 +48,7 @@ public class PlayerRegistry
                 local.Reconcile(data.Position, data.LastProcessedSequence);
                 break;
             case RemotePlayer remote:
-                remote.StoreSnapshot(data.Tick, data.Position);
+                remote.Snapshots.Store(data.Tick, data.Position);
                 remote.Position = data.Position;
                 remote.Yaw = data.Yaw;
                 remote.State = data.State;
