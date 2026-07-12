@@ -1,0 +1,154 @@
+using Riptide;
+using System.Numerics;
+
+namespace Demiurge.GameServer
+{
+    /// <summary>Pickups, equipping, and server-authoritative fire/reload. Owns no
+    /// state of its own: weapons live in ObjectReplication, timing gates live on
+    /// ServerPlayer. GameWorld resolves clientId -> ServerPlayer and delegates.</summary>
+    public class WeaponSystem
+    {
+        private readonly Server server;
+        private readonly ObjectReplication objects;
+
+        private const float PickupRadiusSq = 0.75f * 0.75f;
+
+
+        public WeaponSystem(Server server, ObjectReplication objects)
+        {
+            this.server = server;
+            this.objects = objects;
+        }
+
+        public ServerObject SpawnPickup(WeaponType type, Vector3 position)
+        {
+            return objects.Spawn(ObjectType.WeaponPickup, NetComponents.Transform | NetComponents.Weapon, position,
+            obj => obj.Weapon = new WeaponState {Type = type, CurrentAmmo = WeaponConfig.Get(type).MagazineCapacity });
+        }
+
+        // TODO: 
+        // This is O(n^2), can we do a callback-based thing or something?
+        /// <summary>Call once per player per tick, after movement.</summary>
+        public void TryPickup(ServerPlayer player)
+        {
+            if (player.WeaponId != 0) return;   // armed players ignore pickups
+
+            // Find first, act after: Despawn/Spawn mutate the object dictionary
+            // and must not run inside its enumeration.
+            ServerObject? pickup = null;
+            foreach (var obj in objects.All)
+            {
+                if (obj.Type != ObjectType.WeaponPickup) continue;
+                if (Vector3.DistanceSquared(obj.Transform.Position, player.Position) > PickupRadiusSq) continue;
+                pickup = obj;
+                break;
+            }
+            if (pickup == null) return;
+
+            var carried = pickup.Weapon;        // ammo carries over from the pickup
+            objects.Despawn(pickup.NetworkId);
+
+            var weapon = objects.Spawn(ObjectType.EquippedWeapon, NetComponents.Weapon | NetComponents.Owner, player.Position,
+                obj =>
+                {
+                    obj.Weapon = carried;
+                    obj.Owner = new OwnerState { PlayerId = player.Id };
+                });
+            player.WeaponId = weapon.NetworkId;
+        }
+
+        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick)
+        {
+            if (!IsFinite(fire.Origin) || !IsFinite(fire.Direction)) return;
+            if (fire.Direction == Vector3.Zero) return;
+
+            // Unarmed players can't fire; the equipped weapon object is the source
+            // of truth for ammo, and its type keys the config both ends enforce.
+            if (player.WeaponId == 0 || !objects.TryGet(player.WeaponId, out var weapon)) return;
+            var stats = WeaponConfig.Get(weapon.Weapon.Type);
+
+            // Enforce the same WeaponConfig numbers the client predicted with.
+            if (tick < player.NextFireTick) return;    // faster than the gun can cycle
+            if (tick < player.ReloadDoneTick) return;  // mid-reload
+            if (weapon.Weapon.CurrentAmmo <= 0) return;
+
+            // The client supplies the aim, but the shot must leave from roughly where
+            // the server has the player. 2m tolerance covers prediction drift.
+            if (Vector3.DistanceSquared(fire.Origin, player.Position) > 2f * 2f) return;
+
+            player.NextFireTick = tick + (uint)stats.TicksPerShot;
+            weapon.Weapon.CurrentAmmo--;
+            weapon.Dirty |= NetComponents.Weapon;       // ammo replicates like any component
+
+            var direction = Vector3.Normalize(fire.Direction);
+
+            // A healthless object (a pickup) still blocks the shot; it just takes no damage.
+            if (Raycast(fire.Origin, direction, stats.MaxRange) is { } hit
+                && hit.Has.HasFlag(NetComponents.Health))
+            {
+                hit.Health.Current = hit.Health.Current > stats.Damage
+                    ? (ushort)(hit.Health.Current - stats.Damage)
+                    : (ushort)0;
+                hit.Dirty |= NetComponents.Health;   // the object pipeline replicates the rest
+            }
+
+            // Cosmetic rebroadcast for remote tracers/audio. Unreliable: a lost
+            // tracer is nothing. Only ACCEPTED shots get here, so rejected fire
+            // never flashes on anyone's screen.
+            Message fired = Message.Create(MessageSendMode.Unreliable, ServerToClientId.PlayerFired);
+            fired.AddSerializable(new PlayerFiredData
+            {
+                PlayerId = player.Id,
+                Weapon = weapon.Weapon.Type,
+                Origin = fire.Origin,
+                Direction = direction,
+            });
+            server.SendToAll(fired);
+        }
+
+        public void ApplyReload(ServerPlayer player, uint tick)
+        {
+            if (player.WeaponId == 0 || !objects.TryGet(player.WeaponId, out var weapon)) return;
+
+            var stats = WeaponConfig.Get(weapon.Weapon.Type);
+            if (tick < player.ReloadDoneTick) return;   // already reloading
+            if (weapon.Weapon.CurrentAmmo == stats.MagazineCapacity) return;
+
+            // Refill now, block firing until the window passes — observably identical
+            // to refilling at the end, with no completion bookkeeping. (The client
+            // refills at the end instead so its HUD reads 0 during the reload.)
+            weapon.Weapon.CurrentAmmo = stats.MagazineCapacity;
+            weapon.Dirty |= NetComponents.Weapon;
+            player.ReloadDoneTick = tick + (uint)stats.ReloadTicks;
+        }
+
+        /// <summary>The weapon leaves with its owner. Call from RemovePlayer.</summary>
+        public void DespawnFor(ServerPlayer player)
+        {
+            if (player.WeaponId == 0) return;
+            objects.Despawn(player.WeaponId);
+            player.WeaponId = 0;
+        }
+
+        private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange)
+        {
+            ServerObject? nearest = null;
+            float nearestT = float.MaxValue;
+
+            foreach (var obj in objects.All)
+            {
+                // No Transform component = not in the world (equipped weapons keep a
+                // stale spawn position) — never hittable.
+                if (!obj.Has.HasFlag(NetComponents.Transform)) continue;
+                if (GunMath.HitDistance(origin, direction, obj.Transform.Position, maxRange) is not { } t) continue;
+                if (t >= nearestT) continue;
+                nearest = obj;
+                nearestT = t;
+            }
+            return nearest;
+        }
+
+        private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+    }
+}
