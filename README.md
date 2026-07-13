@@ -17,7 +17,7 @@ https://github.com/stride3d/stride/issues/2496
 1. ~~Move the player~~
 2. ~~Camera controls~~
 3. ~~Shooting~~
-4. Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)
+4. ~~Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)~~
 
 Go through and trace the object syncing logic and document how it works
 
@@ -29,11 +29,6 @@ Go through and trace the object syncing logic and document how it works
     - [ ] syncing
 - [ ] shooting
     - [ ] rewind
-    
-
-A. Interpolate remote players
-B. Predict Local players
-C. Rollback for PvP actions
 
 5. PVP Mechanics
 - [ ] add helmet
