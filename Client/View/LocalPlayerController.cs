@@ -15,19 +15,20 @@ public class LocalPlayerController : SyncScript
 
 		// Position
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
-		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
 
 		// State
+		bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
+
 		local.State = local.State
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
 			.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
-			.With(PlayerStateFlags.Aiming, Input.IsMouseButtonDown(MouseButton.Right))
-			.With(PlayerStateFlags.Crouching, Input.IsKeyDown(Keys.LeftCtrl));
-
+			.With(PlayerStateFlags.Aiming, aiming)
+			.With(PlayerStateFlags.Crouching, Input.IsKeyDown(Keys.LeftCtrl))
+			.With(PlayerStateFlags.Shooting, aiming && Input.IsMouseButtonDown(MouseButton.Left))
+			.With(PlayerStateFlags.Reloading, local.IsReloading);
 
 		// Rotation
 		var camera = CameraEntity.Get<ThirdPersonCameraScript>();
-
 		if (camera != null && (local.State.HasFlag(PlayerStateFlags.Aiming) || !local.State.HasFlag(PlayerStateFlags.Moving)))
 		{
 			// Face the camera's look-ahead target
@@ -39,6 +40,19 @@ public class LocalPlayerController : SyncScript
 			// Face movement direction; keep the old yaw when intent is zero
 			local.Yaw = MathF.Atan2(intent.X, intent.Z);
 		}
+
+		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
+
+		// After the rotation block. Holding LMB is level-triggered input, but TryFire's
+		// cooldown gate turns it into one edge-triggered PlayerFire per shot — that's
+		// where "hold to fire at 10/s" comes from. Aiming-only, so the fire direction
+		// (the yaw the aim code just pointed at the cursor) is always meaningful.
+		if (aiming && Input.IsMouseButtonDown(MouseButton.Left))
+			local.TryFire(new Vector3(MathF.Sin(local.Yaw), 0f, MathF.Cos(local.Yaw)), Registry.RenderTick);
+
+		if (Input.IsKeyPressed(Keys.R))
+			local.TryReload();
+
 	}
 
 	private Vector3 ComputeIntent()

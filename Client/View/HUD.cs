@@ -44,8 +44,19 @@ namespace Demiurge
                 Margin = new Thickness(6, 0, 0, 0),
             };
 
-            // Icon + text laid out side by side.
+            var healthText = new TextBlock
+            {
+                Text = "HP —",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 24,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 12, 0),
+            };
+
+            // Health left of the bullet icon, icon + ammo text side by side.
             var ammoPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            ammoPanel.Children.Add(healthText);
             ammoPanel.Children.Add(bulletImage);
             ammoPanel.Children.Add(ammoText);
 
@@ -68,9 +79,10 @@ namespace Demiurge
                     Page = new UIPage { RootElement = canvas },
                     RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
                 },
-                new HudScript { 
+                new HudScript {
                     canvas = canvas,
-                    AmmoText = ammoText },
+                    AmmoText = ammoText,
+                    HealthText = healthText },
             };
 
             return uiEntity;
@@ -182,41 +194,59 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Combines the A+B pattern: holds no reference to the gun. It reads the shared
-        /// <see cref="IPlayerStatus"/> service (B) for the values, and only re-reads when
-        /// the <see cref="GameEvents.AmmoChanged"/> signal (A) fires — not every frame.
+        /// Health + ammo readout for the local player. Reads the sim directly (the
+        /// same netcode-writes-view-reads contract as the other view scripts) and
+        /// repaints only when a value changes, so steady-state frames allocate
+        /// nothing. Shown from spawn — health is always relevant; ammo reads "--"
+        /// until a weapon is equipped.
         /// </summary>
         public class HudScript : SyncScript
         {
             public TextBlock AmmoText { get; set; } = null!;
+            public TextBlock HealthText { get; set; } = null!;
             public Canvas canvas {get; set; } = null!;
 
-            private readonly EventReceiver _weaponChanged = new(GameEvents.WeaponEquipped);
+            private PlayerRegistry _registry = null!;
 
-            // Non-generic signal receiver. None = latest-wins (we only care that it changed).
-            private readonly EventReceiver _ammoChanged = new(GameEvents.AmmoChanged);
-            private IPlayerStatus _status = null!;
+            private int _lastAmmo = int.MinValue;
+            private bool _lastReloading;
+            private int _lastHealth = int.MinValue;
+            private bool _lastVisible;
 
             public override void Start()
             {
-                _status = Services.GetSafeServiceAs<IPlayerStatus>();
-                Refresh(); // initial paint, in case the gun broadcast before we started
+                _registry = Services.GetSafeServiceAs<PlayerRegistry>();
+                canvas.Visibility = Visibility.Collapsed;   // until spawn
             }
 
             public override void Update()
             {
-                if (_weaponChanged.TryReceive())
-                    Refresh();
+                var local = _registry.LocalPlayer;
 
+                bool visible = local != null;
+                if (visible != _lastVisible)
+                {
+                    _lastVisible = visible;
+                    canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                }
+                if (local == null) return;
 
-                if (_ammoChanged.TryReceive())
-                    Refresh();
-            }
+                int health = local.Status?.Health.Current ?? 0;
+                if (health != _lastHealth)
+                {
+                    _lastHealth = health;
+                    HealthText.Text = $"HP {health}";
+                }
 
-            private void Refresh()
-            {
-                canvas.Visibility = _status.WeaponEquipped ? Visibility.Visible : Visibility.Collapsed;
-                AmmoText.Text = $"{_status.CurrentAmmo}/{_status.MagazineCapacity}";
+                int ammo = local.IsArmed ? local.Ammo : -1;
+                if (ammo != _lastAmmo || local.IsReloading != _lastReloading)
+                {
+                    _lastAmmo = ammo;
+                    _lastReloading = local.IsReloading;
+                    AmmoText.Text = !local.IsArmed ? "--"
+                        : local.IsReloading ? "RELOADING"
+                        : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
+                }
             }
         }
     }

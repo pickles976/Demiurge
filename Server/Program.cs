@@ -5,8 +5,8 @@ namespace Demiurge.GameServer
 {
     internal class Program
     {
-        private const float TickRate = 30f;
-        private const float FixedDt = 1f / TickRate;
+
+        private const float FixedDt = NetworkConfig.FixedDt;
 
         private static void Main()
         {

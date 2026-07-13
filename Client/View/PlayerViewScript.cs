@@ -9,6 +9,7 @@ using Stride.Animations;
 
 public class PlayerViewScript : SyncScript
 {
+    public required PlayerRegistry Registry {get; init;}
     public required Player Player { get; init; }
 
     public PlayerStateFlags State;
@@ -21,7 +22,28 @@ public class PlayerViewScript : SyncScript
 
     public override void Update()
     {
-        Entity.Transform.Position = Player.Position.ToStride();
+
+        switch (Player)
+        {
+            case RemotePlayer remote:
+                Entity.Transform.Position = 
+                    remote.Snapshots.GetInterpolated(Registry.RenderTick, remote.Position).ToStride();
+                break;
+            case LocalPlayer local:
+                // Sim position moves in 30Hz steps and jumps on reconciliation corrections;
+                // ease the visual toward it, but snap if the error is too big to glide.
+                var target = local.Position.ToStride();
+                var current = Entity.Transform.Position;
+                float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+
+                if ((target - current).LengthSquared() > 2f * 2f)
+                    Entity.Transform.Position = target;
+                else
+                    Entity.Transform.Position = Vector3.Lerp(current, target, 1f - MathF.Exp(-20f * dt));
+                break;
+
+        }
+
         Entity.Transform.Rotation = Quaternion.RotationY(Player.Yaw);
         State = Player.State;
 

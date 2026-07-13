@@ -17,40 +17,34 @@ https://github.com/stride3d/stride/issues/2496
 1. ~~Move the player~~
 2. ~~Camera controls~~
 3. ~~Shooting~~
+4. ~~Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)~~
 
-4. Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)
-- [x] separate out client and backend (netcode / sim / view layers)
-- [x] networking diagram
-- [x] server-authoritative movement (inputs up, positions down, shared PlayerMovement.Step)
-- [x] sync rotation
-- [x] sync animations: send InputButtons up, server derives outcome flags (Shooting/Reloading/Jumping) in shared Common code, broadcast State down — see NETWORKING_TODO.md §3 (inputs vs outcomes)
-- [ ] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
-- [ ] prediction reconciliation (server acks Sequence, client replays unacked inputs)
-- [ ] validate inputs server-side: clamp Intent to unit length (the real speed hack), drop Moving from the wire (derive from Intent); button-like flags (Sprint/Crouch/Aim) stay client-sent until they gain a cost like stamina
+Go through and trace the object syncing logic and document how it works
 
-- [ ] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
+- [ ] objects
+    - [ ] spawning
+    - [ ] syncing
 
-- [ ] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
-- [ ] sync shooting (server-authoritative hitscan + lag compensation)
-- [ ] sync health and stuff
-
-5. Generate a map with perlin noise
-6. Simple UI for playing with noise
-
-7. PVP Mechanics
+5. PVP Mechanics
+- [ ] add helmet
+- [ ] add armor
 - [ ] Player health
     - [ ] spawn crates with health
-    - [ ] damage crates when hit by bullet
-    - [ ] destroy crates when HP < 0.0
-    - [ ] add this logic to players
     - [ ] add health pack pickups
+    - [ ] variable lookahead from equipped weapon
+    - [ ] pistol pickup
+    - [ ] grenade pickup
+    - [ ] sniper rifle
+    - [ ] shotgun
+
+6. Generate a map with perlin noise
+7. Simple UI for playing with noise
+7a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
+
 8. Play around with scripting
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 
-9. Add inventory and pickups
-    - [ ] AK
-    - [ ] sniper rifle
-    - [ ] shotgun
+9. Add inventory UI
 10. Host server and test with buddies
 - [ ] digital ocean droplet
 - [ ] hook up scrungy.com domain name

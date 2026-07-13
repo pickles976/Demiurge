@@ -7,6 +7,29 @@ namespace Demiurge
     public static class NetworkConfig
     {
         public const ushort Port = 7777;
+
+        /// <summary>Server simulation ticks per second. Everything tick-related —
+        /// the server's fixed timestep, snapshot history windows, renderTick math —
+        /// must derive from this so client and server can't drift apart.</summary>
+        public const int TickRate = 30;
+        public const float FixedDt = 1f / TickRate;
+
+        /// <summary>
+        /// How far behind the newest snapshot remote players are rendered.
+        /// Ther server's rewind gate needs this number as well.
+        /// </summary>
+        public const int InterpolationDelayTicks = 3;
+
+        /// <summary>
+        /// Oldest client view the server will rewind to when validating a shot.
+        /// Matches snapshot buffer's 1s of retention.
+        /// </summary>
+        public const int MaxRewindTicks = TickRate;
+
+        // --- Fake network conditions, client inbound only ---
+        // Non-zero latency holds every received message for latency +- jitter before it reaches the sim.
+        public static readonly float SimulatedLatencySeconds = 0f;
+        public static readonly float SimulatedJitterSeconds = 0f; 
     }
 
     // One enum per direction. The ushort value IS the wire protocol —
@@ -15,13 +38,21 @@ namespace Demiurge
     {
         Welcome = 1,
         PlayerSpawn,
+        PlayerDespawn,
         PlayerPosition,
         PlayerStatus,
+        ObjectSpawn,
+        ObjectDespawn,
+        ObjectState,
+        PlayerFired,
+        HitConfirm
     }
 
     public enum ClientToServerId : ushort
     {
         PlayerInput = 1,
+        PlayerFire,
+        PlayerReload
     }
 
     public static class MessageExtensions

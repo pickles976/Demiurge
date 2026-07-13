@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Demiurge;
 using Demiurge.GameClient;
 
@@ -8,12 +9,24 @@ public class PlayerRegistry
 
     public LocalPlayer? LocalPlayer {get; private set;}
     public event Action<Player>? PlayerJoined; // sim -> view boundary
+    public event Action<Player>? PlayerLeft;
+
+
+    // Shared interpolation clock. 
+    private uint newestTick;
+    private long newestArrival;
+
+    public double RenderTick => newestTick
+        + ((Stopwatch.GetTimestamp() - newestArrival) / (double)Stopwatch.Frequency) * NetworkConfig.TickRate // fraction
+        - NetworkConfig.InterpolationDelayTicks;
 
     // Add listeners
     public PlayerRegistry(NetworkManager network)
     {
         this.network = network;
+        newestArrival = Stopwatch.GetTimestamp();
         network.PlayerSpawned += OnPlayerSpawned;
+        network.PlayerDespawned += OnPlayerDespawned;
         network.PlayerPositionReceived += OnPlayerPosition;
     }
 
@@ -27,16 +40,36 @@ public class PlayerRegistry
         PlayerJoined?.Invoke(player);
     }
 
+    private void OnPlayerDespawned(PlayerDespawnData data)
+    {
+        Player player = players[data.PlayerId];
+        players.Remove(data.PlayerId);
+        PlayerLeft?.Invoke(player);
+    }
+
     private void OnPlayerPosition(PlayerPositionData data)
     {
-        // Prediction owns the local player's position until reconciliation is in;
-        // the server also excludes us from the broadcast, so this is a belt-and-braces guard.
-        if (data.PlayerId == network.ClientId) return;
 
-        if (players.TryGetValue(data.PlayerId, out var player)) {
-            player.Position = data.Position;
-            player.Yaw = data.Yaw;
-            player.State = data.State;
+        if (data.Tick > newestTick)
+        {
+            newestTick = data.Tick;
+            newestArrival = Stopwatch.GetTimestamp();
         }
+
+        if (!players.TryGetValue(data.PlayerId, out var player)) return;
+
+        switch (player)
+        {
+            case LocalPlayer local:
+                local.Reconcile(data.Position, data.LastProcessedSequence);
+                break;
+            case RemotePlayer remote:
+                remote.Snapshots.Store(data.Tick, data.Position);
+                remote.Position = data.Position;
+                remote.Yaw = data.Yaw;
+                remote.State = data.State;
+                break;
+        }
+
     }
 }

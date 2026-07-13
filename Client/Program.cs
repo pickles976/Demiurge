@@ -56,6 +56,35 @@ using var game = new Game();
 // how does this work?
 var network = new NetworkManager();
 var registry = new PlayerRegistry(network);
+var objectRegistry = new ObjectRegistry(network);
+
+// Bridge the two registries: objects owned by our client id attach to the local
+// player. Sim-to-sim glue lives here in the composition root.
+void LinkOwned(LocalPlayer local, NetObject obj)
+{
+    if (obj.Owner.PlayerId != network.ClientId) return;
+    if (obj.Type == Demiurge.ObjectType.EquippedWeapon) local.Equip(obj);
+    if (obj.Type == Demiurge.ObjectType.PlayerStatus) local.Status = obj;
+}
+
+objectRegistry.ObjectSpawned += obj =>
+{
+    if (registry.LocalPlayer is {} local) LinkOwned(local, obj);
+};
+// The server spawns our PlayerStatus object BEFORE announcing our player, so its
+// ObjectSpawned fires while LocalPlayer is still null. Backfill on spawn: link any
+// owned objects that arrived first.
+registry.PlayerJoined += player =>
+{
+    if (player is not LocalPlayer local) return;
+    foreach (var obj in objectRegistry.Objects) LinkOwned(local, obj);
+};
+objectRegistry.ObjectDespawned += obj =>
+{
+    if (registry.LocalPlayer is not {} local) return;
+    if (obj.Type == Demiurge.ObjectType.EquippedWeapon) local.Unequip(obj);
+    if (ReferenceEquals(local.Status, obj)) local.Status = null;
+};
 
 game.Services.AddService(network);
 game.Services.AddService(registry);
@@ -190,12 +219,15 @@ void Start(Scene rootScene)
     }
 
     var viewFactory = new PlayerViewFactory(game, rootScene, registry);
+    var ObjectViewFactory = new ObjectViewFactory(game, rootScene, objectRegistry);
 
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
     cameraEntity.Add(new LocalPlayerController {CameraEntity = cameraEntity, Registry = registry});
     cameraEntity.Add(new ThirdPersonCameraScript{Registry = registry});
     cameraEntity.Add(new CursorReticleScript());
+    cameraEntity.Add(new AimLineScript { Registry = registry });
+    cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
 
     network.Connect();
 
