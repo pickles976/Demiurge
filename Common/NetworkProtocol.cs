@@ -44,7 +44,8 @@ namespace Demiurge
         ObjectSpawn,
         ObjectDespawn,
         ObjectState,
-        PlayerFired
+        PlayerFired,
+        HitConfirm
     }
 
     public enum ClientToServerId : ushort

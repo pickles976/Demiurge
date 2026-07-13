@@ -28,6 +28,7 @@ namespace Demiurge.GameClient
         public event Action<ObjectStateData>? ObjectStateReceived;
 
         public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
+        public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
 
         private void Dispatch(Action deliver)
         {
@@ -113,6 +114,10 @@ namespace Demiurge.GameClient
                 case ServerToClientId.PlayerFired:
                     var fired = e.Message.GetSerializable<PlayerFiredData>();
                     Dispatch(() => PlayerFired?.Invoke(fired));
+                    break;
+                case ServerToClientId.HitConfirm:
+                    var confirm = e.Message.GetSerializable<HitConfirmData>();
+                    Dispatch(() => HitConfirmed?.Invoke(confirm));
                     break;
             }
         }

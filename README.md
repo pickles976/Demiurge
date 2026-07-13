@@ -19,12 +19,6 @@ https://github.com/stride3d/stride/issues/2496
 3. ~~Shooting~~
 4. Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)
 
-
-- [ ] sync shooting (server-authoritative hitscan + lag compensation)
-    - [ ] rewind
-
-- [ ] simulate latency and jitter
-
 Go through and trace the object syncing logic and document how it works
 
 - [ ] movement 

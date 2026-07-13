@@ -93,6 +93,12 @@ namespace Demiurge.GameServer
                     ? (ushort)(hit.Health.Current - stats.Damage)
                     : (ushort)0;
                 hit.Dirty |= NetComponents.Health;   // the object pipeline replicates the rest
+
+                // Tell the shooter it landed. Unreliable + shooter-only: cosmetic feedback,
+                // the victim's replicated Health remains the truth.
+                Message confirm = Message.Create(MessageSendMode.Unreliable, ServerToClientId.HitConfirm);
+                confirm.AddSerializable(new HitConfirmData { TargetNetworkId = hit.NetworkId, Damage = stats.Damage });
+                server.Send(confirm, player.Id);
             }
 
             // Cosmetic rebroadcast for remote tracers/audio. Unreliable: a lost
