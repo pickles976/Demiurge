@@ -21,14 +21,9 @@ https://github.com/stride3d/stride/issues/2496
 
 Go through and trace the object syncing logic and document how it works
 
-- [ ] movement 
-    - [ ] local
-    - [ ] remote
 - [ ] objects
     - [ ] spawning
     - [ ] syncing
-- [ ] shooting
-    - [ ] rewind
 
 5. PVP Mechanics
 - [ ] add helmet
@@ -36,6 +31,7 @@ Go through and trace the object syncing logic and document how it works
 - [ ] Player health
     - [ ] spawn crates with health
     - [ ] add health pack pickups
+    - [ ] variable lookahead from equipped weapon
     - [ ] pistol pickup
     - [ ] grenade pickup
     - [ ] sniper rifle

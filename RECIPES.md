@@ -62,6 +62,64 @@ Server→client is the mirror: `ServerToClientId` append, struct, a
 `NetworkManager` event + dispatch case, and a subscriber in the sim (registry) or
 composition root — never directly in a view script.
 
+### Parent an item to the player model (helmet, back slot, off-hand)
+
+The pattern already exists once — EquippedWeapon — and it generalizes by turning
+its one hardcoded case into a socket table. The split that keeps it general: the
+wire says WHOSE body (the `Owner` component); the client decides WHERE on the
+body. Bone name and seat offset are cosmetic, so they stay off the wire — same
+reason WeaponConfig's damage numbers do.
+
+1. `Client/View/WeaponScripts.cs`: generalize `WeaponAttachScript` into an
+   `AttachToOwnerScript` with a `Socket` init property, plus a socket table:
+   `Socket.RightHand / Head / Back → (bone NodeName, seat position, seat rotation)`.
+   The current right_hand values become the first row. Bone names come from the
+   rig — dump the gltf's node names if unsure.
+2. `Client/View/ObjectViewFactory.cs`: the builder picks the socket:
+   `new AttachToOwnerScript { Object = obj, Socket = Socket.Head }`.
+3. Server: spawn with `NetComponents.Owner` in the mask and set
+   `obj.Owner = new OwnerState { PlayerId = ... }` inside `init`
+   (`WeaponSystem.TryPickup` is the model).
+4. Despawn it when the owner leaves, like `WeaponSystem.DespawnFor`. Miss this
+   and every client keeps an orphan view retrying its attach every frame, forever.
+
+Rules that make it work:
+
+- **No Transform in the mask.** The bone link owns the entity's transform; a
+  NetTransformScript would fight it (same conflict the pickup builder suppresses
+  for PickupBobScript). EquippedWeapon spawns with `Weapon | Owner` only — copy that.
+- **Keep the entity at the scene root.** ModelNodeLinkComponent drives the world
+  transform from the bone regardless of hierarchy, and DestroyView finds views
+  by name at the root.
+- **Keep the retry loop.** Reliable messages aren't ordered across each other, so
+  the item can arrive before its owner's view exists. Attaching in Update until
+  the owner appears is the fix, not a hack.
+- The `attached` flag latches once. If an item can change owners (drop, then
+  someone else grabs it), don't latch: watch `Object.Owner.PlayerId` and on
+  change remove the ModelNodeLinkComponent and re-attach.
+- If one object must move between sockets at runtime (rifle in hands vs. slung
+  on back), the socket stops being cosmetic — append an `Attachment` component
+  carrying a socket id, via the replicated-component recipe above.
+
+### Give the player a stat (health, armor)
+
+Player stats already have a home: the server spawns each player an
+`ObjectType.PlayerStatus` object (`GameWorld.AddPlayer`, mask `Owner | Health`),
+and the client wires it to `LocalPlayer.Status` (Program.cs). A new stat is a
+component on that object — no new message type.
+
+1. Follow the replicated-component recipe (its ArmorState example is literally this).
+2. Server: add the bit to the PlayerStatus spawn mask, set the value in `init`;
+   on change, write the field and set `status.Dirty |= NetComponents.Armor`
+   (how damage flows today — GameWorld dirties Health, the object pipeline does
+   the rest).
+3. Client: read it off `LocalPlayer.Status`. For the HUD, keep the A+B pattern
+   from the `IPlayerStatus` doc comment: write the shared state, broadcast the
+   `GameEvents` signal, HUD re-reads — never polls.
+4. Visible-to-everyone on/off state (helmet on the model) may not need a stat at
+   all: if the helmet IS an owned object (recipe above), its existence is the
+   state, and you get the visual for free.
+
 ### The habits that keep it working
 
 - Server validates everything a client sends; the client predicts with the same
