@@ -25,6 +25,11 @@ namespace Demiurge
         /// Matches snapshot buffer's 1s of retention.
         /// </summary>
         public const int MaxRewindTicks = TickRate;
+
+        // --- Fake network conditions, client inbound only ---
+        // Non-zero latency holds every received message for latency +- jitter before it reaches the sim.
+        public static readonly float SimulatedLatencySeconds = 0f;
+        public static readonly float SimulatedJitterSeconds = 0f; 
     }
 
     // One enum per direction. The ushort value IS the wire protocol —

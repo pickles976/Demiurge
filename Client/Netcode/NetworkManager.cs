@@ -6,6 +6,12 @@ namespace Demiurge.GameClient
 {
     public class NetworkManager
     {
+
+        private readonly PriorityQueue<Action, double> delayed = new();
+        private readonly Random rng = new();
+        private static double Now => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+
+
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
         private readonly Client client = new();
 
@@ -23,7 +29,15 @@ namespace Demiurge.GameClient
 
         public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
 
+        private void Dispatch(Action deliver)
+        {
+            // Call immediately
+            if (NetworkConfig.SimulatedLatencySeconds <= 0f) { deliver(); return; }
 
+            double due = Now + NetworkConfig.SimulatedLatencySeconds
+                + (rng.NextDouble() * 2.0 - 1.0) * NetworkConfig.SimulatedJitterSeconds;
+            delayed.Enqueue(deliver, due);
+        }
 
 
         public void Connect()
@@ -34,7 +48,12 @@ namespace Demiurge.GameClient
         }
 
         /// <summary>Pump once per frame from Program.cs Update().</summary>
-        public void Update() => client.Update();
+        public void Update()
+        {
+            client.Update();
+            while (delayed.TryPeek(out _, out double due) && due <= Now)
+                delayed.Dequeue().Invoke();
+        }
 
         // The ONLY place the rest of the client can send from.
         public void SendInput(PlayerInputData input)
@@ -59,31 +78,41 @@ namespace Demiurge.GameClient
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {
+            // Decode NOW (Riptide reuses the Message after this returns), deliver
+            // through Dispatch — immediately, or late when fake latency is on.
             switch ((ServerToClientId)e.MessageId)
             {
                 case ServerToClientId.Welcome:
-                    ClientId = e.Message.GetSerializable<WelcomeData>().ClientId;
+                    var welcome = e.Message.GetSerializable<WelcomeData>();
+                    Dispatch(() => ClientId = welcome.ClientId);
                     break;
                 case ServerToClientId.PlayerSpawn:
-                    PlayerSpawned?.Invoke(e.Message.GetSerializable<PlayerSpawnData>());
+                    var spawn = e.Message.GetSerializable<PlayerSpawnData>();
+                    Dispatch(() => PlayerSpawned?.Invoke(spawn));
                     break;
                 case ServerToClientId.PlayerDespawn:
-                    PlayerDespawned?.Invoke(e.Message.GetSerializable<PlayerDespawnData>());
+                    var despawn = e.Message.GetSerializable<PlayerDespawnData>();
+                    Dispatch(() => PlayerDespawned?.Invoke(despawn));
                     break;
                 case ServerToClientId.PlayerPosition:
-                    PlayerPositionReceived?.Invoke(e.Message.GetSerializable<PlayerPositionData>());
+                    var position = e.Message.GetSerializable<PlayerPositionData>();
+                    Dispatch(() => PlayerPositionReceived?.Invoke(position));
                     break;
                 case ServerToClientId.ObjectSpawn:
-                    ObjectSpawned?.Invoke(e.Message.GetSerializable<ObjectSpawnData>());
+                    var objSpawn = e.Message.GetSerializable<ObjectSpawnData>();
+                    Dispatch(() => ObjectSpawned?.Invoke(objSpawn));
                     break;
                 case ServerToClientId.ObjectDespawn:
-                    ObjectDespawned?.Invoke(e.Message.GetSerializable<ObjectDespawnData>());
+                    var objDespawn = e.Message.GetSerializable<ObjectDespawnData>();
+                    Dispatch(() => ObjectDespawned?.Invoke(objDespawn));
                     break;
                 case ServerToClientId.ObjectState:
-                    ObjectStateReceived?.Invoke(e.Message.GetSerializable<ObjectStateData>());
+                    var objState = e.Message.GetSerializable<ObjectStateData>();
+                    Dispatch(() => ObjectStateReceived?.Invoke(objState));
                     break;
                 case ServerToClientId.PlayerFired:
-                    PlayerFired?.Invoke(e.Message.GetSerializable<PlayerFiredData>());
+                    var fired = e.Message.GetSerializable<PlayerFiredData>();
+                    Dispatch(() => PlayerFired?.Invoke(fired));
                     break;
             }
         }
