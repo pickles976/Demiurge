@@ -1,4 +1,4 @@
-using System.Diagnostics.Tracing;
+using System.Diagnostics;
 using Demiurge;
 using Demiurge.GameClient;
 
@@ -11,10 +11,20 @@ public class PlayerRegistry
     public event Action<Player>? PlayerJoined; // sim -> view boundary
     public event Action<Player>? PlayerLeft;
 
+
+    // Shared interpolation clock. 
+    private uint newestTick;
+    private long newestArrival;
+
+    public double RenderTick => newestTick
+        + ((Stopwatch.GetTimestamp() - newestArrival) / (double)Stopwatch.Frequency) * NetworkConfig.TickRate // fraction
+        - NetworkConfig.InterpolationDelayTicks;
+
     // Add listeners
     public PlayerRegistry(NetworkManager network)
     {
         this.network = network;
+        newestArrival = Stopwatch.GetTimestamp();
         network.PlayerSpawned += OnPlayerSpawned;
         network.PlayerDespawned += OnPlayerDespawned;
         network.PlayerPositionReceived += OnPlayerPosition;
@@ -39,6 +49,12 @@ public class PlayerRegistry
 
     private void OnPlayerPosition(PlayerPositionData data)
     {
+
+        if (data.Tick > newestTick)
+        {
+            newestTick = data.Tick;
+            newestArrival = Stopwatch.GetTimestamp();
+        }
 
         if (!players.TryGetValue(data.PlayerId, out var player)) return;
 

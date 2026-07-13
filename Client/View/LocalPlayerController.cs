@@ -48,7 +48,7 @@ public class LocalPlayerController : SyncScript
 		// where "hold to fire at 10/s" comes from. Aiming-only, so the fire direction
 		// (the yaw the aim code just pointed at the cursor) is always meaningful.
 		if (aiming && Input.IsMouseButtonDown(MouseButton.Left))
-			local.TryFire(new Vector3(MathF.Sin(local.Yaw), 0f, MathF.Cos(local.Yaw)));
+			local.TryFire(new Vector3(MathF.Sin(local.Yaw), 0f, MathF.Cos(local.Yaw)), Registry.RenderTick);
 
 		if (Input.IsKeyPressed(Keys.R))
 			local.TryReload();

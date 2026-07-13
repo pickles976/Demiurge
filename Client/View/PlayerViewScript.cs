@@ -9,6 +9,7 @@ using Stride.Animations;
 
 public class PlayerViewScript : SyncScript
 {
+    public required PlayerRegistry Registry {get; init;}
     public required Player Player { get; init; }
 
     public PlayerStateFlags State;
@@ -25,9 +26,8 @@ public class PlayerViewScript : SyncScript
         switch (Player)
         {
             case RemotePlayer remote:
-                double renderTick = remote.Snapshots.NewestTick
-                    + (remote.Snapshots.SecondsSinceNewest * NetworkConfig.TickRate) - 3.0;
-                Entity.Transform.Position = remote.Snapshots.GetInterpolated(renderTick, remote.Position).ToStride();
+                Entity.Transform.Position = 
+                    remote.Snapshots.GetInterpolated(Registry.RenderTick, remote.Position).ToStride();
                 break;
             case LocalPlayer local:
                 // Sim position moves in 30Hz steps and jumps on reconciliation corrections;

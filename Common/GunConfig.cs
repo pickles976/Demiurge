@@ -7,5 +7,6 @@ namespace Demiurge
     {
         public const float HitRadius = 0.6f;
         public const float MuzzleHeight = 0.4f;
+        public const float PlayerCenterHeight = 0.5f;
     }
 }

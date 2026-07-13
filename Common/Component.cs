@@ -8,7 +8,8 @@ namespace Demiurge
         Crate = 1,
         TrainingDummy,
         WeaponPickup,
-        EquippedWeapon
+        EquippedWeapon,
+        PlayerStatus
     }
 
     /// <summary>Which gun a WeaponState describes. Wire protocol (rides inside

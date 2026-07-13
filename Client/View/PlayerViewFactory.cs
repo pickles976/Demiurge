@@ -9,11 +9,13 @@ public class PlayerViewFactory
 {
     private readonly Game game;
     private readonly Scene scene;
+    private readonly PlayerRegistry registry;
 
     public PlayerViewFactory(Game game, Scene scene, PlayerRegistry registry)
     {
         this.game = game;
         this.scene = scene;
+        this.registry = registry;
         registry.PlayerJoined += CreatePlayerView;
         registry.PlayerLeft += DestroyPlayerView;
     }
@@ -30,7 +32,7 @@ public class PlayerViewFactory
         var entity = new Entity($"Player_{player.Id}")
         {
             new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf")),
-            new PlayerViewScript {Player = player},
+            new PlayerViewScript {Player = player, Registry = registry},
             animations,
         };
         entity.Transform.Position = player.Position.ToStride();

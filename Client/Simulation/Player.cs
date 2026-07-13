@@ -25,6 +25,9 @@ public class LocalPlayer : Player
     private uint sequence;
     private float accumulator;
 
+    public NetObject? Status {get; set;}
+
+
     // Weapon. Null until the server spawns an EquippedWeapon object owned by us —
     // the composition root bridges ObjectRegistry spawns to Equip/Unequip. Ammo and
     // timers are PREDICTED with the same WeaponConfig numbers the server enforces;
@@ -58,7 +61,7 @@ public class LocalPlayer : Player
         Ammo = 0;
     }
 
-    public void TryFire(Vector3 direction)
+    public void TryFire(Vector3 direction, double renderTick)
     {
         if (!IsArmed || cooldownTicks > 0 || IsReloading || Ammo == 0) return;
 
@@ -71,6 +74,7 @@ public class LocalPlayer : Player
             Sequence = sequence,
             Origin = origin,
             Direction = direction,
+            RenderTick = (float)renderTick
         });
         ShotFired?.Invoke(origin, direction);
     }

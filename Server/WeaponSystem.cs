@@ -57,9 +57,12 @@ namespace Demiurge.GameServer
             player.WeaponId = weapon.NetworkId;
         }
 
-        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick)
+        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick, IEnumerable<ServerPlayer> players)
         {
-            if (!IsFinite(fire.Origin) || !IsFinite(fire.Direction)) return;
+            if (!IsFinite(fire.Origin) || !IsFinite(fire.Direction) || !float.IsFinite(fire.RenderTick)) return;
+
+            // Reject views from the future or older than max history
+            if (fire.RenderTick > tick || fire.RenderTick < (double)tick - NetworkConfig.MaxRewindTicks) return;
             if (fire.Direction == Vector3.Zero) return;
 
             // Unarmed players can't fire; the equipped weapon object is the source
@@ -83,7 +86,7 @@ namespace Demiurge.GameServer
             var direction = Vector3.Normalize(fire.Direction);
 
             // A healthless object (a pickup) still blocks the shot; it just takes no damage.
-            if (Raycast(fire.Origin, direction, stats.MaxRange) is { } hit
+            if (Raycast(fire.Origin, direction, stats.MaxRange, player, players, fire.RenderTick) is { } hit
                 && hit.Has.HasFlag(NetComponents.Health))
             {
                 hit.Health.Current = hit.Health.Current > stats.Damage
@@ -130,7 +133,7 @@ namespace Demiurge.GameServer
             player.WeaponId = 0;
         }
 
-        private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange)
+        private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange, ServerPlayer shooter, IEnumerable<ServerPlayer> players, double renderTick)
         {
             ServerObject? nearest = null;
             float nearestT = float.MaxValue;
@@ -145,6 +148,22 @@ namespace Demiurge.GameServer
                 nearest = obj;
                 nearestT = t;
             }
+
+            foreach (var player in players)
+            {
+                if (player == shooter || player.Status == null) continue;
+
+                // It's rewind time
+                var seen = player.History.GetInterpolated(renderTick, player.Position);
+                var center = seen + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+
+                if (GunMath.HitDistance(origin, direction, center, maxRange) is not {} t) continue;
+                if (t >= nearestT) continue;
+
+                nearest = player.Status;
+                nearestT = t;
+            }
+
             return nearest;
         }
 

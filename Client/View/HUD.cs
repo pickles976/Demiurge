@@ -44,8 +44,19 @@ namespace Demiurge
                 Margin = new Thickness(6, 0, 0, 0),
             };
 
-            // Icon + text laid out side by side.
+            var healthText = new TextBlock
+            {
+                Text = "HP —",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 24,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 12, 0),
+            };
+
+            // Health left of the bullet icon, icon + ammo text side by side.
             var ammoPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            ammoPanel.Children.Add(healthText);
             ammoPanel.Children.Add(bulletImage);
             ammoPanel.Children.Add(ammoText);
 
@@ -68,9 +79,10 @@ namespace Demiurge
                     Page = new UIPage { RootElement = canvas },
                     RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
                 },
-                new HudScript { 
+                new HudScript {
                     canvas = canvas,
-                    AmmoText = ammoText },
+                    AmmoText = ammoText,
+                    HealthText = healthText },
             };
 
             return uiEntity;
@@ -182,21 +194,23 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Ammo readout for the local player. Reads the sim directly (the same
-        /// netcode-writes-view-reads contract as the other view scripts) and repaints
-        /// only when a value changes, so steady-state frames allocate nothing.
-        /// Hidden until the local player spawns — every player carries a gun now,
-        /// so "weapon equipped" is simply "spawned".
+        /// Health + ammo readout for the local player. Reads the sim directly (the
+        /// same netcode-writes-view-reads contract as the other view scripts) and
+        /// repaints only when a value changes, so steady-state frames allocate
+        /// nothing. Shown from spawn — health is always relevant; ammo reads "--"
+        /// until a weapon is equipped.
         /// </summary>
         public class HudScript : SyncScript
         {
             public TextBlock AmmoText { get; set; } = null!;
+            public TextBlock HealthText { get; set; } = null!;
             public Canvas canvas {get; set; } = null!;
 
             private PlayerRegistry _registry = null!;
 
-            private int _lastAmmo = -1;
+            private int _lastAmmo = int.MinValue;
             private bool _lastReloading;
+            private int _lastHealth = int.MinValue;
             private bool _lastVisible;
 
             public override void Start()
@@ -209,21 +223,30 @@ namespace Demiurge
             {
                 var local = _registry.LocalPlayer;
 
-                bool visible = local is { IsArmed: true };
+                bool visible = local != null;
                 if (visible != _lastVisible)
                 {
                     _lastVisible = visible;
                     canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
                 }
-                if (local is not { IsArmed: true }) return;
+                if (local == null) return;
 
-                if (local.Ammo == _lastAmmo && local.IsReloading == _lastReloading) return;
-                _lastAmmo = local.Ammo;
-                _lastReloading = local.IsReloading;
+                int health = local.Status?.Health.Current ?? 0;
+                if (health != _lastHealth)
+                {
+                    _lastHealth = health;
+                    HealthText.Text = $"HP {health}";
+                }
 
-                AmmoText.Text = local.IsReloading
-                    ? "RELOADING"
-                    : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
+                int ammo = local.IsArmed ? local.Ammo : -1;
+                if (ammo != _lastAmmo || local.IsReloading != _lastReloading)
+                {
+                    _lastAmmo = ammo;
+                    _lastReloading = local.IsReloading;
+                    AmmoText.Text = !local.IsArmed ? "--"
+                        : local.IsReloading ? "RELOADING"
+                        : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
+                }
             }
         }
     }

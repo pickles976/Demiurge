@@ -58,18 +58,32 @@ var network = new NetworkManager();
 var registry = new PlayerRegistry(network);
 var objectRegistry = new ObjectRegistry(network);
 
-// Bridge the two registries: an EquippedWeapon object owned by our client id IS
-// the local player's weapon. Sim-to-sim glue lives here in the composition root.
+// Bridge the two registries: objects owned by our client id attach to the local
+// player. Sim-to-sim glue lives here in the composition root.
+void LinkOwned(LocalPlayer local, NetObject obj)
+{
+    if (obj.Owner.PlayerId != network.ClientId) return;
+    if (obj.Type == Demiurge.ObjectType.EquippedWeapon) local.Equip(obj);
+    if (obj.Type == Demiurge.ObjectType.PlayerStatus) local.Status = obj;
+}
+
 objectRegistry.ObjectSpawned += obj =>
 {
-    if (obj.Type == Demiurge.ObjectType.EquippedWeapon && obj.Owner.PlayerId == network.ClientId
-        && registry.LocalPlayer is { } local)
-        local.Equip(obj);
+    if (registry.LocalPlayer is {} local) LinkOwned(local, obj);
+};
+// The server spawns our PlayerStatus object BEFORE announcing our player, so its
+// ObjectSpawned fires while LocalPlayer is still null. Backfill on spawn: link any
+// owned objects that arrived first.
+registry.PlayerJoined += player =>
+{
+    if (player is not LocalPlayer local) return;
+    foreach (var obj in objectRegistry.Objects) LinkOwned(local, obj);
 };
 objectRegistry.ObjectDespawned += obj =>
 {
-    if (obj.Type == Demiurge.ObjectType.EquippedWeapon && registry.LocalPlayer is { } local)
-        local.Unequip(obj);   // no-ops unless it was actually ours
+    if (registry.LocalPlayer is not {} local) return;
+    if (obj.Type == Demiurge.ObjectType.EquippedWeapon) local.Unequip(obj);
+    if (ReferenceEquals(local.Status, obj)) local.Status = null;
 };
 
 game.Services.AddService(network);

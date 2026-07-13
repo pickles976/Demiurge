@@ -13,6 +13,18 @@ namespace Demiurge
         /// must derive from this so client and server can't drift apart.</summary>
         public const int TickRate = 30;
         public const float FixedDt = 1f / TickRate;
+
+        /// <summary>
+        /// How far behind the newest snapshot remote players are rendered.
+        /// Ther server's rewind gate needs this number as well.
+        /// </summary>
+        public const int InterpolationDelayTicks = 3;
+
+        /// <summary>
+        /// Oldest client view the server will rewind to when validating a shot.
+        /// Matches snapshot buffer's 1s of retention.
+        /// </summary>
+        public const int MaxRewindTicks = TickRate;
     }
 
     // One enum per direction. The ushort value IS the wire protocol —

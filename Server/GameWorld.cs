@@ -38,14 +38,26 @@ namespace Demiurge.GameServer
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
 
             var player = new ServerPlayer { Id = clientId };
+            player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
+            obj =>
+            {
+                obj.Owner = new OwnerState { PlayerId = clientId};
+                obj.Health = new HealthState { Current = 100, Max = 100};
+            });
             players[clientId] = player;
             server.SendToAll(CreateSpawnMessage(player));      // announce the newcomer
         }
 
         public void RemovePlayer(ushort clientId)
         {
-            if (players.Remove(clientId, out var player) && player.WeaponId != 0)
-                objects.Despawn(player.WeaponId);                // weapon leaves with its owner
+                
+                
+            if (players.Remove(clientId, out var player))
+            {
+                weapons.DespawnFor(player);
+                if (player.Status != null) objects.Despawn(player.Status.NetworkId);
+            }
+
 
             Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.PlayerDespawn);
             message.AddSerializable(
@@ -60,7 +72,7 @@ namespace Demiurge.GameServer
         public void ApplyFire(ushort clientId, PlayerFireData fire)
         {
             if (players.TryGetValue(clientId, out var player))
-                weapons.ApplyFire(player, fire, _Tick);
+                weapons.ApplyFire(player, fire, _Tick, players.Values);
         }
 
         public void ApplyReload(ushort clientId)
@@ -108,6 +120,22 @@ namespace Demiurge.GameServer
                     player.Position = PlayerMovement.Step(player.Position, player.LastIntent, player.State, dt);
 
                 weapons.TryPickup(player);
+            }
+
+            // Save history
+            foreach (var player in players.Values)
+            {
+                player.History.Store(_Tick, player.Position);
+            }
+
+            // Death and respawn
+            foreach (var player in players.Values)
+            {
+                if (player.Status is not {} status || status.Health.Current > 0) continue;
+                player.Position = Vector3.Zero;
+                player.History.Clear();
+                status.Health.Current = status.Health.Max;
+                status.Dirty |= NetComponents.Health;
             }
 
             objects.BroadcastDirtyStatess(_Tick);

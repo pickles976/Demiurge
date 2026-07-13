@@ -17,38 +17,33 @@ https://github.com/stride3d/stride/issues/2496
 1. ~~Move the player~~
 2. ~~Camera controls~~
 3. ~~Shooting~~
-
 4. Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)
-- [x] separate out client and backend (netcode / sim / view layers)
-- [x] networking diagram
-- [x] server-authoritative movement (inputs up, positions down, shared PlayerMovement.Step)
-- [x] sync rotation
-- [x] sync animations: send InputButtons up, server derives outcome flags (Shooting/Reloading/Jumping) in shared Common code, broadcast State down — see NETWORKING_TODO.md §3 (inputs vs outcomes)
-- [x] interpolate remote players (tick-stamped snapshot buffer, render ~100ms in the past)
-- [x] delete on disconnect
 
-- [x] client-side prediction with true authoritative server
-- [x] validate inputs server-side: clamp Intent to unit length (the real speed hack), 
-
-- [x] object registry (NetworkId + ObjectType, spawn/despawn/state messages)
-- [x] gun as pickup/equip object (Weapon state flag; old shooting code: git show ec3fbd0:Client/Gun.cs)
-    - [x] create a little spinning AK-47 pickup
-    - [x] add client-side pickup logic
-- [ ] consolidate player and object logic, add health to players
 
 - [ ] sync shooting (server-authoritative hitscan + lag compensation)
     - [ ] rewind
 
 - [ ] simulate latency and jitter
-- [ ] client proxy for ensuring state sync works
 
 Go through and trace the object syncing logic and document how it works
+
+- [ ] movement 
+    - [ ] local
+    - [ ] remote
+- [ ] objects
+    - [ ] spawning
+    - [ ] syncing
+- [ ] shooting
+    - [ ] rewind
+    
 
 A. Interpolate remote players
 B. Predict Local players
 C. Rollback for PvP actions
 
 5. PVP Mechanics
+- [ ] add helmet
+- [ ] add armor
 - [ ] Player health
     - [ ] spawn crates with health
     - [ ] add health pack pickups

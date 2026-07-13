@@ -1,201 +1,282 @@
-# NEXT_STEPS.md — consolidating player & object netcode, splitting GameWorld
+# NEXT_STEPS.md — finishing server-side rewind: the test rig + HitConfirm
 
-Goal: after these four parts, players and objects share one replication machine, the
-server is three small classes instead of one god class, and Part 5 gives you the
-recipes to add components, weapons, objects, and messages **without help**. Every part
-ends in a state where both projects build and the two-client smoke test passes — do
-them in order, verify between parts, commit between parts.
+State of play: rewind itself is DONE. The shared interpolation clock
+(`PlayerRegistry.RenderTick`), the `RenderTick` stamp on `PlayerFireData`,
+`SnapshotBuffer` in Common, and the server's history + rewound raycast
+(`ServerPlayer.History`, the gate in `ApplyFire`, `Raycast` sampling
+`History.GetInterpolated`) are all in the codebase. What's left:
 
-Why this order: Parts 1–2 are behavior-neutral moves (safe, verifiable by "nothing
-changed"), Part 3 removes the last duplicated machinery on the client, and Part 4 —
-player health — is the payoff feature, built on the cleaned base so it lands in small
-focused classes instead of feeding the god class.
+1. **Part 1 — fake latency/jitter.** Rewind has never actually been *observed*
+   working — on localhost the rewind window is ~3 ticks and everything hits
+   regardless. This is the book's Chapter 7 test rig ("Simulating Real-World
+   Conditions", p. 228), and its verify section doubles as the rewind verify.
+2. **Part 2 — HitConfirm.** The shooter's only feedback today is watching the
+   victim's HP; this closes the loop.
 
-## Part 4 — Player health via the PlayerStatus object
-
-The consolidation payoff: players get replicated Health WITHOUT new message types,
-new registries, or touching the movement/prediction channel. Each player gets a
-companion object carrying their non-movement components — the same owner-linked
-pattern the equipped weapon already proved. When players later need more replicated
-state (armor, effects), it's an appended component bit on this same object.
-
-### 4a. Common
-
-Append to `ObjectType` in `Common/Component.cs` (append-only, as always):
+One loose end from the rewind implementation: `ApplyFire`'s gate never checks
+`float.IsFinite(fire.RenderTick)`. NaN compares false against both bounds, so it
+slips through — harmlessly (NaN render ticks make `GetInterpolated` fall back to
+the newest snapshot, i.e. no rewind), but the other float inputs all get the
+finite check, so add it to the gate for consistency:
 
 ```csharp
-public enum ObjectType : ushort {
-    Crate = 1,
-    TrainingDummy,
-    WeaponPickup,
-    EquippedWeapon,
-    PlayerStatus
+if (!float.IsFinite(fire.RenderTick)) return;
+```
+
+## Part 1 — Fake latency and jitter (the test rig)
+
+The book's Chapter 7 recipe: hold each incoming packet until `now + latency ±
+jitter`, then process it. Two constants in `NetworkConfig` switch it on — no tc/
+netem, no root, works the same on any machine.
+
+Where it hooks in: `NetworkManager.OnMessageReceived` is the single choke point
+where every server message becomes a typed event. Two constraints shape the
+implementation:
+
+- **Deserialize immediately, delay the delivery.** Riptide recycles the `Message`
+  object the moment the handler returns, so the queue must hold the decoded struct
+  (captured in a closure), never the `Message` itself.
+- **Delay only — never drop.** By the time we see a reliable message, Riptide's
+  transport has already acked it. A "simulated drop" here would be a permanent
+  loss the real network can't produce. (Real unreliable loss is still worth
+  testing occasionally — that's what netem is for.)
+
+Jitter makes deliveries reorder (the priority queue dequeues by due time, not
+arrival) — that's a feature: it stress-tests exactly the reordering tolerance the
+codebase claims (`SnapshotBuffer`'s stale-tick dedup, `ObjectRegistry`'s pending
+queue, the owned-object backfill in Program.cs).
+
+### 1a. The knobs — `Common/NetworkProtocol.cs`
+
+Add to `NetworkConfig` (`static readonly`, not `const`, so `if (… <= 0f)` doesn't
+trip unreachable-code warnings):
+
+```csharp
+// ---- test rig: fake network conditions, client inbound only ----
+// Non-zero latency holds every received message for latency ± jitter before
+// it reaches the sim. Inbound-only is enough for rewind testing: what rewind
+// compensates is the STALENESS OF THE CLIENT'S VIEW, which is inbound delay
+// + interpolation delay. Ship with both at 0.
+public static readonly float SimulatedLatencySeconds = 0f;   // try 0.08f
+public static readonly float SimulatedJitterSeconds = 0f;    // ± amplitude; try 0.02f
+```
+
+### 1b. The queue — `Client/Netcode/NetworkManager.cs`
+
+New members:
+
+```csharp
+// Fake-latency rig (see NetworkConfig.SimulatedLatencySeconds). Holds decoded
+// messages as ready-to-fire closures until their simulated arrival time.
+private readonly PriorityQueue<Action, double> delayed = new();
+private readonly Random rng = new();
+private static double Now => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+
+private void Dispatch(Action deliver)
+{
+    if (NetworkConfig.SimulatedLatencySeconds <= 0f) { deliver(); return; }
+    double due = Now + NetworkConfig.SimulatedLatencySeconds
+        + (rng.NextDouble() * 2.0 - 1.0) * NetworkConfig.SimulatedJitterSeconds;
+    delayed.Enqueue(deliver, due);
 }
 ```
 
-Add one global to `Common/GunConfig.cs` (the player hit-sphere center; a flat ray at
-MuzzleHeight 0.4 comfortably intersects a 0.6-radius sphere centered at 0.5):
+`Update` drains what's due after pumping the socket:
 
 ```csharp
-public const float PlayerCenterHeight = 0.5f;
+public void Update()
+{
+    client.Update();
+    while (delayed.TryPeek(out _, out double due) && due <= Now)
+        delayed.Dequeue().Invoke();
+}
 ```
 
-### 4b. Server
-
-`Server/ServerPlayer.cs`, add next to WeaponId:
-
-```csharp
-// The player's replicated component record (Health today; append bits later).
-public ServerObject? Status { get; set; }
-```
-
-`Server/GameWorld.cs`, in `AddPlayer`, replace the two player lines with:
+And every case in `OnMessageReceived` becomes deserialize-then-`Dispatch` (each
+case needs its own variable name — switch sections share one scope):
 
 ```csharp
-var player = new ServerPlayer { Id = clientId };
-player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
-    obj =>
+private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
+{
+    // Decode NOW (Riptide reuses the Message after this returns), deliver
+    // through Dispatch — immediately, or late when fake latency is on.
+    switch ((ServerToClientId)e.MessageId)
     {
-        obj.Owner = new OwnerState { PlayerId = clientId };
-        obj.Health = new HealthState { Current = 100, Max = 100 };
-    });
-players[clientId] = player;
-```
-
-In `RemovePlayer`, despawn it with the weapon:
-
-```csharp
-if (players.Remove(clientId, out var player))
-{
-    weapons.DespawnFor(player);
-    if (player.Status != null) objects.Despawn(player.Status.NetworkId);
-}
-```
-
-In `Tick`, after the player loop and before the dummy block — death and respawn:
-
-```csharp
-// Death + respawn: dead players teleport home with full health. The client's
-// reconciliation sees the teleport as a large correction and snaps to it.
-foreach (var player in players.Values)
-{
-    if (player.Status is not { } status || status.Health.Current > 0) continue;
-    player.Position = Vector3.Zero;
-    status.Health.Current = status.Health.Max;
-    status.Dirty |= NetComponents.Health;
-}
-```
-
-`Server/WeaponSystem.cs` — the raycast learns about players and returns the victim's
-STATUS object, so the existing damage code works unchanged (it just flips Health on a
-ServerObject, same as the dummy). Replace `Raycast` and update its call in
-`ApplyFire`:
-
-```csharp
-private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange,
-                              ServerPlayer shooter, IEnumerable<ServerPlayer> players)
-{
-    ServerObject? nearest = null;
-    float nearestT = float.MaxValue;
-
-    foreach (var obj in objects.All)
-    {
-        if (!obj.Has.HasFlag(NetComponents.Transform)) continue;
-        if (GunMath.HitDistance(origin, direction, obj.Transform.Position, maxRange) is not { } t) continue;
-        if (t >= nearestT) continue;
-        nearest = obj;
-        nearestT = t;
+        case ServerToClientId.Welcome:
+            var welcome = e.Message.GetSerializable<WelcomeData>();
+            Dispatch(() => ClientId = welcome.ClientId);
+            break;
+        case ServerToClientId.PlayerSpawn:
+            var spawn = e.Message.GetSerializable<PlayerSpawnData>();
+            Dispatch(() => PlayerSpawned?.Invoke(spawn));
+            break;
+        case ServerToClientId.PlayerDespawn:
+            var despawn = e.Message.GetSerializable<PlayerDespawnData>();
+            Dispatch(() => PlayerDespawned?.Invoke(despawn));
+            break;
+        case ServerToClientId.PlayerPosition:
+            var position = e.Message.GetSerializable<PlayerPositionData>();
+            Dispatch(() => PlayerPositionReceived?.Invoke(position));
+            break;
+        case ServerToClientId.ObjectSpawn:
+            var objSpawn = e.Message.GetSerializable<ObjectSpawnData>();
+            Dispatch(() => ObjectSpawned?.Invoke(objSpawn));
+            break;
+        case ServerToClientId.ObjectDespawn:
+            var objDespawn = e.Message.GetSerializable<ObjectDespawnData>();
+            Dispatch(() => ObjectDespawned?.Invoke(objDespawn));
+            break;
+        case ServerToClientId.ObjectState:
+            var objState = e.Message.GetSerializable<ObjectStateData>();
+            Dispatch(() => ObjectStateReceived?.Invoke(objState));
+            break;
+        case ServerToClientId.PlayerFired:
+            var fired = e.Message.GetSerializable<PlayerFiredData>();
+            Dispatch(() => PlayerFired?.Invoke(fired));
+            break;
     }
-
-    foreach (var player in players)
-    {
-        // Skip the shooter: the ray starts inside their own sphere and would
-        // register a self-hit at t ~ 0 on every shot.
-        if (player == shooter || player.Status == null) continue;
-
-        var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
-        if (GunMath.HitDistance(origin, direction, center, maxRange) is not { } t) continue;
-        if (t >= nearestT) continue;
-
-        nearest = player.Status;   // the hittable "body" IS the status object
-        nearestT = t;
-    }
-
-    return nearest;
 }
 ```
 
-`ApplyFire` gains a `players` parameter and passes it through — change the signature
-and the raycast call:
+A nice free property: the interpolation clock stamps `newestArrival` when
+`OnPlayerPosition` *runs* — i.e., on delayed delivery — so the fake latency flows
+into `RenderTick` exactly like real latency would. Nothing else needs to know the
+rig exists.
+
+**Verify Part 1 — this is also the rewind verify.** Two clients, both windows
+focused/visible (an unfocused Stride window throttles updates and the stutter
+reads like a netcode bug).
+
+1. **Constants at 0 first**: everything behaves exactly as before (the `Dispatch`
+   fast path never queues) — full health smoke test: HP 100 at spawn, 10-damage
+   steps, respawn at origin, late joiner sees correct health.
+2. **Latency `0.08f`, jitter `0.02f`, rebuild**: your own movement stays crisp
+   (prediction), remote players and object changes (pickups, HP) lag ~80ms but
+   stay smooth, reconciliation corrections stay quiet.
+3. **The money shot**: client B strafes continuously; client A puts the crosshair
+   dead on B's rendered model and fires. Hits must register (B's HP drops). For
+   contrast, aim where B "actually is" (ahead of the model) — that *misses*.
+   Without rewind the opposite would be true; that flip is rewind working.
+4. **Respawn ghost**: kill B, and as B teleports keep shooting the death spot —
+   HP must not drop on respawned-B (that's the respawn `History.Clear()`).
+5. Leave the constants on for Part 2's verify, then ship them back at `0f`.
+
+## Part 2 — HitConfirm: the shooter learns their shot landed
+
+Follows the server→client message recipe exactly (append the enum, the struct, a
+NetworkManager event + case, subscribe in the composition root — never in a view
+script). The payload rides to the shooter only, and it's **unreliable**: a
+hitmarker is cosmetic, and a lost one costs nothing.
+
+### 2a. Common
+
+`Common/NetworkProtocol.cs` — append to `ServerToClientId` (append-only, as
+always):
 
 ```csharp
-public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick, IEnumerable<ServerPlayer> players)
+PlayerFired,
+HitConfirm
 ```
 
-```csharp
-if (Raycast(fire.Origin, direction, stats.MaxRange, player, players) is { } hit
-    && hit.Has.HasFlag(NetComponents.Health))
-```
-
-and `GameWorld.ApplyFire` passes them:
+New file `Common/Messages/HitConfirmData.cs`:
 
 ```csharp
-weapons.ApplyFire(player, fire, _Tick, players.Values);
-```
+using Riptide;
 
-### 4c. Client
-
-`Client/Simulation/Player.cs`, add to `LocalPlayer` next to the Weapon block:
-
-```csharp
-// Our replicated component record (Health etc). Set by the composition-root
-// bridge when the server's PlayerStatus object for us spawns. Netcode writes
-// (via ObjectRegistry), view reads — HUD included.
-public NetObject? Status { get; set; }
-```
-
-`Client/Program.cs` — extend the existing registry bridge to route both owned object
-types (this REPLACES the current two subscriptions):
-
-```csharp
-// Bridge the two registries: objects owned by our client id attach to the local
-// player. Sim-to-sim glue lives here in the composition root.
-objectRegistry.ObjectSpawned += obj =>
+namespace Demiurge
 {
-    if (registry.LocalPlayer is not { } local || obj.Owner.PlayerId != network.ClientId) return;
-    if (obj.Type == Demiurge.ObjectType.EquippedWeapon) local.Equip(obj);
-    if (obj.Type == Demiurge.ObjectType.PlayerStatus) local.Status = obj;
-};
-objectRegistry.ObjectDespawned += obj =>
-{
-    if (registry.LocalPlayer is not { } local) return;
-    if (obj.Type == Demiurge.ObjectType.EquippedWeapon) local.Unequip(obj);   // no-ops unless ours
-    if (ReferenceEquals(local.Status, obj)) local.Status = null;
-};
+    public struct HitConfirmData : IMessageSerializable
+    {
+        public uint TargetNetworkId;   // what was hit (status object for players)
+        public ushort Damage;
+
+        public void Serialize(Message message)
+        {
+            message.AddUInt(TargetNetworkId);
+            message.AddUShort(Damage);
+        }
+
+        public void Deserialize(Message message)
+        {
+            TargetNetworkId = message.GetUInt();
+            Damage = message.GetUShort();
+        }
+    }
+}
 ```
 
-`Client/View/HUD.cs` — a health line joins the panel. In `CreateUI`, after the
-`ammoText` block:
+(A world-space impact point for hit FX would be the natural next field — it needs
+`Raycast` to also return the hit distance `t`, so it's left for when FX exist.)
+
+### 2b. Server — `Server/WeaponSystem.cs`
+
+In `ApplyFire`, inside the existing damage branch (right after `hit.Dirty |=
+NetComponents.Health;`):
 
 ```csharp
-var healthText = new TextBlock
+// Tell the shooter it landed. Unreliable + shooter-only: cosmetic feedback,
+// the victim's replicated Health remains the truth.
+Message confirm = Message.Create(MessageSendMode.Unreliable, ServerToClientId.HitConfirm);
+confirm.AddSerializable(new HitConfirmData { TargetNetworkId = hit.NetworkId, Damage = stats.Damage });
+server.Send(confirm, player.Id);
+```
+
+### 2c. Client netcode — `Client/Netcode/NetworkManager.cs`
+
+The event, next to `PlayerFired`:
+
+```csharp
+public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
+```
+
+The dispatch case, through the Part 1 rig like everything else:
+
+```csharp
+case ServerToClientId.HitConfirm:
+    var confirm = e.Message.GetSerializable<HitConfirmData>();
+    Dispatch(() => HitConfirmed?.Invoke(confirm));
+    break;
+```
+
+### 2d. Client sim — `Client/Simulation/Player.cs`
+
+`LocalPlayer` gets a counter in the poll-and-diff style the HUD already reads
+(netcode writes, view reads — no event across the boundary needed):
+
+```csharp
+// Count of server-confirmed hits. Netcode writes (via the composition root),
+// the HUD polls and flashes a marker when it changes.
+public uint HitConfirms { get; private set; }
+public void ConfirmHit() => HitConfirms++;
+```
+
+`Client/Program.cs`, with the other bridges in the composition root:
+
+```csharp
+network.HitConfirmed += _ => registry.LocalPlayer?.ConfirmHit();
+```
+
+### 2e. Client view — `Client/View/HUD.cs`
+
+In `CreateUI`, a marker that lives collapsed at the end of the panel:
+
+```csharp
+var hitText = new TextBlock
 {
-    Text = "HP —",
-    TextColor = Color.White,
+    Text = "HIT",
+    TextColor = Color.Red,
     Font = font,
     TextSize = 24,
     VerticalAlignment = VerticalAlignment.Center,
-    Margin = new Thickness(6, 0, 12, 0),
+    Margin = new Thickness(12, 0, 0, 0),
+    Visibility = Visibility.Collapsed,
 };
 ```
 
-add it to the panel FIRST (health left of the bullet icon):
+add it to the panel after `ammoText`:
 
 ```csharp
-var ammoPanel = new StackPanel { Orientation = Orientation.Horizontal };
-ammoPanel.Children.Add(healthText);
-ammoPanel.Children.Add(bulletImage);
-ammoPanel.Children.Add(ammoText);
+ammoPanel.Children.Add(hitText);
 ```
 
 hand it to the script:
@@ -204,149 +285,56 @@ hand it to the script:
 new HudScript {
     canvas = canvas,
     AmmoText = ammoText,
-    HealthText = healthText },
+    HealthText = healthText,
+    HitText = hitText },
 ```
 
-and `HudScript` becomes (panel now shows from spawn — health is always relevant;
-ammo reads `--` until armed):
+and `HudScript` gains the flash logic:
 
 ```csharp
-public class HudScript : SyncScript
+public TextBlock HitText { get; set; } = null!;
+
+private uint _lastHitConfirms;
+private float _hitFlashLeft;   // seconds the marker stays visible
+```
+
+at the end of `Update`, after the ammo block:
+
+```csharp
+if (local.HitConfirms != _lastHitConfirms)
 {
-    public TextBlock AmmoText { get; set; } = null!;
-    public TextBlock HealthText { get; set; } = null!;
-    public Canvas canvas {get; set; } = null!;
-
-    private PlayerRegistry _registry = null!;
-
-    private int _lastAmmo = int.MinValue;
-    private bool _lastReloading;
-    private int _lastHealth = int.MinValue;
-    private bool _lastVisible;
-
-    public override void Start()
-    {
-        _registry = Services.GetSafeServiceAs<PlayerRegistry>();
-        canvas.Visibility = Visibility.Collapsed;   // until spawn
-    }
-
-    public override void Update()
-    {
-        var local = _registry.LocalPlayer;
-
-        bool visible = local != null;
-        if (visible != _lastVisible)
-        {
-            _lastVisible = visible;
-            canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        }
-        if (local == null) return;
-
-        int health = local.Status?.Health.Current ?? 0;
-        if (health != _lastHealth)
-        {
-            _lastHealth = health;
-            HealthText.Text = $"HP {health}";
-        }
-
-        int ammo = local.IsArmed ? local.Ammo : -1;
-        if (ammo != _lastAmmo || local.IsReloading != _lastReloading)
-        {
-            _lastAmmo = ammo;
-            _lastReloading = local.IsReloading;
-            AmmoText.Text = !local.IsArmed ? "--"
-                : local.IsReloading ? "RELOADING"
-                : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
-        }
-    }
+    _lastHitConfirms = local.HitConfirms;
+    _hitFlashLeft = 0.15f;
+    HitText.Visibility = Visibility.Visible;
+}
+else if (_hitFlashLeft > 0f)
+{
+    _hitFlashLeft -= (float)Game.UpdateTime.Elapsed.TotalSeconds;
+    if (_hitFlashLeft <= 0f) HitText.Visibility = Visibility.Collapsed;
 }
 ```
 
-**Verify Part 4:** two clients. (1) Both HUDs show `HP 100` from spawn, ammo `--`
-until a pickup. (2) Client A shoots client B: B's HUD health drops in steps of 10 —
-that damage traveled A → PlayerFire → server raycast (hitting B's sphere) → status
-object Health dirty → ObjectState → B's registry → B's HUD. (3) At 0, B teleports to
-the origin with `HP 100` (the view snaps — that's the >2m correction path working).
-(4) B's death does not affect B's weapon or A's anything. (5) A late-joining third
-client sees correct current health for everyone (status objects ride the same
-catch-up as everything else). Note the shooter gets no hit feedback beyond watching
-the victim — a `HitConfirm` message is the natural follow-up, and the recipe below
-covers adding it.
+(Moving the marker onto the reticle — `CursorReticleScript` — and adding a sound
+through `SoundManager` are pure polish on the same counter; nothing else changes.)
 
----
+**Verify Part 2:** two clients, latency constants on. (1) A shoots B: "HIT"
+flashes on A's HUD one simulated-latency later, in step with B's HP dropping on
+A's screen — that's the full round trip A → PlayerFire → rewound raycast →
+HitConfirm → A. (2) Shooting the training dummy also flashes (any Health hit
+confirms). (3) Missed shots and shots blocked by a healthless pickup do NOT flash.
+(4) B shooting sees flashes on B's HUD only — the message is shooter-only.
 
-## Part 5 — Recipes: adding things yourself
+## The tradeoff you signed up for (book p. 249)
 
-The map, first. **Common** is the wire: enums and structs both ends compile.
-**Server** is truth: three classes — GameWorld (players, tick order), ObjectReplication
-(objects on the wire), WeaponSystem (combat). **Client** is three layers with strict
-flow: Netcode (NetworkManager: socket → events) writes **Sim** (registries, Player,
-NetObject: pure state, no Stride types beyond math) which is read by **View** (scripts
-and factories: render what the sim says, decide nothing). All wiring happens in
-Program.cs — the composition root. If you're about to make a view script send a
-message or the sim touch an Entity, stop: that's the boundary talking.
+Rewind moves the injustice from the shooter to the victim: a laggy shooter's view
+is old, so a victim who just ducked behind cover can still be hit "around the
+corner" — by up to `MaxRewindTicks` of movement. That constant is the tuning knob:
+lower it and high-ping shooters start missing; raise it and corner deaths get
+worse. One second is a generous starting point; competitive shooters often cap
+compensation nearer 200–250ms.
 
-**Wire rules (break these and clients silently desync):** enum values and the
-ComponentBundle if-chain order ARE the protocol — append, never reorder, never
-delete. Streamed state (transforms) goes unreliable; evented state (everything else)
-goes reliable. Events that must not be lost (fire, reload) are their own reliable
-messages; cosmetic events (PlayerFired) go unreliable.
+Natural follow-up, in the old recipe style: a debug toggle that draws the server's
+rewound hit-spheres so you can *see* the rewind instead of inferring it from HP
+drops — and a hit `Point` on `HitConfirmData` once there are impact FX to place.
 
-### Add a replicated component (e.g. ArmorState)
-
-1. `Common/Component.cs`: append a bit to `NetComponents` (`Armor = 1 << 4`).
-2. `Common/Component.cs`: add the `ArmorState : IMessageSerializable` struct.
-3. `Common/Component.cs`: add the field to `ComponentBundle` and one masked line at
-   the END of `Serialize` AND `Deserialize`.
-4. `Server/ServerObject.cs`: add the field (a FIELD, not a property — mutable struct).
-5. `Server/ObjectReplication.cs`: one line in `Bundle(...)`.
-6. `Client/Simulation/NetObject.cs`: add the field.
-7. `Client/Simulation/ObjectRegistry.cs`: one masked line in `CopyComponents`.
-8. Optional view: a script in `ObjectViewFactory.CreateView`'s mask block.
-
-Seven mechanical edits, all append-only. Steps 5 and 7 exist in exactly one place
-each because of Parts 1 and 3 — before, they were the two spots this checklist got
-forgotten (once each, both shipped bugs).
-
-### Add a weapon (e.g. a shotgun)
-
-1. `Common/Component.cs`: append to `WeaponType`.
-2. `Common/WeaponConfig.cs`: one table row (capacity, cadence, reload, damage, range).
-3. `Client/View/WeaponCosmetics.cs`: one row (model, sound, tracer color) + assets.
-4. Spawn it somewhere: `weapons.SpawnPickup(WeaponType.Shotgun, pos)`.
-
-Nothing else — pickup, equip, prediction, validation, FX all key off the type.
-
-### Add an object type (e.g. a barrel)
-
-1. `Common/Component.cs`: append to `ObjectType`.
-2. `Client/View/ObjectViewFactory.cs`: one builder entry (model + any custom script).
-3. Server: `objects.Spawn(ObjectType.Barrel, NetComponents.Transform | ..., pos, init)`
-   — put full component state in `init`; it must be set before the broadcast.
-
-### Add a client→server message (e.g. UseAction)
-
-1. `Common/NetworkProtocol.cs`: append to `ClientToServerId`.
-2. `Common/Messages/`: the `IMessageSerializable` struct (skip if no payload — see
-   PlayerReload).
-3. `Client/Netcode/NetworkManager.cs`: a `SendX` method (reliable if losing it would
-   jam gameplay).
-4. `Server/GameServer.cs`: a dispatch case → `world.ApplyX(e.FromConnection.Id, ...)`.
-5. `Server/GameWorld.cs`: the handler — resolve the player, validate (finite floats,
-   sequence/tick gates, positions near the server's own belief), then act.
-
-Server→client is the mirror: `ServerToClientId` append, struct, a
-`NetworkManager` event + dispatch case, and a subscriber in the sim (registry) or
-composition root — never directly in a view script.
-
-### The habits that keep it working
-
-- Server validates everything a client sends; the client predicts with the same
-  shared numbers (`WeaponConfig`, `PlayerMovement`, `GunMath`) so honest clients
-  never trip a gate.
-- New spawn state goes through `Spawn`'s `init` callback — state set after spawn
-  needs a `Dirty` flag or it never leaves the server.
-- Never mutate the object dictionary while enumerating it (find-then-act, like
-  `TryPickup`).
-- Verify with two clients + a late joiner. The late joiner is the test that finds
-  catch-up bugs; the second client finds every "works on my screen" bug.
+*(The Part 1–5 consolidation doc this file once was: `git show 6f66e30:NEXT_STEPS.md`.)*
