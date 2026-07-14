@@ -24,8 +24,8 @@ Go through and trace the object syncing logic and document how it works
 - [ ] objects
     - [ ] spawning
     - [ ] syncing
-
-5. PVP Mechanics
+    
+4a. PVP Mechanics
 - [ ] add helmet
 - [ ] add armor
 - [ ] Player health
@@ -37,25 +37,11 @@ Go through and trace the object syncing logic and document how it works
     - [ ] sniper rifle
     - [ ] shotgun
 
-6. Generate a map with perlin noise
-7. Simple UI for playing with noise
-7a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
 
-8. Play around with scripting
-    - [ ] add a debug terminal
-    - [ ] add some basic scripting functionality with basic parser 
-9. Add inventory UI
-10. Host server and test with buddies
-- [ ] digital ocean droplet
-- [ ] hook up scrungy.com domain name
-11. Create a simple free-for-all demo for testing
-    - [ ] load a map from a PNG
-    - [ ] random spawns
-    - [ ] fixed health kit locations
-    
-12. Bug Fixes from FFA demo
-13. Generate meshes for chunks + performance enhancements
-14. Create water, ground, and grass shaders
+5. Generate a map with perlin noise
+6. Simple UI for playing with noise
+7. Generate meshes for chunks + performance enhancements
+8. Create water, ground, and grass shaders
 https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
 - [ ] grass
     - [ ] compute shader
@@ -65,6 +51,22 @@ https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
         - [ ] color
     - [ ] animate wind
     - [ ] squish the grass
+
+8a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
+
+10. Play around with scripting
+    - [ ] add a debug terminal
+    - [ ] add some basic scripting functionality with basic parser 
+11. Add inventory UI
+12. Host server and test with buddies
+- [ ] digital ocean droplet
+- [ ] hook up scrungy.com domain name
+13. Create a simple free-for-all demo for testing
+    - [ ] load a map from a PNG
+    - [ ] random spawns
+    - [ ] fixed health kit locations
+    
+14. Bug Fixes from FFA demo
 
 15. Create structures
 16. CTF gamemode

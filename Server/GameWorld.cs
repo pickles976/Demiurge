@@ -11,9 +11,6 @@ namespace Demiurge.GameServer
         private readonly ObjectReplication objects;
         private readonly WeaponSystem weapons;
 
-        // TEMP OBJECTS
-        private ServerObject? testDummy;
-
         private readonly Server server;
 
         private uint _Tick = 0;
