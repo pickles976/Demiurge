@@ -17,6 +17,7 @@ namespace Demiurge
     public enum WeaponType : ushort
     {
         Ak47 = 1,
+        AWP = 2,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"

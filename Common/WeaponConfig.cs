@@ -16,6 +16,7 @@ namespace Demiurge
         public static WeaponStats Get(WeaponType type) => type switch
         {
             WeaponType.Ak47 => new(MagazineCapacity: 30, TicksPerShot: 3, ReloadTicks: 45, Damage: 10, MaxRange: 100f),
+            WeaponType.AWP => new(MagazineCapacity: 5, TicksPerShot: 60, ReloadTicks: 45, Damage: 75, MaxRange: 200f),
 
             // Unknown type off the wire: fall back to AK numbers rather than crash.
             _ => new(30, 3, 45, 10, 100f),

@@ -23,7 +23,7 @@ namespace Demiurge.GameServer
             objects = new ObjectReplication(server);
             weapons = new WeaponSystem(server, objects);
 
-            weapons.SpawnPickup(WeaponType.Ak47, new Vector3(3f, 0f, 0f));
+            weapons.SpawnPickup(WeaponType.AWP, new Vector3(3f, 0f, 0f));
             weapons.SpawnPickup(WeaponType.Ak47, new Vector3(-3f, 0f, -3f));
         }
 

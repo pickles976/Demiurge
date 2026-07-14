@@ -11,32 +11,24 @@ https://github.com/stride3d/stride/issues/2496
 `dotnet run` -- client
 `dotnet run --project Server/DemiurgeServer.csproj` -- server
 
-
 `dotnet build DemiurgeSharp.slnx`
 
-1. ~~Move the player~~
-2. ~~Camera controls~~
-3. ~~Shooting~~
-4. ~~Networking (details in docs/NETWORKING.md + docs/NETWORKING_TODO.md)~~
-
-Go through and trace the object syncing logic and document how it works
-
-- [ ] objects
-    - [ ] spawning
-    - [ ] syncing
-    
 4a. PVP Mechanics
-- [ ] add helmet
-- [ ] add armor
+- [x] sniper rifle
+    - [ ] make lookahead range tied to the weapon itself
+- [ ] add wearables
+    - [ ] add helmet
+    - [ ] add armor
 - [ ] Player health
-    - [ ] spawn crates with health
     - [ ] add health pack pickups
-    - [ ] variable lookahead from equipped weapon
     - [ ] pistol pickup
+    - [ ] shotgun pickup
+        - [ ] multiple pellets per-shot
     - [ ] grenade pickup
-    - [ ] sniper rifle
-    - [ ] shotgun
+        - [ ] throwing arc
+        - [ ] server-side splash damage 
 
+- [ ] clean up UI and stuff
 
 5. Generate a map with perlin noise
 6. Simple UI for playing with noise
