@@ -27,6 +27,9 @@ public class ObjectViewFactory
             [ObjectType.EquippedWeapon] = obj => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, WeaponCosmetics.Get(obj.Weapon.Type).ModelPath)),
                   new WeaponAttachScript { Object = obj } },
+            [ObjectType.ArmorPickup] = obj => new Entity {
+                  new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/body_armor.gltf")),
+                  new PickupBobScript { Object = obj } },
         };
         registry.ObjectSpawned += CreateView;
         registry.ObjectDespawned += DestroyView;

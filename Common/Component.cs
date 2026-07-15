@@ -9,7 +9,9 @@ namespace Demiurge
         TrainingDummy,
         WeaponPickup,
         EquippedWeapon,
-        PlayerStatus
+        PlayerStatus,
+        ArmorPickup,
+        EquippedArmor
     }
 
     /// <summary>Which gun a WeaponState describes. Wire protocol (rides inside
@@ -32,6 +34,7 @@ namespace Demiurge
         Health = 1 << 1,
         Weapon = 1 << 2,
         Owner = 1 << 3,
+        Armor = 1 << 4
     }
 
     public struct TransformState : IMessageSerializable
@@ -71,6 +74,15 @@ namespace Demiurge
         public void Deserialize(Message m) => PlayerId = m.GetUShort();
     }
 
+    public struct ArmorState : IMessageSerializable
+    {
+        public float MaxValue;
+        public float Current;
+
+        public void Serialize (Message m) { m.AddFloat(MaxValue); m.AddFloat(Current);}
+        public void Deserialize(Message m) {MaxValue = m.GetFloat(); Current = m.GetFloat(); }
+    }
+
     /// <summary>Some subset of an object's components, mask-prefixed. The if-chain
     /// order is the wire format; new components go at the end of both methods.</summary>
     public struct ComponentBundle : IMessageSerializable
@@ -80,6 +92,7 @@ namespace Demiurge
         public HealthState Health;
         public WeaponState Weapon;
         public OwnerState Owner;
+        public ArmorState Armor;
 
         public void Serialize(Message m)
         {
@@ -88,6 +101,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Health)) m.AddSerializable(Health);
             if (Mask.HasFlag(NetComponents.Weapon)) m.AddSerializable(Weapon);
             if (Mask.HasFlag(NetComponents.Owner)) m.AddSerializable(Owner);
+            if (Mask.HasFlag(NetComponents.Armor)) m.AddSerializable(Armor);
         }
 
         public void Deserialize(Message m)
@@ -97,6 +111,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Health)) Health = m.GetSerializable<HealthState>();
             if (Mask.HasFlag(NetComponents.Weapon)) Weapon = m.GetSerializable<WeaponState>();
             if (Mask.HasFlag(NetComponents.Owner)) Owner = m.GetSerializable<OwnerState>();
+            if (Mask.HasFlag(NetComponents.Armor)) Armor = m.GetSerializable<ArmorState>();
         }
     }
 }

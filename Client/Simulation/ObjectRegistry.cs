@@ -77,5 +77,6 @@ public class ObjectRegistry
         if (state.Mask.HasFlag(NetComponents.Health)) obj.Health = state.Health;
         if (state.Mask.HasFlag(NetComponents.Weapon)) obj.Weapon = state.Weapon;
         if (state.Mask.HasFlag(NetComponents.Owner)) obj.Owner = state.Owner;
+        if (state.Mask.HasFlag(NetComponents.Armor)) obj.Armor = state.Armor;
     }
 }

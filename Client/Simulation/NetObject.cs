@@ -12,6 +12,7 @@ public class NetObject
     public HealthState Health;
     public WeaponState Weapon;
     public OwnerState Owner;
-
+    public ArmorState Armor;
+    
     public SnapshotBuffer Snapshots { get; } = new();
 }

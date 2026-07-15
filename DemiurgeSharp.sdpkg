@@ -15,6 +15,7 @@ Bundles: []
 TemplateFolders: []
 RootAssets:
     - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
+    - 1a8baa39-b12d-505b-401c-4ec3beb60a50:models/body_armor
     - a9c9c33d-d0f7-8e22-959a-0ad5c3538937:models/cat_orange
     - e13f8a9e-58fb-0f01-4923-3b3bd3d82899:models/cat_orange_skeleton
     - fb7c8408-a6cd-ed2a-6b12-059c4acce042:models/cat_orange_anim_Walk

@@ -115,7 +115,8 @@ namespace Demiurge.GameServer
             Transform = obj.Transform,
             Health = obj.Health,
             Weapon = obj.Weapon,
-            Owner = obj.Owner
+            Owner = obj.Owner,
+            Armor = obj.Armor
         };
 
     }
