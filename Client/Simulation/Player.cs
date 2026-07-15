@@ -28,8 +28,8 @@ public class LocalPlayer : Player
     public NetObject? Status {get; set;}
 
 
-    // Weapon. Null until the server spawns an EquippedWeapon object owned by us —
-    // the composition root bridges ObjectRegistry spawns to Equip/Unequip. Ammo and
+    // Weapon. Null until the server spawns a Weapon-masked item object owned by
+    // us — the composition root bridges ObjectRegistry spawns to Equip/Unequip. Ammo and
     // timers are PREDICTED with the same ItemConfig numbers the server enforces;
     // the replicated object stays the server's truth and re-seeds us on equip.
     public NetObject? Weapon { get; private set; }

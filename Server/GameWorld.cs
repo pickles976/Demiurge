@@ -9,6 +9,7 @@ namespace Demiurge.GameServer
         private readonly Dictionary<ushort, ServerPlayer> players = new();
 
         private readonly ObjectReplication objects;
+        private readonly ItemSystem items;
         private readonly WeaponSystem weapons;
 
         private readonly Server server;
@@ -21,20 +22,13 @@ namespace Demiurge.GameServer
         {
             this.server = server;
             objects = new ObjectReplication(server);
+            items = new ItemSystem(objects);
             weapons = new WeaponSystem(server, objects);
 
-            // Transitional: inline armor init until ItemSystem.SpawnPickup exists (Task 5).
-            var armor = ItemConfig.Get(ItemType.BodyArmor);
-            objects.Spawn(ObjectType.ArmorPickup, NetComponents.Transform | NetComponents.Item | NetComponents.Armor, new Vector3(3f, 0f, 3f),
-            obj =>
-            {
-                obj.Item = new ItemState { Type = ItemType.BodyArmor };
-                obj.Armor = new ArmorState { MaxValue = armor.Armor!.Value, Current = armor.Armor.Value };
-            });
-
-            weapons.SpawnPickup(ItemType.AWP, new Vector3(3f, 0f, 0f));
-            weapons.SpawnPickup(ItemType.Ak47, new Vector3(-3f, 0f, -3f));
-            weapons.SpawnPickup(ItemType.Glock, new Vector3(-5f, 0f, -5f));
+            items.SpawnPickup(ItemType.BodyArmor, new Vector3(3f, 0f, 3f));
+            items.SpawnPickup(ItemType.AWP, new Vector3(3f, 0f, 0f));
+            items.SpawnPickup(ItemType.Ak47, new Vector3(-3f, 0f, -3f));
+            items.SpawnPickup(ItemType.Glock, new Vector3(-5f, 0f, -5f));
         }
 
         public void AddPlayer(ushort clientId)
@@ -61,7 +55,7 @@ namespace Demiurge.GameServer
                 
             if (players.Remove(clientId, out var player))
             {
-                weapons.DespawnFor(player);
+                items.DespawnFor(player);
                 if (player.Status != null) objects.Despawn(player.Status.NetworkId);
             }
 
@@ -91,7 +85,7 @@ namespace Demiurge.GameServer
         public void ApplyInteract(ushort clientId)
         {
             if (players.TryGetValue(clientId, out var player))
-                weapons.TryPickup(player);   // transitional: ItemSystem takes this over in Task 5
+                items.ApplyInteract(player);
         }
 
         public void ApplyInput(ushort clientId, PlayerInputData input)

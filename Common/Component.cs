@@ -3,15 +3,15 @@ using Riptide;
 
 namespace Demiurge
 {
-    /// What kind of thing to build on spawn. Only the view layer interprets /// this — the replication plumbing carries it opaquely.
+    /// <summary>What kind of scenery/logic thing to build on spawn. Items are
+    /// NOT here — they're all ObjectType.Item, and ItemState + the component
+    /// mask say everything else. Only the view interprets this; the replication
+    /// plumbing carries it opaquely. Append-only from here on.</summary>
     public enum ObjectType : ushort {
         Crate = 1,
         TrainingDummy,
-        WeaponPickup,
-        EquippedWeapon,
         PlayerStatus,
-        ArmorPickup,
-        EquippedArmor
+        Item
     }
 
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon

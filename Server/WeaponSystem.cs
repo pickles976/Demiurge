@@ -3,64 +3,19 @@ using System.Numerics;
 
 namespace Demiurge.GameServer
 {
-    /// <summary>Pickups, equipping, and server-authoritative fire/reload. Owns no
-    /// state of its own: weapons live in ObjectReplication, timing gates live on
-    /// ServerPlayer. GameWorld resolves clientId -> ServerPlayer and delegates.</summary>
+    /// <summary>Server-authoritative fire/reload validation — the one weapon-
+    /// specific system. Pickup/equip/swap belong to ItemSystem; weapons live in
+    /// ObjectReplication like every item; timing gates live on ServerPlayer.
+    /// GameWorld resolves clientId -> ServerPlayer and delegates.</summary>
     public class WeaponSystem
     {
         private readonly Server server;
         private readonly ObjectReplication objects;
 
-        private const float PickupRadiusSq = 0.75f * 0.75f;
-
-
         public WeaponSystem(Server server, ObjectReplication objects)
         {
             this.server = server;
             this.objects = objects;
-        }
-
-        public ServerObject SpawnPickup(ItemType type, Vector3 position)
-        {
-            return objects.Spawn(ObjectType.WeaponPickup, NetComponents.Transform | NetComponents.Item | NetComponents.Weapon, position,
-            obj =>
-            {
-                obj.Item = new ItemState { Type = type };
-                obj.Weapon = new WeaponState { CurrentAmmo = ItemConfig.GetWeapon(type).MagazineCapacity };
-            });
-        }
-
-        // TODO: 
-        // This is O(n^2), can we do a callback-based thing or something?
-        /// <summary>Call once per player per tick, after movement.</summary>
-        public void TryPickup(ServerPlayer player)
-        {
-            if (player.WeaponId != 0) return;   // armed players ignore pickups
-
-            // Find first, act after: Despawn/Spawn mutate the object dictionary
-            // and must not run inside its enumeration.
-            ServerObject? pickup = null;
-            foreach (var obj in objects.All)
-            {
-                if (obj.Type != ObjectType.WeaponPickup) continue;
-                if (Vector3.DistanceSquared(obj.Transform.Position, player.Position) > PickupRadiusSq) continue;
-                pickup = obj;
-                break;
-            }
-            if (pickup == null) return;
-
-            var carriedItem = pickup.Item;
-            var carriedWeapon = pickup.Weapon;      // ammo carries over from the pickup
-            objects.Despawn(pickup.NetworkId);
-
-            var weapon = objects.Spawn(ObjectType.EquippedWeapon, NetComponents.Item | NetComponents.Weapon | NetComponents.Owner, player.Position,
-                obj =>
-                {
-                    obj.Item = carriedItem;
-                    obj.Weapon = carriedWeapon;
-                    obj.Owner = new OwnerState { PlayerId = player.Id };
-                });
-            player.WeaponId = weapon.NetworkId;
         }
 
         public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick, IEnumerable<ServerPlayer> players)
@@ -71,9 +26,12 @@ namespace Demiurge.GameServer
             if (fire.RenderTick > tick || fire.RenderTick < (double)tick - NetworkConfig.MaxRewindTicks) return;
             if (fire.Direction == Vector3.Zero) return;
 
-            // Unarmed players can't fire; the equipped weapon object is the source
-            // of truth for ammo, and its type keys the config both ends enforce.
-            if (player.WeaponId == 0 || !objects.TryGet(player.WeaponId, out var weapon)) return;
+            // Unarmed players can't fire. The equipped Hand item is the source
+            // of truth for ammo — IF it's a gun (Weapon bit); a future non-gun
+            // hand item simply can't fire.
+            if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
+                || !objects.TryGet(weaponId, out var weapon)
+                || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
             var stats = ItemConfig.GetWeapon(weapon.Item.Type);
 
             // Enforce the same ItemConfig numbers the client predicted with.
@@ -123,7 +81,9 @@ namespace Demiurge.GameServer
 
         public void ApplyReload(ServerPlayer player, uint tick)
         {
-            if (player.WeaponId == 0 || !objects.TryGet(player.WeaponId, out var weapon)) return;
+            if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
+                || !objects.TryGet(weaponId, out var weapon)
+                || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
 
             var stats = ItemConfig.GetWeapon(weapon.Item.Type);
             if (tick < player.ReloadDoneTick) return;   // already reloading
@@ -135,14 +95,6 @@ namespace Demiurge.GameServer
             weapon.Weapon.CurrentAmmo = stats.MagazineCapacity;
             weapon.Dirty |= NetComponents.Weapon;
             player.ReloadDoneTick = tick + (uint)stats.ReloadTicks;
-        }
-
-        /// <summary>The weapon leaves with its owner. Call from RemovePlayer.</summary>
-        public void DespawnFor(ServerPlayer player)
-        {
-            if (player.WeaponId == 0) return;
-            objects.Despawn(player.WeaponId);
-            player.WeaponId = 0;
         }
 
         private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange, ServerPlayer shooter, IEnumerable<ServerPlayer> players, double renderTick)

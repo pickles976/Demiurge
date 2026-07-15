@@ -10,12 +10,13 @@ namespace Demiurge.GameServer
         public Vector3 PendingIntent { get; set; }
         public float Yaw {get; set;}
 
-        // Gun. Ammo lives in the equipped weapon object's WeaponState — the
-        // player just holds the reference (0 = unarmed) and the timing gates.
-
         public ServerObject? Status {get; set;}
 
-        public uint WeaponId { get; set; }         // NetworkId of the EquippedWeapon object
+        // What the player wears and holds: slot -> NetworkId of the equipped
+        // item object. Live state (ammo) lives ON the objects; the player just
+        // holds the references and the fire/reload timing gates below.
+        public Dictionary<EquipSlot, uint> Equipped { get; } = new();
+
         public uint NextFireTick { get; set; }     // earliest tick the next shot is legal
         public uint ReloadDoneTick { get; set; }   // firing is blocked until this tick
 
