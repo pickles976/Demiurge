@@ -111,12 +111,13 @@ namespace Demiurge.GameServer
         // one new line here (plus the checklist in NEXT_STEPS Part 5).
         private static ComponentBundle Bundle(ServerObject obj, NetComponents mask) => new()
         {
-            Mask = mask, 
+            Mask = mask,
             Transform = obj.Transform,
             Health = obj.Health,
             Weapon = obj.Weapon,
             Owner = obj.Owner,
-            Armor = obj.Armor
+            Armor = obj.Armor,
+            Item = obj.Item
         };
 
     }

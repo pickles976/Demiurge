@@ -15,5 +15,6 @@ namespace Demiurge.GameServer
         public WeaponState Weapon;
         public OwnerState Owner;
         public ArmorState Armor;
+        public ItemState Item;
     }
 }
