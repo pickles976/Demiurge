@@ -9,6 +9,9 @@ public class ObjectViewFactory
 {
     private readonly Game game;
     private readonly Scene scene;
+
+    // Scenery only. Items never appear here: their model comes from
+    // ItemCosmetics and their behavior from the component mask.
     private readonly Dictionary<ObjectType, Func<NetObject, Entity>> builders;
 
     public ObjectViewFactory(Game game, Scene scene, ObjectRegistry registry)
@@ -21,15 +24,6 @@ public class ObjectViewFactory
                                           new() { IncludeCollider = false }),
             [ObjectType.TrainingDummy] = _ => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
-            [ObjectType.WeaponPickup] = obj => new Entity {
-                  new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)),
-                  new PickupBobScript { Object = obj } },
-            [ObjectType.EquippedWeapon] = obj => new Entity {
-                  new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)),
-                  new WeaponAttachScript { Object = obj } },
-            [ObjectType.ArmorPickup] = obj => new Entity {
-                  new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)),
-                  new PickupBobScript { Object = obj } },
         };
         registry.ObjectSpawned += CreateView;
         registry.ObjectDespawned += DestroyView;
@@ -37,18 +31,24 @@ public class ObjectViewFactory
 
     private void CreateView(NetObject obj)
     {
-        if (!builders.TryGetValue(obj.Type, out var build)) return; // unknown type: skip, don't crash
+        bool isItem = obj.Has.HasFlag(NetComponents.Item);
 
-        var entity = build(obj);
+        Entity entity;
+        if (isItem)
+            entity = new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)) };
+        else if (builders.TryGetValue(obj.Type, out var build))
+            entity = build(obj);
+        else return;   // no visual (PlayerStatus, unknown types): skip, don't crash
+
         entity.Name = $"NetObject_{obj.NetworkId}";
 
-        // Attach view behavior per component the object HAS — the mask decides,
-        // not the type. A new type with Health gets a health view for free.
-        // Exception: a builder may install its own transform presenter (the
-        // pickup's bob/spin), which then owns the entity transform instead.
-        bool customTransformView = entity.Get<PickupBobScript>() != null;
-        if (obj.Has.HasFlag(NetComponents.Transform) && !customTransformView)
-            entity.Add(new NetTransformScript { Object = obj });
+        // View behavior per component the object HAS — the mask decides.
+        // Item+Transform sits in the world: the bob presenter OWNS the entity
+        // transform (so no NetTransformScript alongside). Item+Owner is worn:
+        // the attach presenter owns it instead.
+        if (isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new PickupBobScript { Object = obj });
+        if (isItem && obj.Has.HasFlag(NetComponents.Owner)) entity.Add(new ItemAttachScript { Object = obj });
+        if (!isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
 
         entity.Transform.Position = obj.Transform.Position.ToStride();
