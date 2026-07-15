@@ -11,6 +11,7 @@ public static class WeaponCosmetics
     {
         WeaponType.Ak47 => new("assets/models/ak47.gltf", "assets/sfx/ak47_shot.wav", Color.Yellow),
         WeaponType.AWP => new("assets/models/sniper_rifle.gltf", "assets/sfx/ak47_shot.wav", Color.Yellow),
+        WeaponType.Glock => new("assets/models/glock.gltf", "assets/sfx/ak47_shot.wav", Color.Yellow),
 
         // Unknown type off the wire: AK stand-ins rather than a crash.
         _ => new("assets/models/ak47.gltf", "assets/sfx/ak47_shot.wav", Color.Yellow),

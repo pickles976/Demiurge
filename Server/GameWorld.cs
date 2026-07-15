@@ -25,6 +25,7 @@ namespace Demiurge.GameServer
 
             weapons.SpawnPickup(WeaponType.AWP, new Vector3(3f, 0f, 0f));
             weapons.SpawnPickup(WeaponType.Ak47, new Vector3(-3f, 0f, -3f));
+            weapons.SpawnPickup(WeaponType.Glock, new Vector3(-5f, 0f, -5f));
         }
 
         public void AddPlayer(ushort clientId)

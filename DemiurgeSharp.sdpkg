@@ -23,5 +23,6 @@ RootAssets:
     - 0c2502c5-c18c-c2b2-f2f8-7f38f141a438:models/cat_orange_anim_Crouch
     - 2dbe99ca-cefa-efdf-eb3f-f128fd299472:models/cat_orange_anim_CrouchWalk
     - b5161cb9-fa9d-4264-e5df-b483a6e166a4:models/dummy
+    - a1c2311d-86f9-2c54-4afa-520e8bf3e1e5:models/glock
     - d5a9cf33-e6e0-1d7a-8e30-373b802dea66:models/grass
     - 3a9e81c9-5c45-e565-ab69-bf706522d89a:models/sniper_rifle

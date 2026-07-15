@@ -21,7 +21,7 @@ https://github.com/stride3d/stride/issues/2496
     - [ ] add armor
 - [ ] Player health
     - [ ] add health pack pickups
-    - [ ] pistol pickup
+    - [x] pistol pickup
     - [ ] shotgun pickup
         - [ ] multiple pellets per-shot
     - [ ] grenade pickup
