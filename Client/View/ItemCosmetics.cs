@@ -25,7 +25,7 @@ public static class ItemCosmetics
         ItemType.Ak47 => new("assets/models/ak47.gltf", "right_hand", HandSeat, HandRotation, "assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.AWP => new("assets/models/sniper_rifle.gltf", "right_hand", HandSeat, HandRotation, "assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.Glock => new("assets/models/glock.gltf", "right_hand", HandSeat, HandRotation, "assets/sfx/ak47_shot.wav", Color.Yellow),
-        ItemType.BodyArmor => new("assets/models/body_armor.gltf", null, Vector3.Zero, Quaternion.Identity, "assets/sfx/ak47_shot.wav", Color.Yellow),
+        ItemType.BodyArmor => new("assets/models/body_armor.gltf", "torso", Vector3.Zero, Quaternion.Identity, "assets/sfx/ak47_shot.wav", Color.Yellow),
 
         // Unknown type off the wire: AK stand-ins rather than a crash.
         _ => new("assets/models/ak47.gltf", "right_hand", HandSeat, HandRotation, "assets/sfx/ak47_shot.wav", Color.Yellow),

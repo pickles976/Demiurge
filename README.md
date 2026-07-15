@@ -17,13 +17,8 @@ https://github.com/stride3d/stride/issues/2496
 - [x] sniper rifle
     - [x] make lookahead range tied to the weapon itself
 - [ ] add wearables
-    - [ ] net config
-    - [ ] pickupable
-    - [ ] wearable
-    - [ ] spawn model
-    - [ ] armor server component
+    - [x] add armor
     - [ ] add helmet
-    - [ ] add armor
 - [ ] Player health
     - [ ] add health pack pickups
     - [x] pistol pickup
