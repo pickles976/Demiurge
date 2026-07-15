@@ -71,6 +71,13 @@ namespace Demiurge
 			var distance = lookaheadOffset.Length();
 
 			// Aiming vs non-aiming lookahead
+			var (aimingShiftNear, aimingShiftFar) = (AppConstants.ShiftNear, AppConstants.ShiftFar);
+			if (local.Weapon != null)
+			{
+				var stats = WeaponConfig.Get(local.Weapon.Weapon.Type);
+				aimingShiftNear = stats.shiftNear;
+				aimingShiftFar = stats.shiftFar;
+			}
 
 			var scale = local.State.HasFlag(PlayerStateFlags.Aiming) switch
 			{
@@ -80,8 +87,8 @@ namespace Demiurge
 						AppConstants.ShiftNear, AppConstants.ShiftFar),
 				true => 
 					MathExtensions.Step(
-						MathExtensions.Remap(distance, AppConstants.LookAheadRadiusNear, AppConstants.LookAheadRadiusFar, AppConstants.AimingShiftNear, AppConstants.AimingShiftFar), 
-						AppConstants.AimingShiftNear, AppConstants.AimingShiftFar)
+						MathExtensions.Remap(distance, AppConstants.LookAheadRadiusNear, AppConstants.LookAheadRadiusFar, aimingShiftNear, aimingShiftFar), 
+						aimingShiftNear, aimingShiftFar)
 			};
 
 			lookaheadOffset.Normalize();

@@ -15,7 +15,7 @@ https://github.com/stride3d/stride/issues/2496
 
 4a. PVP Mechanics
 - [x] sniper rifle
-    - [ ] make lookahead range tied to the weapon itself
+    - [x] make lookahead range tied to the weapon itself
 - [ ] add wearables
     - [ ] add helmet
     - [ ] add armor

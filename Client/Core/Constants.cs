@@ -8,7 +8,7 @@ namespace Demiurge
         public const float ShiftNear = 0.2f;
         public const float ShiftFar = 1.5f;
 
-        public const float AimingShiftNear = 2.5f;
-        public const float AimingShiftFar = 7.5f;
+        public const float AimingShiftNear = 1.5f;
+        public const float AimingShiftFar = 2.5f;
     }
 }
