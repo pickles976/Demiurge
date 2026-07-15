@@ -14,15 +14,6 @@ namespace Demiurge
         EquippedArmor
     }
 
-    /// <summary>Which gun a WeaponState describes. Wire protocol (rides inside
-    /// WeaponState) and the key into WeaponConfig — append-only.</summary>
-    public enum WeaponType : ushort
-    {
-        Ak47 = 1,
-        AWP = 2,
-        Glock = 3,
-    }
-
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon
     /// in the game, one enum. Wire protocol (rides inside ItemState) and the key
     /// into ItemConfig + ItemCosmetics — append-only.</summary>
@@ -66,15 +57,14 @@ namespace Demiurge
 
     }
 
-    /// <summary>Live weapon state only. The static numbers (capacity, cadence,
-    /// damage...) are NOT on the wire — both ends look them up in WeaponConfig
-    /// by Type, so they can't drift mid-match.</summary>
+    /// <summary>Live weapon state only — WHICH gun lives in ItemState; static
+    /// numbers live in ItemConfig, keyed by ItemState.Type, so they can't
+    /// drift mid-match. Present only on items whose config has a weapon section.</summary>
     public struct WeaponState : IMessageSerializable
     {
-        public WeaponType Type;
         public int CurrentAmmo;
-        public void Serialize(Message m) {m.AddUShort((ushort)Type); m.AddInt(CurrentAmmo);}
-        public void Deserialize(Message m) {Type = (WeaponType)m.GetUShort(); CurrentAmmo = m.GetInt();}
+        public void Serialize(Message m) => m.AddInt(CurrentAmmo);
+        public void Deserialize(Message m) => CurrentAmmo = m.GetInt();
     }
 
     /// <summary>Which player an object belongs to / is attached to. The view uses

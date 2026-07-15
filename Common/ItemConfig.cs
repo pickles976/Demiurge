@@ -21,6 +21,17 @@ namespace Demiurge
         Back,
     }
 
+    /// <summary>Static per-weapon numbers, the weapon section of ItemStats.
+    /// Cadence is in server ticks so both ends count the same clock.</summary>
+    public readonly record struct WeaponStats(
+        int MagazineCapacity,
+        int TicksPerShot,
+        int ReloadTicks,
+        ushort Damage,
+        float MaxRange,
+        float shiftNear,
+        float shiftFar);
+
     /// <summary>Static per-item data. Never on the wire: both ends key into it
     /// by ItemState.Type — the same client-predicts/server-enforces contract as
     /// PlayerMovement. The Weapon/Armor sections double as the mask recipe:

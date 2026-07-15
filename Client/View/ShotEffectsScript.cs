@@ -4,7 +4,7 @@ using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
-// Shot feedback: tracer + positional audio, per weapon (WeaponCosmetics).
+// Shot feedback: tracer + positional audio, per weapon (ItemCosmetics).
 // Two inputs, one effects path:
 //  - local player: the sim's ShotFired event, instantly on the PREDICTED shot;
 //  - remote players: the server's PlayerFired broadcast (accepted shots only),
@@ -43,16 +43,16 @@ public class ShotEffectsScript : SyncScript
     private void OnLocalShot(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction)
     {
         if (subscribed is not { IsArmed: true } local) return;   // ShotFired implies armed, but be safe
-        PlayEffects(origin, direction, local.Weapon!.Weapon.Type, local.Stats.MaxRange);
+        PlayEffects(origin, direction, local.Weapon!.Item.Type, local.Stats.MaxRange);
     }
 
     private void OnRemoteFired(PlayerFiredData data)
     {
         if (data.PlayerId == Network.ClientId) return;   // our shots already played predictively
-        PlayEffects(data.Origin, data.Direction, data.Weapon, WeaponConfig.Get(data.Weapon).MaxRange);
+        PlayEffects(data.Origin, data.Direction, data.Weapon, ItemConfig.GetWeapon(data.Weapon).MaxRange);
     }
 
-    private void PlayEffects(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction, WeaponType weapon, float maxRange)
+    private void PlayEffects(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction, ItemType weapon, float maxRange)
     {
         // End the tracer at the nearest replicated object the ray passes within
         // HitRadius of — the same test the server runs — or at max range.
@@ -63,7 +63,7 @@ public class ShotEffectsScript : SyncScript
                 && t < distance)
                 distance = t;
 
-        var cosmetics = WeaponCosmetics.Get(weapon);
+        var cosmetics = ItemCosmetics.Get(weapon);
         var start = origin.ToStride();
         var end = (origin + direction * distance).ToStride();
         TracerManager.Spawn(start, end, cosmetics.TracerColor, TracerLifetime);

@@ -23,11 +23,18 @@ namespace Demiurge.GameServer
             objects = new ObjectReplication(server);
             weapons = new WeaponSystem(server, objects);
 
-            objects.Spawn(ObjectType.ArmorPickup, NetComponents.Transform, new Vector3(3f, 0f, 3f));
+            // Transitional: inline armor init until ItemSystem.SpawnPickup exists (Task 5).
+            var armor = ItemConfig.Get(ItemType.BodyArmor);
+            objects.Spawn(ObjectType.ArmorPickup, NetComponents.Transform | NetComponents.Item | NetComponents.Armor, new Vector3(3f, 0f, 3f),
+            obj =>
+            {
+                obj.Item = new ItemState { Type = ItemType.BodyArmor };
+                obj.Armor = new ArmorState { MaxValue = armor.Armor!.Value, Current = armor.Armor.Value };
+            });
 
-            weapons.SpawnPickup(WeaponType.AWP, new Vector3(3f, 0f, 0f));
-            weapons.SpawnPickup(WeaponType.Ak47, new Vector3(-3f, 0f, -3f));
-            weapons.SpawnPickup(WeaponType.Glock, new Vector3(-5f, 0f, -5f));
+            weapons.SpawnPickup(ItemType.AWP, new Vector3(3f, 0f, 0f));
+            weapons.SpawnPickup(ItemType.Ak47, new Vector3(-3f, 0f, -3f));
+            weapons.SpawnPickup(ItemType.Glock, new Vector3(-5f, 0f, -5f));
         }
 
         public void AddPlayer(ushort clientId)

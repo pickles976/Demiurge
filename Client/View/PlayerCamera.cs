@@ -74,9 +74,8 @@ namespace Demiurge
 			var (aimingShiftNear, aimingShiftFar) = (AppConstants.ShiftNear, AppConstants.ShiftFar);
 			if (local.Weapon != null)
 			{
-				var stats = WeaponConfig.Get(local.Weapon.Weapon.Type);
-				aimingShiftNear = stats.shiftNear;
-				aimingShiftFar = stats.shiftFar;
+				aimingShiftNear = local.Stats.shiftNear;
+				aimingShiftFar = local.Stats.shiftFar;
 			}
 
 			var scale = local.State.HasFlag(PlayerStateFlags.Aiming) switch

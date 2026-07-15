@@ -22,13 +22,13 @@ public class ObjectViewFactory
             [ObjectType.TrainingDummy] = _ => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
             [ObjectType.WeaponPickup] = obj => new Entity {
-                  new ModelComponent(GLTFLoader.LoadModel(game, WeaponCosmetics.Get(obj.Weapon.Type).ModelPath)),
+                  new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)),
                   new PickupBobScript { Object = obj } },
             [ObjectType.EquippedWeapon] = obj => new Entity {
-                  new ModelComponent(GLTFLoader.LoadModel(game, WeaponCosmetics.Get(obj.Weapon.Type).ModelPath)),
+                  new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)),
                   new WeaponAttachScript { Object = obj } },
             [ObjectType.ArmorPickup] = obj => new Entity {
-                  new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/body_armor.gltf")),
+                  new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)),
                   new PickupBobScript { Object = obj } },
         };
         registry.ObjectSpawned += CreateView;

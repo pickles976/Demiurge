@@ -10,7 +10,7 @@ namespace Demiurge
     {
         /// <summary>Distance along the ray (origin, normalized direction) at which it
         /// passes within GunConfig.HitRadius of center; null on miss or beyond
-        /// maxRange (per-weapon, see WeaponConfig).</summary>
+        /// maxRange (per-weapon, see ItemConfig).</summary>
         public static float? HitDistance(Vector3 origin, Vector3 direction, Vector3 center, float maxRange)
         {
             var toCenter = center - origin;

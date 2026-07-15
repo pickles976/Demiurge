@@ -20,10 +20,14 @@ namespace Demiurge.GameServer
             this.objects = objects;
         }
 
-        public ServerObject SpawnPickup(WeaponType type, Vector3 position)
+        public ServerObject SpawnPickup(ItemType type, Vector3 position)
         {
-            return objects.Spawn(ObjectType.WeaponPickup, NetComponents.Transform | NetComponents.Weapon, position,
-            obj => obj.Weapon = new WeaponState {Type = type, CurrentAmmo = WeaponConfig.Get(type).MagazineCapacity });
+            return objects.Spawn(ObjectType.WeaponPickup, NetComponents.Transform | NetComponents.Item | NetComponents.Weapon, position,
+            obj =>
+            {
+                obj.Item = new ItemState { Type = type };
+                obj.Weapon = new WeaponState { CurrentAmmo = ItemConfig.GetWeapon(type).MagazineCapacity };
+            });
         }
 
         // TODO: 
@@ -45,13 +49,15 @@ namespace Demiurge.GameServer
             }
             if (pickup == null) return;
 
-            var carried = pickup.Weapon;        // ammo carries over from the pickup
+            var carriedItem = pickup.Item;
+            var carriedWeapon = pickup.Weapon;      // ammo carries over from the pickup
             objects.Despawn(pickup.NetworkId);
 
-            var weapon = objects.Spawn(ObjectType.EquippedWeapon, NetComponents.Weapon | NetComponents.Owner, player.Position,
+            var weapon = objects.Spawn(ObjectType.EquippedWeapon, NetComponents.Item | NetComponents.Weapon | NetComponents.Owner, player.Position,
                 obj =>
                 {
-                    obj.Weapon = carried;
+                    obj.Item = carriedItem;
+                    obj.Weapon = carriedWeapon;
                     obj.Owner = new OwnerState { PlayerId = player.Id };
                 });
             player.WeaponId = weapon.NetworkId;
@@ -68,9 +74,9 @@ namespace Demiurge.GameServer
             // Unarmed players can't fire; the equipped weapon object is the source
             // of truth for ammo, and its type keys the config both ends enforce.
             if (player.WeaponId == 0 || !objects.TryGet(player.WeaponId, out var weapon)) return;
-            var stats = WeaponConfig.Get(weapon.Weapon.Type);
+            var stats = ItemConfig.GetWeapon(weapon.Item.Type);
 
-            // Enforce the same WeaponConfig numbers the client predicted with.
+            // Enforce the same ItemConfig numbers the client predicted with.
             if (tick < player.NextFireTick) return;    // faster than the gun can cycle
             if (tick < player.ReloadDoneTick) return;  // mid-reload
             if (weapon.Weapon.CurrentAmmo <= 0) return;
@@ -108,7 +114,7 @@ namespace Demiurge.GameServer
             fired.AddSerializable(new PlayerFiredData
             {
                 PlayerId = player.Id,
-                Weapon = weapon.Weapon.Type,
+                Weapon = weapon.Item.Type,
                 Origin = fire.Origin,
                 Direction = direction,
             });
@@ -119,7 +125,7 @@ namespace Demiurge.GameServer
         {
             if (player.WeaponId == 0 || !objects.TryGet(player.WeaponId, out var weapon)) return;
 
-            var stats = WeaponConfig.Get(weapon.Weapon.Type);
+            var stats = ItemConfig.GetWeapon(weapon.Item.Type);
             if (tick < player.ReloadDoneTick) return;   // already reloading
             if (weapon.Weapon.CurrentAmmo == stats.MagazineCapacity) return;
 
