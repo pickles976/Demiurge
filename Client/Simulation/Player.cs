@@ -48,7 +48,7 @@ public class LocalPlayer : Player
     public void Equip(NetObject weapon)
     {
         Weapon = weapon;
-        Stats = ItemConfig.GetWeapon(weapon.Item.Type);
+        Stats = WeaponConfig.Require(weapon.Item.Type);
         Ammo = weapon.Weapon.CurrentAmmo;   // seed prediction from replicated truth
         cooldownTicks = 0;
         reloadTicksLeft = 0;

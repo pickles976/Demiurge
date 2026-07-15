@@ -49,7 +49,9 @@ public class ShotEffectsScript : SyncScript
     private void OnRemoteFired(PlayerFiredData data)
     {
         if (data.PlayerId == Network.ClientId) return;   // our shots already played predictively
-        PlayEffects(data.Origin, data.Direction, data.Weapon, ItemConfig.GetWeapon(data.Weapon).MaxRange);
+        // Off-the-wire type: soft-fail to a plausible range — a wrong tracer
+        // length is cosmetic, a crash is not.
+        PlayEffects(data.Origin, data.Direction, data.Weapon, WeaponConfig.Get(data.Weapon)?.MaxRange ?? 100f);
     }
 
     private void PlayEffects(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction, ItemType weapon, float maxRange)
@@ -63,10 +65,10 @@ public class ShotEffectsScript : SyncScript
                 && t < distance)
                 distance = t;
 
-        var cosmetics = ItemCosmetics.Get(weapon);
+        var fx = WeaponFx.Get(weapon);
         var start = origin.ToStride();
         var end = (origin + direction * distance).ToStride();
-        TracerManager.Spawn(start, end, cosmetics.TracerColor, TracerLifetime);
-        sound.PlayOneShotSpatial(cosmetics.ShotSoundPath, start);
+        TracerManager.Spawn(start, end, fx.TracerColor, TracerLifetime);
+        sound.PlayOneShotSpatial(fx.ShotSoundPath, start);
     }
 }

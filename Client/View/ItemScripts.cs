@@ -28,11 +28,12 @@ public class PickupBobScript : SyncScript
 }
 
 // Attaches a worn item's view to its owner's body — driven by the replicated
-// Owner component. The wire says WHOSE body; WHERE on the body is cosmetic
-// (ItemCosmetics): a bone name links via ModelNodeLinkComponent, null follows
-// the Player_{id} entity root every frame (body armor). The owner's view may
-// not exist yet when this spawns (reliable messages aren't ordered relative to
-// each other), so it retries every frame until the player appears.
+// Owner and Attachment components. The wire says WHOSE body and WHICH slot;
+// the slot keys the client's socket table (ItemCosmetics): a bone name links
+// via ModelNodeLinkComponent, null follows the Player_{id} entity root every
+// frame. The owner's view may not exist yet when this spawns (reliable
+// messages aren't ordered relative to each other), so it retries every frame
+// until the player appears.
 //
 // The entity stays at the scene root on purpose: ModelNodeLinkComponent drives
 // its world transform from the bone regardless of hierarchy, root-following
@@ -50,10 +51,10 @@ public class ItemAttachScript : SyncScript
         owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
         if (owner == null) return;
 
-        var cosmetics = ItemCosmetics.Get(Object.Item.Type);
-        if (cosmetics.AttachNode is { } node)
+        var socket = ItemCosmetics.GetSocket(Object.Attachment.Slot);
+        if (socket.Node is { } node)
         {
-            if (boneLinked) return;   // latch: ownership never changes in place (transitions are despawn/respawn)
+            if (boneLinked) return;   // latch: slot never changes in place (transitions are despawn/respawn)
             if (owner.Get<ModelComponent>() is not { } ownerModel) return;
 
             Entity.Add(new ModelNodeLinkComponent
@@ -61,16 +62,16 @@ public class ItemAttachScript : SyncScript
                 Target = ownerModel,
                 NodeName = node,
             });
-            Entity.Transform.Position = cosmetics.Seat;
-            Entity.Transform.Rotation = cosmetics.SeatRotation;
+            Entity.Transform.Position = socket.Seat;
+            Entity.Transform.Rotation = socket.Rotation;
             boneLinked = true;
         }
         else
         {
             // Root-worn items follow the owner's root transform every frame —
             // PlayerViewScript drives that entity, this composes the seat on top.
-            Entity.Transform.Position = owner.Transform.Position + Vector3.Transform(cosmetics.Seat, owner.Transform.Rotation);
-            Entity.Transform.Rotation = owner.Transform.Rotation * cosmetics.SeatRotation;
+            Entity.Transform.Position = owner.Transform.Position + Vector3.Transform(socket.Seat, owner.Transform.Rotation);
+            Entity.Transform.Rotation = owner.Transform.Rotation * socket.Rotation;
         }
     }
 }

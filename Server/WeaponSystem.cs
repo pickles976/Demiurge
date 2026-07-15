@@ -32,7 +32,7 @@ namespace Demiurge.GameServer
             if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
                 || !objects.TryGet(weaponId, out var weapon)
                 || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
-            var stats = ItemConfig.GetWeapon(weapon.Item.Type);
+            var stats = WeaponConfig.Require(weapon.Item.Type);
 
             // Enforce the same ItemConfig numbers the client predicted with.
             if (tick < player.NextFireTick) return;    // faster than the gun can cycle
@@ -85,7 +85,7 @@ namespace Demiurge.GameServer
                 || !objects.TryGet(weaponId, out var weapon)
                 || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
 
-            var stats = ItemConfig.GetWeapon(weapon.Item.Type);
+            var stats = WeaponConfig.Require(weapon.Item.Type);
             if (tick < player.ReloadDoneTick) return;   // already reloading
             if (weapon.Weapon.CurrentAmmo == stats.MagazineCapacity) return;
 

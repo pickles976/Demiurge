@@ -59,12 +59,15 @@ var registry = new PlayerRegistry(network);
 var objectRegistry = new ObjectRegistry(network);
 
 // Bridge the two registries: objects owned by our client id attach to the local
-// player. Sim-to-sim glue lives here in the composition root. Mask-driven: an
-// owned object with WeaponState is our gun, whatever ItemType it is.
+// player. Sim-to-sim glue lives here in the composition root. Our ACTIVE gun is
+// exactly the Hand-slot weapon — a future rifle stowed on the Back slot is
+// owned and Weapon-masked but must not drive the HUD or prediction.
 void LinkOwned(LocalPlayer local, NetObject obj)
 {
     if (!obj.Has.HasFlag(Demiurge.NetComponents.Owner) || obj.Owner.PlayerId != network.ClientId) return;
-    if (obj.Has.HasFlag(Demiurge.NetComponents.Weapon)) local.Equip(obj);
+    if (obj.Has.HasFlag(Demiurge.NetComponents.Weapon)
+        && obj.Has.HasFlag(Demiurge.NetComponents.Attachment)
+        && obj.Attachment.Slot == Demiurge.EquipSlot.Hand) local.Equip(obj);
     if (obj.Type == Demiurge.ObjectType.PlayerStatus) local.Status = obj;
 }
 

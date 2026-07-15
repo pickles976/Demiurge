@@ -37,7 +37,8 @@ namespace Demiurge
         Weapon = 1 << 2,
         Owner = 1 << 3,
         Armor = 1 << 4,
-        Item = 1 << 5
+        Item = 1 << 5,
+        Attachment = 1 << 6
     }
 
     public struct TransformState : IMessageSerializable
@@ -96,6 +97,17 @@ namespace Demiurge
         public void Deserialize(Message m) => Type = (ItemType)m.GetUShort();
     }
 
+    /// <summary>WHERE on its owner an equipped item sits. Present iff Owner is —
+    /// this is the instance's slot, not the config's static default: a rifle in
+    /// Hand and a rifle on Back are the same ItemType in different Attachments.
+    /// The client keys its socket table (bone + seat) off this slot.</summary>
+    public struct AttachmentState : IMessageSerializable
+    {
+        public EquipSlot Slot;
+        public void Serialize(Message m) => m.AddByte((byte)Slot);
+        public void Deserialize(Message m) => Slot = (EquipSlot)m.GetByte();
+    }
+
     /// <summary>Some subset of an object's components, mask-prefixed. The if-chain
     /// order is the wire format; new components go at the end of both methods.</summary>
     public struct ComponentBundle : IMessageSerializable
@@ -107,6 +119,7 @@ namespace Demiurge
         public OwnerState Owner;
         public ArmorState Armor;
         public ItemState Item;
+        public AttachmentState Attachment;
 
         public void Serialize(Message m)
         {
@@ -117,6 +130,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Owner)) m.AddSerializable(Owner);
             if (Mask.HasFlag(NetComponents.Armor)) m.AddSerializable(Armor);
             if (Mask.HasFlag(NetComponents.Item)) m.AddSerializable(Item);
+            if (Mask.HasFlag(NetComponents.Attachment)) m.AddSerializable(Attachment);
         }
 
         public void Deserialize(Message m)
@@ -128,6 +142,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Owner)) Owner = m.GetSerializable<OwnerState>();
             if (Mask.HasFlag(NetComponents.Armor)) Armor = m.GetSerializable<ArmorState>();
             if (Mask.HasFlag(NetComponents.Item)) Item = m.GetSerializable<ItemState>();
+            if (Mask.HasFlag(NetComponents.Attachment)) Attachment = m.GetSerializable<AttachmentState>();
         }
     }
 }

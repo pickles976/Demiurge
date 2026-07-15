@@ -35,7 +35,7 @@ public class ObjectViewFactory
 
         Entity entity;
         if (isItem)
-            entity = new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Get(obj.Item.Type).ModelPath)) };
+            entity = new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(obj.Item.Type))) };
         else if (builders.TryGetValue(obj.Type, out var build))
             entity = build(obj);
         else return;   // no visual (PlayerStatus, unknown types): skip, don't crash

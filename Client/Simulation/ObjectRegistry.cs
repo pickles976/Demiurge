@@ -79,5 +79,6 @@ public class ObjectRegistry
         if (state.Mask.HasFlag(NetComponents.Owner)) obj.Owner = state.Owner;
         if (state.Mask.HasFlag(NetComponents.Armor)) obj.Armor = state.Armor;
         if (state.Mask.HasFlag(NetComponents.Item)) obj.Item = state.Item;
+        if (state.Mask.HasFlag(NetComponents.Attachment)) obj.Attachment = state.Attachment;
     }
 }

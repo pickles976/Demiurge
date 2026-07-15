@@ -22,36 +22,41 @@ messages; cosmetic events (PlayerFired) go unreliable.
 2. `Common/Component.cs`: add the `ArmorState : IMessageSerializable` struct.
 3. `Common/Component.cs`: add the field to `ComponentBundle` and one masked line at
    the END of `Serialize` AND `Deserialize`.
-4. `Server/ServerObject.cs`: add the field (a FIELD, not a property — mutable struct).
+4. `Server/ServerObject.cs`: add the field (a FIELD, not a property — mutable struct),
+   and one masked line in `ServerObject.CopyComponents` (carries live state across
+   ItemSystem's equip/drop transitions — forget it and the trait silently zeroes on swap).
 5. `Server/ObjectReplication.cs`: one line in `Bundle(...)`.
 6. `Client/Simulation/NetObject.cs`: add the field.
 7. `Client/Simulation/ObjectRegistry.cs`: one masked line in `CopyComponents`.
 8. Optional view: a script in `ObjectViewFactory.CreateView`'s mask block.
 
-Seven mechanical edits, all append-only. Steps 5 and 7 exist in exactly one place
-each because of Parts 1 and 3 — before, they were the two spots this checklist got
-forgotten (once each, both shipped bugs).
+Eight mechanical edits, all append-only. Steps 4 (CopyComponents), 5, and 7 exist
+in exactly one place each — before they were centralized, those were the spots
+this checklist got forgotten (both shipped bugs).
 
 ### How items work (read this before the item recipes)
 
 *(These recipes describe the generalized item system —
 `docs/superpowers/specs/2026-07-15-generalized-item-system-design.md`.)*
 
-An item is identity + data, not a type hierarchy. `ItemType` names it,
-`ItemConfig` (Common) says what it does — category, equip slot, weapon stats if
-any — and `ItemCosmetics` (Client) says what it looks like and where it sits on
-the body. There is no per-item class, component, or ObjectType.
+An item is identity + data, not a type hierarchy. `ItemType` names it;
+`ItemConfig` (Common) holds the identity-level facts every item has (category,
+equip slot); each TRAIT has its own table keyed by `ItemType` — `WeaponConfig`
+(Common) for guns, `ArmorConfig` (Common) for armor — where having a row IS
+having the trait. On the client, `ItemCosmetics` maps type → model and slot →
+socket, and `WeaponFx` maps type → shot sound/tracer. There is no per-item
+class, component, or ObjectType.
 
 Behavior comes from the component mask — the mask IS the trait system:
 
 - `ItemState + Transform` → a pickup sitting in the world (bobs, E-interactable)
-- `ItemState + Owner` → equipped, attached to that player's model
+- `ItemState + Owner + Attachment` → equipped; `Attachment.Slot` says where
 - `+ WeaponState` → it shoots (fire/reload validation applies)
 - `+ ArmorState` → it's armor (replicated now, consumed by nothing yet)
 
-`ItemSystem.SpawnPickup` derives the spawn mask from the config, so a designer
-adding an item never touches masks. An item has a trait if its mask carries the
-bit; giving items a NEW trait is the last recipe below.
+`ItemSystem.SpawnPickup` derives the spawn mask from the trait tables, so a
+designer adding an item never touches masks. An item has a trait if its mask
+carries the bit; giving items a NEW trait is the last recipe below.
 
 ### Add an equippable item (hat, helmet, armor — no new code)
 
@@ -59,9 +64,8 @@ If the item just gets worn somewhere, data rows are the whole job:
 
 1. `Common/Component.cs`: append to `ItemType`.
 2. `Common/ItemConfig.cs`: one row — `Category = Equippable`, its `EquipSlot`.
-3. `Client/View/ItemCosmetics.cs`: one row — model path, attach node (a bone
-   like `"torso"` for body armor or `"head"` for a helmet; `null` parents to
-   the player entity root instead), seat offset/rotation — plus the assets.
+3. `Client/View/ItemCosmetics.cs`: one row in `Model(...)` — plus the assets.
+   WHERE it sits comes from its slot's socket row, not the item.
 4. Spawn it somewhere: `items.SpawnPickup(ItemType.TopHat, pos)`.
 
 Pickup bob, E-to-equip, swap-drop, attach, despawn-on-disconnect, late-join
@@ -69,27 +73,31 @@ catch-up: all free. They key off `ItemState` and the config, not the item.
 
 ### Add a weapon (e.g. a shotgun)
 
-A weapon is an equippable whose config row has a weapon section — same recipe,
-one extra row of numbers:
+A weapon is an equippable with a row in the weapon trait table — same recipe,
+two extra rows of numbers:
 
 1. `Common/Component.cs`: append to `ItemType`.
-2. `Common/ItemConfig.cs`: one row — Hand slot + weapon stats (capacity,
-   cadence, reload, damage, range).
-3. `Client/View/ItemCosmetics.cs`: one row (model, `"right_hand"` attach node,
-   seat, shot sound, tracer color) + assets.
-4. Spawn: `items.SpawnPickup(ItemType.Shotgun, pos)`.
+2. `Common/ItemConfig.cs`: one row — `Category = Equippable`, Hand slot.
+3. `Common/WeaponConfig.cs`: one row — capacity, cadence, reload, damage, range.
+4. `Client/View/ItemCosmetics.cs`: one row in `Model(...)`;
+   `Client/View/WeaponFx.cs`: one row (shot sound, tracer color) + assets.
+5. Spawn: `items.SpawnPickup(ItemType.Shotgun, pos)`.
 
-Prediction, validation, ammo replication, FX all key off the type; the weapon
-stats section is what puts `WeaponState` in the spawn mask, which is what makes
-fire/reload apply.
+Prediction, validation, ammo replication, FX all key off the type; the
+WeaponConfig row is what puts `WeaponState` in the spawn mask, which is what
+makes fire/reload apply. (Armor is the same shape: an `ArmorConfig` row drives
+`ArmorState`.)
 
 ### Add an equip slot (e.g. Feet)
 
-1. `Common/ItemConfig.cs`: append to `EquipSlot`.
+1. `Common/ItemConfig.cs`: append to `EquipSlot` (it rides the wire inside
+   `AttachmentState` — append-only).
+2. `Client/View/ItemCosmetics.cs`: one socket row in `SlotSockets` — which bone
+   the slot lives on, plus its seat offset/rotation.
 
-Done. Occupancy is a per-player dictionary keyed by slot and nothing enumerates
-slots, so no other code changes. Point items at it via their config row; where
-that slot sits on the body is each item's cosmetics entry, not the slot's.
+Occupancy is a per-player dictionary keyed by slot and nothing enumerates
+slots, so nothing else changes. Point items at the slot via their `ItemConfig`
+row; every item in that slot shares the socket.
 
 ### Add an object type (e.g. a barrel) — scenery only
 
@@ -119,34 +127,37 @@ composition root — never directly in a view script.
 
 ### How attach-to-player works (the rules behind ItemAttachScript)
 
-Designers get attachment for free from the cosmetics row; this is for anyone
-touching the machinery. The split that keeps it general: the wire says WHOSE
-body (the `Owner` component); the client decides WHERE on the body.
-`ItemAttachScript` reads the item's `ItemCosmetics` entry — a bone name attaches
-via ModelNodeLinkComponent, `null` parents to the `Player_{id}` entity root.
-Bone names and seat offsets are cosmetic, so they stay off the wire — same
-reason WeaponConfig's damage numbers do. Bone names come from the rig — dump
-the gltf's node names if unsure.
+Designers get attachment for free from the slot; this is for anyone touching
+the machinery. The split that keeps it general: the wire says WHOSE body (the
+`Owner` component) and WHICH slot (the `Attachment` component); the client
+decides what that slot looks like. `ItemAttachScript` keys `SlotSockets` by
+`Attachment.Slot` — a socket's bone name attaches via ModelNodeLinkComponent,
+`null` parents to the `Player_{id}` entity root. Bone names and seat offsets
+are cosmetic, so they stay off the wire — same reason WeaponConfig's damage
+numbers do. Bone names come from the rig — dump the gltf's node names if
+unsure.
 
 Rules that make it work:
 
 - **No Transform in the mask.** The bone link owns the entity's transform; a
   NetTransformScript would fight it (same conflict the pickup path suppresses
-  for PickupBobScript). Equipped items spawn with `ItemState | Owner` (+ live
-  state), never Transform — which also keeps them unhittable by the raycast.
+  for PickupBobScript). Equipped items spawn with `ItemState | Owner |
+  Attachment` (+ live state), never Transform — which also keeps them
+  unhittable by the raycast.
 - **Keep the entity at the scene root.** ModelNodeLinkComponent drives the world
   transform from the bone regardless of hierarchy, and DestroyView finds views
   by name at the root.
 - **Keep the retry loop.** Reliable messages aren't ordered across each other, so
   the item can arrive before its owner's view exists. Attaching in Update until
   the owner appears is the fix, not a hack.
-- The `attached` flag latches once. That's safe because ownership transitions are
-  despawn → respawn (a swap-dropped gun is a NEW pickup object), so no view ever
-  sees `Owner.PlayerId` change. If that ever changes, stop latching: watch the
-  id and re-attach on change.
-- If one object must move between sockets at runtime (rifle in hands vs. slung
-  on back), the socket stops being cosmetic — append an `Attachment` component
-  carrying a socket id, via the replicated-component recipe above.
+- The `boneLinked` flag latches once. That's safe because owner AND slot
+  transitions are despawn → respawn (a swap-dropped gun is a NEW pickup object),
+  so no view ever sees `Owner.PlayerId` or `Attachment.Slot` change. Moving a
+  rifle from Hand to Back is therefore a server-side `Equipped` shuffle that
+  respawns the object — no view changes needed.
+- **The active gun is the Hand slot**, nothing else. `LinkOwned` (Program.cs)
+  equips only `Weapon`-masked objects whose `Attachment.Slot == Hand` — a stowed
+  weapon on another slot must never drive the HUD or prediction.
 - Despawn equipped items when the owner leaves (`ItemSystem.DespawnFor`). Miss
   this and every client keeps an orphan view retrying its attach forever.
 
@@ -156,19 +167,21 @@ When an item needs new live, replicated state — fuel, charges, durability, a
 container's inventory — that's a new component bit, not a new item kind or a
 new pickup/equipped class:
 
-1. Follow the replicated-component recipe above (e.g. `FuelState`).
-2. `Common/ItemConfig.cs`: declare it in the config rows that have the trait
-   (e.g. a max-fuel field), so the data says which items carry it.
-3. `Server/ItemSystem.cs`: `SpawnPickup`'s mask derivation adds the bit when the
-   config declares it, and `init` sets the starting state. Carry the live struct
-   across the pickup↔equipped despawn/respawn transitions, like ammo.
+1. Follow the replicated-component recipe above (e.g. `FuelState`) — its
+   CopyComponents step is what carries the live struct across pickup↔equipped
+   transitions, automatically, like ammo.
+2. Create the trait's table: `Common/FuelConfig.cs`, `Get(ItemType) → FuelStats?`
+   — a row means "this item has the trait" (`WeaponConfig`/`ArmorConfig` are the
+   models).
+3. `Server/ItemSystem.cs`: two lines in `SpawnPickup` — add the mask bit when
+   the table has a row, set the starting state in `init`.
 4. A server system consumes/mutates it and sets `obj.Dirty |= ...` — the object
    pipeline replicates the rest.
 5. Client view: attach a script in `ObjectViewFactory`'s mask block if the trait
    is visible.
 
-After this, giving any OTHER item the trait is a config row — that's the payoff
-of keeping traits in the mask.
+After this, giving any OTHER item the trait is one row in the trait's table —
+that's the payoff of keeping traits in the mask.
 
 ### Give the player a stat (health, stamina)
 
@@ -202,3 +215,35 @@ new-trait recipe; ArmorState lives on the armor item, not on PlayerStatus.)
   the interact handler's nearest-pickup scan).
 - Verify with two clients + a late joiner. The late joiner is the test that finds
   catch-up bugs; the second client finds every "works on my screen" bug.
+
+### Where this design sits (and its three scaling seams)
+
+Two schools of game networking. **Per-feature packets** (Minecraft): ~150
+hand-written packet types over TCP, one per game feature — total control, but
+every feature grows new packets and handlers. **Generic state replication**
+(the Quake → Source → Unreal lineage): the server owns a set of replicated
+objects and the engine ships state diffs. `ObjectReplication` is a small member
+of the second school — generic spawn/despawn/catch-up plus dirty-mask deltas —
+and the streamed/evented split mirrors Source's unreliable snapshot stream +
+reliable event channel. The convergent details are convergent because everyone
+hits the same walls: Minecraft's `SynchedEntityData` is our dirty mask, its
+`SetEquipment` packet is our `AttachmentState`, its dropped-item entities are
+our `ItemState + Transform` pickups.
+
+What the big engines have that we deliberately don't (yet) — each has a clean
+seam when its day comes:
+
+- **Interest management.** We broadcast everything to everyone; Minecraft
+  replicates only within view distance, Unreal culls by relevancy. Correct at
+  our scale. The seam: the `SendToAll` calls inside `ObjectReplication` become
+  a per-client relevancy filter — nothing outside that class changes.
+- **Ack-based delta compression.** We use dirty flags + a reliable channel;
+  Quake/Source delta-compress against the last snapshot the client ACKED, so
+  loss never stalls anything. Simpler wins until packet loss on the reliable
+  channel causes hitches under load. The seam: also entirely inside
+  `ObjectReplication` (`BroadcastDirtyStatess` grows per-client baselines).
+- **Prediction scope.** We predict movement and firing (the Counter-Strike
+  feel); Minecraft predicts almost nothing, which is why laggy Minecraft feels
+  like molasses instead of rubber-banding. Widening prediction (e.g. predicted
+  pickup on E) means more reconcile paths — add per action, deliberately, the
+  way fire/reload already work.

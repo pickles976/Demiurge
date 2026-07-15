@@ -18,18 +18,19 @@ namespace Demiurge.GameServer
 
         public ServerObject SpawnPickup(ItemType type, Vector3 position)
         {
-            // The config's sections are the mask recipe: a weapon section means
-            // a WeaponState bit, an armor section an ArmorState bit, and so on.
-            var stats = ItemConfig.Get(type);
+            // The trait tables are the mask recipe: a WeaponConfig row means a
+            // WeaponState bit, an ArmorConfig row an ArmorState bit, and so on.
+            var weapon = WeaponConfig.Get(type);
+            var armor = ArmorConfig.Get(type);
             var mask = NetComponents.Item | NetComponents.Transform;
-            if (stats.Weapon != null) mask |= NetComponents.Weapon;
-            if (stats.Armor != null) mask |= NetComponents.Armor;
+            if (weapon != null) mask |= NetComponents.Weapon;
+            if (armor != null) mask |= NetComponents.Armor;
 
             return objects.Spawn(ObjectType.Item, mask, position, obj =>
             {
                 obj.Item = new ItemState { Type = type };
-                if (stats.Weapon is { } w) obj.Weapon = new WeaponState { CurrentAmmo = w.MagazineCapacity };
-                if (stats.Armor is { } a) obj.Armor = new ArmorState { MaxValue = a, Current = a };
+                if (weapon is { } w) obj.Weapon = new WeaponState { CurrentAmmo = w.MagazineCapacity };
+                if (armor is { } a) obj.Armor = new ArmorState { MaxValue = a.Max, Current = a.Max };
             });
         }
 
@@ -65,28 +66,30 @@ namespace Demiurge.GameServer
                 Drop(current, player.Position);
 
             // pickup -> equipped: despawn + respawn with Transform swapped for
-            // Owner. Live state (ammo) rides the carried structs.
-            var carried = (pickup.Item, pickup.Weapon, pickup.Armor);
-            var mask = (pickup.Has & ~NetComponents.Transform) | NetComponents.Owner;
+            // Owner + Attachment. CopyComponents carries every shared bit — live
+            // state (ammo) and any future trait ride along automatically.
+            var mask = (pickup.Has & ~NetComponents.Transform) | NetComponents.Owner | NetComponents.Attachment;
             objects.Despawn(pickup.NetworkId);
 
             var equipped = objects.Spawn(ObjectType.Item, mask, player.Position, obj =>
             {
-                (obj.Item, obj.Weapon, obj.Armor) = carried;
+                ServerObject.CopyComponents(pickup, obj, pickup.Has & mask);
                 obj.Owner = new OwnerState { PlayerId = player.Id };
+                obj.Attachment = new AttachmentState { Slot = slot };
             });
             player.Equipped[slot] = equipped.NetworkId;
         }
 
         private void Drop(ServerObject equipped, Vector3 position)
         {
-            // equipped -> pickup: the mirror image of Equip's transition.
-            var carried = (equipped.Item, equipped.Weapon, equipped.Armor);
-            var mask = (equipped.Has & ~NetComponents.Owner) | NetComponents.Transform;
+            // equipped -> pickup: the mirror image of Equip's transition. The
+            // spawn position IS the pickup's Transform, so it must not be copied
+            // (equipped.Has has no Transform bit, so the shared mask excludes it).
+            var mask = (equipped.Has & ~(NetComponents.Owner | NetComponents.Attachment)) | NetComponents.Transform;
             objects.Despawn(equipped.NetworkId);
 
             objects.Spawn(ObjectType.Item, mask, position,
-                obj => (obj.Item, obj.Weapon, obj.Armor) = carried);
+                obj => ServerObject.CopyComponents(equipped, obj, equipped.Has & mask));
         }
 
         /// <summary>Everything worn leaves with its owner. Call from RemovePlayer.
