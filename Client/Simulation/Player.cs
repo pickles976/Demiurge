@@ -86,6 +86,11 @@ public class LocalPlayer : Player
         network.SendReload();
     }
 
+    /// <summary>E pressed: ask the server to pick up / swap whatever is nearby.
+    /// Nothing is predicted — the outcome arrives as ordinary object
+    /// spawn/despawn replication and flows through Equip/Unequip.</summary>
+    public void TryInteract() => network.SendInteract();
+
     public LocalPlayer(NetworkManager network) => this.network = network;
 
     public void Update(Vector3 intent, float dt)

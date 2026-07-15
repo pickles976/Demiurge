@@ -52,7 +52,8 @@ namespace Demiurge
     {
         PlayerInput = 1,
         PlayerFire,
-        PlayerReload
+        PlayerReload,
+        PlayerInteract
     }
 
     public static class MessageExtensions

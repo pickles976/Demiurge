@@ -88,6 +88,12 @@ namespace Demiurge.GameServer
                 weapons.ApplyReload(player, _Tick);
         }
 
+        public void ApplyInteract(ushort clientId)
+        {
+            if (players.TryGetValue(clientId, out var player))
+                weapons.TryPickup(player);   // transitional: ItemSystem takes this over in Task 5
+        }
+
         public void ApplyInput(ushort clientId, PlayerInputData input)
         {
             if (!players.TryGetValue(clientId, out var player)) return;
@@ -125,8 +131,6 @@ namespace Demiurge.GameServer
                 // Queue starved, just reuse last player input
                 if (!processedAny)
                     player.Position = PlayerMovement.Step(player.Position, player.LastIntent, player.State, dt);
-
-                weapons.TryPickup(player);
             }
 
             // Save history

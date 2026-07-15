@@ -76,6 +76,11 @@ namespace Demiurge.GameClient
             client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerReload));
         }
 
+        public void SendInteract()
+        {
+            client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerInteract));
+        }
+
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {

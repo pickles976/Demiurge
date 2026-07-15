@@ -50,6 +50,9 @@ namespace Demiurge.GameServer
                 case ClientToServerId.PlayerReload:
                     world.ApplyReload(e.FromConnection.Id);
                     break;
+                case ClientToServerId.PlayerInteract:
+                    world.ApplyInteract(e.FromConnection.Id);
+                    break;
             }
         }
     }

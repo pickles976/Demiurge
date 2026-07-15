@@ -53,6 +53,9 @@ public class LocalPlayerController : SyncScript
 		if (Input.IsKeyPressed(Keys.R))
 			local.TryReload();
 
+		if (Input.IsKeyPressed(Keys.E))
+			local.TryInteract();
+
 	}
 
 	private Vector3 ComputeIntent()
