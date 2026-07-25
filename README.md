@@ -20,8 +20,8 @@ https://github.com/stride3d/stride/issues/2496
     - [x] add armor
     - [ ] add helmet
 - [ ] Player health
-    - [ ] add health pack pickups
     - [x] pistol pickup
+    - [ ] add health pack pickups
     - [ ] shotgun pickup
         - [ ] multiple pellets per-shot
     - [ ] grenade pickup

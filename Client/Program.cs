@@ -73,7 +73,7 @@ void LinkOwned(LocalPlayer local, NetObject obj)
 
 objectRegistry.ObjectSpawned += obj =>
 {
-    if (registry.LocalPlayer is {} local) LinkOwned(local, obj);
+    if (registry.LocalPlayer is { } local) LinkOwned(local, obj);
 };
 // The server spawns our PlayerStatus object BEFORE announcing our player, so its
 // ObjectSpawned fires while LocalPlayer is still null. Backfill on spawn: link any
@@ -85,7 +85,7 @@ registry.PlayerJoined += player =>
 };
 objectRegistry.ObjectDespawned += obj =>
 {
-    if (registry.LocalPlayer is not {} local) return;
+    if (registry.LocalPlayer is not { } local) return;
     // Unequip guards on reference equality, so a despawning weapon PICKUP
     // (also Weapon-masked, but never our equipped object) is a no-op.
     if (obj.Has.HasFlag(Demiurge.NetComponents.Weapon)) local.Unequip(obj);
@@ -101,6 +101,38 @@ game.Run(start: Start, update: Update);
 // SDL/Linux backend that creates an exclusive-fullscreen swapchain whose pixel
 // format resolves to None, causing a DivideByZero in InitDefaultRenderTarget.
 // Fullscreen is enabled as a borderless window inside Start() instead.
+
+
+void createCubes(Scene rootScene)
+{
+
+    // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
+    ImageResult img;
+    using (var stream = File.OpenRead("assets/prototype/textures/Green/texture_01.png"))
+        img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+    var texture = Texture.New2D(game.GraphicsDevice, img.Width, img.Height,
+        PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
+
+    // Build a lit material with the texture as its diffuse map
+    var material = Material.New(game.GraphicsDevice, new MaterialDescriptor
+    {
+        Attributes = new MaterialAttributes
+        {
+            Diffuse = new MaterialDiffuseMapFeature(new ComputeTextureColor(texture)),
+            DiffuseModel = new MaterialDiffuseLambertModelFeature(),
+        }
+    });
+
+    float[] noiseMap = NoiseGen.GenerateNoiseForChunk(new ChunkIndex { x = 0, y = 0});
+
+    
+
+    var cube = game.Create3DPrimitive(PrimitiveModelType.Cube, new Primitive3DEntityOptions
+    {
+        Material = material,
+    });
+
+}
 
 
 void Start(Scene rootScene)
@@ -131,6 +163,9 @@ void Start(Scene rootScene)
     game.GraphicsDeviceManager.PreferredBackBufferHeight = 600;
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
+
+    createCubes(rootScene);
+
 
     // Apply custom shader
     var ground = game.Add3DGround();
@@ -166,33 +201,8 @@ void Start(Scene rootScene)
     var ambientLight = CreateAmbientLight();
     ambientLight.Scene = rootScene;
 
-
-    // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
-    ImageResult img;
-    using (var stream = File.OpenRead("assets/prototype/textures/Green/texture_01.png"))
-        img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-    var texture = Texture.New2D(game.GraphicsDevice, img.Width, img.Height,
-        PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
-
-    // Build a lit material with the texture as its diffuse map
-    var material = Material.New(game.GraphicsDevice, new MaterialDescriptor
-    {
-        Attributes = new MaterialAttributes
-        {
-            Diffuse = new MaterialDiffuseMapFeature(new ComputeTextureColor(texture)),
-            DiffuseModel = new MaterialDiffuseLambertModelFeature(),
-        }
-    });
-
     sphere = game.Create3DPrimitive(PrimitiveModelType.Sphere, new() { IncludeCollider = false });
     sphere.Transform.Position = new Vector3(0, 0.5f, 0);
-
-    var cube = game.Create3DPrimitive(PrimitiveModelType.Cube, new Primitive3DEntityOptions {
-        Material = material,
-    });
-
-    // var player = CreatePlayer();
-    // player.Scene = rootScene;
 
     var dummy = CreateDummy();
     dummy.Scene = rootScene;
@@ -229,8 +239,8 @@ void Start(Scene rootScene)
 
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
-    cameraEntity.Add(new LocalPlayerController {CameraEntity = cameraEntity, Registry = registry});
-    cameraEntity.Add(new ThirdPersonCameraScript{Registry = registry});
+    cameraEntity.Add(new LocalPlayerController { CameraEntity = cameraEntity, Registry = registry });
+    cameraEntity.Add(new ThirdPersonCameraScript { Registry = registry });
     cameraEntity.Add(new CursorReticleScript());
     cameraEntity.Add(new AimLineScript { Registry = registry });
     cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
@@ -322,7 +332,7 @@ Entity CreateDirectionalLight(string? entityName = "Directional Light")
 Entity CreateDummy()
 {
 
-    var dummy = new Entity("DUMMY") { 
+    var dummy = new Entity("DUMMY") {
         new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")),
         new BodyComponent
         {
