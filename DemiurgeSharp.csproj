@@ -24,6 +24,7 @@
     <Compile Remove="tools/**/*.cs" />
     <Compile Remove="Server/**/*.cs" />
     <Compile Remove="Common/**/*.cs" />
+    <Compile Remove="Common.Tests/**/*.cs" />
     <Compile Remove="*.cs" />
   </ItemGroup>
 

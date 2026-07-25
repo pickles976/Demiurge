@@ -10,7 +10,15 @@ which is also the composition root for all wiring.
 dotnet build DemiurgeSharp.slnx
 dotnet run                                      # client (DemiurgeSharp.csproj)
 dotnet run --project Server/DemiurgeServer.csproj   # server
+dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), ~50ms, headless
 ```
+
+`Common` has no Stride dependency — it's plain `System.Numerics` — so anything in it is
+testable without booting the engine. That's why the voxel coordinate maths has real tests and
+the rest of the codebase doesn't; keep new pure logic in `Common` and it stays that way. Note
+that `DemiurgeSharp.csproj` lives at the repo root and globs `**/*.cs`, so every sibling project
+needs a `<Compile Remove="Dir/**/*.cs" />` line or the root build breaks on duplicate
+assembly attributes.
 
 If the build goes weird after dependency changes: `dotnet clean && dotnet restore --no-cache && dotnet build --no-incremental`.
 
@@ -30,7 +38,97 @@ Wire rule worth repeating here: enum values and the `ComponentBundle` if-chain o
 ARE the protocol. Append, never reorder, never delete — clients desync silently.
 
 Design specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`,
-loose notes in `docs/scratchpad/`.
+loose notes in `docs/scratchpad/`. `docs/networking/` explains the object replication,
+movement and shooting paths end to end.
+
+## Netcode at a glance
+
+`Common/NetworkProtocol.cs` is the tuning surface. Port 7777; `TickRate` is 30 Hz and
+**everything tick-related must derive from it** or client and server drift;
+`InterpolationDelayTicks` is 3; `MaxRewindTicks` equals `TickRate`, i.e. one second of
+lag-compensation rewind, matching the snapshot buffer's retention.
+
+`SimulatedLatencySeconds` / `SimulatedJitterSeconds` fake inbound lag on the client only —
+set them non-zero to reproduce lag bugs with both ends on this machine.
+
+The `ushort` values in `ServerToClientId` / `ClientToServerId` are the wire protocol. Renumber
+one and the matching handler silently stops firing — no error, just nothing happening.
+
+Transport is Riptide. The server is authoritative: it re-steps a starved move queue with the
+player's last intent forever (`GameWorld.Tick`), so a client that stops sending input leaves
+its character running rather than standing still.
+
+## Terrain / chunks (in progress)
+
+The current work, tracked in `TODO.md`. Code sits in `Common/Voxel/` so the server can take
+over generation later; today it runs client-side only, from `createCubes` in `Client/Program.cs`.
+
+The Bevy/Rust project at `/home/sebas/Projects/Demiurge` is the working reference this was
+ported from — `src/chunks/{utils,mod,tilemap}.rs`. When the terrain math looks wrong, diff
+against it before theorising, and note that `utils.rs` carries unit tests that double as the
+spec for the coordinate transforms.
+
+- A chunk is a **16×16 heightmap** — `ChunkConstants.ChunkWidth = 16`, `ChunkSize = 256`, one
+  float per column, stored flat in `TerrainChunk.tiles`.
+- **`ChunkIndex.y` and `BlockCoords.y` mean world Z, not height.** Easiest thing to get wrong
+  in this code.
+- Coordinates pin to the chunk's bottom-left corner (`Common/Chunks/README.md`).
+- Heights come from `NoiseGen.GenerateNoiseForChunk`, over the `NoiseDotNet` package.
+- `createCubes` spawns one entity per column — 256 per chunk, no instancing, no colliders
+  (passing `Primitive3DEntityOptions` rather than the Bepu options type selects the
+  non-physics `Create3DPrimitive` overload). Fine for a prototype; read the instancing notes
+  in `stride_docs/rendering-and-compositor.md` before scaling it up.
+- Longer roadmap in `Common/Voxel/TERRAIN.md`: heightmap mesh → smooth normals → slope
+  texturing → dual contouring.
+
+**`docs/voxel/DATA_MODEL.md` is the design for where this is heading** — a quantized
+signed-distance field plus a material byte per voxel, why dual contouring forces that rather than
+block-type enums, and the chunk dimension/indexing/padding decisions. Read it before touching the
+storage layer.
+
+### The rule that keeps the terrain math honest
+
+**Never compute a block's world position twice.** `ConvertChunkCoordinatesAndBlockIndexToGlobalBlockCoordinates`
+is the single index→world function; noise generation and rendering both go through it, so an
+array slot cannot mean different places to the two of them. The porting bugs fixed in July 2026
+were all a second, hand-rolled walk of the chunk drifting out of sync with it — a transpose
+(x-major generation vs z-major decode) and a half-chunk offset at once.
+
+Related invariants worth preserving:
+
+- Blocks index z-major: `index = z * ChunkWidth + x`.
+- `ChunkIndex.y` / `BlockCoords.y` are world **Z**. `ConvertVector3ToChunkCoordinates` projects
+  through `Vector2(position.X, position.Z)` specifically so that choice is visible.
+- Negative coordinates use real floor division. This **diverges from the Rust**, which shifts
+  and truncates — an approximation that misplaces exact negative multiples of the width, sending
+  every negative chunk's first row and column into its neighbour. All of the reference's own test
+  vectors still pass under real flooring.
+- `GetIndicesFromCenterAndDistance` uses an exclusive upper bound, matching Rust's
+  `(x_minus..x_plus)`. It looks off-by-one; it is a faithful port. Don't "fix" it in isolation.
+
+## Assets
+
+`docs/ASSET_LOADING.md` has the detail. Two stages: at build time the `SyncStrideGltfAssets`
+MSBuild target runs `tools/GltfAssetGenerator` over `assets/**/*.gltf` to emit Stride asset
+descriptors; at runtime you just `Content.Load<Model>(path)`. No SharpGLTF or image decoding
+happens at runtime.
+
+SDSL shaders live in `assets/shaders/` and are referenced by class name, not path — e.g.
+`new ComputeShaderClassColor { MixinReference = "TestShader" }` resolves
+`assets/shaders/TestShader.sdsl`.
+
+## Two subsystems that are ours, not Stride's
+
+**Debug drawing** — `Client/Rendering/LineRenderer.cs`, immediate mode: call `DrawLine`,
+`DrawPolyline`, `DrawPoint`, `Circle2D` (and the `*2D` screen-space variants) every frame from
+any script and they're re-issued each frame. 3D coordinates project through the static
+`LineRenderer.Camera`; 2D coordinates are pixels centred on the screen. This is the tool for
+things like the "debug draw chunk borders" TODO — reach for it before inventing anything.
+
+**Audio** — `Client/Audio/SoundManager.cs` talks to OpenAL directly through Silk.NET,
+deliberately bypassing Stride's audio, whose native layer deadlocks on this platform
+(`docs/scratchpad/AUDIO.md`). Don't reintroduce `Stride.Audio`. The camera entity is the 3D
+listener, resolved from services.
 
 ## Stride engine reference — check `stride_docs/` first
 
@@ -74,6 +172,13 @@ comments in `Stride.*.xml` beside them. Use the plain `net10.0` variants — thi
   `InitDefaultRenderTarget` — use borderless windowed inside `Start()`.
 - `Texture.Load` pulls in Windows-only `System.Drawing.Common`; decode with
   StbImageSharp and build textures via `Texture.New2D`.
+- **Quaternion multiply is reversed** from Unity/GLM: Stride's `a * b` means "apply `a`, then
+  `b`". Get it backwards and rotations pick up roll. See `DebugFlyCamera.cs` for a
+  yaw/pitch camera written the correct way round.
+- **`Input.IsKeyPressed` re-fires on OS key auto-repeat** — it is not a reliable one-shot for
+  a key that gets held. Edge-detect `IsKeyDown` yourself for toggles.
+- **`Input.MouseDelta` is anisotropic** (X over window width, Y over window height,
+  separately). For free-look use `AbsoluteMouseDelta`.
 
 ## Working with Sebastian
 
@@ -84,3 +189,30 @@ comments in `Stride.*.xml` beside them. Use the plain `net10.0` variants — thi
 - **Verify visual changes by asking him to look**, not by screenshotting the game.
 - Two-client local testing: an unfocused Stride window is throttled by the engine.
   Background-window stutter is not a netcode bug.
+
+### Concepts freely, systems iteratively
+
+This is a codebase Sebastian is learning in, so the *altitude* of help matters as much as its
+correctness.
+
+**Concepts** are single graspable ideas — "density is separate from material", "signed distance
+encodes sub-voxel position", "a chunk is a fixed-size region of the world". They transfer by
+explanation, and once held, the implementation usually follows intuitively. Explain these in
+full, with code where it helps.
+
+**Systems** are assemblages whose difficulty emerges from parts interacting — 3D chunking *plus*
+palette compression *plus* filesystem streaming *plus* per-player server-side chunk tracking.
+Explanation does not transfer a system; only building one does, and it gets refined by annealing
+rather than foresight. He builds those himself, a step at a time. This is not about settling for
+a worse design — the destination should still be correct — it's that a human arrives at a system
+by living inside successive versions of it.
+
+It isn't a hard binary, and detail at either altitude is welcome **when he asks for it**. The two
+failure modes to actively avoid are **cognitive overload** and **premature optimization**:
+
+- Don't answer a concept question with a system design. ("What chunk size and data structure?"
+  wants a concept, not sections + cache analysis + a meshing strategy.)
+- Don't optimize a step he has scoped as scaffolding or throwaway.
+- When design must run ahead of code, mark plainly which parts belong to a later step. `TODO.md`
+  does this by ending each step with what is *deliberately not* in it; that marking is what lets
+  a blueprint run ahead without reading as a to-do list.

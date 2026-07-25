@@ -53,6 +53,31 @@ Stride.Games.dll). So `Game.Script.Enabled = false` halts *every* script in the 
    `Start()`** on the same instance with all fields intact (§5).
 3. **Remove the whole entity from the scene** — `ScriptSystem.Remove` fires per script.
 
+### Standing down *other* scripts: the arbitration-flag pattern
+
+When one script needs to take over a mode from several others — the case `Enabled` would have
+covered in another engine — the working shape is: the script that owns the mode exposes a public
+flag, stays registered itself, and every script it displaces early-returns on that flag. Sibling
+lookups go through `Entity.Get<T>()`, so nothing has to be wired in the composition root.
+
+`Client/View/DebugFlyCamera.cs` is the worked example in this repo. `DebugFlyCameraScript.Active`
+is read by `ThirdPersonCameraScript`, `CursorReticleScript` (both in `Client/View/PlayerCamera.cs`)
+and `LocalPlayerController`:
+
+```csharp
+if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
+```
+
+Two things that pattern forces you to get right:
+
+- **The arbiter must never be the one that's disabled**, or it can't hear the key that turns the
+  mode off. It polls input unconditionally and only gates the *work* on the flag.
+- **Early-returning is not free of side effects.** A displaced script stops producing whatever
+  downstream code reads from it — here, dropping `LocalPlayerController` entirely would have
+  stopped the client sending input, and this game's server re-steps a starved move queue with the
+  last intent forever. The frozen branch keeps sending zero-intent moves instead. Check what each
+  displaced script *emits*, not just what it draws.
+
 ---
 
 ## 2. Type map

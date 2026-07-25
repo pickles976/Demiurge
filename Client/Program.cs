@@ -32,6 +32,9 @@ using Riptide.Utils;
 using Demiurge.GameClient;
 using Silk.NET.OpenXR;
 using Microsoft.Win32;
+using NoiseDotNet;
+using Stride.Core.Storage;
+using BulletSharp;
 
 // Init riptide message logging
 var Log = GlobalLogger.GetLogger("Program");
@@ -106,6 +109,8 @@ game.Run(start: Start, update: Update);
 void createCubes(Scene rootScene)
 {
 
+    Console.WriteLine("Generating Terrain...");
+
     // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
     ImageResult img;
     using (var stream = File.OpenRead("assets/prototype/textures/Green/texture_01.png"))
@@ -123,14 +128,31 @@ void createCubes(Scene rootScene)
         }
     });
 
-    float[] noiseMap = NoiseGen.GenerateNoiseForChunk(new ChunkIndex { x = 0, y = 0});
 
-    
+    ChunkIndex chunkIndex = new ChunkIndex { x = 0, y = 0 };
+    TerrainChunk chunk = ChunkGenerator.GenerateChunk(chunkIndex);
 
-    var cube = game.Create3DPrimitive(PrimitiveModelType.Cube, new Primitive3DEntityOptions
+    for (var n = 0; n < chunk.voxels.Length; n++)
     {
-        Material = material,
-    });
+
+        if (chunk.voxels[n].Material == BlockType.BlockType_Air) continue;
+
+        // TODO: change color based on type
+        Vector3 position = ChunkTransforms.ConvertChunkAndVoxelIndexToGlobalBlockPosition(chunkIndex, n);
+        var cube = game.Create3DPrimitive(PrimitiveModelType.Cube, new Primitive3DEntityOptions
+        {
+            Material = material, // case statement here
+        });
+
+        // Block coordinates name a cell's bottom-left CORNER, but a cube mesh is centred on
+        // its origin — so offset by half a tile to make the block fill [position, position+1).
+        var half = ChunkConstants.TileSize / 2.0f;
+        cube.Transform.Position = new Vector3(position.X + half, position.Y, position.Z + half);
+        cube.Scene = rootScene;
+    }
+
+
+
 
 }
 
@@ -159,8 +181,8 @@ void Start(Scene rootScene)
     // Borderless fullscreen (safe on SDL/Linux; keeps the windowed backbuffer format).
     // game.Window.FullscreenIsBorderlessWindow = true;
     // game.GraphicsDeviceManager.IsFullScreen = true;
-    game.GraphicsDeviceManager.PreferredBackBufferWidth = 800;
-    game.GraphicsDeviceManager.PreferredBackBufferHeight = 600;
+    game.GraphicsDeviceManager.PreferredBackBufferWidth = 1280;
+    game.GraphicsDeviceManager.PreferredBackBufferHeight = 720;
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
 
@@ -241,6 +263,8 @@ void Start(Scene rootScene)
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
     cameraEntity.Add(new LocalPlayerController { CameraEntity = cameraEntity, Registry = registry });
     cameraEntity.Add(new ThirdPersonCameraScript { Registry = registry });
+    // Tilde detaches the camera and freezes the player; see DebugFlyCameraScript.
+    cameraEntity.Add(new DebugFlyCameraScript());
     cameraEntity.Add(new CursorReticleScript());
     cameraEntity.Add(new AimLineScript { Registry = registry });
     cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
@@ -324,7 +348,7 @@ Entity CreateDirectionalLight(string? entityName = "Directional Light")
     };
 
     entity.Transform.Position = new Vector3(0, 2.0f, 0);
-    entity.Transform.Rotation = Quaternion.RotationX(MathUtil.DegreesToRadians(-30.0f)) * Quaternion.RotationY(MathUtil.DegreesToRadians(-180.0f));
+    entity.Transform.Rotation = Quaternion.RotationX(Stride.Core.Mathematics.MathUtil.DegreesToRadians(-30.0f)) * Quaternion.RotationY(Stride.Core.Mathematics.MathUtil.DegreesToRadians(-180.0f));
 
     return entity;
 }

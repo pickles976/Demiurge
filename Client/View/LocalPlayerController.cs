@@ -13,6 +13,24 @@ public class LocalPlayerController : SyncScript
 		var local = Registry.LocalPlayer;
 		if (local == null) return;   // not spawned yet
 
+		// The debug fly camera has the input; stand the player down. Note this keeps SENDING a
+		// zero-intent move every tick rather than going silent: when the server's move queue
+		// starves it re-steps with the last intent it saw, forever (GameWorld.Tick), so a player
+		// frozen mid-sprint would keep running server-side while the client stopped predicting.
+		if (CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
+		{
+			local.State = local.State
+				.With(PlayerStateFlags.Moving, false)
+				.With(PlayerStateFlags.Sprinting, false)
+				.With(PlayerStateFlags.Aiming, false)
+				.With(PlayerStateFlags.Crouching, false)
+				.With(PlayerStateFlags.Shooting, false)
+				.With(PlayerStateFlags.Reloading, local.IsReloading);   // let an in-flight reload finish
+
+			local.Update(Vector3.Zero, (float)Game.UpdateTime.Elapsed.TotalSeconds);
+			return;
+		}
+
 		// Position
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
 

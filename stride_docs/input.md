@@ -94,6 +94,21 @@ held, gate on your own edge state or on `IsKeyDown` transitions rather than `IsK
 Mouse buttons do **not** have this problem: `MouseDeviceState.HandleButtonDown` early-outs when the
 button is already in `downButtons`.
 
+The canonical fix, as used by `DebugFlyCameraScript` in `Client/View/DebugFlyCamera.cs` for its
+tilde toggle — a mode toggle is exactly the case where a mid-hold re-fire is visible, because it
+strobes the mode on and off:
+
+```csharp
+private bool tildeWasDown;
+
+var tildeDown = Input.IsKeyDown(Keys.OemTilde);
+if (tildeDown && !tildeWasDown) Toggle();
+tildeWasDown = tildeDown;
+```
+
+Repo bindings still using bare `IsKeyPressed` on keys a player might hold: `Keys.R` (reload) and
+`Keys.E` (interact) in `Client/View/LocalPlayerController.cs`.
+
 ---
 
 ## 3. Mouse position, delta, wheel

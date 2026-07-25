@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Common.Tests/">
+    <Project Path="Common.Tests/DemiurgeCommon.Tests.csproj" />
+  </Folder>
   <Folder Name="/Common/">
     <Project Path="Common/DemiurgeCommon.csproj" />
   </Folder>

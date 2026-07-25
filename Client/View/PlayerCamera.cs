@@ -36,6 +36,10 @@ namespace Demiurge
 
 		public override void Update()
 		{
+			// The debug fly camera owns the transform while it's detached — and Target with it,
+			// which LocalPlayerController reads to aim the player.
+			if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
+
 			var dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
 			UpdateCameraTransform(dt);
 		}
@@ -126,6 +130,10 @@ namespace Demiurge
 		public override void Start(){}
 		public override void Update()
 		{
+			// The cursor is locked while the fly camera is active, so MousePosition is frozen and
+			// the reticle would just sit stuck on screen.
+			if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
+
 			LineRenderer.Circle2D(MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds), 2f, Color.White);
 		}
 	}
