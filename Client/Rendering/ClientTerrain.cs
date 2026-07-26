@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Stride.Engine;
 
 namespace Demiurge
@@ -20,7 +21,9 @@ namespace Demiurge
         readonly ChunkMeshFactory factory;
         readonly GameClient.TerrainState terrain;
         readonly Dictionary<SectionIndex, Entity> entities = new();
-        readonly HashSet<SectionIndex> dirty = new();
+        readonly Queue<SectionIndex> dirtyQueue = new();
+        readonly HashSet<SectionIndex> dirtySet = new();
+        readonly DirtySectionSink dirtySections;
 
         ChunkMap Map => terrain.Map;
 
@@ -29,6 +32,7 @@ namespace Demiurge
             this.scene = scene;
             this.factory = factory;
             this.terrain = terrain;
+            dirtySections = new DirtySectionSink(this);
 
             // A chunk becomes meshable when its last slab arrives — and so do its neighbours, whose
             // aprons read into it, which MarkChunkDirty already accounts for.
@@ -50,37 +54,52 @@ namespace Demiurge
         /// <see cref="ChunkMesher.CollectDependentSections"/> so the server can reuse it.
         /// </summary>
         public void MarkRegionDirty(int minX, int minY, int minZ, int maxX, int maxY, int maxZ)
-            => ChunkMesher.CollectDependentSections(minX, minY, minZ, maxX, maxY, maxZ, dirty);
+            => ChunkMesher.CollectDependentSections(minX, minY, minZ, maxX, maxY, maxZ, dirtySections);
 
         /// <summary>
-        /// Sections meshed per call. A cap, not a target: streaming a map marks hundreds of sections
-        /// dirty at once, and meshing them all in one frame stalls the thread that also dispatches
-        /// incoming chunk messages — which throttles the very arrivals it's reacting to. Whatever is
-        /// left stays dirty for the next frame.
+        /// Time spent meshing per call. A budget, not a hard cap: the check happens before each
+        /// section so the call can overshoot by one expensive section. Streaming a map marks hundreds
+        /// of sections dirty at once, and meshing them all in one frame stalls the thread that also
+        /// dispatches incoming chunk messages — which throttles the very arrivals it's reacting to.
+        /// Whatever is left stays queued for the next frame.
         /// </summary>
-        const int MaxRebuildsPerCall = 4;
+        const double RebuildBudgetSeconds = 0.004;
+
+        static readonly long RebuildBudgetTicks = Math.Max(1, (long)(Stopwatch.Frequency * RebuildBudgetSeconds));
 
         /// <summary>
-        /// Re-meshes up to <see cref="MaxRebuildsPerCall"/> dirty sections and swaps the entities over.
-        /// Call once per frame, not once per edit. Returns how many were rebuilt.
+        /// Re-meshes dirty sections until the time budget is spent and swaps the entities over. Call
+        /// once per frame, not once per edit. Returns how many were rebuilt.
         ///
         /// Sections that can't be meshed yet — because a neighbouring chunk they read hasn't arrived —
-        /// stay dirty and get retried next time. That's why the outer ring of the loaded area produces
-        /// nothing until the ring beyond it exists.
+        /// are moved to the back of the queue and retried next frame. That's why the outer ring of the
+        /// loaded area produces nothing until the ring beyond it exists.
         /// </summary>
         public int RebuildDirty()
         {
-            if (dirty.Count == 0) return 0;
+            if (dirtyQueue.Count == 0) return 0;
 
-            var pending = dirty.ToArray();
+            long start = Stopwatch.GetTimestamp();
+            int attemptsRemaining = dirtyQueue.Count;
+            int attempted = 0;
             int rebuilt = 0;
 
-            foreach (var section in pending)
+            while (attemptsRemaining-- > 0 && dirtyQueue.Count > 0)
             {
-                if (rebuilt >= MaxRebuildsPerCall) break;
+                // Always rebuild at least one meshable section. If a frame is already slow for
+                // unrelated reasons, meshing still makes forward progress instead of starving
+                // indefinitely; blocked sections are still capped by attemptsRemaining.
+                if (rebuilt > 0 && Stopwatch.GetTimestamp() - start >= RebuildBudgetTicks) break;
 
-                if (!Map.Has(section.Chunk)) { dirty.Remove(section); continue; }
-                if (!factory.TryBuild(Map, section, out Entity? entity)) continue;   // retry later
+                var section = dirtyQueue.Dequeue();
+                attempted++;
+
+                if (!Map.Has(section.Chunk)) { dirtySet.Remove(section); continue; }
+                if (!factory.TryBuild(Map, section, out Entity? entity))
+                {
+                    dirtyQueue.Enqueue(section);
+                    continue;   // retry next frame; don't spin on missing neighbours this frame
+                }
 
                 // Detach the old entity BEFORE attaching the new one, or the stale geometry stays in
                 // the scene and you get two overlapping surfaces after an edit.
@@ -92,11 +111,35 @@ namespace Demiurge
                     entities[section] = entity;
                 }
 
-                dirty.Remove(section);
+                dirtySet.Remove(section);
                 rebuilt++;
             }
 
             return rebuilt;
+        }
+
+        void EnqueueDirty(SectionIndex section)
+        {
+            if (!dirtySet.Add(section)) return;
+            dirtyQueue.Enqueue(section);
+        }
+
+        sealed class DirtySectionSink(ClientTerrain owner) : ICollection<SectionIndex>
+        {
+            public int Count => owner.dirtySet.Count;
+            public bool IsReadOnly => false;
+
+            public void Add(SectionIndex item) => owner.EnqueueDirty(item);
+            public void Clear()
+            {
+                owner.dirtyQueue.Clear();
+                owner.dirtySet.Clear();
+            }
+            public bool Contains(SectionIndex item) => owner.dirtySet.Contains(item);
+            public void CopyTo(SectionIndex[] array, int arrayIndex) => owner.dirtySet.CopyTo(array, arrayIndex);
+            public bool Remove(SectionIndex item) => throw new NotSupportedException();
+            public IEnumerator<SectionIndex> GetEnumerator() => owner.dirtySet.GetEnumerator();
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
         }
     }
 }

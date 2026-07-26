@@ -14,6 +14,7 @@ of the directory — the cold-start cost of re-deriving this stuff is what it ex
 | [input.md](input.md) | Keyboard and mouse, edge vs level triggers, the `Keys` enum, cursor lock, mouse position and delta semantics |
 | [entities-transforms-cameras.md](entities-transforms-cameras.md) | Entities and components, local vs world transforms and when they're valid, bone links, coordinate conventions, cameras and projection |
 | [rendering-and-compositor.md](rendering-and-compositor.md) | Graphics compositor graph, custom scene renderers, materials and shaders, lights, UI, and the Vulkan landmines |
+| [code-only-runtime-and-assets.md](code-only-runtime-and-assets.md) | Project-specific code-only composition root, runtime loop, terrain streaming bridge, generated meshes, and asset pipeline |
 | [community-toolkit.md](community-toolkit.md) | Which helper is CommunityToolkit and which is core Stride, and what each one really does |
 | [physics-bepu.md](physics-bepu.md) | `Stride.BepuPhysics` bodies, colliders, raycasts, impulses, contact events, collision filtering |
 

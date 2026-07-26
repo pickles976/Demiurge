@@ -45,6 +45,12 @@ steps that are easy to forget are exactly the ones that shipped bugs before.
 Wire rule worth repeating here: enum values and the `ComponentBundle` if-chain order
 ARE the protocol. Append, never reorder, never delete — clients desync silently.
 
+`Client/Program.cs` is the code-only composition root. Before `game.Run(...)` it creates
+long-lived pure services (`NetworkManager`, registries, `TerrainState`, optional `ServerHost`);
+`Start(Scene)` builds anything that needs Stride services or a live scene; `Update(Scene, GameTime)`
+steps singleplayer, pumps networking, drains terrain, and remeshes dirty terrain sections. More
+detail in `stride_docs/code-only-runtime-and-assets.md`.
+
 Design specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`,
 loose notes in `docs/scratchpad/`. `docs/networking/` explains the object replication,
 movement and shooting paths end to end.
@@ -120,7 +126,8 @@ spec for the coordinate transforms.
   with per-cell variant selection. A type with no entry draws the purple prototype texture, i.e.
   obviously-missing rather than a plausible wrong material.
 - No colliders, no LOD, no per-player chunk tracking yet.
-- Longer roadmap in `Common/Voxel/TERRAIN.md`.
+- Human terrain docs are in `docs/voxel/`; keep them terse and put implementation-heavy notes here
+  or in `stride_docs/`.
 
 **`docs/voxel/DATA_MODEL.md` is the design for where this is heading** — a quantized
 signed-distance field plus a material byte per voxel, why a dual method forces that rather than
@@ -185,6 +192,8 @@ engine or searching the web** — it exists specifically to kill that cold-start
 - `input.md` — keyboard/mouse API, edge vs level triggers, `Keys`, mouse lock and delta
 - `entities-transforms-cameras.md` — entities, transforms, world matrices, cameras, projection
 - `rendering-and-compositor.md` — graphics compositor, custom scene renderers, materials, lights, UI
+- `code-only-runtime-and-assets.md` — this repo's composition root, terrain streaming bridge,
+  generated runtime meshes, and asset-pipeline wiring
 - `community-toolkit.md` — which helpers are CommunityToolkit vs core Stride, and what they do
 - `physics-bepu.md` — Stride.BepuPhysics bodies, colliders, raycasts, impulses
 
