@@ -1,56 +1,81 @@
-// Triplanar diffuse for the voxel terrain.
+// Triplanar diffuse with per-cell texture variation, for the voxel terrain.
 //
-// A dual mesh (surface nets / dual contouring) has no UV parameterization: vertices sit at
-// arbitrary points on an isosurface, so there is no rectangle to unwrap onto. Instead of storing
-// UVs, sample the texture three times using WORLD POSITION as the coordinate — once per axis
-// plane — and blend the three by the surface normal. No seams, no unwrapping, and unlike a single
-// top-down projection it doesn't smear on vertical faces, overhangs or cave walls.
+// A dual mesh (surface nets / dual contouring) has no UV parameterization: vertices sit at arbitrary
+// points on an isosurface, so there is no rectangle to unwrap onto. Instead of storing UVs, sample
+// the texture three times using WORLD POSITION as the coordinate — once per axis plane — and blend
+// the three by the surface normal. No seams, no unwrapping, and unlike a single top-down projection
+// it doesn't smear on vertical faces, overhangs or cave walls.
 //
-// The texture comes in as a COMPOSITION rather than a bound parameter: TextureSource is a
-// ComputeColor supplied from C# (a ComputeTextureColor), and it samples at streams.TexCoord.
-// Overwriting TexCoord before each Compute() call is what lets one texture be read at three
-// different coordinates. That means the texture binding goes through Stride's ordinary material
-// machinery and needs no runtime ParameterKeys.
+// Variants come from a Texture2DArray and are chosen per world cell by hashing the cell's integer
+// coordinate. Deterministic, so it needs no mesh data and no storage, chunks agree at their borders
+// for free, and a re-mesh after digging can't make the pattern jump.
 //
-// Vertex UVs are therefore unused — BuildStrideEntity can keep writing Vector2.Zero — but the
-// vertex format must still declare TEXCOORD0 or the stream doesn't exist to write to.
+// THE SUBTLE PART: each plane hashes its OWN 2D cell, not the 3D position. Hashing xyz would give the
+// three projections different variants for the same point, and the blend would average two unrelated
+// textures into mush on any 45-degree surface. Per-plane hashing means a face pointing mostly +Y is
+// dominated by one plane, and that plane is self-consistent across the whole face.
+//
+// Vertex UVs are unused — the mesher writes Vector2.Zero — but the vertex format must still declare
+// TEXCOORD0 for the stream to exist.
 
 namespace Demiurge
 {
-    shader TriplanarTexture : ComputeColor, NormalStream, PositionStream4
+    shader TriplanarTexture<float TVariants, float TTileSize> : ComputeColor, NormalStream, PositionStream4
     {
-        compose ComputeColor TextureSource;
+        rgroup PerMaterial
+        {
+            stage Texture2DArray VariantTextures;
+        }
 
-        // Declared so this shader may WRITE it; merges with the same stream in TextureSource.
-        stage stream float2 TexCoord : TEXCOORD0;
+        stage SamplerState VariantSampler
+        {
+            // Point filtering: these are 16x16 pixel-art tiles, and anything else blurs them into
+            // paste. Wrap, because a tile has to meet itself at every cell boundary.
+            Filter = MIN_MAG_MIP_POINT;
+            AddressU = Wrap;
+            AddressV = Wrap;
+        };
 
-        // World units per texture repeat.
-        static const float TileSize = 4.0;
-
-        // Higher = sharper transition between planes. At 1 a near-flat surface still blends all
-        // three, which reads as a blurry mush; the power concentrates the weight on the dominant
-        // plane and leaves blending only near 45-degree slopes.
+        // Higher = sharper transition between planes. At 1 a near-flat surface still blends all three,
+        // which reads as blurry; the power concentrates weight on the dominant plane and leaves
+        // blending only near 45-degree slopes.
         static const float BlendSharpness = 4.0;
+
+        // Hash of an integer cell coordinate -> [0, 1). Two large primes and a fract is enough:
+        // the eye only needs the variant sequence to look unpatterned, not to pass a randomness test.
+        float HashCell(float2 cell)
+        {
+            return frac(sin(dot(cell, float2(127.1, 311.7))) * 43758.5453);
+        }
+
+        // One plane's contribution: pick a variant from the cell this uv falls in, sample it.
+        float4 SamplePlane(float2 uv)
+        {
+            float slice = 0.0;
+
+            // TVariants is a compile-time literal, so a single-variant material compiles all of this
+            // away rather than paying for a hash it can't use.
+            if (TVariants > 1.5)
+            {
+                slice = floor(HashCell(floor(uv)) * TVariants);
+                slice = min(slice, TVariants - 1.0);   // guard the hash returning exactly 1.0
+            }
+
+            return VariantTextures.Sample(VariantSampler, float3(uv, slice));
+        }
 
         override float4 Compute()
         {
-            float3 position = streams.PositionWS.xyz / TileSize;
+            float3 position = streams.PositionWS.xyz / TTileSize;
 
             // abs() because a plane projects the same whether the normal points along the axis or
             // against it. Normalize so the three weights sum to 1 and brightness is preserved.
             float3 weights = pow(abs(normalize(streams.normalWS)), BlendSharpness);
             weights /= max(weights.x + weights.y + weights.z, 1e-5);
 
-            streams.TexCoord = position.zy;
-            float4 alongX = TextureSource.Compute();
-
-            streams.TexCoord = position.xz;
-            float4 alongY = TextureSource.Compute();
-
-            streams.TexCoord = position.xy;
-            float4 alongZ = TextureSource.Compute();
-
-            return alongX * weights.x + alongY * weights.y + alongZ * weights.z;
+            return SamplePlane(position.zy) * weights.x
+                 + SamplePlane(position.xz) * weights.y
+                 + SamplePlane(position.xy) * weights.z;
         }
     };
 }

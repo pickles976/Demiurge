@@ -30,8 +30,6 @@ https://github.com/stride3d/stride/issues/2496
 
 - [ ] clean up UI and stuff
 
-5. Generate a map with perlin noise
-7. Generate meshes for chunks + performance enhancements
 8. Create water, ground, and grass shaders
 https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
 - [ ] grass
@@ -49,7 +47,7 @@ https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 
 
-    
+
 11. Add inventory UI
 12. Host server and test with buddies
 - [ ] digital ocean droplet

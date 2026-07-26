@@ -9,8 +9,8 @@ namespace Demiurge
     {
         private static NoiseSettings settings = new NoiseSettings
         {
-            XFrequency = 0.05f,
-            YFrequency = 0.05f,
+            XFrequency = 0.02f,
+            YFrequency = 0.02f,
             Amplitude = 1.0f,
             Seed = 100
         };

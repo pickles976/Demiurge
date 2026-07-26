@@ -85,10 +85,11 @@ storage layer.
 
 **`docs/voxel/MESHING.md` is the other half** — how the field becomes triangles. The load-bearing
 fact: **surface nets and dual contouring are one algorithm** differing only in where the cell's
-vertex goes (average of the edge crossings vs. a QEF solve), so DC is a later swap of
-one line in `GenerateMeshFromSurfaceNet`, never a rewrite. Surface nets first, per `TODO.md`. That doc also records the
-limitations the article's author hit afterwards — chunk LOD being the genuinely hard part, not the
-meshing — which are deliberately *not* first-version concerns.
+vertex goes (average of the edge crossings vs. a QEF solve). Both exist —
+`ChunkMesher.GenerateMeshFromSurfaceNet` and `GenerateMeshDualContouring` are two entry points onto
+one skeleton. DC sharpens geometry but **not** shading, which needs vertex splitting by crease
+angle. That doc also records the limitations the article's author hit afterwards — chunk LOD being
+the genuinely hard part, not the meshing.
 
 ### The rule that keeps the terrain math honest
 

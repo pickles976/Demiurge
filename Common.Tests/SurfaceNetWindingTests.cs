@@ -34,8 +34,8 @@ public class SurfaceNetWindingTests
                                     ChunkConstants.WorldMinY + local.y,
                                     originZ + local.z);
 
-                    chunk.voxels[i].Density = d;
-                    chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(d);
+                    chunk.voxels[i].Distance = d;
+                    chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
                 }
 
                 map.Insert(chunk);
@@ -47,8 +47,8 @@ public class SurfaceNetWindingTests
 
     static MeshData MeshCentreChunk(Func<int, int, int, float> field)
     {
-        var scratch = new Voxel[ChunkMesher.ScratchVolume];
-        Assert.True(ChunkMesher.TryFillScratch(MapWithField(field), new ChunkIndex { x = 0, z = 0 }, scratch));
+        var scratch = new Sample[ChunkMesher.ScratchVolume];
+        Assert.True(ChunkMesher.TryFillScratch(MapWithField(field), SectionIndex.Of(new ChunkIndex { x = 0, z = 0 }, 0), scratch));
         return ChunkMesher.GenerateMeshFromSurfaceNet(scratch);
     }
 
@@ -146,14 +146,14 @@ public class ChunkSeamTests
                 {
                     var l = ChunkTransforms.LocalVoxelCoords(v);
                     float d = field(ox + l.x, ChunkConstants.WorldMinY + l.y, oz + l.z);
-                    chunk.voxels[v].Density = d;
-                    chunk.voxels[v].Material = ChunkGenerator.DensityToMaterial(d);
+                    chunk.voxels[v].Distance = d;
+                    chunk.voxels[v].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[v].Distance, d);
                 }
                 map.Insert(chunk);
             }
 
-        var scratch = new Voxel[ChunkMesher.ScratchVolume];
-        Assert.True(ChunkMesher.TryFillScratch(map, index, scratch));
+        var scratch = new Sample[ChunkMesher.ScratchVolume];
+        Assert.True(ChunkMesher.TryFillScratch(map, SectionIndex.Of(index, 0), scratch));
         return ChunkMesher.GenerateMeshFromSurfaceNet(scratch);
     }
 

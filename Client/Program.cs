@@ -109,92 +109,28 @@ game.Run(start: Start, update: Update);
 // Fullscreen is enabled as a borderless window inside Start() instead.
 
 
+// Debug scene: a 4x4 patch of terrain with one added wall and one carved trench, built through
+// the same ClientTerrain path that streaming and digging will use later.
 void createDebugChunks(Scene rootScene)
 {
     Console.WriteLine("Generating Terrain...");
 
-    // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
-    ImageResult img;
-    using (var stream = File.OpenRead("assets/prototype/textures/Green/texture_01.png"))
-        img = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-    var texture = Texture.New2D(game.GraphicsDevice, img.Width, img.Height,
-        PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
+    var terrain = new ClientTerrain(rootScene, new ChunkMeshFactory(game, new TerrainMaterials(game)));
 
-    // Triplanar diffuse: the mesh has no usable UVs, so assets/shaders/TriplanarTexture.sdsl
-    // projects world position onto the three axis planes and blends by normal. The texture is a
-    // COMPOSITION node, which is how one texture gets sampled at three different coordinates.
-    var triplanar = new ComputeShaderClassColor { MixinReference = "TriplanarTexture" };
-    triplanar.CompositionNodes["TextureSource"] = new ComputeTextureColor(texture);
+    // One chunk wider than the area we want to see: a chunk whose neighbour is missing can't be
+    // meshed, so the outer ring exists only to let the ring inside it build.
+    terrain.EnsureGenerated(new ChunkIndex { x = -5, z = -5 }, new ChunkIndex { x = 5, z = 5 });
 
-    var material = Material.New(game.GraphicsDevice, new MaterialDescriptor
-    {
-        Attributes = new MaterialAttributes
-        {
-            Diffuse = new MaterialDiffuseMapFeature(triplanar),
-            DiffuseModel = new MaterialDiffuseLambertModelFeature(),
-        }
-    });
+    var wallChunk = new ChunkIndex { x = 0, z = 0 };
+    var trenchChunk = new ChunkIndex { x = 0, z = 1 };
 
-    // 3x3 centred on the origin.
-    ChunkIndex[] chunksToMesh = [
-        ..from x in Enumerable.Range(-1, 3)
-          from z in Enumerable.Range(-1, 3)
-          select new ChunkIndex { x = x, z = z }];
+    TerrainEdits.AddWall(terrain.Map.Get(wallChunk)!);
+    TerrainEdits.CarveTrench(terrain.Map.Get(trenchChunk)!);
 
-    // A ring one chunk wider than that: every meshed chunk's apron reads from each neighbour, and
-    // a chunk whose neighbour is missing skips silently rather than erroring.
-    var map = new ChunkMap();
-    foreach (var index in from x in Enumerable.Range(-2, 5)
-                          from z in Enumerable.Range(-2, 5)
-                          select new ChunkIndex { x = x, z = z })
-        map.Insert(ChunkGenerator.GenerateChunk(index));
+    terrain.MarkChunkDirty(wallChunk);
+    terrain.MarkChunkDirty(trenchChunk);
 
-    // One buffer, reused for every chunk meshed on this thread.
-    var scratch = new Voxel[ChunkMesher.ScratchVolume];
-
-    foreach (var index in chunksToMesh)
-    {
-        if (!ChunkMesher.TryFillScratch(map, index, scratch))
-            continue;                              // neighbour missing — retry on a later pass
-
-        MeshData mesh = ChunkMesher.GenerateMeshFromSurfaceNet(scratch);
-        if (mesh.Indices.Length == 0) continue;     // all air or all solid: no surface here
-
-        var entity = BuildStrideEntity(mesh, material);   // Client-side, MeshData -> vertex buffer
-        entity.Transform.Position = ChunkTransforms.ChunkOriginPosition(index);
-        entity.Scene = rootScene;
-    }
-
-}
-
-/// <summary>MeshData (System.Numerics) -> a Stride entity.</summary>
-Entity BuildStrideEntity(MeshData mesh, Material material)
-{
-    var vertices = new VertexPositionNormalTexture[mesh.Positions.Length];
-    for (var i = 0; i < vertices.Length; i++)
-        vertices[i] = new VertexPositionNormalTexture(mesh.Positions[i], mesh.Normals[i], Vector2.Zero);
-
-    var vertexBuffer = Stride.Graphics.Buffer.Vertex.New(game.GraphicsDevice, vertices, GraphicsResourceUsage.Default);
-    var indexBuffer = Stride.Graphics.Buffer.Index.New(game.GraphicsDevice, mesh.Indices);
-
-    var strideMesh = new Mesh
-    {
-        Draw = new MeshDraw
-        {
-            PrimitiveType = PrimitiveType.TriangleList,
-            DrawCount = mesh.Indices.Length,
-            IndexBuffer = new IndexBufferBinding(indexBuffer, is32Bit: true, mesh.Indices.Length),
-            VertexBuffers = [new VertexBufferBinding(vertexBuffer, VertexPositionNormalTexture.Layout, vertices.Length)],
-        },
-        MaterialIndex = 0,
-
-        // Leave this empty and the mesh is frustum-culled every frame, silently.
-        BoundingBox = BoundingBox.FromPoints(Array.ConvertAll(mesh.Positions, p => (Vector3)p)),
-    };
-
-    var model = new Model { strideMesh, new MaterialInstance(material) };
-
-    return new Entity { new ModelComponent(model) };
+    terrain.RebuildDirty();
 }
 
 

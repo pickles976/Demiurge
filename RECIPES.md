@@ -204,6 +204,46 @@ new-trait recipe; ArmorState lives on the armor item, not on PlayerStatus.)
    all: if the helmet IS an owned object (recipe above), its existence is the
    state, and you get the visual for free.
 
+### Add a block type (e.g. Sand)
+
+`BlockType` labels what a solid voxel is made of. It is **not** what decides whether the
+voxel exists — density is, and material only labels what density already declared solid
+(`docs/voxel/DATA_MODEL.md`). Keep that one-way dependency and the two can't disagree.
+
+1. `Common/Voxel/Blocks.cs`: append to `BlockType`. **Append only** — it's the wire
+   protocol, and it's `byte`-backed to keep `Voxel` at two bytes, so the ceiling is 256.
+2. Art: `assets/textures/blocks/sand/sand_1.png`, `sand_2.png`, … numbered from 1. Every
+   variant of one type must share dimensions (they load into one `Texture2DArray`); a
+   mismatch throws at load with both sizes named.
+3. `Common/Voxel/BlockTextures.cs`: one entry — `[BlockType_Sand] = Entry.Numbered("sand",
+   variants: 4, tileSize: 1f)`. `variants` is how many files exist; `tileSize` is world units per
+   repeat (1 for 16×16 pixel art, much larger for a high-res texture). `Entry.Single(path, …)`
+   exists for art that doesn't follow the numbered convention.
+4. Make something produce it. Either `ChunkGenerator.DensityToMaterial` (depth bands, so it
+   appears in generated terrain) or a `TerrainEdits` call's `fill` argument (so it appears
+   where a player builds).
+
+That's it — nothing in the mesher, `ChunkMeshFactory` or `ClientTerrain` changes.
+`TerrainMaterials` builds one material per enum value at startup and the mesher already groups
+quads into per-material submeshes.
+
+**Skip step 2–3 and the type draws the purple prototype texture**, the usual missing-texture
+convention. That fallback is deliberately not a plausible material: it first fell back to grass,
+which made a stone wall render as grass and read as a material bug rather than as absent art.
+Same trap as substituting air for a missing chunk — prefer failures that are obvious over
+failures that are pretty.
+
+**Variant selection is a shader hash, not stored data.** `TriplanarTexture.sdsl` picks a
+slice from `hash(floor(uv))` per world cell, which is why a variant costs no memory, needs no
+mesh attribute, agrees across chunk borders for free, and can't jump when a dig re-meshes.
+The trap if you edit that shader: hash each triplanar plane's **own 2D cell**, never the 3D
+position — hashing xyz gives the three projections different variants for one point and
+blends unrelated textures into mush on any 45° face.
+
+Two things that look like they'd need changes and don't: `MaterialCount` reads
+`Enum.GetValues<BlockType>().Length`, and `Air` is skipped everywhere because a quad's
+material comes from the **solid** end of its sign-changing edge.
+
 ### The habits that keep it working
 
 - Server validates everything a client sends; the client predicts with the same

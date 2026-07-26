@@ -26,7 +26,9 @@ The only difference is step 3's placement rule:
 | Surface nets | average of the cell's crossing points | crossings only |
 | Dual contouring | QEF minimizer over the tangent planes at the crossings | crossings + normals + a 3×3 solve |
 
-So DC replaces one line of `GenerateMeshFromSurfaceNet`, not the mesher. Everything expensive — cell
+Both are implemented: `GenerateMeshFromSurfaceNet` and `GenerateMeshDualContouring` are two
+entry points onto one `Generate(scratch, Placement)` skeleton, differing in a single line.
+Everything expensive — cell
 iteration, quad winding, the padded scratch buffer, the cross-chunk accessor, building the
 vertex/index buffer — is shared, and it is where the bugs are.
 
@@ -40,7 +42,18 @@ gradient is already approximately unit length and points along the surface norma
 
 What DC buys over surface nets is *sharp creases*: averaging the crossings rounds off a corner
 that falls between samples, while intersecting tangent planes reconstructs it exactly. Smooth
-noise terrain has almost nothing to sharpen. Cliffs and player-dug flat walls do.
+noise terrain has almost nothing to sharpen. Cliffs and edited geometry do — measured on a wall
+meeting flat ground, the crease vertex went from `(6.50, 12.75)` to `(6.86, 12.62)` against a true
+corner at `(7.0, 12.5)`.
+
+**DC sharpens geometry, not shading.** A cell still has one vertex carrying one normal, shared by
+every quad that touches it, and the field's gradient genuinely rotates over about a voxel at a
+concave corner. A crisp edge needs *two* normals at the same position — splitting vertices by
+crease angle at buffer-build time. Neither dual method gives you that.
+
+Two failure modes DC adds, both handled in `SolveQef`: the solution can sit far outside its own
+cell on a near-flat patch (clamped), and on flat ground every normal is parallel so `AtA` has rank
+1 and the minimizer is a whole plane (biased toward the mass point, which avoids needing an SVD).
 
 ## Known limitations
 
