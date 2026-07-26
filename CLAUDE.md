@@ -61,30 +61,34 @@ its character running rather than standing still.
 ## Terrain / chunks (in progress)
 
 The current work, tracked in `TODO.md`. Code sits in `Common/Voxel/` so the server can take
-over generation later; today it runs client-side only, from `createCubes` in `Client/Program.cs`.
+over generation later; today it runs client-side only, from `createDebugChunks` in `Client/Program.cs`.
 
 The Bevy/Rust project at `/home/sebas/Projects/Demiurge` is the working reference this was
 ported from — `src/chunks/{utils,mod,tilemap}.rs`. When the terrain math looks wrong, diff
 against it before theorising, and note that `utils.rs` carries unit tests that double as the
 spec for the coordinate transforms.
 
-- A chunk is a **16×16 heightmap** — `ChunkConstants.ChunkWidth = 16`, `ChunkSize = 256`, one
-  float per column, stored flat in `TerrainChunk.tiles`.
-- **`ChunkIndex.y` and `BlockCoords.y` mean world Z, not height.** Easiest thing to get wrong
-  in this code.
-- Coordinates pin to the chunk's bottom-left corner (`Common/Chunks/README.md`).
+- A chunk is **16 × 16 × 128 voxels** of density + material, flat in `TerrainChunk.voxels`.
+  `ChunkIndex` is 2D, so a chunk spans the world's full height.
+- **The coordinate conventions live in the header comment of `Common/Voxel/ChunkTransforms.cs`.**
+  Read that before touching anything positional; it is the only place they're written down.
 - Heights come from `NoiseGen.GenerateNoiseForChunk`, over the `NoiseDotNet` package.
-- `createCubes` spawns one entity per column — 256 per chunk, no instancing, no colliders
-  (passing `Primitive3DEntityOptions` rather than the Bepu options type selects the
-  non-physics `Create3DPrimitive` overload). Fine for a prototype; read the instancing notes
-  in `stride_docs/rendering-and-compositor.md` before scaling it up.
+- `createDebugChunks` meshes a fixed set of chunks at startup via `ChunkMesher` and builds one
+  Stride entity per chunk in `BuildStrideEntity`. No streaming, no colliders, no LOD.
 - Longer roadmap in `Common/Voxel/TERRAIN.md`: heightmap mesh → smooth normals → slope
-  texturing → dual contouring.
+  texturing → dual method.
 
 **`docs/voxel/DATA_MODEL.md` is the design for where this is heading** — a quantized
-signed-distance field plus a material byte per voxel, why dual contouring forces that rather than
+signed-distance field plus a material byte per voxel, why a dual method forces that rather than
 block-type enums, and the chunk dimension/indexing/padding decisions. Read it before touching the
 storage layer.
+
+**`docs/voxel/MESHING.md` is the other half** — how the field becomes triangles. The load-bearing
+fact: **surface nets and dual contouring are one algorithm** differing only in where the cell's
+vertex goes (average of the edge crossings vs. a QEF solve), so DC is a later swap of
+one line in `GenerateMeshFromSurfaceNet`, never a rewrite. Surface nets first, per `TODO.md`. That doc also records the
+limitations the article's author hit afterwards — chunk LOD being the genuinely hard part, not the
+meshing — which are deliberately *not* first-version concerns.
 
 ### The rule that keeps the terrain math honest
 
@@ -96,15 +100,11 @@ were all a second, hand-rolled walk of the chunk drifting out of sync with it �
 
 Related invariants worth preserving:
 
-- Blocks index z-major: `index = z * ChunkWidth + x`.
-- `ChunkIndex.y` / `BlockCoords.y` are world **Z**. `ConvertVector3ToChunkCoordinates` projects
-  through `Vector2(position.X, position.Z)` specifically so that choice is visible.
+- Blocks index z-major: `index = z * ChunkWidth + x`, the y = 0 slice of `y*256 + z*16 + x`.
 - Negative coordinates use real floor division. This **diverges from the Rust**, which shifts
   and truncates — an approximation that misplaces exact negative multiples of the width, sending
   every negative chunk's first row and column into its neighbour. All of the reference's own test
   vectors still pass under real flooring.
-- `GetIndicesFromCenterAndDistance` uses an exclusive upper bound, matching Rust's
-  `(x_minus..x_plus)`. It looks off-by-one; it is a faithful port. Don't "fix" it in isolation.
 
 ## Assets
 
@@ -182,10 +182,11 @@ comments in `Stride.*.xml` beside them. Use the plain `net10.0` variants — thi
 
 ## Working with Sebastian
 
-- **He implements.** Default output is a plan, a diagnosis, or a review — do not edit
-  project files unless he explicitly delegates the implementation.
-- **Never `git commit`.** Even when implementation is delegated, leave changes staged
-  for him to review and commit himself.
+- **He directs, you implement.** As of 2026-07-26. Write the code, build it, run the tests,
+  report what happened. This replaced an earlier plans-only default, which was gated on him
+  learning a given subsystem rather than being a blanket preference — so expect it back for
+  the next thing he wants to build himself, and take him at his word when he says so.
+- **Never `git commit`.** Leave changes unstaged for him to review and commit himself.
 - **Verify visual changes by asking him to look**, not by screenshotting the game.
 - Two-client local testing: an unfocused Stride window is throttled by the engine.
   Background-window stutter is not a netcode bug.
@@ -203,9 +204,10 @@ full, with code where it helps.
 **Systems** are assemblages whose difficulty emerges from parts interacting — 3D chunking *plus*
 palette compression *plus* filesystem streaming *plus* per-player server-side chunk tracking.
 Explanation does not transfer a system; only building one does, and it gets refined by annealing
-rather than foresight. He builds those himself, a step at a time. This is not about settling for
-a worse design — the destination should still be correct — it's that a human arrives at a system
-by living inside successive versions of it.
+rather than foresight. Build them a step at a time rather than delivering one assembled, and
+expect the shape to change between steps. This is not about settling for a worse design — the
+destination should still be correct — it's that a system gets arrived at by living inside
+successive versions of it. When he wants to build one himself he'll say so.
 
 It isn't a hard binary, and detail at either altitude is welcome **when he asks for it**. The two
 failure modes to actively avoid are **cognitive overload** and **premature optimization**:

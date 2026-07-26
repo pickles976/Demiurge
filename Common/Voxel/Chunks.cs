@@ -12,38 +12,22 @@ namespace Demiurge
 
         /// <summary>Edge length of one block in world units.</summary>
         public const float TileSize = 1.0f;
+        /// <summary>
+        /// The world's vertical extent, [WorldMinY, WorldMaxY). ChunkIndex is 2D, so one chunk
+        /// spans the full height and no chunk will ever load outside this range.
+        /// </summary>
+        public const int WorldMinY = 0;
+        public const int WorldMaxY = WorldMinY + ChunkHeight;
     }
 
+    /// <summary>A chunk's position on the ground plane. See ChunkTransforms.cs for conventions.</summary>
     public struct ChunkIndex
     {
         public int x;
-        public int y;
-    }
-
-    /// <summary>
-    /// A COLUMN's position inside one chunk, on the ground plane only: both fields are
-    /// 0..ChunkWidth-1, and <c>y</c> is the second GROUND axis (world Z), not height.
-    /// Addresses the 256-entry heightmap. For a voxel use <see cref="LocalVoxelCoords"/>.
-    /// </summary>
-    public struct BlockCoords
-    {
-        public UInt16 x;
-        public UInt16 y;
-    }
-
-    /// <summary>
-    /// A VOXEL's position inside one chunk: x and z are 0..ChunkWidth-1, y is 0..ChunkHeight-1
-    /// and means HEIGHT. Note the disagreement with <see cref="BlockCoords"/> and
-    /// <see cref="ChunkIndex"/>, whose <c>y</c> fields are world Z — see README.md.
-    /// </summary>
-    public struct LocalVoxelCoords
-    {
-        public int x;
-        public int y;   // height
         public int z;
     }
 
-    public struct ChunkMap
+    public class ChunkMap
     {
         public Dictionary<ChunkIndex, TerrainChunk> chunks = new();
 
@@ -59,11 +43,27 @@ namespace Demiurge
             return this.chunks.ContainsKey(index);
         }
         
-        public TerrainChunk? Get(ChunkIndex index)
+        public TerrainChunk? Get(ChunkIndex index) => chunks.TryGetValue(index, out var chunk) ? chunk : null;
+
+        /// <summary>
+        /// A voxel by WORLD coordinates, crossing chunk boundaries transparently. false means "no
+        /// data", never "air" — air beside solid is a sign change, so substituting it would make
+        /// the mesher emit a wall along the chunk boundary.
+        /// </summary>
+        public bool TryGetVoxel(int worldX, int worldY, int worldZ, out Voxel voxel)
         {
-            TerrainChunk chunk;
-            chunks.TryGetValue(index, out chunk);
-            return chunk;
+            voxel = default;
+
+            if (worldY < ChunkConstants.WorldMinY)  { voxel = Voxel.OutsideBelow; return true; }
+            if (worldY >= ChunkConstants.WorldMaxY) { voxel = Voxel.OutsideAbove; return true; }
+
+            TerrainChunk? chunk = Get(ChunkTransforms.ChunkAt(worldX, worldZ));
+            if (chunk == null) return false;
+
+            int voxelIndex = ChunkTransforms.WorldVoxelIndex(worldX, worldY, worldZ);
+
+            voxel = chunk.voxels[voxelIndex];
+            return true;
         }
 
         public void Insert(TerrainChunk chunk)
@@ -73,20 +73,10 @@ namespace Demiurge
 
     }
 
-    // Not stored anywhere, just an intermediate type so we have a contract for the output of some computations
-    public struct ChunkCorners
-    {
-        public float xPlus;
-        public float xMinus;
-
-        public float zPlus;
-        public float zMinus;
-    }
-
     public class ChunkGenerator
     {
 
-        const float Amplitude = 4f;
+        const float Amplitude = 8f;
         const float SeaLevel  = 8f;
 
         public static TerrainChunk GenerateChunk(ChunkIndex index)
@@ -99,8 +89,8 @@ namespace Demiurge
             for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
             {
                 // Height at X,Z voxel index
-                float heightAt = heightMap[ChunkTransforms.GetColumnIndexFromVoxelIndex(i)] * Amplitude + SeaLevel;  // i % 256
-                int y = ChunkTransforms.GetLocalYFromVoxelIndex(i);                           // i / 256
+                float heightAt = heightMap[ChunkTransforms.ColumnIndexOf(i)] * Amplitude + SeaLevel;  // i % 256
+                int y = ChunkTransforms.LocalYOf(i);                           // i / 256
                 float distance = y - heightAt;
                 chunk.voxels[i].Density = distance;
                 chunk.voxels[i].Material = DensityToMaterial(distance);
@@ -125,7 +115,9 @@ namespace Demiurge
         }
     }
 
-    public struct TerrainChunk
+    // A class so ChunkMap hands these out by reference. As a struct, writes to `voxels` would
+    // have propagated (shared array) while writes to `index` silently would not.
+    public class TerrainChunk
     {
         public ChunkIndex index;
 

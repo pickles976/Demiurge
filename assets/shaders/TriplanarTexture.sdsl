@@ -1,0 +1,56 @@
+// Triplanar diffuse for the voxel terrain.
+//
+// A dual mesh (surface nets / dual contouring) has no UV parameterization: vertices sit at
+// arbitrary points on an isosurface, so there is no rectangle to unwrap onto. Instead of storing
+// UVs, sample the texture three times using WORLD POSITION as the coordinate — once per axis
+// plane — and blend the three by the surface normal. No seams, no unwrapping, and unlike a single
+// top-down projection it doesn't smear on vertical faces, overhangs or cave walls.
+//
+// The texture comes in as a COMPOSITION rather than a bound parameter: TextureSource is a
+// ComputeColor supplied from C# (a ComputeTextureColor), and it samples at streams.TexCoord.
+// Overwriting TexCoord before each Compute() call is what lets one texture be read at three
+// different coordinates. That means the texture binding goes through Stride's ordinary material
+// machinery and needs no runtime ParameterKeys.
+//
+// Vertex UVs are therefore unused — BuildStrideEntity can keep writing Vector2.Zero — but the
+// vertex format must still declare TEXCOORD0 or the stream doesn't exist to write to.
+
+namespace Demiurge
+{
+    shader TriplanarTexture : ComputeColor, NormalStream, PositionStream4
+    {
+        compose ComputeColor TextureSource;
+
+        // Declared so this shader may WRITE it; merges with the same stream in TextureSource.
+        stage stream float2 TexCoord : TEXCOORD0;
+
+        // World units per texture repeat.
+        static const float TileSize = 4.0;
+
+        // Higher = sharper transition between planes. At 1 a near-flat surface still blends all
+        // three, which reads as a blurry mush; the power concentrates the weight on the dominant
+        // plane and leaves blending only near 45-degree slopes.
+        static const float BlendSharpness = 4.0;
+
+        override float4 Compute()
+        {
+            float3 position = streams.PositionWS.xyz / TileSize;
+
+            // abs() because a plane projects the same whether the normal points along the axis or
+            // against it. Normalize so the three weights sum to 1 and brightness is preserved.
+            float3 weights = pow(abs(normalize(streams.normalWS)), BlendSharpness);
+            weights /= max(weights.x + weights.y + weights.z, 1e-5);
+
+            streams.TexCoord = position.zy;
+            float4 alongX = TextureSource.Compute();
+
+            streams.TexCoord = position.xz;
+            float4 alongY = TextureSource.Compute();
+
+            streams.TexCoord = position.xy;
+            float4 alongZ = TextureSource.Compute();
+
+            return alongX * weights.x + alongY * weights.y + alongZ * weights.z;
+        }
+    };
+}

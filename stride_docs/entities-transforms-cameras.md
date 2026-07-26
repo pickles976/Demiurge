@@ -465,3 +465,25 @@ Finding a camera: `scene.GetCamera()` / `scene.GetCamera(name)` in
 | 12 | `Position` / `Rotation` / `Scale` / `WorldMatrix` are **fields** — invisible to property reflection/binding | `TransformComponent` |
 | 13 | `W <= 0` in a manual projection means "behind the camera"; guard before dividing | `LineRenderer.DrawCore` |
 | 14 | `AddChild` / `FindRoot` / `GetWorldTransformation` are core **extensions**, not members | `EntityTransformExtensions` |
+| 15 | Never `using System.Numerics;` in a file that uses Stride maths — see below | `Vector3` conversion operators |
+
+### `System.Numerics` interop — don't add the `using`
+
+`Common` speaks `System.Numerics` (no Stride dependency, by design), the Client speaks
+`Stride.Core.Mathematics`. Adding `using System.Numerics;` to a Stride file makes **`Vector3`,
+`Vector2`, `Quaternion` and `Matrix` all ambiguous** (CS0104) at every use site — 11 errors in
+`Client/Program.cs` the one time it was tried.
+
+You never need it. `Stride.Core.Mathematics.Vector3` declares **implicit conversions both ways**:
+
+```csharp
+public static implicit operator Vector3(System.Numerics.Vector3 v)
+    => Unsafe.BitCast<System.Numerics.Vector3, Vector3>(v);
+public static implicit operator System.Numerics.Vector3(Vector3 v)
+    => Unsafe.BitCast<Vector3, System.Numerics.Vector3>(v);
+```
+
+So values cross the boundary on their own — a `Common` function returning
+`System.Numerics.Vector3` assigns straight to `Transform.Position`, and Stride's `Vector3.Zero`
+passes straight into a `Common` method. `BitCast`, so it's free. Verified in
+`Stride.Core.Mathematics.dll`.

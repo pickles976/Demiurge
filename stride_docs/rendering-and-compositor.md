@@ -16,11 +16,12 @@ engine code — its behaviour is not documented in Stride's own docs).
 | Turn a post-processing effect on/off | [§3](#3-forwardrenderer--postprocessingeffects) |
 | Build a material in code | [§4](#4-materials-in-code) |
 | Write a custom SDSL shader | [§5](#5-custom-sdsl-shader-mixins) |
-| Load / create a texture | [§6](#6-textures-in-code) |
-| Add lights & shadows | [§7](#7-lights) |
-| Add an on-screen debug readout | [§8](#8-ui-rendering--on-screen-debug-text) |
-| **Why does X crash on Vulkan?** | [§9](#9-linuxvulkan-landmines) |
-| Where do I `ilspycmd` type Y? | [§10](#10-appendix-which-assembly-holds-what) |
+| Build a mesh in code | [§6](#6-meshes-in-code) |
+| Load / create a texture | [§7](#7-textures-in-code) |
+| Add lights & shadows | [§8](#8-lights) |
+| Add an on-screen debug readout | [§9](#9-ui-rendering--on-screen-debug-text) |
+| **Why does X crash on Vulkan?** | [§10](#10-linuxvulkan-landmines) |
+| Where do I `ilspycmd` type Y? | [§11](#11-appendix-which-assembly-holds-what) |
 
 ---
 
@@ -388,9 +389,128 @@ namespace Demiurge {
 with `stage stream` inputs and `stage override void VSMain()/PSMain()`, loaded directly by
 `EffectSystem.LoadEffect` rather than through a material.
 
+### 5.1 Read the engine's own shaders — they ship as source
+
+**The whole of Stride's SDSL is on disk, unobfuscated:**
+
+```
+~/.nuget/packages/stride.rendering/4.3.0.2507/stride/Assets/**/*.sdsl
+```
+
+~350 files. This is almost always faster than decompiling, and it's the only way to learn the
+mixin names you need. Useful directories: `Core/` (streams and transforms),
+`Materials/ComputeColors/Shaders/` (every `ComputeColor` node the material editor can build),
+`Lights/`, `Materials/`.
+
+### 5.2 Which mixin gives which stream
+
+A `ComputeColor` sees only what it inherits. The ones worth knowing:
+
+| stream | inherit | declared in |
+|---|---|---|
+| `streams.normalWS` (`float3`) | `NormalStream` | `Core/NormalStream.sdsl` |
+| `streams.PositionWS` (`float4`) | `PositionStream4` | `Core/PositionStream4.sdsl` |
+| `streams.TexCoord` (`float2`) | comes in with a texture composition, or declare it yourself |  |
+
+Engine precedent for the exact shape: `shader CameraOrientationGizmoShader : ComputeColor,
+PositionStream4` (`Editor/CameraOrientationGizmoShader.sdsl`), and `DirectLightGroup` inherits
+`PositionStream4` with the comment *"Required for `streams.PositionWS`"*.
+
+### 5.3 Passing a texture into a custom mixin: use a composition, not a parameter
+
+`ComputeShaderClassColor` (`ComputeShaderClassBase<T>`, Stride.Rendering.dll) has
+`CompositionNodes`, a `Dictionary<string, IComputeNode>`. A `compose ComputeColor Foo;` slot in
+the SDSL is filled by `CompositionNodes["Foo"]`:
+
+```csharp
+var mixin = new ComputeShaderClassColor { MixinReference = "TriplanarTexture" };
+mixin.CompositionNodes["TextureSource"] = new ComputeTextureColor(texture);
+```
+
+```hlsl
+shader TriplanarTexture : ComputeColor, NormalStream, PositionStream4
+{
+    compose ComputeColor TextureSource;
+    override float4 Compute() { /* … */ return TextureSource.Compute(); }
+};
+```
+
+**Prefer this over binding a `Texture2D` by runtime `ParameterKey`.** The composition route goes
+through the ordinary material machinery, so Stride owns the texture and sampler binding and there
+is no name to get wrong. (`ComputeShaderClassBase` also exposes `Generics` and `Members` for the
+cases a composition can't express.)
+
+A `ComputeTextureColor` composition samples at `streams.TexCoord` — see
+`Materials/ComputeColors/Shaders/ComputeColorTextureScaledOffsetDynamicSampler.sdsl`. So
+**assigning `streams.TexCoord` before calling `Compute()` samples one texture at a coordinate of
+your choosing**, and doing it three times is how triplanar mapping is built without three separate
+texture bindings. `assets/shaders/TriplanarTexture.sdsl` is the live example. Note there is no
+precedent for this in the shipped shaders — it's a community idiom, so treat it as the fragile part
+if a triplanar shader misbehaves.
+
+### 5.4 Verifying a shader was actually packaged
+
+`MixinReference` failures are runtime, not build-time. Confirm the asset pipeline picked the file
+up before debugging the shader itself:
+
+```bash
+grep -rao "shaders/[A-Za-z]*\.sdsl" bin/Debug/net10.0/data/db/* | sed 's/.*://' | sort -u
+```
+
+Your shader's class name must appear. If it doesn't, the file is in the wrong place or the name
+doesn't match the class.
+
 ---
 
-## 6. Textures in code
+## 6. Meshes in code
+
+No Game Studio, so terrain and any other generated geometry is built by hand. Full working
+example: `BuildStrideEntity` in `Client/Program.cs`.
+
+```csharp
+var vertices = new VertexPositionNormalTexture[n];   // .Layout describes itself to the binding
+var vertexBuffer = Stride.Graphics.Buffer.Vertex.New(device, vertices, GraphicsResourceUsage.Default);
+var indexBuffer  = Stride.Graphics.Buffer.Index.New(device, indices);   // int[] => 32-bit
+
+var mesh = new Mesh
+{
+    Draw = new MeshDraw
+    {
+        PrimitiveType = PrimitiveType.TriangleList,
+        DrawCount     = indices.Length,
+        IndexBuffer   = new IndexBufferBinding(indexBuffer, is32Bit: true, indices.Length),
+        VertexBuffers = [new VertexBufferBinding(vertexBuffer, VertexPositionNormalTexture.Layout, vertices.Length)],
+    },
+    MaterialIndex = 0,
+    BoundingBox = BoundingBox.FromPoints(positions),   // NOT optional — see below
+};
+
+var model = new Model { mesh, new MaterialInstance(material) };
+var entity = new Entity { new ModelComponent(model) };
+```
+
+`MeshDraw` is a plain field bag: `PrimitiveType`, `DrawCount`, `StartLocation`, `VertexBuffers[]`,
+`IndexBuffer`. `Model` implements `IEnumerable` with overloads `Add(Mesh)`, `Add(MaterialInstance)`
+and `Add(Model)`, which is why the collection initializer above takes both a mesh and a material.
+`Model.Materials` is a `List<MaterialInstance>` indexed by `Mesh.MaterialIndex`.
+
+**`Mesh.BoundingBox` left empty means the mesh is frustum-culled every frame and never draws** —
+silently, with no error and no warning. This is the first thing to check when generated geometry
+doesn't appear.
+
+### 6.1 Winding: Stride draws **clockwise** front faces
+
+`RasterizerStateDescription.SetDefault()` (Stride.Graphics.dll) sets `CullMode = CullMode.Back` and
+`FrontFaceCounterClockwise = false`. So the visible face is the one that is **clockwise in screen
+space** — the opposite of the OpenGL default, and a common source of terrain that renders
+inside-out or invisible-from-above.
+
+In practice: a triangle is front-facing when `Cross(p1 - p0, p2 - p0)` points **away** from the
+viewer. `Common.Tests/SurfaceNetWindingTests.cs` pins this for the voxel mesher.
+
+---
+
+## 7. Textures in code
 
 ### From raw pixels
 
@@ -435,7 +555,7 @@ anything shipped as an asset; use StbImageSharp only for loose files read at run
 
 ---
 
-## 7. Lights
+## 8. Lights
 
 `LightComponent` `[core]` (`Stride.Engine.LightComponent`) has exactly two interesting members:
 `ILight Type` and `float Intensity`. **Direction comes from the entity transform**, not from a
@@ -485,7 +605,7 @@ at `Client/Program.cs:161` in favour of the explicit light above.
 
 ---
 
-## 8. UI rendering & on-screen debug text
+## 9. UI rendering & on-screen debug text
 
 Reference: `Client/View/HUD.cs`.
 
@@ -527,19 +647,19 @@ assigns `TextBlock.Text` when something changed, so steady-state frames allocate
 `HUD.CreateDebugStats` (`HUD.cs:96-140`) is the entity/FPS readout wired up in
 `Client/Program.cs:194`-ish.
 
-**This is the *only* on-screen text path that works on Vulkan** — see §9. UI draws through
+**This is the *only* on-screen text path that works on Vulkan** — see §10. UI draws through
 `UIRenderFeature` → `UIBatch : BatchBase<UIImageDrawInfo>` (Stride.UI.dll), the same batching
 machinery as `SpriteBatch`, and a completely different code path from `FastTextRenderer`.
 
 ---
 
-## 9. Linux/Vulkan landmines
+## 10. Linux/Vulkan landmines
 
 The `[IL]` items were confirmed by decompiling the shipped assemblies. The `[comment]` items
 rest solely on `Client/Program.cs` comments and are marked `UNVERIFIED:` — treat them as true
 (they were paid for in debugging time) but know they have not been re-derived from source.
 
-### 9.1 `[IL]` `AddProfiler()` and `DebugTextSystem.Print` crash — use the UI instead
+### 10.1 `[IL]` `AddProfiler()` and `DebugTextSystem.Print` crash — use the UI instead
 
 `Stride.Graphics.FastTextRenderer.Initialize` (Stride.Graphics.dll) does:
 
@@ -558,9 +678,9 @@ The pointer is read **after** `UnmapSubresource`. Both `Stride.Profiling.DebugTe
 
 Repo: `game.AddProfiler()` disabled at `Client/Program.cs:181-187`;
 `game.DebugTextSystem.Print(...)` disabled at `Client/Program.cs:253-255`.
-Replacement: `HUD.CreateDebugStats` (§8).
+Replacement: `HUD.CreateDebugStats` (§9).
 
-### 9.2 `[IL]` SSR / `LocalReflections` allocates a format Vulkan doesn't map
+### 10.2 `[IL]` SSR / `LocalReflections` allocates a format Vulkan doesn't map
 
 Both ends verified:
 
@@ -575,7 +695,7 @@ Both ends verified:
 So the first frame with SSR enabled throws. Combined with §1.2a — `AddCleanUIStage` re-enabling
 it — this is why `Client/Program.cs:139-143` exists.
 
-### 9.3 Particles: two separate problems
+### 10.3 Particles: two separate problems
 
 **(a) `[IL]` The default compositor cannot draw particles at all.**
 `CreateDefault` adds no particle render feature, so a `ParticleSystemComponent` simulates on the
@@ -596,7 +716,7 @@ Consequence: `AddParticleRenderer()` is commented out (`Program.cs:150`) and
 simulates invisibly and burns CPU. `Client/Rendering/ParticleExample.cs` is kept as dead
 reference code.
 
-### 9.4 `UNVERIFIED: (repo comment only)` — never set `IsFullScreen` before `Run()`
+### 10.4 `UNVERIFIED: (repo comment only)` — never set `IsFullScreen` before `Run()`
 
 Per the top-level NOTE at `Client/Program.cs:100-103`: setting
 `GraphicsDeviceManager.IsFullScreen` before `game.Run(...)` makes the SDL/Linux backend create
@@ -613,7 +733,7 @@ game.GraphicsDeviceManager.PreferredBackBufferHeight = 600;
 game.GraphicsDeviceManager.ApplyChanges();
 ```
 
-### 9.5 `[IL]` A shader with **zero** resource bindings can't build a pipeline
+### 10.5 `[IL]` A shader with **zero** resource bindings can't build a pipeline
 
 The Vulkan `PipelineState.CreatePipelineLayout` builds a dictionary of the shader's resource
 bindings and then calls:
@@ -627,7 +747,7 @@ elements`. Any custom SDSL used through `MutablePipelineState` therefore needs *
 bound parameter**. That is the documented reason `assets/shaders/LineColorShader.sdsl` declares
 `stage float AlphaScale` — it doubles as a global fade knob and as the required binding.
 
-### 9.6 Build-side Linux workarounds (context)
+### 10.6 Build-side Linux workarounds (context)
 
 Two targets in `DemiurgeSharp.csproj` exist purely for Linux and are version-pinned to
 `4.3.0.2507` — update them on a Stride upgrade:
@@ -642,7 +762,7 @@ Two targets in `DemiurgeSharp.csproj` exist purely for Linux and are version-pin
 
 ---
 
-## 10. Appendix: which assembly holds what
+## 11. Appendix: which assembly holds what
 
 Base path: `~/.nuget/packages/<pkg>/4.3.0.2507/lib/net10.0/`. XML docs ship beside each DLL.
 

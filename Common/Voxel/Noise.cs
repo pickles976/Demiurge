@@ -9,15 +9,15 @@ namespace Demiurge
     {
         private static NoiseSettings settings = new NoiseSettings
         {
-            XFrequency = 0.1f,
-            YFrequency = 0.1f,
+            XFrequency = 0.05f,
+            YFrequency = 0.05f,
             Amplitude = 1.0f,
             Seed = 100
         };
 
 
         /// <summary>
-        /// Height for every block in a chunk, indexed exactly like <see cref="TerrainChunk.tiles"/>.
+        /// Height for every block in a chunk, indexed exactly like a chunk's 256-entry column array.
         /// </summary>
         public static float[] GenerateNoiseForChunk(ChunkIndex index)
         {
@@ -29,7 +29,7 @@ namespace Demiurge
 
             for (int i = 0; i < totalPoints; i++)
             {
-                Vector2 position = ChunkTransforms.ConvertChunkCoordinatesAndBlockIndexToGlobalBlockCoordinates(index, i);
+                Vector2 position = ChunkTransforms.ColumnWorldPosition(index, i);
                 xCoords[i] = position.X;
                 yCoords[i] = position.Y;   // world Z; NoiseSettings applies the frequency scaling
             }

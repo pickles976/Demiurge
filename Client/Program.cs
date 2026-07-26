@@ -35,6 +35,9 @@ using Microsoft.Win32;
 using NoiseDotNet;
 using Stride.Core.Storage;
 using BulletSharp;
+// NOT System.Numerics: it makes Vector3/Vector2/Quaternion/Matrix ambiguous against
+// Stride.Core.Mathematics throughout this file. Stride defines implicit conversions both ways, so
+// Common's values cross the boundary without it.
 
 // Init riptide message logging
 var Log = GlobalLogger.GetLogger("Program");
@@ -106,9 +109,8 @@ game.Run(start: Start, update: Update);
 // Fullscreen is enabled as a borderless window inside Start() instead.
 
 
-void createCubes(Scene rootScene)
+void createDebugChunks(Scene rootScene)
 {
-
     Console.WriteLine("Generating Terrain...");
 
     // Texture.Load uses System.Drawing.Common which is Windows-only; decode via StbImageSharp instead
@@ -118,42 +120,81 @@ void createCubes(Scene rootScene)
     var texture = Texture.New2D(game.GraphicsDevice, img.Width, img.Height,
         PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
 
-    // Build a lit material with the texture as its diffuse map
+    // Triplanar diffuse: the mesh has no usable UVs, so assets/shaders/TriplanarTexture.sdsl
+    // projects world position onto the three axis planes and blends by normal. The texture is a
+    // COMPOSITION node, which is how one texture gets sampled at three different coordinates.
+    var triplanar = new ComputeShaderClassColor { MixinReference = "TriplanarTexture" };
+    triplanar.CompositionNodes["TextureSource"] = new ComputeTextureColor(texture);
+
     var material = Material.New(game.GraphicsDevice, new MaterialDescriptor
     {
         Attributes = new MaterialAttributes
         {
-            Diffuse = new MaterialDiffuseMapFeature(new ComputeTextureColor(texture)),
+            Diffuse = new MaterialDiffuseMapFeature(triplanar),
             DiffuseModel = new MaterialDiffuseLambertModelFeature(),
         }
     });
 
+    // 3x3 centred on the origin.
+    ChunkIndex[] chunksToMesh = [
+        ..from x in Enumerable.Range(-1, 3)
+          from z in Enumerable.Range(-1, 3)
+          select new ChunkIndex { x = x, z = z }];
 
-    ChunkIndex chunkIndex = new ChunkIndex { x = 0, y = 0 };
-    TerrainChunk chunk = ChunkGenerator.GenerateChunk(chunkIndex);
+    // A ring one chunk wider than that: every meshed chunk's apron reads from each neighbour, and
+    // a chunk whose neighbour is missing skips silently rather than erroring.
+    var map = new ChunkMap();
+    foreach (var index in from x in Enumerable.Range(-2, 5)
+                          from z in Enumerable.Range(-2, 5)
+                          select new ChunkIndex { x = x, z = z })
+        map.Insert(ChunkGenerator.GenerateChunk(index));
 
-    for (var n = 0; n < chunk.voxels.Length; n++)
+    // One buffer, reused for every chunk meshed on this thread.
+    var scratch = new Voxel[ChunkMesher.ScratchVolume];
+
+    foreach (var index in chunksToMesh)
     {
+        if (!ChunkMesher.TryFillScratch(map, index, scratch))
+            continue;                              // neighbour missing — retry on a later pass
 
-        if (chunk.voxels[n].Material == BlockType.BlockType_Air) continue;
+        MeshData mesh = ChunkMesher.GenerateMeshFromSurfaceNet(scratch);
+        if (mesh.Indices.Length == 0) continue;     // all air or all solid: no surface here
 
-        // TODO: change color based on type
-        Vector3 position = ChunkTransforms.ConvertChunkAndVoxelIndexToGlobalBlockPosition(chunkIndex, n);
-        var cube = game.Create3DPrimitive(PrimitiveModelType.Cube, new Primitive3DEntityOptions
-        {
-            Material = material, // case statement here
-        });
-
-        // Block coordinates name a cell's bottom-left CORNER, but a cube mesh is centred on
-        // its origin — so offset by half a tile to make the block fill [position, position+1).
-        var half = ChunkConstants.TileSize / 2.0f;
-        cube.Transform.Position = new Vector3(position.X + half, position.Y, position.Z + half);
-        cube.Scene = rootScene;
+        var entity = BuildStrideEntity(mesh, material);   // Client-side, MeshData -> vertex buffer
+        entity.Transform.Position = ChunkTransforms.ChunkOriginPosition(index);
+        entity.Scene = rootScene;
     }
 
+}
 
+/// <summary>MeshData (System.Numerics) -> a Stride entity.</summary>
+Entity BuildStrideEntity(MeshData mesh, Material material)
+{
+    var vertices = new VertexPositionNormalTexture[mesh.Positions.Length];
+    for (var i = 0; i < vertices.Length; i++)
+        vertices[i] = new VertexPositionNormalTexture(mesh.Positions[i], mesh.Normals[i], Vector2.Zero);
 
+    var vertexBuffer = Stride.Graphics.Buffer.Vertex.New(game.GraphicsDevice, vertices, GraphicsResourceUsage.Default);
+    var indexBuffer = Stride.Graphics.Buffer.Index.New(game.GraphicsDevice, mesh.Indices);
 
+    var strideMesh = new Mesh
+    {
+        Draw = new MeshDraw
+        {
+            PrimitiveType = PrimitiveType.TriangleList,
+            DrawCount = mesh.Indices.Length,
+            IndexBuffer = new IndexBufferBinding(indexBuffer, is32Bit: true, mesh.Indices.Length),
+            VertexBuffers = [new VertexBufferBinding(vertexBuffer, VertexPositionNormalTexture.Layout, vertices.Length)],
+        },
+        MaterialIndex = 0,
+
+        // Leave this empty and the mesh is frustum-culled every frame, silently.
+        BoundingBox = BoundingBox.FromPoints(Array.ConvertAll(mesh.Positions, p => (Vector3)p)),
+    };
+
+    var model = new Model { strideMesh, new MaterialInstance(material) };
+
+    return new Entity { new ModelComponent(model) };
 }
 
 
@@ -186,7 +227,7 @@ void Start(Scene rootScene)
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
 
-    createCubes(rootScene);
+    createDebugChunks(rootScene);
 
 
     // Apply custom shader

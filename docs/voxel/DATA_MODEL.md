@@ -14,9 +14,13 @@ the next step.** `TODO.md` scopes the next step, and says what it deliberately l
 
 ## Why not just block types
 
-The plan is [dual contouring](https://www.boristhebrave.com/2018/04/15/dual-contouring-tutorial/)
-for surface extraction, and DC cannot run on a `BlockType` enum. From the tutorial: *"Not only do
-we need to know the value of f(x), we also need to know the gradient f'(x)."*
+The plan is a *dual* method for surface extraction — [surface
+nets](https://bonsairobo.medium.com/smooth-voxel-mapping-a-technical-deep-dive-on-real-time-surface-nets-and-texturing-ef06d0f8ca14)
+first, with [dual contouring](https://www.boristhebrave.com/2018/04/15/dual-contouring-tutorial/)
+as a later swap of the vertex placement rule (`MESHING.md`). Neither can run on a `BlockType`
+enum. From the DC tutorial: *"Not only do we need to know the value of f(x), we also need to know
+the gradient f'(x)."* Surface nets needs only the value for placement, but still needs the
+gradient for normals — so the storage argument below is the same either way.
 
 You can derive a density field from materials — air `+1`, solid `-1` — but it's **binary**, and
 binary throws away the thing DC needs: where between two grid points the surface actually sits.
@@ -36,8 +40,8 @@ The gradient degrades the same way: central differences on a binary field give e
 value in {−½, 0, +½}, so normals snap to 26 directions.
 
 This is the entire difference between smooth voxel terrain and Minecraft, and it is a legitimate
-fork in the road. **Choosing DC is what forces a density field.** If we ever want the blocky look
-instead, binary occupancy is correct and greedy meshing replaces DC.
+fork in the road. **Choosing a dual method is what forces a density field.** If we ever want the
+blocky look instead, binary occupancy is correct and greedy meshing replaces the mesher.
 
 ## What we store
 
@@ -164,7 +168,7 @@ only air.
 > chunk is fine until there's a mesher to feed.
 
 **`ChunkIndex` stays 2D.** Vertical complexity is expected to stay low, and the 2D coordinate
-maths is already written and tested (`Common/Voxel/Coordinates.cs`, `Common.Tests/`).
+maths is already written and tested (`Common/Voxel/ChunkTransforms.cs`, `Common.Tests/`).
 
 - **16 × 16 × 128**, split into **16³ sections** internally (the Minecraft model: 2D-indexed
   column, sections as the storage and meshing unit).

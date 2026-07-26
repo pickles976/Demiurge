@@ -1,5 +1,7 @@
 # Chunk Generation
 
+https://bonsairobo.medium.com/smooth-voxel-mapping-a-technical-deep-dive-on-real-time-surface-nets-and-texturing-ef06d0f8ca14
+
 - [x] copy line 56 tilemap.cs in Demiurge. We have noise heights, but we also need to be able to take that index in the array and return block coordinates:
 `convert_chunk_coords_and_block_index_to_global_block_coordinates`
 - [x] spawn cubes
@@ -17,12 +19,22 @@
     - [x] generate the cubes
     - [x] assign block type
     - [x] test for 3x3 chunks, tweak noise settings until it looks good
+- [x] fix coordinate systems
+- [ ] triplanar mapping
 
-- [ ] remove cubes and use dual contouring method to generate geometry
-      (needs: gradient by central differences on the density field, the cross-chunk accessor,
-      and a padded scratch buffer — see DATA_MODEL.md)
+- [ ] add a 6x1x20 "wall" to a given chunk
+- [ ] add dual contouring method and see how it looks
+
+- [ ] map different textures
+      - [ ] create grass texture
+      - [ ] create dirt texture
+      - [ ] create stone texture
+
+- [ ] see if any cleanup changes need to be made
+- [ ] change to 16x16 voxels for rendering
+- [ ] what else?
+
 - [ ] clean up appearance
 - [ ] move to server
 - [ ] have claude configure a build that launches server and client simultaneously for local "singleplayer"
-- [ ] connect triplanar mapping and texturing and stuff
 - [ ] have claude add grass back in
