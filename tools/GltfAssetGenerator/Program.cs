@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -80,19 +81,48 @@ foreach (var gltfPath in gltfFiles)
         var matGuid = ComputeGuid(matContentPath);
         matGuids.Add(matGuid);
 
+        // Carry the glTF's own alpha and culling intent across. A Stride material with no
+        // Transparency feature is fully OPAQUE: it samples alpha and then ignores it, so the RGB
+        // sitting in transparent texels gets drawn — and exporters leave that at zero, which is why
+        // masked-out regions rendered solid black.
+        //
+        // MASK -> MaterialTransparencyCutoffFeature: an alpha test that stays in the Opaque render
+        // stage, so depth sorting is free. BLEND would be real alpha blending, which moves the mesh
+        // to the back-to-front Transparent stage — correct for glass, wrong (and slower, with
+        // self-sorting artifacts) for cutouts.
+        string transparency = mat.Alpha switch
+        {
+            SharpGLTF.Schema2.AlphaMode.MASK =>
+                $"    Transparency: !MaterialTransparencyCutoffFeature\n" +
+                $"        Alpha: !ComputeFloat\n" +
+                $"            Value: {mat.AlphaCutoff.ToString(CultureInfo.InvariantCulture)}\n",
+            SharpGLTF.Schema2.AlphaMode.BLEND =>
+                $"    Transparency: !MaterialTransparencyBlendFeature\n",
+            _ => "",
+        };
+
+        // doubleSided means don't cull. Cutout geometry is usually thin planes that would otherwise
+        // vanish from one side.
+        string culling = mat.DoubleSided ? "    CullMode: None\n" : "";
+
         var channel = mat.FindChannel("BaseColor");
-        string matYaml;
-        if (channel.HasValue && channel.Value.Texture != null)
-        {
-            var imgIdx = channel.Value.Texture.PrimaryImage.LogicalIndex;
-            var texGuid = imageGuids[imgIdx];
-            var texContentPath = imageContentPaths[imgIdx];
-            matYaml = $"!MaterialAsset\nId: {matGuid}\nSerializedVersion: {{Stride: 2.0.0}}\nTags: []\nAttributes:\n    Diffuse: !MaterialDiffuseMapFeature\n        DiffuseMap: !ComputeTextureColor\n            Key: Material.DiffuseMap\n            Texture: {texGuid}:{texContentPath}\n            Filtering: Point\n    DiffuseModel: !MaterialDiffuseLambertModelFeature {{}}\n";
-        }
-        else
-        {
-            matYaml = $"!MaterialAsset\nId: {matGuid}\nSerializedVersion: {{Stride: 2.0.0}}\nTags: []\nAttributes:\n    Diffuse: !MaterialDiffuseMapFeature\n        DiffuseMap: !ComputeColor\n            Value: R:1 G:1 B:1 A:1\n    DiffuseModel: !MaterialDiffuseLambertModelFeature {{}}\n";
-        }
+        string diffuse = channel.HasValue && channel.Value.Texture != null
+            ? $"    Diffuse: !MaterialDiffuseMapFeature\n" +
+              $"        DiffuseMap: !ComputeTextureColor\n" +
+              $"            Key: Material.DiffuseMap\n" +
+              $"            Texture: {imageGuids[channel.Value.Texture.PrimaryImage.LogicalIndex]}:" +
+              $"{imageContentPaths[channel.Value.Texture.PrimaryImage.LogicalIndex]}\n" +
+              $"            Filtering: Point\n"
+            : $"    Diffuse: !MaterialDiffuseMapFeature\n" +
+              $"        DiffuseMap: !ComputeColor\n" +
+              $"            Value: R:1 G:1 B:1 A:1\n";
+
+        string matYaml =
+            $"!MaterialAsset\nId: {matGuid}\nSerializedVersion: {{Stride: 2.0.0}}\nTags: []\nAttributes:\n" +
+            diffuse +
+            $"    DiffuseModel: !MaterialDiffuseLambertModelFeature {{}}\n" +
+            transparency +
+            culling;
 
         var sdmatPath = Path.Combine(dir, baseName + "_mat" + i + ".sdmat");
         WriteIfChanged(sdmatPath, matYaml);

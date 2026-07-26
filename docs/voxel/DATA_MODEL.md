@@ -3,6 +3,14 @@
 Design notes for the chunk storage layer. Decided July 2026, before any of it was written —
 so treat code as the authority once it exists, and update this when it diverges.
 
+**Status (2026-07-26): most of this is now built.** `Voxel` is 2 bytes (`sbyte` distance +
+`BlockType : byte`), quantized at `Scale = 50`; 16³ sections are the meshing and rendering unit;
+the padded scratch buffer exists and is cubic. Still unbuilt: uniform-section collapsing in
+*storage* (the wire already does it, see `ChunkWire`), per-section palettes, and `WorldMinY` moving
+off zero. Server authority is **resolved and not what this doc guessed** — the server serializes and
+streams voxels rather than sending a seed, because terrain stops being a pure function of the seed
+at the first player edit. See `ChunkWire` / `ChunkStreamer`.
+
 Scope: what we store per voxel and why. Meshing and rendering are deliberately out of scope;
 the whole point of this layout is that the data layer doesn't know a renderer exists.
 
@@ -57,6 +65,12 @@ Same shape as [bonsairobo's smooth voxel mapping](https://bonsairobo.medium.com/
 
 **Normals are not stored.** Derive them from the density field by central differences at mesh
 time — storing them would triple memory for something reconstructable.
+
+**Material must be derived from the STORED distance, not the pre-quantization one**, or the two
+disagree in a quantization-wide band around each whole-number height and the surface picks up
+patches of the wrong material. `DensityToMaterial` takes both: existence and the grass band come
+from the stored value (what the mesher reads), the deeper bands from the true distance (which the
+±2.54-voxel clamp would otherwise collapse).
 
 ## Where density comes from
 

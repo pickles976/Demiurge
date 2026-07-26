@@ -64,7 +64,7 @@ namespace Demiurge
         }
 
         static readonly ObjectParameterKey<Texture> VariantTexturesKey =
-            ParameterKeys.NewObject<Texture>(null, "TriplanarTexture.VariantTextures");
+            ParameterKeys.NewObject<Texture>(null!, "TriplanarTexture.VariantTextures");
 
         /// <summary>
         /// Loads every variant PNG into one Texture2DArray. All variants must share dimensions, which

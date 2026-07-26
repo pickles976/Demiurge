@@ -78,3 +78,7 @@ nicogo1705.github.io/AssetStore/asset?id=com.nicogo.marching-cube-compute-shader
 
 SDSL overview
 https://hackmd.io/@vN9HDo5XQAGVCM_epmoJBA/S1LxeorWT
+
+https://m.youtube.com/watch?v=PLMcCKeJ6f0&list=WL&index=56&pp=iAQBsAgC
+https://www.boristhebrave.com/2018/04/15/dual-contouring-tutorial/
+https://bonsairobo.medium.com/smooth-voxel-mapping-a-technical-deep-dive-on-real-time-surface-nets-and-texturing-ef06d0f8ca14

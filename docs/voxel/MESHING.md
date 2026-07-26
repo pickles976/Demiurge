@@ -3,6 +3,11 @@
 How voxels become triangles. Storage is [DATA_MODEL.md](DATA_MODEL.md), which deliberately
 knows nothing about a renderer; this is the other half of that split.
 
+**Status (2026-07-26).** Both meshers, per-16³-section meshing, crease splitting and per-material
+submeshes are implemented and in use; DC is what `ChunkMeshFactory` calls. What is still open is
+everything under "Known limitations" — LOD above all. The concept section below is unchanged and
+still the thing to read first.
+
 **How to read this.** The first section is a *concept* — surface nets and dual contouring are
 one algorithm — and it applies to the first line of mesher code you write. "Known limitations"
 is recorded hazard, not a checklist: every item in it is a problem you get *after* a working
@@ -34,6 +39,27 @@ vertex/index buffer — is shared, and it is where the bugs are.
 
 This is why the literature and bonsairobo himself write "surface nets (dual contouring)"
 interchangeably. They are the same family; treat the names as describing a placement rule.
+
+### As built
+
+- `ChunkMesher.TryFillScratch(map, SectionIndex, Sample[])` copies a section plus a 2-voxel apron
+  into a **cubic 21³ scratch buffer**, dequantizing as it goes. The apron is 2 because a section
+  must build the cell layer at local −1 (or every border is a one-cell gap) and a central difference
+  there reaches sample −2.
+- Storage is quantized (`sbyte`) but the scratch buffer is `Sample` (float). Converting per read
+  cost 1.4 ms per section re-mesh — more than the rest of the mesher — because each sample is read a
+  dozen-plus times. Convert once, at fill time.
+- A **slab pre-scan** records which horizontal layers contain both solid and air, so the cell loop
+  skips rows the surface can't cross. Most of the win on heightmap terrain; it stops helping once
+  caves spread the surface through the column.
+- Sections own grid points 0..15 on all three axes, so the vertical seam between sections is the
+  same case as the horizontal seam between chunks — no extra machinery.
+- `ChunkMesher.SplitCreases` runs after: it groups each vertex's faces by normal and emits one
+  vertex per group, so a hard edge gets one normal per side. Vertices with a single group keep their
+  *gradient* normal, which is better than anything reconstructed from triangles.
+- `ChunkMesher.CollectDependentSections` is the dirty-set calculation — which sections a changed
+  voxel box invalidates, given the apron. It's in `Common` because the server needs the same answer.
+- Per-chunk re-mesh measured ~1.0 ms; one section with surface ~0.34 ms, an empty one ~0.12 ms.
 
 **Normals are needed either way.** Not for placement — surface nets never looks at them — but for
 shading, and later for triplanar blend weights. Derive them from the density gradient by

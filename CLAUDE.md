@@ -8,10 +8,18 @@ which is also the composition root for all wiring.
 
 ```bash
 dotnet build DemiurgeSharp.slnx
-dotnet run                                      # client (DemiurgeSharp.csproj)
-dotnet run --project Server/DemiurgeServer.csproj   # server
-dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), ~50ms, headless
+dotnet run --launch-profile singleplayer        # client + in-process server — USE THIS
+dotnet run                                      # client only; connects to a server you started
+dotnet run --project Server/DemiurgeServer.csproj   # standalone server
+dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), ~150ms, headless
 ```
+
+**Singleplayer is the normal way to test anything server-side** — one launch instead of two.
+Profiles live in `Properties/launchSettings.json`; `client` is first so a bare `dotnet run` keeps
+its old behaviour. The underlying flag is `--singleplayer`, so `dotnet run -- --singleplayer` also
+works (the bare `--` matters; dotnet eats unknown flags first). It refuses to start rather than
+falling back if the port is taken — silently attaching to an already-running server would mean
+testing a stale build.
 
 `Common` has no Stride dependency — it's plain `System.Numerics` — so anything in it is
 testable without booting the engine. That's why the voxel coordinate maths has real tests and
@@ -58,25 +66,61 @@ Transport is Riptide. The server is authoritative: it re-steps a starved move qu
 player's last intent forever (`GameWorld.Tick`), so a client that stops sending input leaves
 its character running rather than standing still.
 
+Two Riptide facts that cost real debugging time:
+
+- **`MessageSendMode.Reliable` guarantees delivery but NOT order.** Every message must be
+  independently applicable — see `ChunkSlabsData`, which carries its own chunk index and slab
+  range for exactly this reason. Don't design anything that assumes arrival order.
+- **`Message` and `PendingMessage` pool into unsynchronised static `List<>`s** —
+  `if (pool.Count > 0) { pool[0]; pool.RemoveAt(0); }` with no lock. Safe for one peer on one
+  thread; corrupts instantly with a server and a client creating messages concurrently. This is
+  why `ServerHost` is **stepped from the client's `Update()`** in singleplayer rather than given a
+  background thread. Symptoms were a truncated read on the far end ("N unread bits") and
+  `ArgumentOutOfRangeException` inside `RetrieveFromPool`. Do not "optimize" that back onto a
+  thread without patching Riptide.
+- `NetworkManager.Dispatch` runs handlers **on the network thread** when
+  `SimulatedLatencySeconds` is 0. Anything it writes that the main thread also reads needs
+  marshalling — `TerrainState` queues and drains in `Update()` for this reason.
+
 ## Terrain / chunks (in progress)
 
-The current work, tracked in `TODO.md`. Code sits in `Common/Voxel/` so the server can take
-over generation later; today it runs client-side only, from `createDebugChunks` in `Client/Program.cs`.
+The current work, tracked in `TODO.md`. Code sits in `Common/Voxel/`, with no Stride dependency,
+so both ends share it.
+
+**The server owns terrain and streams it; the client never generates any.** `WorldGen.Generate`
+is server-side only (`GameWorld`), `ChunkStreamer` sends it, and `Client/Simulation/TerrainState`
+holds what arrived. There is deliberately no client-side generator to fall back on, which is what
+keeps the client from rendering a world the server hasn't sent — and what will keep it honest once
+player edits mean terrain is no longer a pure function of a seed. Minecraft's model, for the same
+reason: mutability, not secrecy.
 
 The Bevy/Rust project at `/home/sebas/Projects/Demiurge` is the working reference this was
 ported from — `src/chunks/{utils,mod,tilemap}.rs`. When the terrain math looks wrong, diff
 against it before theorising, and note that `utils.rs` carries unit tests that double as the
 spec for the coordinate transforms.
 
-- A chunk is **16 × 16 × 128 voxels** of density + material, flat in `TerrainChunk.voxels`.
-  `ChunkIndex` is 2D, so a chunk spans the world's full height.
+- A chunk is **16 × 16 × 128 voxels**, flat in `TerrainChunk.voxels`. `Voxel` is **2 bytes**:
+  `sbyte` quantized signed distance + `BlockType`. `ChunkIndex` is 2D, so a chunk spans the
+  world's full height.
+- **Meshing and rendering happen per 16³ SECTION** (`SectionIndex`), not per column. Storage is
+  still one flat array per chunk — a section is a view into it — so indexing, edits and
+  `ChunkIndex` are unaffected. An edit re-meshes 16³ voxels instead of 16×16×128, and each
+  section frustum-culls on its own box.
 - **The coordinate conventions live in the header comment of `Common/Voxel/ChunkTransforms.cs`.**
   Read that before touching anything positional; it is the only place they're written down.
-- Heights come from `NoiseGen.GenerateNoiseForChunk`, over the `NoiseDotNet` package.
-- `createDebugChunks` meshes a fixed set of chunks at startup via `ChunkMesher` and builds one
-  Stride entity per chunk in `BuildStrideEntity`. No streaming, no colliders, no LOD.
-- Longer roadmap in `Common/Voxel/TERRAIN.md`: heightmap mesh → smooth normals → slope
-  texturing → dual method.
+- Heights come from `NoiseGen.GenerateNoiseForChunk` (`NoiseDotNet`), seed hardcoded to 100.
+- **The bottom voxel plane is permanently solid** (`ChunkConstants.BedrockThickness`), enforced at
+  every write. Two reasons in one invariant: you can't dig out of the world, and the lowest grid
+  point any section *owns* is `WorldMinY`, so carving it away leaves a sign change on an edge
+  nobody emits a quad for — a hole you see through.
+- Edits are CSG on the field, not voxel assignment: `TerrainEdits` uses `min` for add and
+  `max(d, -shape)` for subtract, and writes `Margin` past the shape because a voxel just outside a
+  cut is now measured from the cut, not from the old surface.
+- Textures come from `BlockTextures` (a `BlockType` → files manifest) through a triplanar shader
+  with per-cell variant selection. A type with no entry draws the purple prototype texture, i.e.
+  obviously-missing rather than a plausible wrong material.
+- No colliders, no LOD, no per-player chunk tracking yet.
+- Longer roadmap in `Common/Voxel/TERRAIN.md`.
 
 **`docs/voxel/DATA_MODEL.md` is the design for where this is heading** — a quantized
 signed-distance field plus a material byte per voxel, why a dual method forces that rather than

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "client": {
+      "commandName": "Project",
+      "comment": "Connects to a server you started yourself. First profile, so this is what a bare `dotnet run` does."
+    },
+    "singleplayer": {
+      "commandName": "Project",
+      "commandLineArgs": "--singleplayer",
+      "comment": "Hosts a real server in-process on a background thread, then connects to it over the socket as usual."
+    }
+  }
+}

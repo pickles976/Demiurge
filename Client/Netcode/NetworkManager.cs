@@ -27,6 +27,8 @@ namespace Demiurge.GameClient
         public event Action<ObjectDespawnData>? ObjectDespawned;
         public event Action<ObjectStateData>? ObjectStateReceived;
 
+        public event Action<ChunkSlabsData>? ChunkSlabsReceived;   // terrain: server owns it, we don't generate
+
         public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
 
@@ -103,6 +105,10 @@ namespace Demiurge.GameClient
                 case ServerToClientId.PlayerPosition:
                     var position = e.Message.GetSerializable<PlayerPositionData>();
                     Dispatch(() => PlayerPositionReceived?.Invoke(position));
+                    break;
+                case ServerToClientId.ChunkSlabs:
+                    var slabs = e.Message.GetSerializable<ChunkSlabsData>();
+                    Dispatch(() => ChunkSlabsReceived?.Invoke(slabs));
                     break;
                 case ServerToClientId.ObjectSpawn:
                     var objSpawn = e.Message.GetSerializable<ObjectSpawnData>();

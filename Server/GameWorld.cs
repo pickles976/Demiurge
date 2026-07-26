@@ -11,12 +11,19 @@ namespace Demiurge.GameServer
         private readonly ObjectReplication objects;
         private readonly ItemSystem items;
         private readonly WeaponSystem weapons;
+        private readonly ChunkStreamer chunks;
 
         private readonly Server server;
 
         private uint _Tick = 0;
 
         private const int MaxQueuedMoves = 3;
+
+        /// <summary>
+        /// The server's terrain, and the only authority on it. Clients receive it via
+        /// <see cref="ChunkStreamer"/> and never generate any themselves.
+        /// </summary>
+        private readonly ChunkMap terrain = new();
 
         public GameWorld(Server server)
         {
@@ -25,11 +32,19 @@ namespace Demiurge.GameServer
             items = new ItemSystem(objects);
             weapons = new WeaponSystem(server, objects);
 
-            items.SpawnPickup(ItemType.BodyArmor, new Vector3(3f, 0f, 3f));
-            items.SpawnPickup(ItemType.AWP, new Vector3(3f, 0f, 0f));
-            items.SpawnPickup(ItemType.Ak47, new Vector3(-3f, 0f, -3f));
-            items.SpawnPickup(ItemType.Glock, new Vector3(-5f, 0f, -5f));
+            // Before anything is placed: spawn positions are queried off the terrain.
+            WorldGen.Generate(terrain);
+            chunks = new ChunkStreamer(server, terrain);
+
+            SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
+            SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
+            SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
+            SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
         }
+
+        /// <summary>Places a pickup on the ground at a world column, rather than at a guessed Y.</summary>
+        private void SpawnPickupOnSurface(ItemType type, float worldX, float worldZ)
+            => items.SpawnPickup(type, SurfaceQuery.SurfacePosition(terrain, worldX, worldZ));
 
         public void AddPlayer(ushort clientId)
         {
@@ -47,12 +62,16 @@ namespace Demiurge.GameServer
             });
             players[clientId] = player;
             server.SendToAll(CreateSpawnMessage(player));      // announce the newcomer
+
+            chunks.QueueWorldFor(clientId);                    // terrain follows over the next few ticks
         }
 
         public void RemovePlayer(ushort clientId)
         {
                 
                 
+            chunks.Forget(clientId);
+
             if (players.Remove(clientId, out var player))
             {
                 items.DespawnFor(player);
@@ -104,6 +123,8 @@ namespace Demiurge.GameServer
         public void Tick(float dt)
         {
             _Tick++;
+
+            chunks.Tick();
 
             foreach (var player in players.Values)
             {

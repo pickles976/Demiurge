@@ -29,7 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="Common/DemiurgeCommon.csproj" /> 
+    <ProjectReference Include="Common/DemiurgeCommon.csproj" />
+    <!-- Singleplayer hosts a real server in-process; only ServerHost is public. -->
+    <ProjectReference Include="Server/DemiurgeServer.csproj" /> 
     <GltfAsset Include="assets/**/*.gltf" />
     <!-- Audio is loaded directly by OpenAL (see SoundManager), not through Stride's content
          pipeline. Deploy .wav files alongside the build so they're available at runtime. -->

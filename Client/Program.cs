@@ -48,6 +48,38 @@ RiptideLogger.Initialize(
       msg => Log.Error(msg),
       false);
 
+// Singleplayer runs a real server in this process — the same ServerHost the standalone exe runs — so
+// testing a server-side change is one launch instead of two. Nothing about the netcode is bypassed:
+// the client still connects over the socket to 127.0.0.1 and is still a non-authoritative peer.
+// `dotnet run -- --singleplayer` (the bare `--` matters; dotnet swallows unknown flags first).
+//
+// It is stepped from Update(), NOT given its own thread: Riptide's Message and PendingMessage pools
+// are unsynchronised statics, so a server and a client creating messages on two threads corrupt each
+// other. See the note on ServerHost.
+using var localServer = Environment.GetCommandLineArgs().Contains("--singleplayer")
+    ? new Demiurge.GameServer.ServerHost()
+    : null;
+
+if (localServer is not null)
+{
+    Log.Info("Singleplayer: starting local server");
+
+    try
+    {
+        localServer.Start();
+    }
+    catch (Exception ex)
+    {
+        // Do NOT fall back to connecting to whatever is on the port. The whole point of
+        // --singleplayer is testing the server code in THIS build; silently attaching to an
+        // already-running server means testing a stale one and not knowing.
+        Console.Error.WriteLine($"\n--singleplayer could not host a server: {ex.Message}");
+        Console.Error.WriteLine($"Port {NetworkConfig.Port} is probably held by a standalone server.");
+        Console.Error.WriteLine("Stop it, or drop --singleplayer to connect to it deliberately.\n");
+        return;
+    }
+}
+
 
 Entity? sphere = null;
 
@@ -63,6 +95,14 @@ using var game = new Game();
 var network = new NetworkManager();
 var registry = new PlayerRegistry(network);
 var objectRegistry = new ObjectRegistry(network);
+
+// Sim layer: the client's copy of the terrain, filled ONLY from the wire. The server owns terrain
+// and streams it; there is deliberately no client-side generator to fall back on.
+var terrainState = new TerrainState();
+network.ChunkSlabsReceived += terrainState.Receive;
+
+// View over that state, built in Start() once the graphics device exists.
+ClientTerrain? terrainView = null;
 
 // Bridge the two registries: objects owned by our client id attach to the local
 // player. Sim-to-sim glue lives here in the composition root. Our ACTIVE gun is
@@ -109,29 +149,10 @@ game.Run(start: Start, update: Update);
 // Fullscreen is enabled as a borderless window inside Start() instead.
 
 
-// Debug scene: a 4x4 patch of terrain with one added wall and one carved trench, built through
-// the same ClientTerrain path that streaming and digging will use later.
-void createDebugChunks(Scene rootScene)
-{
-    Console.WriteLine("Generating Terrain...");
-
-    var terrain = new ClientTerrain(rootScene, new ChunkMeshFactory(game, new TerrainMaterials(game)));
-
-    // One chunk wider than the area we want to see: a chunk whose neighbour is missing can't be
-    // meshed, so the outer ring exists only to let the ring inside it build.
-    terrain.EnsureGenerated(new ChunkIndex { x = -5, z = -5 }, new ChunkIndex { x = 5, z = 5 });
-
-    var wallChunk = new ChunkIndex { x = 0, z = 0 };
-    var trenchChunk = new ChunkIndex { x = 0, z = 1 };
-
-    TerrainEdits.AddWall(terrain.Map.Get(wallChunk)!);
-    TerrainEdits.CarveTrench(terrain.Map.Get(trenchChunk)!);
-
-    terrain.MarkChunkDirty(wallChunk);
-    terrain.MarkChunkDirty(trenchChunk);
-
-    terrain.RebuildDirty();
-}
+// Builds the terrain view. Nothing renders until chunks arrive from the server, which is the point:
+// there is no code path that produces terrain the server hasn't sent.
+ClientTerrain createTerrainView(Scene rootScene)
+    => new(rootScene, new ChunkMeshFactory(game, new TerrainMaterials(game)), terrainState);
 
 
 void Start(Scene rootScene)
@@ -163,7 +184,7 @@ void Start(Scene rootScene)
     game.GraphicsDeviceManager.ApplyChanges();
     // game.AddDirectionalLight();
 
-    createDebugChunks(rootScene);
+    terrainView = createTerrainView(rootScene);
 
 
     // Apply custom shader
@@ -253,7 +274,17 @@ void Start(Scene rootScene)
 
 void Update(Scene scene, GameTime time)
 {
+    // Before the client pumps: same thread, so the two peers never touch Riptide's static pools
+    // concurrently.
+    localServer?.Step();
+
     network.Update();
+
+    // Chunks stream in over several ticks, so both of these run every frame rather than once at
+    // startup. Drain applies what the network thread queued; RebuildDirty meshes a bounded slice of
+    // whatever that dirtied. Both are no-ops when nothing arrived.
+    terrainState.Drain();
+    terrainView?.RebuildDirty();
 
     // DISABLED: DebugTextSystem draws through FastTextRenderer, which crashes on Vulkan
     // (see the AddProfiler comment in Start()). Replaced by HUD.CreateDebugStats.
