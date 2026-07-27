@@ -21,12 +21,20 @@ namespace Demiurge.GameServer
 
         public void Tick(float dt) => world.Tick(dt);
 
-        public void Stop() => server.Stop();
+        public void Stop()
+        {
+            server.Stop();
+            world.Stop();
+        }
 
         private void OnClientConnected(object? sender, ServerConnectedEventArgs e)
         {
+            // Order matters. The stream is reserved first because its token rides in Welcome, and Welcome
+            // is what tells the client to connect it; AddPlayer then queues the world into that stream.
+            Guid chunkToken = world.RegisterChunkStream(e.Client.Id);
+
             Message msg = Message.Create(MessageSendMode.Reliable, ServerToClientId.Welcome);
-            msg.AddSerializable(new WelcomeData { ClientId = e.Client.Id });
+            msg.AddSerializable(new WelcomeData { ClientId = e.Client.Id, ChunkToken = chunkToken });
             server.Send(msg, e.Client.Id);
 
             world.AddPlayer(e.Client.Id);

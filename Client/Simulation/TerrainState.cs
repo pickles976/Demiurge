@@ -76,6 +76,30 @@ namespace Demiurge.GameClient
         public bool IsComplete(ChunkIndex index) => completed.Contains(index);
 
         /// <summary>
+        /// Whether a section of this chunk can be meshed from data that will not change underneath it —
+        /// the gate that makes off-thread meshing safe.
+        ///
+        /// A chunk is inserted into the map on its FIRST slab, so being present says nothing about being
+        /// finished; <see cref="ChunkWire.Decode"/> keeps writing into its voxel array as the rest
+        /// arrives. Meanwhile the mesher's apron reads
+        /// <see cref="ChunkMesher.MeshDependencyRadius"/> voxels past the chunk, which can only reach the
+        /// 3x3 neighbourhood. So every one of those nine has to be complete before a worker may touch
+        /// them, and once complete a chunk is never rewritten (edits re-mark it dirty from the main
+        /// thread instead).
+        ///
+        /// MAIN THREAD ONLY: <see cref="completed"/> is a plain HashSet written by <see cref="Drain"/>.
+        /// The dispatcher calls this before handing work out; workers must not.
+        /// </summary>
+        public bool NeighbourhoodComplete(ChunkIndex index)
+        {
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (!IsComplete(new ChunkIndex { x = index.x + dx, z = index.z + dz })) return false;
+
+            return true;
+        }
+
+        /// <summary>
         /// Whether every chunk a body at this position collides against has fully arrived.
         ///
         /// Movement prediction needs this because unloaded terrain is IMPASSABLE in the shared step —

@@ -40,6 +40,21 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
+        /// Ticks one Step may run before it gives up and discards the backlog.
+        ///
+        /// Without a cap this loop is a burst amplifier, and it bites hardest exactly when it should
+        /// not. Everything a tick SENDS is emitted unpaced within one frame, so a 200 ms frame runs six
+        /// ticks and empties six ticks' worth of chunk streaming into the socket back to back. Long
+        /// frames happen when the client is meshing hard, i.e. while terrain is streaming in, so loss
+        /// causes retransmits, which lengthen frames, which enlarge the next burst. That death spiral
+        /// is what disconnected the client with "Poor connection" after 15 failed reliable attempts.
+        ///
+        /// Discarding the backlog means the simulation runs slow rather than dying. That is the right
+        /// trade for a fixed-step server sharing a thread with a renderer.
+        /// </summary>
+        const int MaxCatchUpTicks = 4;
+
+        /// <summary>
         /// Advances the server by however much real time has passed, in fixed steps. Call once per
         /// frame. The accumulator means a slow or irregular caller still simulates the right number of
         /// ticks, just in bursts — but a throttled caller does slow the server down, which is the price
@@ -55,8 +70,15 @@ namespace Demiurge.GameServer
 
             server.PumpNetwork();                            // pump Riptide every call
 
+            int ticks = 0;
             while (accumulator >= NetworkConfig.FixedDt)     // simulate in fixed steps
             {
+                if (ticks++ == MaxCatchUpTicks)
+                {
+                    accumulator = 0;                         // drop the backlog; see MaxCatchUpTicks
+                    break;
+                }
+
                 server.Tick(NetworkConfig.FixedDt);
                 accumulator -= NetworkConfig.FixedDt;
             }

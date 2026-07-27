@@ -6,29 +6,22 @@ using Stride.Rendering;
 namespace Demiurge
 {
     /// <summary>
-    /// Section in, Stride entity out. The whole voxels-to-GPU pipeline, in order:
+    /// Geometry in, Stride entity out — the last leg of the voxels-to-GPU pipeline:
     ///
     ///     ChunkMap + SectionIndex  ->  scratch buffer  ->  MeshData  ->  crease split  ->  Entity
+    ///                                  \___ SectionMeshQueue, on workers ___/    \_ here, main thread _/
     ///
     /// This is the only place that knows both <see cref="MeshData"/> and Stride's buffer types.
     /// Common produces engine-agnostic System.Numerics geometry; the conversion lives here so the
     /// mesher stays testable headlessly and usable by the server.
     ///
-    /// NOT thread safe: the scratch buffer is reused across calls. One factory per meshing thread.
+    /// MAIN THREAD ONLY, and unlike the rest of the pipeline that is not a convention — it creates GPU
+    /// buffers. Everything upstream of it runs on <see cref="SectionMeshQueue"/>'s workers.
     /// </summary>
     public sealed class ChunkMeshFactory
     {
-        /// <summary>
-        /// Above this angle between adjacent faces, the shared vertex is split so each side gets its
-        /// own normal. Raise it if smooth terrain looks faceted, lower it if creases look soft.
-        /// </summary>
-        const float CreaseAngleDegrees = 50f;
-
         readonly Game game;
         readonly TerrainMaterials materials;
-
-        // Reused rather than allocated per section; 21^3 samples, ~74 KB.
-        readonly Sample[] scratch = new Sample[ChunkMesher.ScratchVolume];
 
         public ChunkMeshFactory(Game game, TerrainMaterials materials)
         {
@@ -37,33 +30,22 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Builds the entity for one section, already positioned in world space.
-        ///
-        /// Returns false when the section cannot be meshed YET because a neighbouring chunk it needs
-        /// isn't loaded — the caller should leave it dirty and try again. Returns true with a null
-        /// entity when it meshed fine but holds no surface, which is the common case: most sections
-        /// of a column are entirely air or entirely solid, and those cost only the slab scan.
+        /// Uploads one section's finished geometry and returns its entity, positioned in world space.
+        /// Null when the mesh holds no surface, which is the common case: most sections of a column are
+        /// entirely air or entirely solid.
         /// </summary>
-        public bool TryBuild(ChunkMap map, SectionIndex section, out Entity? entity)
+        public Entity? Build(SectionIndex section, MeshData mesh)
         {
-            entity = null;
+            if (mesh.Indices.Length == 0) return null;
 
-            if (!ChunkMesher.TryFillScratch(map, section, scratch)) return false;
-
-            MeshData mesh = ChunkMesher.GenerateMeshDualContouring(scratch);
-            if (mesh.Indices.Length == 0) return true;
-
-            // DC puts a crease vertex in the right place; this gives it one normal per side so the
-            // corner reads as an edge rather than a smooth blend.
-            mesh = ChunkMesher.SplitCreases(mesh, CreaseAngleDegrees);
-
-            entity = ToEntity(mesh);
+            var entity = ToEntity(mesh);
 
             // Mesh positions are SECTION-local, so the transform carries both the chunk's ground
             // offset and the section's height.
             var origin = ChunkTransforms.ChunkOriginPosition(section.Chunk);
             entity.Transform.Position = new Vector3(origin.X, section.BaseY, origin.Z);
-            return true;
+
+            return entity;
         }
 
         /// <summary>

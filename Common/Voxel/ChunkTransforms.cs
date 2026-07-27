@@ -89,6 +89,51 @@ namespace Demiurge
         /// <summary>Which column a voxel sits in: mod 256 strips the y term, leaving z*16 + x.</summary>
         public static int ColumnIndexOf(int index) => index % ChunkConstants.ChunkSize;
 
+        /// <summary>A local column's slot in a 256-entry column array. The inverse of ColumnIndexOf's range.</summary>
+        public static int ColumnIndex(int localX, int localZ) => localZ * ChunkConstants.ChunkWidth + localX;
+
+        // ---- Padded column arrays ----
+        //
+        // Slope has to be central-differenced, so an edge column needs its neighbour's height — which
+        // lives in the next chunk. Rather than looking across chunks, column arrays are generated one
+        // wider on every side: local coordinates run [-1, ChunkWidth] instead of [0, ChunkWidth).
+        // The noise is a pure function of world position, so the extra ring costs nothing but samples.
+        //
+        // These live here, beside the unpadded versions, because a padded-vs-unpadded index mixup is
+        // exactly the class of bug the "never compute a block's world position twice" rule exists to
+        // prevent — the July 2026 transpose and half-chunk offset were both hand-rolled index walks.
+
+        /// <summary>Width of a column array padded by one on each side.</summary>
+        public const int PaddedWidth = ChunkConstants.ChunkWidth + 2;
+
+        /// <summary>Entries in a padded column array.</summary>
+        public const int PaddedColumns = PaddedWidth * PaddedWidth;
+
+        /// <summary>Padded slot for LOCAL column coords in [-1, ChunkWidth].</summary>
+        public static int PaddedColumnIndex(int localX, int localZ)
+            => (localZ + 1) * PaddedWidth + (localX + 1);
+
+        /// <summary>World column of one entry in a padded column array.</summary>
+        public static Vector2 PaddedColumnWorldPosition(ChunkIndex chunkIndex, int index)
+        {
+            (int originX, int originZ) = ChunkOrigin(chunkIndex);
+
+            return new Vector2(originX + (index % PaddedWidth) - 1,
+                               originZ + (index / PaddedWidth) - 1);
+        }
+
+        /// <summary>
+        /// Padded slot for the column a VOXEL sits in. The one bridge between voxel indices and padded
+        /// column arrays, so generation never open-codes the +1.
+        /// </summary>
+        public static int PaddedColumnIndexOf(int voxelIndex)
+        {
+            int column = ColumnIndexOf(voxelIndex);
+
+            return PaddedColumnIndex(column % ChunkConstants.ChunkWidth,
+                                     column / ChunkConstants.ChunkWidth);
+        }
+
         /// <summary>A voxel's local height — the other half of the same split.</summary>
         public static int LocalYOf(int index) => index / ChunkConstants.ChunkSize;
     }

@@ -11,7 +11,7 @@ namespace Demiurge.GameServer
         private readonly ObjectReplication objects;
         private readonly ItemSystem items;
         private readonly WeaponSystem weapons;
-        private readonly ChunkStreamer chunks;
+        private readonly ChunkTcpServer chunks;
 
         private readonly Server server;
 
@@ -25,7 +25,7 @@ namespace Demiurge.GameServer
 
         /// <summary>
         /// The server's terrain, and the only authority on it. Clients receive it via
-        /// <see cref="ChunkStreamer"/> and never generate any themselves.
+        /// <see cref="ChunkTcpServer"/> and never generate any themselves.
         /// </summary>
         private readonly ChunkMap terrain = new();
 
@@ -38,7 +38,8 @@ namespace Demiurge.GameServer
 
             // Before anything is placed: spawn positions are queried off the terrain.
             WorldGen.Generate(terrain);
-            chunks = new ChunkStreamer(server, terrain);
+            chunks = new ChunkTcpServer(terrain);
+            chunks.Start();
 
             SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
             SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
@@ -49,6 +50,16 @@ namespace Demiurge.GameServer
         /// <summary>Places a pickup on the ground at a world column, rather than at a guessed Y.</summary>
         private void SpawnPickupOnSurface(ItemType type, float worldX, float worldZ)
             => items.SpawnPickup(type, SurfaceQuery.SurfacePosition(terrain, worldX, worldZ));
+
+        /// <summary>
+        /// Reserves this client's terrain stream and returns the token it must present on it. Must happen
+        /// before the client is welcomed, since the token rides in the Welcome message, and before
+        /// <see cref="AddPlayer"/>, which queues the world into the stream this creates.
+        /// </summary>
+        public Guid RegisterChunkStream(ushort clientId) => chunks.Register(clientId);
+
+        /// <summary>Stops the terrain listener and its writer threads.</summary>
+        public void Stop() => chunks.Dispose();
 
         public void AddPlayer(ushort clientId)
         {
@@ -128,8 +139,6 @@ namespace Demiurge.GameServer
         public void Tick(float dt)
         {
             _Tick++;
-
-            chunks.Tick();
 
             foreach (var player in players.Values)
             {

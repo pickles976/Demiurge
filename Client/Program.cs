@@ -98,7 +98,15 @@ var network = new NetworkManager();
 // and streams it; there is deliberately no client-side generator to fall back on.
 // Constructed before the registries because the local player predicts movement against it.
 var terrainState = new TerrainState();
-network.ChunkSlabsReceived += terrainState.Receive;
+
+// Terrain arrives on its own TCP connection rather than through Riptide — see ChunkTransport for why.
+// Receive only enqueues, so the reader thread raising this is safe; Drain applies it on the main thread.
+var chunkStream = new ChunkTcpClient();
+chunkStream.ChunkReceived += terrainState.Receive;
+
+// Welcome carries the token that identifies us on that stream, so the connection can only be made once
+// the Riptide handshake has completed.
+network.Welcomed += welcome => chunkStream.Connect(NetworkConfig.ServerHost, welcome.ChunkToken);
 
 var registry = new PlayerRegistry(network, terrainState);
 var objectRegistry = new ObjectRegistry(network);
@@ -144,6 +152,12 @@ game.Services.AddService(network);
 game.Services.AddService(registry);
 
 game.Run(start: Start, update: Update);
+
+chunkStream.Dispose();
+
+// Stops the mesher threads. They are background threads so the process would exit regardless, but
+// joining them here means a worker can't be mid-read of the chunk map while shutdown tears it down.
+terrainView?.Dispose();
 
 // NOTE: do NOT set GraphicsDeviceManager.IsFullScreen here (before Run). On the
 // SDL/Linux backend that creates an exclusive-fullscreen swapchain whose pixel
@@ -283,8 +297,13 @@ void Update(Scene scene, GameTime time)
     network.Update();
 
     // Chunks stream in over several ticks, so both of these run every frame rather than once at
-    // startup. Drain applies what the network thread queued; RebuildDirty meshes a bounded slice of
-    // whatever that dirtied. Both are no-ops when nothing arrived.
+    // startup. Drain applies what the network thread queued; RebuildDirty hands whatever that dirtied
+    // to the mesher threads and uploads a bounded slice of what they finished. Both are no-ops when
+    // nothing arrived.
+    //
+    // The ORDER matters. Drain is the only writer of chunk voxels, and RebuildDirty only dispatches
+    // sections whose chunks Drain has already finished, so a worker never reads an array Drain is
+    // writing. Interleaving them differently would break that.
     terrainState.Drain();
     terrainView?.RebuildDirty();
 

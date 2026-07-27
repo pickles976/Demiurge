@@ -18,7 +18,7 @@ https://github.com/stride3d/stride/issues/2496
 4a. PVP Mechanics
 - [x] sniper rifle
     - [x] make lookahead range tied to the weapon itself
-- [ ] add wearables
+- [ ] add wearablesS
     - [x] add armor
     - [ ] add helmet
 - [ ] Player health
@@ -33,22 +33,16 @@ https://github.com/stride3d/stride/issues/2496
 - [ ] clean up UI and stuff
 
 8. Create water, ground, and grass shaders
+
+Tree shader, grass shader, etc
 https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
-- [ ] grass
-    - [ ] compute shader
-    - [ ] no asset, just direct geometry
-    - [ ] simplex noise
-        - [ ] height
-        - [ ] color
-    - [ ] animate wind
-    - [ ] squish the grass
+
 
 8a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
 
 10. Play around with scripting
     - [ ] add a debug terminal
     - [ ] add some basic scripting functionality with basic parser 
-
 
 11. Add inventory UI
 12. Host server and test with buddies
@@ -67,10 +61,6 @@ https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
 Debug Stuff
 - [ ] debug draw chunk borders
 
-- generate textures with noise
-- generate trees with noise
-- create a water shader for tiles
-
 Areola vid
 https://www.youtube.com/watch?v=Y0Ko0kvwfgA
 
@@ -84,3 +74,10 @@ https://hackmd.io/@vN9HDo5XQAGVCM_epmoJBA/S1LxeorWT
 https://m.youtube.com/watch?v=PLMcCKeJ6f0&list=WL&index=56&pp=iAQBsAgC
 https://www.boristhebrave.com/2018/04/15/dual-contouring-tutorial/
 https://bonsairobo.medium.com/smooth-voxel-mapping-a-technical-deep-dive-on-real-time-surface-nets-and-texturing-ef06d0f8ca14
+
+
+Big Systems
+- [x] multiplayer
+- [x] terrain
+- [x] inventory
+- [ ] scripting system

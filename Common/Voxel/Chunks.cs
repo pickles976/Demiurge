@@ -1,4 +1,4 @@
-
+using System.Collections.Concurrent;
 
 namespace Demiurge
 {
@@ -94,12 +94,21 @@ namespace Demiurge
 
     public class ChunkMap
     {
-        public Dictionary<ChunkIndex, TerrainChunk> chunks = new();
-
-        public ChunkMap()
-        {
-            
-        }
+        /// <summary>
+        /// Concurrent because MESHING READS THIS FROM WORKER THREADS while the main thread inserts
+        /// arriving chunks. A plain Dictionary insert racing a lookup corrupts the buckets or throws,
+        /// rather than merely returning stale data — the same hazard that made
+        /// <see cref="GameClient.TerrainState"/> queue arrivals instead of applying them on the network
+        /// thread.
+        ///
+        /// This only makes the LOOKUP safe. A chunk's voxel array is still mutable while its slabs are
+        /// arriving, so callers that read voxels off the main thread must first establish that the chunk
+        /// is complete — see TerrainState.NeighbourhoodComplete.
+        ///
+        /// Meshing does ~441 lookups per section (one per apron column, not one per voxel), so the extra
+        /// cost against a plain Dictionary is irrelevant here.
+        /// </summary>
+        readonly ConcurrentDictionary<ChunkIndex, TerrainChunk> chunks = new();
 
         public void Reset() { this.chunks.Clear(); }
 
@@ -140,21 +149,35 @@ namespace Demiurge
 
     public class ChunkGenerator
     {
+        /// <summary>
+        /// Where grass stops and bare rock starts, in degrees of surface slope.
+        ///
+        /// NOT derived from <see cref="PlayerMovement.MaxSlopeDegrees"/>, though it was tempting: the
+        /// idea was that green means walkable and grey means it isn't, so the player reads the collision
+        /// rule off the terrain. This terrain cannot support that. Measured over the whole map, the
+        /// steepest column is about 49 degrees, so the 50-degree walk limit never triggers and grass
+        /// cannot signal a distinction that doesn't exist. Tying them would have put the threshold at 40
+        /// degrees, where under 1% of the world is rock and the feature is invisible.
+        ///
+        /// 25 degrees is chosen against the measured slope distribution instead: it leaves plains fully
+        /// green while making a meaningful fraction of mountainsides bare, which is the look wanted. Retune
+        /// by looking, not by reasoning — and revisit the derived version if terrain ever gets real cliffs.
+        /// </summary>
+        public const float GrassLimitDegrees = 25f;
 
-        const float Amplitude = 8f;
-        const float SeaLevel  = 8f;
+        /// <summary>The same limit as a gradient magnitude, which is what a heightmap slope measures.</summary>
+        public static readonly float GrassLimitSlope = MathF.Tan(GrassLimitDegrees * (MathF.PI / 180f));
 
         public static TerrainChunk GenerateChunk(ChunkIndex index)
         {
+            float[] heights = NoiseGen.GenerateHeightsForChunk(index);   // padded, world units
+            float[] slopes = ColumnSlopes(heights);
 
-            float[] heightMap = NoiseGen.GenerateNoiseForChunk(index);
             TerrainChunk chunk = new TerrainChunk(index);
 
-            // Get the density of each voxel from the heightmap
             for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
             {
-                // Height at X,Z voxel index
-                float heightAt = heightMap[ChunkTransforms.ColumnIndexOf(i)] * Amplitude + SeaLevel;  // i % 256
+                float heightAt = heights[ChunkTransforms.PaddedColumnIndexOf(i)];
                 int y = ChunkTransforms.LocalYOf(i);                           // i / 256
                 // Through the world-floor clamp like every other voxel write: noise can put a
                 // column's height at or below WorldMinY, which would otherwise generate a hole.
@@ -163,10 +186,37 @@ namespace Demiurge
                 // Store first, then label from what was actually stored: quantization is what the
                 // mesher will see, so the material has to agree with it rather than with `distance`.
                 chunk.voxels[i].Distance = distance;
-                chunk.voxels[i].Material = DensityToMaterial(chunk.voxels[i].Distance, distance);
+                chunk.voxels[i].Material = DensityToMaterial(chunk.voxels[i].Distance, distance,
+                                                             slopes[ChunkTransforms.ColumnIndexOf(i)]);
             }
 
             return chunk;
+        }
+
+        /// <summary>
+        /// tan(slope) per column, central-differenced off the PADDED heights — which is the only reason
+        /// the heights are padded. No new noise and no extra storage: the surface gradient was already
+        /// implied by the height field.
+        /// </summary>
+        static float[] ColumnSlopes(float[] paddedHeights)
+        {
+            var slopes = new float[ChunkConstants.ChunkSize];
+
+            for (int z = 0; z < ChunkConstants.ChunkWidth; z++)
+            {
+                for (int x = 0; x < ChunkConstants.ChunkWidth; x++)
+                {
+                    float dx = (paddedHeights[ChunkTransforms.PaddedColumnIndex(x + 1, z)]
+                              - paddedHeights[ChunkTransforms.PaddedColumnIndex(x - 1, z)]) * 0.5f;
+
+                    float dz = (paddedHeights[ChunkTransforms.PaddedColumnIndex(x, z + 1)]
+                              - paddedHeights[ChunkTransforms.PaddedColumnIndex(x, z - 1)]) * 0.5f;
+
+                    slopes[ChunkTransforms.ColumnIndex(x, z)] = MathF.Sqrt(dx * dx + dz * dz);
+                }
+            }
+
+            return slopes;
         }
 
         /// <summary>
@@ -184,9 +234,23 @@ namespace Demiurge
         ///   -2.54 voxels — deriving Dirt/Stone from it would make everything below that Dirt and
         ///   Stone would never appear at all.
         /// </summary>
+        /// <summary>
+        /// Slope-free overload, for fields whose surface gradient is zero or unknown — synthetic test
+        /// fields and player edits, where the column's slope says nothing about the cut face.
+        /// </summary>
         public static BlockType DensityToMaterial(float storedDistance, float trueDistance)
+            => DensityToMaterial(storedDistance, trueDistance, slope: 0f);
+
+        /// <inheritdoc cref="DensityToMaterial(float, float)"/>
+        /// <param name="slope">tan of the surface angle at this column, from <see cref="ColumnSlopes"/>.</param>
+        public static BlockType DensityToMaterial(float storedDistance, float trueDistance, float slope)
         {
             if (storedDistance >= 0f) return BlockType.BlockType_Air;   // the invariant, in one place
+
+            // Too steep to hold soil. Before the grass band rather than inside it, so a cliff is rock all
+            // the way down instead of a diagonal stripe of grass over dirt — which is what a heightmap
+            // surface cutting across columns would otherwise produce on every mountainside.
+            if (slope > GrassLimitSlope) return BlockType.BlockType_Stone;
 
             // "The topmost solid voxel", expressed in stored terms. That voxel's stored depth always
             // lands in (0, 1] — exactly 1.0 when the voxel above it quantized to air — and the voxel

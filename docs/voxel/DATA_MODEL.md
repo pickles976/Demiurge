@@ -3,13 +3,17 @@
 Design notes for the chunk storage layer. Decided July 2026, before any of it was written —
 so treat code as the authority once it exists, and update this when it diverges.
 
-**Status (2026-07-26): most of this is now built.** `Voxel` is 2 bytes (`sbyte` distance +
+**Status (2026-07-27): most of this is now built.** `Voxel` is 2 bytes (`sbyte` distance +
 `BlockType : byte`), quantized at `Scale = 50`; 16³ sections are the meshing and rendering unit;
-the padded scratch buffer exists and is cubic. Still unbuilt: uniform-section collapsing in
-*storage* (the wire already does it, see `ChunkWire`), per-section palettes, and `WorldMinY` moving
-off zero. Server authority is **resolved and not what this doc guessed** — the server serializes and
-streams voxels rather than sending a seed, because terrain stops being a pure function of the seed
-at the first player edit. See `ChunkWire` / `ChunkStreamer`.
+the padded scratch buffer exists and is cubic. Server authority is **resolved and not what this doc
+guessed** — the server serializes and streams voxels rather than sending a seed, because terrain stops
+being a pure function of the seed at the first player edit.
+
+Also built since: **per-slab material palettes and packed indices on the wire** (see "Wire format"
+below), terrain collision (`docs/voxel/COLLISION.md`), spline-driven generation
+(`docs/voxel/GENERATION.md`), and a dedicated TCP transport (`ChunkTransport`) rather than Riptide.
+Still unbuilt: uniform-section collapsing in *storage* — a chunk still allocates all 64 KB regardless
+of content — and `WorldMinY` moving off zero.
 
 Scope: what we store per voxel and why. Meshing and rendering are deliberately out of scope;
 the whole point of this layout is that the data layer doesn't know a renderer exists.
@@ -74,8 +78,8 @@ from the stored value (what the mesher reads), the deeper bands from the true di
 
 ## Where density comes from
 
-It's already in the noise. `GenerateNoiseForChunk` returns a **continuous** float per column;
-today that float only positions a cube. Density is the same number reinterpreted as a field:
+It's already in the noise. `NoiseGen.GenerateHeightsForChunk` returns a **continuous** float per
+column — the surface height in world units. Density is the same number reinterpreted as a field:
 
 ```
 density(x, y, z) = y - height(x, z)
@@ -249,3 +253,51 @@ build on it.
   wire serialiser. Unresolved.
 - Material palette compression. `BlockType` is effectively a global palette already; per-section
   palettes are a later optimization.
+
+---
+
+## Wire format (built)
+
+`ChunkWire` is where the storage layout meets the network, and the layout is what makes it compress.
+Density and material go as **separate planes** per slab, never interleaved — they have nothing in
+common statistically and interleaving defeats both schemes.
+
+**Material** has at most four values in a slab, so it goes as a palette plus either run lengths
+(index packed into the same byte as the length) or packed 1/2/4-bit indices — whichever is smaller for
+that slab. Those are *alternatives*, not cumulative.
+
+**Density** is mostly saturated at ±127, because `Scale = 50` only resolves ±2.54 voxels around the
+surface. A 256-bit mask marks the voxels that are *not*, and the rest reconstruct from the material
+plane's own sign (air means the distance was positive). The mask is built from whether that
+reconstruction would be **exact**, so a voxel whose material and density disagree simply becomes a
+literal — lossless by construction rather than by trusting the generator's invariant.
+
+Both planes fall back to raw. Without that the pathological slab is a genuine regression (261 bytes of
+material runs against 256 raw); with it the worst case loses 0.4% instead.
+
+### The cost model
+
+```
+size ≈ 59·mixedSlabs + 1664 bytes     (was 513·mixedSlabs)
+```
+
+Two quantities drive it, and only one depends on the terrain:
+
+- **Literal density bytes are terrain-independent.** Density steps exactly 1.0 per slab, which is 50
+  quantized units, and ±127 spans 5.08 voxels — so every column has ~5 unsaturated voxels whatever its
+  height. 256 columns × 5.08 ≈ 1280 bytes per chunk, always.
+- **Mixed slabs ≈ height span + 5**, the only terrain-dependent term.
+
+So chunk size is **roughly independent of roughness**, which is what stops mountains costing more to
+stream than plains. Measured: 2.45× on gentle terrain, 3.43× on mountainous — the advantage *grows*
+with roughness, because the old cost scaled at 513 bytes per mixed slab and this one scales at 59.
+
+The best case is a tie by construction: a perfectly flat chunk is 128 uniform slabs at 3 bytes each,
+384 bytes either way, and the plane encodings contribute nothing.
+
+### Next, if it's ever needed
+
+Delta-code density along Y. Those ~5 unsaturated values per column are an arithmetic sequence, so a
+seed plus implied steps takes 1280 bytes to ~350 — about another 1.6×. It needs cross-slab context,
+which the TCP stream's ordering now permits. Unlike encoding the heightmap itself, it survives caves:
+it exploits vertical coherence of the field, not the assumption that a heightmap produced it.

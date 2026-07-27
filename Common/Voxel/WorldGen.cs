@@ -14,11 +14,20 @@ namespace Demiurge
     public static class WorldGen
     {
         /// <summary>
-        /// The fixed map, inclusive on both corners. Small on purpose: everything is generated up
-        /// front and never streamed.
+        /// The fixed map, inclusive on both corners: 41x41 chunks, so 656 voxels across.
+        ///
+        /// Sized by EROSION, not by taste. Erosion's wavelength is what makes a plain a plain and a
+        /// range a range, and at ~220 voxels the world has to be several hundred across or the whole map
+        /// sits inside one erosion value and comes out uniformly flat or uniformly mountainous — correct
+        /// code that looks like the feature did not work.
+        ///
+        /// Everything is still generated up front and streamed whole, which measures at ~2.6 s of
+        /// transfer and ~3.8 s of client meshing. Both are one-time; the meshing is time-budgeted so it
+        /// fills in rather than hitching. Past this size it wants per-player view-distance work, which is
+        /// its own TODO item.
         /// </summary>
-        public static readonly ChunkIndex Min = new() { x = -3, z = -3 };
-        public static readonly ChunkIndex Max = new() { x = 2, z = 2 };
+        public static readonly ChunkIndex Min = new() { x = -20, z = -20 };
+        public static readonly ChunkIndex Max = new() { x = 20, z = 20 };
 
         /// <summary>
         /// Chunks that can actually be MESHED. Meshing reads an apron into the neighbours, so the

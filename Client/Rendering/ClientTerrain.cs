@@ -15,14 +15,23 @@ namespace Demiurge
     /// Sections rather than whole chunks are the unit because that's what makes an edit cheap: a dig
     /// re-meshes 16^3 voxels instead of a 16x16x128 column, and each section culls on its own box.
     /// </summary>
-    public sealed class ClientTerrain
+    public sealed class ClientTerrain : IDisposable
     {
         readonly Scene scene;
         readonly ChunkMeshFactory factory;
         readonly GameClient.TerrainState terrain;
+        readonly SectionMeshQueue meshers;
         readonly Dictionary<SectionIndex, Entity> entities = new();
         readonly Queue<SectionIndex> dirtyQueue = new();
         readonly HashSet<SectionIndex> dirtySet = new();
+
+        /// <summary>
+        /// Submitted to a worker and not yet applied. Separate from <see cref="dirtySet"/> because a
+        /// section can be re-dirtied while its job is running: the stale result still arrives, and it
+        /// must not be treated as satisfying the newer request.
+        /// </summary>
+        readonly HashSet<SectionIndex> inFlight = new();
+
         readonly DirtySectionSink dirtySections;
 
         ChunkMap Map => terrain.Map;
@@ -32,12 +41,15 @@ namespace Demiurge
             this.scene = scene;
             this.factory = factory;
             this.terrain = terrain;
+            meshers = new SectionMeshQueue(terrain.Map, SectionMeshQueue.DefaultWorkerCount);
             dirtySections = new DirtySectionSink(this);
 
             // A chunk becomes meshable when its last slab arrives — and so do its neighbours, whose
             // aprons read into it, which MarkChunkDirty already accounts for.
             terrain.ChunkCompleted += MarkChunkDirty;
         }
+
+        public void Dispose() => meshers.Dispose();
 
         /// <summary>Marks every section of one chunk, and anything reading into it.</summary>
         public void MarkChunkDirty(ChunkIndex index)
@@ -57,65 +69,106 @@ namespace Demiurge
             => ChunkMesher.CollectDependentSections(minX, minY, minZ, maxX, maxY, maxZ, dirtySections);
 
         /// <summary>
-        /// Time spent meshing per call. A budget, not a hard cap: the check happens before each
-        /// section so the call can overshoot by one expensive section. Streaming a map marks hundreds
-        /// of sections dirty at once, and meshing them all in one frame stalls the thread that also
-        /// dispatches incoming chunk messages — which throttles the very arrivals it's reacting to.
-        /// Whatever is left stays queued for the next frame.
+        /// Main-thread time spent UPLOADING finished geometry per call. Meshing itself no longer happens
+        /// here — it runs on <see cref="SectionMeshQueue"/>'s workers — so this budget now covers only GPU
+        /// buffer creation, which is why a small number is no longer the bottleneck it was. A budget, not
+        /// a hard cap: the check happens after each upload, so a call can overshoot by one section.
         /// </summary>
-        const double RebuildBudgetSeconds = 0.004;
+        const double UploadBudgetSeconds = 0.004;
 
-        static readonly long RebuildBudgetTicks = Math.Max(1, (long)(Stopwatch.Frequency * RebuildBudgetSeconds));
+        static readonly long UploadBudgetTicks = Math.Max(1, (long)(Stopwatch.Frequency * UploadBudgetSeconds));
 
         /// <summary>
-        /// Re-meshes dirty sections until the time budget is spent and swaps the entities over. Call
-        /// once per frame, not once per edit. Returns how many were rebuilt.
+        /// Sections a worker may be chewing on at once. Bounded for two reasons: finished geometry sits in
+        /// memory until the main thread uploads it, and a section re-dirtied by an edit should not queue
+        /// behind thousands of initial-load jobs.
+        /// </summary>
+        const int MaxInFlight = 64;
+
+        /// <summary>
+        /// How far down the dirty queue one call will look for something dispatchable. Blocked sections go
+        /// to the back, so without a cap a large queue of not-yet-complete chunks — the outer ring of the
+        /// loaded area — would be rescanned in full every frame.
+        /// </summary>
+        const int MaxDispatchScan = 256;
+
+        /// <summary>
+        /// Hands dirty sections to the mesher threads and uploads whatever came back. Call once per frame,
+        /// not once per edit. Returns how many entities were swapped in.
         ///
-        /// Sections that can't be meshed yet — because a neighbouring chunk they read hasn't arrived —
-        /// are moved to the back of the queue and retried next frame. That's why the outer ring of the
-        /// loaded area produces nothing until the ring beyond it exists.
+        /// Sections whose 3x3 chunk neighbourhood hasn't fully arrived are moved to the back of the queue
+        /// and retried — that gate is what makes off-thread meshing safe, and it also means the outer ring
+        /// of the loaded area produces nothing until the ring beyond it exists.
         /// </summary>
         public int RebuildDirty()
         {
-            if (dirtyQueue.Count == 0) return 0;
+            Dispatch();
+            return Collect();
+        }
 
-            long start = Stopwatch.GetTimestamp();
-            int attemptsRemaining = dirtyQueue.Count;
-            int attempted = 0;
-            int rebuilt = 0;
+        void Dispatch()
+        {
+            int scans = Math.Min(dirtyQueue.Count, MaxDispatchScan);
 
-            while (attemptsRemaining-- > 0 && dirtyQueue.Count > 0)
+            while (scans-- > 0 && inFlight.Count < MaxInFlight && dirtyQueue.Count > 0)
             {
-                // Always rebuild at least one meshable section. If a frame is already slow for
-                // unrelated reasons, meshing still makes forward progress instead of starving
-                // indefinitely; blocked sections are still capped by attemptsRemaining.
-                if (rebuilt > 0 && Stopwatch.GetTimestamp() - start >= RebuildBudgetTicks) break;
-
                 var section = dirtyQueue.Dequeue();
-                attempted++;
 
                 if (!Map.Has(section.Chunk)) { dirtySet.Remove(section); continue; }
-                if (!factory.TryBuild(Map, section, out Entity? entity))
+
+                // Already being meshed: leave it queued so the newer request is honoured after the
+                // in-flight result lands, rather than racing two jobs for one section.
+                // Not complete yet: a worker would read voxels the main thread is still decoding.
+                if (inFlight.Contains(section) || !terrain.NeighbourhoodComplete(section.Chunk))
                 {
                     dirtyQueue.Enqueue(section);
-                    continue;   // retry next frame; don't spin on missing neighbours this frame
-                }
-
-                // Detach the old entity BEFORE attaching the new one, or the stale geometry stays in
-                // the scene and you get two overlapping surfaces after an edit.
-                if (entities.Remove(section, out var previous)) previous.Scene = null;
-
-                if (entity is not null)
-                {
-                    entity.Scene = scene;
-                    entities[section] = entity;
+                    continue;
                 }
 
                 dirtySet.Remove(section);
+                inFlight.Add(section);
+                meshers.Submit(section);
+            }
+        }
+
+        int Collect()
+        {
+            long start = Stopwatch.GetTimestamp();
+            int rebuilt = 0;
+
+            while (meshers.TryTakeResult(out var result))
+            {
+                // Not in flight means the world was reset under it — the section no longer exists as far
+                // as we're concerned, so the geometry is garbage.
+                if (!inFlight.Remove(result.Section)) continue;
+
+                if (!result.Ready)
+                {
+                    EnqueueDirty(result.Section);   // apron chunk vanished between the gate and the fill
+                    continue;
+                }
+
+                Swap(result.Section, result.Mesh);
                 rebuilt++;
+
+                if (Stopwatch.GetTimestamp() - start >= UploadBudgetTicks) break;
             }
 
             return rebuilt;
+        }
+
+        void Swap(SectionIndex section, MeshData mesh)
+        {
+            Entity? entity = factory.Build(section, mesh);
+
+            // Detach the old entity BEFORE attaching the new one, or the stale geometry stays in
+            // the scene and you get two overlapping surfaces after an edit.
+            if (entities.Remove(section, out var previous)) previous.Scene = null;
+
+            if (entity is null) return;
+
+            entity.Scene = scene;
+            entities[section] = entity;
         }
 
         void EnqueueDirty(SectionIndex section)

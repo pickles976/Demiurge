@@ -8,6 +8,13 @@ namespace Demiurge
     {
         public const ushort Port = 7777;
 
+        /// <summary>
+        /// Who to connect to. Here rather than at the call site because the client now opens TWO
+        /// connections — Riptide for gameplay and <see cref="ChunkTransport"/> for terrain — and they
+        /// must never disagree about where the server is.
+        /// </summary>
+        public const string ServerHost = "127.0.0.1";
+
         /// <summary>Server simulation ticks per second. Everything tick-related —
         /// the server's fixed timestep, snapshot history windows, renderTick math —
         /// must derive from this so client and server can't drift apart.</summary>

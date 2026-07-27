@@ -27,7 +27,11 @@ namespace Demiurge.GameClient
         public event Action<ObjectDespawnData>? ObjectDespawned;
         public event Action<ObjectStateData>? ObjectStateReceived;
 
-        public event Action<ChunkSlabsData>? ChunkSlabsReceived;   // terrain: server owns it, we don't generate
+        /// <summary>
+        /// Carries the token for the separate terrain stream, so the composition root can connect it.
+        /// Terrain itself does NOT come through here any more — see <see cref="ChunkTransport"/>.
+        /// </summary>
+        public event Action<WelcomeData>? Welcomed;
 
         public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
@@ -47,7 +51,7 @@ namespace Demiurge.GameClient
         {
             client.MessageReceived += OnMessageReceived;
             client.Connected += (_, _) => Log.Info("Connected to server");
-            client.Connect($"127.0.0.1:{NetworkConfig.Port}", useMessageHandlers: false);
+            client.Connect($"{NetworkConfig.ServerHost}:{NetworkConfig.Port}", useMessageHandlers: false);
         }
 
         /// <summary>Pump once per frame from Program.cs Update().</summary>
@@ -92,7 +96,11 @@ namespace Demiurge.GameClient
             {
                 case ServerToClientId.Welcome:
                     var welcome = e.Message.GetSerializable<WelcomeData>();
-                    Dispatch(() => ClientId = welcome.ClientId);
+                    Dispatch(() =>
+                    {
+                        ClientId = welcome.ClientId;
+                        Welcomed?.Invoke(welcome);
+                    });
                     break;
                 case ServerToClientId.PlayerSpawn:
                     var spawn = e.Message.GetSerializable<PlayerSpawnData>();
@@ -105,10 +113,6 @@ namespace Demiurge.GameClient
                 case ServerToClientId.PlayerPosition:
                     var position = e.Message.GetSerializable<PlayerPositionData>();
                     Dispatch(() => PlayerPositionReceived?.Invoke(position));
-                    break;
-                case ServerToClientId.ChunkSlabs:
-                    var slabs = e.Message.GetSerializable<ChunkSlabsData>();
-                    Dispatch(() => ChunkSlabsReceived?.Invoke(slabs));
                     break;
                 case ServerToClientId.ObjectSpawn:
                     var objSpawn = e.Message.GetSerializable<ObjectSpawnData>();

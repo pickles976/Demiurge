@@ -65,31 +65,52 @@ access to `GameWorld`, `ItemSystem`, `WeaponSystem`, or `ObjectReplication` inte
 
 ## 3. Terrain streaming path
 
+**Terrain does not travel over Riptide.** It has its own TCP connection on `ChunkTransport.Port`
+(7778, one past the Riptide port). Riptide keeps gameplay; see "Why terrain left Riptide" below.
+
 The server owns terrain:
 
-`GameWorld` -> `WorldGen.Generate(ChunkMap)` -> `ChunkStreamer.Tick()` -> `ChunkSlabsData`
+`GameWorld` -> `WorldGen.Generate(ChunkMap)` -> `ChunkTcpServer` (accept thread + one writer thread
+per client) -> `ChunkWire.Encode` -> framed TCP write
 
 The client receives terrain:
 
-`NetworkManager.ChunkSlabsReceived` -> `TerrainState.Receive()` -> `TerrainState.Drain()` ->
-`ClientTerrain.MarkChunkDirty()` -> `ClientTerrain.RebuildDirty()` -> `ChunkMeshFactory.TryBuild()`
+`ChunkTcpClient` (reader thread) -> `TerrainState.Receive()` -> `TerrainState.Drain()` (main thread)
+-> `ClientTerrain.MarkChunkDirty()` -> `ClientTerrain.RebuildDirty()`, which splits into
+`Dispatch()` -> `SectionMeshQueue` (worker threads) -> `Collect()` -> `ChunkMeshFactory.Build()`
 
-Important details:
+### Why terrain left Riptide
 
-- `ChunkWire` sends horizontal slabs, not whole chunks or 16^3 sections. One raw 16x16 slab is
-  513 bytes including the kind byte, so it fits inside Riptide's payload budget.
-- `ChunkStreamer` sends only `MessagesPerTick` messages per client. This is intentional: Riptide's
-  reliable channel does not provide congestion control.
-- Reliable messages are not ordered. Every `ChunkSlabsData` carries its chunk index, first slab,
-  slab count, completion flag, and payload so it can be applied immediately.
-- `TerrainState.Receive()` is network-thread safe because it only queues. The `ChunkMap` is mutated
-  only by `Drain()` on the main thread.
-- A chunk is not meshed until the server marks it `ChunkComplete`. Missing slabs default to air in
-  the allocated array, but no view should observe partial chunks.
+Gameplay and bulk transfer want opposite things, and the old path had no flow control anywhere.
+Riptide's reliable channel provides delivery but no congestion control, so the only throttle was a
+hand-picked `MessagesPerTick` constant — and a constant is not flow control. Raising it from 8 to 48
+to speed up terrain **killed a localhost connection**: the server emitted its whole allowance unpaced
+inside one frame, the client could not drain its socket while meshing, datagrams dropped, and
+retransmits lengthened the frames that caused the drops. Riptide gave up after 15 failed reliable
+attempts and reported "Poor connection".
+
+A blocking TCP write *is* backpressure, so there is no rate constant in the new path at all.
+
+### Important details
+
+- A frame carries a **whole chunk column**, not a slab run. Riptide's 1225-byte datagram limit is
+  what forced slabs; without it the slab cursor and its resume logic are gone.
+- Framing is the new failure mode. Over UDP a corrupt datagram was one bad chunk; over a stream a
+  wrong length desynchronises everything after it. `ChunkTransport.TryReadHeader` validates the
+  length rather than trusting it, and the reader closes the connection on a bad one.
+- The client presents a `Guid` from `WelcomeData.ChunkToken` as the first 16 bytes, because a TCP
+  connection otherwise has no way to say which player it belongs to.
+- `TerrainState.Receive()` is thread safe because it only queues. `ChunkMap` is mutated only by
+  `Drain()` on the main thread.
+- **Meshing runs on worker threads** (`SectionMeshQueue`), which is safe because of two things
+  together: `ChunkMap`'s lookup is a `ConcurrentDictionary`, and `Dispatch()` only submits sections
+  whose whole 3x3 chunk neighbourhood is complete, so no voxel a worker reads is still being written.
+  `ChunkMesher` itself is stateless apart from the caller's scratch buffer.
+- `ChunkMeshFactory` is **main thread only** and no longer meshes anything — it creates GPU buffers.
 - `ClientTerrain` marks dependent neighbouring sections too, because a section mesh reads apron
   samples across section/chunk boundaries.
-- `ChunkMeshFactory.TryBuild()` returns `false` when a needed neighbour is missing; callers must
-  leave the section dirty and retry later.
+- Nothing in the TCP path touches a Riptide `Message`, which is the only reason it may use threads
+  at all — see the pooling note on `ServerHost`.
 
 The outer loaded ring often produces no mesh until its neighbour ring arrives. That is expected,
 not a meshing failure.

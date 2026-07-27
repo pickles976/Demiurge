@@ -48,7 +48,9 @@ ARE the protocol. Append, never reorder, never delete — clients desync silentl
 `Client/Program.cs` is the code-only composition root. Before `game.Run(...)` it creates
 long-lived pure services (`NetworkManager`, registries, `TerrainState`, optional `ServerHost`);
 `Start(Scene)` builds anything that needs Stride services or a live scene; `Update(Scene, GameTime)`
-steps singleplayer, pumps networking, drains terrain, and remeshes dirty terrain sections. More
+steps singleplayer, pumps networking, drains terrain, then dispatches dirty sections to the mesher
+threads and uploads whatever they finished. Drain must run before RebuildDirty: Drain is the only
+writer of chunk voxels, and dispatch only hands out chunks Drain has finished. More
 detail in `stride_docs/code-only-runtime-and-assets.md`.
 
 Design specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`,
@@ -57,7 +59,8 @@ movement and shooting paths end to end.
 
 ## Netcode at a glance
 
-`Common/NetworkProtocol.cs` is the tuning surface. Port 7777; `TickRate` is 30 Hz and
+`Common/NetworkProtocol.cs` is the tuning surface. Port 7777 for Riptide, 7778 for the terrain
+stream (`ChunkTransport.Port`, derived so there is one number to change); `TickRate` is 30 Hz and
 **everything tick-related must derive from it** or client and server drift;
 `InterpolationDelayTicks` is 3; `MaxRewindTicks` equals `TickRate`, i.e. one second of
 lag-compensation rewind, matching the snapshot buffer's retention.
@@ -75,8 +78,8 @@ its character running rather than standing still.
 Two Riptide facts that cost real debugging time:
 
 - **`MessageSendMode.Reliable` guarantees delivery but NOT order.** Every message must be
-  independently applicable — see `ChunkSlabsData`, which carries its own chunk index and slab
-  range for exactly this reason. Don't design anything that assumes arrival order.
+  independently applicable. Don't design anything that assumes arrival order. (Terrain used to be
+  the example here; it now has its own ordered TCP stream — see below.)
 - **`Message` and `PendingMessage` pool into unsynchronised static `List<>`s** —
   `if (pool.Count > 0) { pool[0]; pool.RemoveAt(0); }` with no lock. Safe for one peer on one
   thread; corrupts instantly with a server and a client creating messages concurrently. This is
@@ -94,11 +97,26 @@ The current work, tracked in `TODO.md`. Code sits in `Common/Voxel/`, with no St
 so both ends share it.
 
 **The server owns terrain and streams it; the client never generates any.** `WorldGen.Generate`
-is server-side only (`GameWorld`), `ChunkStreamer` sends it, and `Client/Simulation/TerrainState`
-holds what arrived. There is deliberately no client-side generator to fall back on, which is what
+is server-side only (`GameWorld`), `ChunkTcpServer` sends it over a **dedicated TCP connection**, and
+`Client/Simulation/TerrainState` holds what arrived.
+
+**Terrain is NOT on Riptide.** `ChunkTransport` carries the reasoning: Riptide's reliable channel has
+no congestion control, so the only throttle was a messages-per-tick constant, and raising it to load
+terrain faster killed a *localhost* connection. A blocking TCP write is backpressure; there is no rate
+constant in the path any more. A frame is a whole chunk column, since the 1225-byte datagram limit is
+what forced slabs in the first place.
+
+There is deliberately no client-side generator to fall back on, which is what
 keeps the client from rendering a world the server hasn't sent — and what will keep it honest once
 player edits mean terrain is no longer a pure function of a seed. Minecraft's model, for the same
 reason: mutability, not secrecy.
+
+**Meshing runs on worker threads** (`Client/Rendering/SectionMeshQueue.cs`). Two things make that safe
+and both are load-bearing: `ChunkMap`'s lookup is a `ConcurrentDictionary`, and the dispatcher only
+submits sections whose **whole 3×3 chunk neighbourhood has finished arriving**, because a chunk is
+inserted into the map on its *first* slab and keeps being written until its last. `ChunkMesher` is
+stateless apart from the caller's scratch buffer. `ChunkMeshFactory` stays on the main thread — it
+creates GPU buffers, and off-thread resource creation is not worth gambling on this platform.
 
 The Bevy/Rust project at `/home/sebas/Projects/Demiurge` is the working reference this was
 ported from — `src/chunks/{utils,mod,tilemap}.rs`. When the terrain math looks wrong, diff
@@ -114,7 +132,13 @@ spec for the coordinate transforms.
   section frustum-culls on its own box.
 - **The coordinate conventions live in the header comment of `Common/Voxel/ChunkTransforms.cs`.**
   Read that before touching anything positional; it is the only place they're written down.
-- Heights come from `NoiseGen.GenerateNoiseForChunk` (`NoiseDotNet`), seed hardcoded to 100.
+- Heights come from `NoiseGen.GenerateHeightsForChunk` (`NoiseDotNet`), seed 100. It returns world
+  heights, **padded one column on every side** so slope can be central-differenced at a chunk edge —
+  index it through `ChunkTransforms.PaddedColumnIndexOf`, never by hand. Three noise fields (erosion,
+  fbm detail, folded ridge) go through `TerrainShape`'s splines; see `docs/voxel/GENERATION.md`.
+- **Steep columns are bare stone.** `DensityToMaterial` takes a slope, and the threshold is 25
+  degrees — chosen against the measured slope distribution, not derived from the movement limit. See
+  GENERATION.md for why that derivation had to be abandoned.
 - **The bottom voxel plane is permanently solid** (`ChunkConstants.BedrockThickness`), enforced at
   every write. Two reasons in one invariant: you can't dig out of the world, and the lowest grid
   point any section *owns* is `WorldMinY`, so carving it away leaves a sign change on an edge
@@ -125,7 +149,16 @@ spec for the coordinate transforms.
 - Textures come from `BlockTextures` (a `BlockType` → files manifest) through a triplanar shader
   with per-cell variant selection. A type with no entry draws the purple prototype texture, i.e.
   obviously-missing rather than a plausible wrong material.
-- No colliders, no LOD, no per-player chunk tracking yet.
+- **`ChunkWire` encodes density and material as separate PLANES**, not interleaved — they have
+  nothing in common statistically and interleaving defeats both schemes. Material goes as a palette
+  plus run lengths or packed indices, whichever is smaller per slab; density goes as a 256-bit mask of
+  the voxels that are NOT saturated, since `Voxel` only resolves ±2.54 voxels and the rest reconstruct
+  from the material plane's own sign. Both fall back to raw, so a badly-compressing slab loses 0.4%
+  rather than 100%. Cost is about `59·mixedSlabs + 1664` bytes, so **roughly independent of terrain
+  roughness** — which is what stops mountains costing more to stream than plains.
+- Terrain **collision** exists and is shared (`Common/Voxel/TerrainCollision.cs` +
+  `PlayerMovement`); see `docs/voxel/COLLISION.md`. Still missing: LOD, per-player chunk tracking,
+  view-distance meshing, and collision against anything but terrain.
 - Human terrain docs are in `docs/voxel/`; keep them terse and put implementation-heavy notes here
   or in `stride_docs/`.
 
