@@ -35,8 +35,10 @@ public class ChunkWireTests
             int slab = i / ChunkConstants.ChunkSize;
             int within = i % ChunkConstants.ChunkSize;
 
-            chunk.voxels[i].Density = (sbyte)(within % 255 - 127);
-            chunk.voxels[i].Material = (BlockType)(within % (1 + slab % 24));
+            var v = chunk[i];
+            v.Density = (sbyte)(within % 255 - 127);
+            v.Material = (BlockType)(within % (1 + slab % 24));
+            chunk[i] = v;
         }
 
         return chunk;
@@ -49,8 +51,10 @@ public class ChunkWireTests
 
         for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
         {
-            chunk.voxels[i].Density = Voxel.Minimum;
-            chunk.voxels[i].Material = BlockType.BlockType_Stone;
+            var v = chunk[i];
+            v.Density = Voxel.Minimum;
+            v.Material = BlockType.BlockType_Stone;
+            chunk[i] = v;
         }
 
         return chunk;
@@ -107,8 +111,8 @@ public class ChunkWireTests
 
         for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
         {
-            Assert.Equal(source.voxels[i].Density, destination.voxels[i].Density);
-            Assert.Equal(source.voxels[i].Material, destination.voxels[i].Material);
+            Assert.Equal(source[i].Density, destination[i].Density);
+            Assert.Equal(source[i].Material, destination[i].Material);
         }
 
         Assert.True(messages > 0);
@@ -203,12 +207,12 @@ public class ChunkWireTests
         for (int slab = 0; slab < ChunkConstants.ChunkHeight; slab++)
         {
             int start = slab * ChunkConstants.ChunkSize;
-            var first = chunk.voxels[start];
+            var first = chunk[start];
 
             for (int i = 1; i < ChunkConstants.ChunkSize; i++)
             {
-                if (chunk.voxels[start + i].Density == first.Density &&
-                    chunk.voxels[start + i].Material == first.Material) continue;
+                if (chunk[start + i].Density == first.Density &&
+                    chunk[start + i].Material == first.Material) continue;
 
                 mixed++;
                 break;
@@ -233,8 +237,9 @@ public class ChunkWireTests
             float d = ChunkConstants.ClampToWorldFloor(
                 worldY, worldY - (BaseHeight + columnOffset(lx, lz)));
 
-            chunk.voxels[i].Distance = d;
-            chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
+            var vi = new Voxel { Distance = d };
+            vi.Material = ChunkGenerator.DensityToMaterial(vi.Distance, d);
+            chunk[i] = vi;
         }
 
         return chunk;

@@ -15,8 +15,9 @@ public class SurfaceQueryTests
         for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
         {
             float d = ChunkTransforms.LocalYOf(i) + ChunkConstants.WorldMinY - surfaceY;
-            chunk.voxels[i].Distance = d;
-            chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
+            var vi = new Voxel { Distance = d };
+            vi.Material = ChunkGenerator.DensityToMaterial(vi.Distance, d);
+            chunk[i] = vi;
         }
 
         map.Insert(chunk);

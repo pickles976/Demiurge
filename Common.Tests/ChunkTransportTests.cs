@@ -108,8 +108,8 @@ public class ChunkTransportTests
 
             for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
             {
-                Assert.Equal(expected.voxels[i].Density, decoded.voxels[i].Density);
-                Assert.Equal(expected.voxels[i].Material, decoded.voxels[i].Material);
+                Assert.Equal(expected[i].Density, decoded[i].Density);
+                Assert.Equal(expected[i].Material, decoded[i].Material);
             }
         }
 
@@ -126,8 +126,8 @@ public class ChunkTransportTests
             int slab = i / ChunkConstants.ChunkSize;
             int within = i % ChunkConstants.ChunkSize;
 
-            chunk.voxels[i].Density = (sbyte)(within % 255 - 127);
-            chunk.voxels[i].Material = (BlockType)(within % (1 + slab % 24));
+            { var v = chunk[i]; v.Density = (sbyte)(within % 255 - 127); chunk[i] = v; }
+            { var v = chunk[i]; v.Material = (BlockType)(within % (1 + slab % 24)); chunk[i] = v; }
         }
 
         return chunk;

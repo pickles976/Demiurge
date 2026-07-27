@@ -52,13 +52,14 @@ public class TerrainGenerationTests
         {
             float min = float.MaxValue, max = float.MinValue;
 
-            for (int d = -10; d <= 10; d++)
-                for (int r = 0; r <= 10; r++)
-                {
-                    float h = TerrainShape.Height(erosion, d / 10f, r / 10f);
-                    min = MathF.Min(min, h);
-                    max = MathF.Max(max, h);
-                }
+            for (int p = 0; p <= 10; p++)
+                for (int d = -10; d <= 10; d++)
+                    for (int r = 0; r <= 10; r++)
+                    {
+                        float h = TerrainShape.Height(erosion, p / 10f, d / 10f, r / 10f);
+                        min = MathF.Min(min, h);
+                        max = MathF.Max(max, h);
+                    }
 
             return (min, max);
         }
@@ -75,9 +76,12 @@ public class TerrainGenerationTests
     }
 
     /// <summary>
-    /// The shelf, at the level that matters: across the whole eroded half of the range, base height
-    /// barely moves. This is the property that makes plains plains, and it is easy to destroy by
-    /// retuning a control point without noticing.
+    /// The shelf: across the whole eroded half, plains sit at one altitude.
+    ///
+    /// Measured OFF a ridgeline (pv = 0), which is what "plains are flat" means now that chains carry a
+    /// low tail into eroded ground. A spur running through plains is wanted — a range should not stop
+    /// dead at an erosion boundary — but the ground either side of it must still be flat, and a spur must
+    /// stay a spur rather than becoming a mountain.
     /// </summary>
     [Fact]
     public void ErodedHalfIsNearlyOneAltitude()
@@ -86,26 +90,76 @@ public class TerrainGenerationTests
 
         for (int e = 3; e <= 10; e++)      // erosion 0.3 .. 1.0
         {
-            float h = TerrainShape.Height(e / 10f, detail: 0f, ridge: 0f);
+            float h = TerrainShape.Height(e / 10f, pv: 0f, detail: 0f, ridge: 0f);
             min = MathF.Min(min, h);
             max = MathF.Max(max, h);
         }
 
         Assert.True(max - min < 4f, $"the eroded shelf spans {max - min} voxels; it should be nearly flat");
+
+        // And a chain crossing plains stays a spur.
+        float spur = TerrainShape.Height(0.5f, pv: 1f, detail: 0f, ridge: 0f)
+                   - TerrainShape.Height(0.5f, pv: 0f, detail: 0f, ridge: 0f);
+
+        Assert.InRange(spur, 0.5f, 8f);
     }
 
     /// <summary>Ridges must only appear in mountains, or plains grow spikes.</summary>
     [Fact]
     public void RidgesDoNotReachThePlains()
     {
-        float withRidge = TerrainShape.Height(0.5f, detail: 0f, ridge: 1f);
-        float withoutRidge = TerrainShape.Height(0.5f, detail: 0f, ridge: 0f);
+        float withRidge = TerrainShape.Height(0.5f, pv: 1f, detail: 0f, ridge: 1f);
+        float withoutRidge = TerrainShape.Height(0.5f, pv: 1f, detail: 0f, ridge: 0f);
 
         Assert.Equal(withoutRidge, withRidge, 3);
 
         // ...and they must reach the mountains, or folding the noise bought nothing.
-        Assert.True(TerrainShape.Height(-0.8f, 0f, 1f) - TerrainShape.Height(-0.8f, 0f, 0f) > 8f,
+        Assert.True(TerrainShape.Height(-0.8f, 1f, 0f, 1f) - TerrainShape.Height(-0.8f, 1f, 0f, 0f) > 8f,
             "ridges contribute nothing to mountains");
+    }
+
+    /// <summary>
+    /// FOOTHILLS. A meaningful share of the erosion range has to land at intermediate elevation, or
+    /// mountains rise straight out of flat plains and read as blobs sitting on the ground rather than as
+    /// ranges belonging to the landscape.
+    ///
+    /// This is a real regression, not a hypothetical: compressing the transition to make rises dramatic
+    /// and widening the plains shelf at the same time deleted the middle of the curve entirely. Both
+    /// changes were individually reasonable and together they removed a feature nobody was looking at.
+    /// </summary>
+    [Fact]
+    public void ThereIsAGradedBandBetweenPlainsAndMountains()
+    {
+        float plains = TerrainShape.Height(1f, 1f, 0f, 0f);
+        float peak = TerrainShape.Height(-1f, 1f, 0f, 0f);
+
+        // The middle third of the elevation range, which is what "foothills" means here.
+        float low = plains + (peak - plains) * 0.25f;
+        float high = plains + (peak - plains) * 0.75f;
+
+        int middle = 0, total = 0;
+
+        for (float erosion = -1f; erosion <= 1f; erosion += 0.01f)
+        {
+            float height = TerrainShape.Height(erosion, pv: 1f, detail: 0f, ridge: 0f);
+            total++;
+
+            if (height > low && height < high) middle++;
+        }
+
+        Assert.True(middle > total * 0.12f,
+            $"only {middle * 100.0 / total:F0}% of the erosion range lands between {low:F0} and {high:F0} — "
+          + "mountains will look like blobs on flat ground");
+    }
+
+    /// <summary>Foothills need their own bumpiness, or the graded band is a smooth ramp rather than hills.</summary>
+    [Fact]
+    public void FoothillsAreNotSmooth()
+    {
+        float relief = TerrainShape.Height(-0.2f, pv: 1f, detail: 1f, ridge: 0f)
+                     - TerrainShape.Height(-0.2f, pv: 1f, detail: -1f, ridge: 0f);
+
+        Assert.True(relief > 6f, $"mid-erosion ground only moves {relief:F1} voxels; it will read as a ramp");
     }
 
     // ---- The noise actually driving it ----
@@ -263,10 +317,10 @@ public class TerrainGenerationTests
                 for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
                 {
                     // Only the surface layer says anything about slope; deep voxels are stone regardless.
-                    if (chunk.voxels[i].Distance is >= 0f or < -1f) continue;
+                    if (chunk[i].Distance is >= 0f or < -1f) continue;
 
-                    if (chunk.voxels[i].Material == BlockType.BlockType_Grass) grass++;
-                    if (chunk.voxels[i].Material == BlockType.BlockType_Stone) stone++;
+                    if (chunk[i].Material == BlockType.BlockType_Grass) grass++;
+                    if (chunk[i].Material == BlockType.BlockType_Stone) stone++;
                 }
             }
 

@@ -48,8 +48,9 @@ public static class SyntheticTerrain
 
             float d = ChunkConstants.ClampToWorldFloor(worldY, distance(originX + lx, worldY, originZ + lz));
 
-            chunk.voxels[i].Distance = d;
-            chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
+            var vi = new Voxel { Distance = d };
+            vi.Material = ChunkGenerator.DensityToMaterial(vi.Distance, d);
+            chunk[i] = vi;
         }
 
         return chunk;

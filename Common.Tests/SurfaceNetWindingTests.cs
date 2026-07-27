@@ -34,8 +34,9 @@ public class SurfaceNetWindingTests
                                     ChunkConstants.WorldMinY + local.y,
                                     originZ + local.z);
 
-                    chunk.voxels[i].Distance = d;
-                    chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
+                    var vi = new Voxel { Distance = d };
+                    vi.Material = ChunkGenerator.DensityToMaterial(vi.Distance, d);
+                    chunk[i] = vi;
                 }
 
                 map.Insert(chunk);
@@ -146,8 +147,9 @@ public class ChunkSeamTests
                 {
                     var l = ChunkTransforms.LocalVoxelCoords(v);
                     float d = field(ox + l.x, ChunkConstants.WorldMinY + l.y, oz + l.z);
-                    chunk.voxels[v].Distance = d;
-                    chunk.voxels[v].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[v].Distance, d);
+                    var vv = new Voxel { Distance = d };
+                    vv.Material = ChunkGenerator.DensityToMaterial(vv.Distance, d);
+                    chunk[v] = vv;
                 }
                 map.Insert(chunk);
             }

@@ -14,20 +14,23 @@ namespace Demiurge
     public static class WorldGen
     {
         /// <summary>
-        /// The fixed map, inclusive on both corners: 41x41 chunks, so 656 voxels across.
+        /// The fixed map, inclusive on both corners: 63x63 chunks, so 1008 voxels across — the 1 km
+        /// target. 61x61 of those are meshable; the outer ring is apron.
         ///
         /// Sized by EROSION, not by taste. Erosion's wavelength is what makes a plain a plain and a
         /// range a range, and at ~220 voxels the world has to be several hundred across or the whole map
         /// sits inside one erosion value and comes out uniformly flat or uniformly mountainous — correct
         /// code that looks like the feature did not work.
         ///
-        /// Everything is still generated up front and streamed whole, which measures at ~2.6 s of
-        /// transfer and ~3.8 s of client meshing. Both are one-time; the meshing is time-budgeted so it
-        /// fills in rather than hitching. Past this size it wants per-player view-distance work, which is
-        /// its own TODO item.
+        /// Everything is still generated up front and streamed whole. Measured at this size: 3.3 s to
+        /// generate, 7.5 MB on the wire, 29,768 sections of which ~4,293 hold geometry. LOD takes the
+        /// drawn box count to ~4,000, about 7x fewer.
+        ///
+        /// Memory used to bound growth here — a chunk cost a flat 64 KB whatever it held, so this size
+        /// was ~248 MB per ChunkMap and singleplayer holds two. Lazy slabs took that to ~21 MB.
         /// </summary>
-        public static readonly ChunkIndex Min = new() { x = -20, z = -20 };
-        public static readonly ChunkIndex Max = new() { x = 20, z = 20 };
+        public static readonly ChunkIndex Min = new() { x = -31, z = -31 };
+        public static readonly ChunkIndex Max = new() { x = 31, z = 31 };
 
         /// <summary>
         /// Chunks that can actually be MESHED. Meshing reads an apron into the neighbours, so the

@@ -83,7 +83,7 @@ namespace Demiurge
             {
                 int start = slabY * SlabVoxels;
 
-                var stats = Scan(chunk.voxels, start, palette);
+                var stats = Scan(chunk, start, palette);
 
                 int needed = stats.VoxelUniform
                     ? 3
@@ -93,7 +93,7 @@ namespace Demiurge
 
                 if (stats.VoxelUniform)
                 {
-                    var value = chunk.voxels[start];
+                    var value = chunk[start];
                     destination[written++] = SlabUniform;
                     destination[written++] = (byte)value.Density;
                     destination[written++] = (byte)value.Material;
@@ -101,8 +101,8 @@ namespace Demiurge
                 else
                 {
                     destination[written++] = SlabMixed;
-                    written += WriteMaterial(chunk.voxels, start, stats, palette, destination[written..]);
-                    written += WriteDensity(chunk.voxels, start, stats, destination[written..]);
+                    written += WriteMaterial(chunk, start, stats, palette, destination[written..]);
+                    written += WriteDensity(chunk, start, stats, destination[written..]);
                 }
 
                 slabs++;
@@ -123,13 +123,16 @@ namespace Demiurge
                 if (source[read++] == SlabUniform)
                 {
                     var value = new Voxel { Density = (sbyte)source[read++], Material = (BlockType)source[read++] };
-                    for (int i = 0; i < SlabVoxels; i++) chunk.voxels[start + i] = value;
+
+                    // Collapse rather than write 256 copies. This is what keeps a decoded chunk small:
+                    // the wire already knows which slabs are uniform, so storage can too.
+                    chunk.FillSlab(firstSlabY + slab, value);
                     continue;
                 }
 
                 // Material first: the density plane's saturated voxels are reconstructed from it.
-                read += ReadMaterial(chunk.voxels, start, source[read..]);
-                read += ReadDensity(chunk.voxels, start, source[read..]);
+                read += ReadMaterial(chunk, start, source[read..]);
+                read += ReadDensity(chunk, start, source[read..]);
             }
         }
 
@@ -152,10 +155,10 @@ namespace Demiurge
             public int LiteralCount;
         }
 
-        static SlabStats Scan(Voxel[] voxels, int start, Span<BlockType> palette)
+        static SlabStats Scan(TerrainChunk chunk, int start, Span<BlockType> palette)
         {
             var stats = new SlabStats { MaterialUniform = true, DensityUniform = true };
-            var first = voxels[start];
+            var first = chunk[start];
 
             bool paletteOverflow = false;
             var runMaterial = first.Material;
@@ -163,7 +166,7 @@ namespace Demiurge
 
             for (int i = 0; i < SlabVoxels; i++)
             {
-                var voxel = voxels[start + i];
+                var voxel = chunk[start + i];
 
                 if (voxel.Material != first.Material) stats.MaterialUniform = false;
                 if (voxel.Density != first.Density) stats.DensityUniform = false;
@@ -250,7 +253,7 @@ namespace Demiurge
 
         // ---- Writing ----
 
-        static int WriteMaterial(Voxel[] voxels, int start, in SlabStats stats,
+        static int WriteMaterial(TerrainChunk chunk, int start, in SlabStats stats,
                                  ReadOnlySpan<BlockType> palette, Span<byte> destination)
         {
             MaterialBytes(stats, out byte encoding);
@@ -261,12 +264,12 @@ namespace Demiurge
             switch (encoding)
             {
                 case MatUniform:
-                    destination[written++] = (byte)voxels[start].Material;
+                    destination[written++] = (byte)chunk[start].Material;
                     return written;
 
                 case MatRaw:
                     for (int i = 0; i < SlabVoxels; i++)
-                        destination[written++] = (byte)voxels[start + i].Material;
+                        destination[written++] = (byte)chunk[start + i].Material;
                     return written;
             }
 
@@ -276,12 +279,12 @@ namespace Demiurge
 
             if (encoding == MatPaletteRle)
             {
-                var runMaterial = voxels[start].Material;
+                var runMaterial = chunk[start].Material;
                 int runLength = 0;
 
                 for (int i = 0; i < SlabVoxels; i++)
                 {
-                    var material = voxels[start + i].Material;
+                    var material = chunk[start + i].Material;
 
                     if (i > 0 && (material != runMaterial || runLength == MaxRunLength))
                     {
@@ -303,7 +306,7 @@ namespace Demiurge
             {
                 byte packed = 0;
                 for (int j = 0; j < perByte; j++)
-                    packed |= (byte)(IndexOf(palette, stats.PaletteCount, voxels[start + i + j].Material) << (j * bits));
+                    packed |= (byte)(IndexOf(palette, stats.PaletteCount, chunk[start + i + j].Material) << (j * bits));
 
                 destination[written++] = packed;
             }
@@ -315,7 +318,7 @@ namespace Demiurge
         static byte RunByte(ReadOnlySpan<BlockType> palette, int count, BlockType material, int length)
             => (byte)((IndexOf(palette, count, material) << 6) | (length - 1));
 
-        static int WriteDensity(Voxel[] voxels, int start, in SlabStats stats, Span<byte> destination)
+        static int WriteDensity(TerrainChunk chunk, int start, in SlabStats stats, Span<byte> destination)
         {
             DensityBytes(stats, out byte encoding);
 
@@ -325,12 +328,12 @@ namespace Demiurge
             switch (encoding)
             {
                 case DenUniform:
-                    destination[written++] = (byte)voxels[start].Density;
+                    destination[written++] = (byte)chunk[start].Density;
                     return written;
 
                 case DenRaw:
                     for (int i = 0; i < SlabVoxels; i++)
-                        destination[written++] = (byte)voxels[start + i].Density;
+                        destination[written++] = (byte)chunk[start + i].Density;
                     return written;
             }
 
@@ -340,10 +343,10 @@ namespace Demiurge
 
             for (int i = 0; i < SlabVoxels; i++)
             {
-                if (Reconstructable(voxels[start + i])) continue;
+                if (Reconstructable(chunk[start + i])) continue;
 
                 mask[i >> 3] |= (byte)(1 << (i & 7));
-                destination[written++] = (byte)voxels[start + i].Density;
+                destination[written++] = (byte)chunk[start + i].Density;
             }
 
             return written;
@@ -351,23 +354,25 @@ namespace Demiurge
 
         // ---- Reading ----
 
-        static int ReadMaterial(Voxel[] voxels, int start, ReadOnlySpan<byte> source)
+        static int ReadMaterial(TerrainChunk chunk, int start, ReadOnlySpan<byte> source)
         {
             int read = 0;
             byte encoding = source[read++];
+
+            // One materialisation for the whole slab rather than a null check per voxel.
+            var slab = chunk.Materialize(start / SlabVoxels);
 
             switch (encoding)
             {
                 case MatUniform:
                 {
                     var material = (BlockType)source[read++];
-                    for (int i = 0; i < SlabVoxels; i++) voxels[start + i].Material = material;
+                    slab.AsSpan().Fill(new Voxel { Material = material });
                     return read;
                 }
 
                 case MatRaw:
-                    for (int i = 0; i < SlabVoxels; i++)
-                        voxels[start + i].Material = (BlockType)source[read++];
+                    for (int i = 0; i < SlabVoxels; i++) slab[i].Material = (BlockType)source[read++];
                     return read;
             }
 
@@ -386,7 +391,7 @@ namespace Demiurge
                     int length = (run & 0b0011_1111) + 1;
 
                     for (int i = 0; i < length; i++)
-                        voxels[start + written + i].Material = material;
+                        slab[written + i].Material = material;
 
                     written += length;
                 }
@@ -402,29 +407,29 @@ namespace Demiurge
             {
                 byte packed = source[read++];
                 for (int j = 0; j < perByte; j++)
-                    voxels[start + i + j].Material = palette[(packed >> (j * bits)) & indexMask];
+                    slab[i + j].Material = palette[(packed >> (j * bits)) & indexMask];
             }
 
             return read;
         }
 
-        static int ReadDensity(Voxel[] voxels, int start, ReadOnlySpan<byte> source)
+        static int ReadDensity(TerrainChunk chunk, int start, ReadOnlySpan<byte> source)
         {
             int read = 0;
             byte encoding = source[read++];
+            var slab = chunk.Materialize(start / SlabVoxels);
 
             switch (encoding)
             {
                 case DenUniform:
                 {
                     var density = (sbyte)source[read++];
-                    for (int i = 0; i < SlabVoxels; i++) voxels[start + i].Density = density;
+                    for (int i = 0; i < SlabVoxels; i++) slab[i].Density = density;
                     return read;
                 }
 
                 case DenRaw:
-                    for (int i = 0; i < SlabVoxels; i++)
-                        voxels[start + i].Density = (sbyte)source[read++];
+                    for (int i = 0; i < SlabVoxels; i++) slab[i].Density = (sbyte)source[read++];
                     return read;
             }
 
@@ -435,9 +440,9 @@ namespace Demiurge
             {
                 bool literal = (mask[i >> 3] & (1 << (i & 7))) != 0;
 
-                voxels[start + i].Density = literal
+                slab[i].Density = literal
                     ? (sbyte)source[read++]
-                    : SaturatedDensity(voxels[start + i].Material);
+                    : SaturatedDensity(slab[i].Material);
             }
 
             return read;

@@ -65,7 +65,7 @@ namespace Demiurge
 
                         int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
 
-                        float existing = chunk.voxels[i].Distance;
+                        float existing = chunk[i].Distance;
                         float combined = mode == EditMode.Add
                             ? MathF.Min(existing, shape)
                             : MathF.Max(existing, -shape);
@@ -73,13 +73,16 @@ namespace Demiurge
                         // No edit may open the world floor — see ChunkConstants.BedrockThickness.
                         combined = ChunkConstants.ClampToWorldFloor(y, combined);
 
-                        chunk.voxels[i].Distance = combined;
+                        var voxel = chunk[i];
+                        voxel.Distance = combined;
 
                         // Density is the authority on what exists; material only labels it. Three
                         // cases, and the third is the one that matters: rock that was already
                         // solid keeps whatever it was, so an edit can't repaint a vein.
-                        if (combined >= 0f) chunk.voxels[i].Material = BlockType.BlockType_Air;
-                        else if (existing >= 0f) chunk.voxels[i].Material = fill;
+                        if (combined >= 0f) voxel.Material = BlockType.BlockType_Air;
+                        else if (existing >= 0f) voxel.Material = fill;
+
+                        chunk[i] = voxel;
                     }
                 }
             }

@@ -18,15 +18,16 @@ public class TerrainEditTests
         for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
         {
             float d = ChunkTransforms.LocalYOf(i) + ChunkConstants.WorldMinY - (GroundHeight + 0.5f);
-            chunk.voxels[i].Distance = d;
-            chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
+            var vi = new Voxel { Distance = d };
+            vi.Material = ChunkGenerator.DensityToMaterial(vi.Distance, d);
+            chunk[i] = vi;
         }
 
         return chunk;
     }
 
     static float DensityAt(TerrainChunk chunk, int localX, int worldY, int localZ)
-        => chunk.voxels[ChunkTransforms.LocalVoxelIndex(localX, worldY - ChunkConstants.WorldMinY, localZ)].Distance;
+        => chunk[ChunkTransforms.LocalVoxelIndex(localX, worldY - ChunkConstants.WorldMinY, localZ)].Distance;
 
     // ---- The box distance function itself ----
 
@@ -90,16 +91,16 @@ public class TerrainEditTests
         // Stand in for a vein: rock that is already solid and carries a material of its own.
         int buried = GroundHeight - 5;
         int i = ChunkTransforms.LocalVoxelIndex(8, buried - ChunkConstants.WorldMinY, 8);
-        chunk.voxels[i].Material = BlockType.BlockType_Grass;
+        { var v = chunk[i]; v.Material = BlockType.BlockType_Grass; chunk[i] = v; }
 
         TerrainEdits.AddWall(chunk, BlockType.BlockType_Stone);
 
         int inWall = GroundHeight + 10;
         int j = ChunkTransforms.LocalVoxelIndex(8, inWall - ChunkConstants.WorldMinY, 8);
-        Assert.Equal(BlockType.BlockType_Stone, chunk.voxels[j].Material);
+        Assert.Equal(BlockType.BlockType_Stone, chunk[j].Material);
 
         // Already solid and still solid: the edit must not repaint it.
-        Assert.Equal(BlockType.BlockType_Grass, chunk.voxels[i].Material);
+        Assert.Equal(BlockType.BlockType_Grass, chunk[i].Material);
     }
 
     // ---- Subtracting ----
@@ -123,7 +124,7 @@ public class TerrainEditTests
         TerrainEdits.CarveTrench(chunk);
 
         int i = ChunkTransforms.LocalVoxelIndex(8, (GroundHeight - 5) - ChunkConstants.WorldMinY, 8);
-        Assert.Equal(BlockType.BlockType_Air, chunk.voxels[i].Material);
+        Assert.Equal(BlockType.BlockType_Air, chunk[i].Material);
     }
 
     /// <summary>
@@ -199,8 +200,9 @@ public class SubmeshTests
                 for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
                 {
                     float d = ChunkTransforms.LocalYOf(i) + ChunkConstants.WorldMinY - (GroundHeight + 0.5f);
-                    chunk.voxels[i].Distance = d;
-                    chunk.voxels[i].Material = ChunkGenerator.DensityToMaterial(chunk.voxels[i].Distance, d);
+                    var vi = new Voxel { Distance = d };
+                    vi.Material = ChunkGenerator.DensityToMaterial(vi.Distance, d);
+                    chunk[i] = vi;
                 }
 
                 if (cx == 0 && cz == 0) edit?.Invoke(chunk);

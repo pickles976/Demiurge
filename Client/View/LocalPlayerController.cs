@@ -50,13 +50,13 @@ public class LocalPlayerController : SyncScript
 			.With(PlayerStateFlags.Shooting, aiming && Input.IsMouseButtonDown(MouseButton.Left))
 			.With(PlayerStateFlags.Reloading, local.IsReloading);
 
-		// Rotation
-		var camera = CameraEntity.Get<ThirdPersonCameraScript>();
-		if (camera != null && (local.State.HasFlag(PlayerStateFlags.Aiming) || !local.State.HasFlag(PlayerStateFlags.Moving)))
+		// Rotation. The shoulder camera OWNS facing — you look where the camera looks, which is what
+		// makes an over-the-shoulder camera feel like one. Turning only while aiming or standing still,
+		// as the old cursor-aimed camera did, reads as the character ignoring the mouse.
+		var shoulder = CameraEntity.Get<ShoulderCameraScript>();
+		if (shoulder != null)
 		{
-			// Face the camera's look-ahead target
-			var lookDir = camera.Target - local.Position.ToStride();
-			local.Yaw = MathF.Atan2(lookDir.X, lookDir.Z);
+			local.Yaw = shoulder.Yaw;
 		}
 		else if (intent != Vector3.Zero)
 		{

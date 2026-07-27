@@ -136,7 +136,7 @@ namespace Demiurge
 
             int voxelIndex = ChunkTransforms.WorldVoxelIndex(worldX, worldY, worldZ);
 
-            voxel = chunk.voxels[voxelIndex];
+            voxel = chunk[voxelIndex];
             return true;
         }
 
@@ -175,19 +175,38 @@ namespace Demiurge
 
             TerrainChunk chunk = new TerrainChunk(index);
 
-            for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
-            {
-                float heightAt = heights[ChunkTransforms.PaddedColumnIndexOf(i)];
-                int y = ChunkTransforms.LocalYOf(i);                           // i / 256
-                // Through the world-floor clamp like every other voxel write: noise can put a
-                // column's height at or below WorldMinY, which would otherwise generate a hole.
-                float distance = ChunkConstants.ClampToWorldFloor(ChunkConstants.WorldMinY + y, y - heightAt);
+            // One slab at a time, into a buffer that is only committed if the slab turns out mixed.
+            // Writing voxel by voxel would materialise all 128 slabs and then free ~120 of them, which
+            // measured at 300 MB of transient garbage across the map.
+            var slab = new Voxel[ChunkConstants.ChunkSize];
 
-                // Store first, then label from what was actually stored: quantization is what the
-                // mesher will see, so the material has to agree with it rather than with `distance`.
-                chunk.voxels[i].Distance = distance;
-                chunk.voxels[i].Material = DensityToMaterial(chunk.voxels[i].Distance, distance,
-                                                             slopes[ChunkTransforms.ColumnIndexOf(i)]);
+            for (int slabY = 0; slabY < ChunkConstants.ChunkHeight; slabY++)
+            {
+                int worldY = ChunkConstants.WorldMinY + slabY;
+                bool uniform = true;
+
+                for (int column = 0; column < ChunkConstants.ChunkSize; column++)
+                {
+                    int i = slabY * ChunkConstants.ChunkSize + column;
+
+                    float heightAt = heights[ChunkTransforms.PaddedColumnIndexOf(i)];
+                    // Through the world-floor clamp like every other voxel write: noise can put a
+                    // column's height at or below WorldMinY, which would otherwise generate a hole.
+                    float distance = ChunkConstants.ClampToWorldFloor(worldY, slabY - heightAt);
+
+                    // Store first, then label from what was actually stored: quantization is what the
+                    // mesher will see, so the material has to agree with it rather than with `distance`.
+                    var voxel = new Voxel { Distance = distance };
+                    voxel.Material = DensityToMaterial(voxel.Distance, distance, slopes[column]);
+
+                    slab[column] = voxel;
+
+                    if (column > 0 && (voxel.Density != slab[0].Density || voxel.Material != slab[0].Material))
+                        uniform = false;
+                }
+
+                if (uniform) chunk.FillSlab(slabY, slab[0]);
+                else slab.AsSpan().CopyTo(chunk.Materialize(slabY));
             }
 
             return chunk;
@@ -263,18 +282,110 @@ namespace Demiurge
         }
     }
 
-    // A class so ChunkMap hands these out by reference. As a struct, writes to `voxels` would
-    // have propagated (shared array) while writes to `index` silently would not.
+    /// <summary>
+    /// A chunk's voxels, stored as 128 horizontal SLABS that are allocated only when they need to be.
+    ///
+    /// Most of a column is one repeated voxel — everything above the terrain is air and everything below
+    /// is clamped solid — so a flat 32,768-entry array spent 64 KB per chunk to store about 17 slabs of
+    /// actual content. At 1 km that was ~254 MB per map, and singleplayer holds two. A null slab means
+    /// "every voxel here is <see cref="Uniform"/>", which takes a typical chunk to around 10 KB.
+    ///
+    /// A class so ChunkMap hands these out by reference. As a struct, writes to the slab array would have
+    /// propagated (shared reference) while writes to `index` silently would not.
+    /// </summary>
     public class TerrainChunk
     {
         public ChunkIndex index;
 
-        public Voxel[] voxels;
+        /// <summary>Null entry: that slab is uniform and its value is in <see cref="uniform"/>.</summary>
+        readonly Voxel[]?[] slabs = new Voxel[ChunkConstants.ChunkHeight][];
+        readonly Voxel[] uniform = new Voxel[ChunkConstants.ChunkHeight];
 
-        public TerrainChunk(ChunkIndex index)
+        public TerrainChunk(ChunkIndex index) => this.index = index;
+
+        /// <summary>
+        /// By flat voxel index, the layout everything already computes through
+        /// <see cref="ChunkTransforms.WorldVoxelIndex"/>. The divide and mod are by powers of two, so
+        /// this costs a shift, a mask, a null check and an indirection over the old array read.
+        /// </summary>
+        public Voxel this[int flatIndex]
         {
-            this.index = index;
-            this.voxels = new Voxel[ChunkConstants.ChunkVolume];
+            get
+            {
+                int slabY = flatIndex / ChunkConstants.ChunkSize;
+                var slab = slabs[slabY];
+
+                return slab is null ? uniform[slabY] : slab[flatIndex % ChunkConstants.ChunkSize];
+            }
+            set
+            {
+                int slabY = flatIndex / ChunkConstants.ChunkSize;
+                Materialize(slabY)[flatIndex % ChunkConstants.ChunkSize] = value;
+            }
         }
-    } 
+
+        public bool IsUniform(int slabY) => slabs[slabY] is null;
+
+        /// <summary>Only meaningful where <see cref="IsUniform"/>.</summary>
+        public Voxel UniformValue(int slabY) => uniform[slabY];
+
+        /// <summary>
+        /// Collapses a slab to a single value and frees its array. This is how a chunk STAYS small:
+        /// decoding knows which slabs are uniform, so it can say so rather than write 256 copies.
+        /// </summary>
+        public void FillSlab(int slabY, Voxel value)
+        {
+            slabs[slabY] = null;
+            uniform[slabY] = value;
+        }
+
+        /// <summary>Backing array for a slab, allocating and expanding the uniform value into it if needed.</summary>
+        public Voxel[] Materialize(int slabY)
+        {
+            var slab = slabs[slabY];
+            if (slab is not null) return slab;
+
+            slab = new Voxel[ChunkConstants.ChunkSize];
+            slab.AsSpan().Fill(uniform[slabY]);
+
+            return slabs[slabY] = slab;
+        }
+
+        /// <summary>
+        /// Frees any slab whose voxels all turned out identical. Worth calling after a pass that writes
+        /// voxel by voxel — generation does — since that materializes everything on the way through.
+        /// </summary>
+        public void CollapseUniformSlabs()
+        {
+            for (int slabY = 0; slabY < ChunkConstants.ChunkHeight; slabY++)
+            {
+                var slab = slabs[slabY];
+                if (slab is null) continue;
+
+                var first = slab[0];
+                bool same = true;
+
+                for (int i = 1; i < slab.Length; i++)
+                {
+                    if (slab[i].Density == first.Density && slab[i].Material == first.Material) continue;
+
+                    same = false;
+                    break;
+                }
+
+                if (same) FillSlab(slabY, first);
+            }
+        }
+
+        /// <summary>Slabs currently carrying an array. Diagnostics and tests only.</summary>
+        public int AllocatedSlabs
+        {
+            get
+            {
+                int count = 0;
+                foreach (var slab in slabs) if (slab is not null) count++;
+                return count;
+            }
+        }
+    }
 }

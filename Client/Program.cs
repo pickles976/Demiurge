@@ -276,10 +276,15 @@ void Start(Scene rootScene)
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
     cameraEntity.Add(new LocalPlayerController { CameraEntity = cameraEntity, Registry = registry });
-    cameraEntity.Add(new ThirdPersonCameraScript { Registry = registry });
+    // Over-the-shoulder action camera. ThirdPersonCameraScript — the high, cursor-aimed one — is kept
+    // in PlayerCamera.cs as dead code; swap the two lines to go back to it.
+    cameraEntity.Add(new ShoulderCameraScript { Registry = registry });
+    // cameraEntity.Add(new ThirdPersonCameraScript { Registry = registry });
     // Tilde detaches the camera and freezes the player; see DebugFlyCameraScript.
     cameraEntity.Add(new DebugFlyCameraScript());
-    cameraEntity.Add(new CursorReticleScript());
+    // The cursor reticle belongs to the old camera: the shoulder camera locks the mouse, so there is no
+    // cursor to draw one at.
+    // cameraEntity.Add(new CursorReticleScript());
     cameraEntity.Add(new AimLineScript { Registry = registry });
     cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
 

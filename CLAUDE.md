@@ -11,7 +11,9 @@ dotnet build DemiurgeSharp.slnx
 dotnet run --launch-profile singleplayer        # client + in-process server — USE THIS
 dotnet run                                      # client only; connects to a server you started
 dotnet run --project Server/DemiurgeServer.csproj   # standalone server
-dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), ~150ms, headless
+dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), headless
+dotnet test --filter "Category!=Benchmark"      # ~1s; skips the pipeline benchmarks, which
+                                                # generate the whole world and cost a few seconds
 ```
 
 **Singleplayer is the normal way to test anything server-side** — one launch instead of two.
@@ -129,7 +131,13 @@ ported from — `src/chunks/{utils,mod,tilemap}.rs`. When the terrain math looks
 against it before theorising, and note that `utils.rs` carries unit tests that double as the
 spec for the coordinate transforms.
 
-- A chunk is **16 × 16 × 128 voxels**, flat in `TerrainChunk.voxels`. `Voxel` is **2 bytes**:
+- A chunk is **16 × 16 × 128 voxels**, stored as 128 **lazily allocated slabs** — a null slab means
+  "all of it is this one voxel". Most of a column is uniform air or uniform bedrock, so a typical chunk
+  allocates ~8 of 128 and costs ~5 KB instead of 64 KB; at 1 km that is 21 MB per map instead of 248.
+  Index it with `chunk[flatIndex]`, the same flat layout `ChunkTransforms.WorldVoxelIndex` produces.
+  Generation and `ChunkWire.Decode` both write slab-at-a-time and call `FillSlab` for uniform ones —
+  writing voxel by voxel materialises everything and then frees it, which measured at 300 MB of
+  transient garbage. `Voxel` is **2 bytes**:
   `sbyte` quantized signed distance + `BlockType`. `ChunkIndex` is 2D, so a chunk spans the
   world's full height.
 - **Meshing and rendering happen per 16³ SECTION** (`SectionIndex`), not per column. Storage is

@@ -218,6 +218,40 @@ public class LodSectionTests
         Assert.False(ChunkMesher.TryFillScratch(map, new LodSection(0, 0, 0, 2), scratch));
     }
 
+    /// <summary>
+    /// Lazy slabs are the storage layer's whole memory budget, so a regression that silently materialises
+    /// everything would be invisible except as 12x the resident set.
+    /// </summary>
+    [Fact]
+    public void GeneratedChunksAllocateOnlyTheSlabsTheyNeed()
+    {
+        var chunk = ChunkGenerator.GenerateChunk(new ChunkIndex { x = 0, z = 0 });
+
+        Assert.True(chunk.AllocatedSlabs < ChunkConstants.ChunkHeight / 4,
+            $"{chunk.AllocatedSlabs} of {ChunkConstants.ChunkHeight} slabs allocated; most of a column is uniform");
+
+        // And uniform slabs still read back correctly, which is the part a null slab could get wrong.
+        for (int i = 0; i < ChunkConstants.ChunkVolume; i += 997)
+            Assert.True(chunk[i].Density != 0 || chunk[i].Material == BlockType.BlockType_Air);
+    }
+
+    /// <summary>Decoding must collapse uniform slabs too, or a streamed chunk costs 13x a generated one.</summary>
+    [Fact]
+    public void DecodedChunksStayCompact()
+    {
+        var source = ChunkGenerator.GenerateChunk(new ChunkIndex { x = 3, z = -4 });
+        var decoded = new TerrainChunk(source.index);
+
+        var buffer = new byte[ChunkTransport.MaxPayloadBytes];
+        var (slabs, length) = ChunkWire.Encode(source, 0, buffer);
+        ChunkWire.Decode(decoded, 0, slabs, buffer.AsSpan(0, length));
+
+        Assert.Equal(source.AllocatedSlabs, decoded.AllocatedSlabs);
+
+        for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
+            Assert.Equal(source[i].Density, decoded[i].Density);
+    }
+
     // ---- Skirts ----
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 using Xunit.Abstractions;
 
 namespace Demiurge.Tests;
@@ -10,9 +11,13 @@ namespace Demiurge.Tests;
 /// Run with output visible:
 ///     dotnet test --filter PipelineBenchmarks --logger "console;verbosity=detailed"
 ///
+/// These generate the whole world, so they cost a few seconds. Skip them with:
+///     dotnet test --filter "Category!=Benchmark"
+///
 /// The one step NOT here is the GPU upload in ChunkMeshFactory.ToEntity, which needs a GraphicsDevice
 /// and so cannot run headlessly. <see cref="ClientMeshBacklog"/> parameterises it instead.
 /// </summary>
+[Trait("Category", "Benchmark")]
 public class PipelineBenchmarks(ITestOutputHelper output)
 {
 
@@ -258,7 +263,7 @@ public class PipelineBenchmarks(ITestOutputHelper output)
         int uploads = (int)(allSections * (withGeometry / (double)sampled));
 
         output.WriteLine($"Sections needing a GPU upload: ~{uploads} of {allSections}");
-        output.WriteLine($"Main-thread upload budget: 4 ms/frame (ClientTerrain.UploadBudgetSeconds)");
+        output.WriteLine($"Main-thread upload budget: 12 ms/frame, batched (ClientTerrain)");
         output.WriteLine("");
         output.WriteLine("  ms/upload   uploads/frame   frames   seconds @60fps");
 
@@ -268,6 +273,33 @@ public class PipelineBenchmarks(ITestOutputHelper output)
             double frames = uploads / perFrame;
             output.WriteLine($"  {cost,9:F2}   {perFrame,13:F0}   {frames,6:F0}   {frames / 60.0,14:F1}");
         }
+    }
+
+    // ---- 7. How much LOD actually removes ----
+
+    /// <summary>
+    /// Boxes that exist at each level with the player at the origin, and what that saves against drawing
+    /// the whole world at full detail. Entity count is the draw-call count, which is what LOD is for.
+    /// </summary>
+    [Fact]
+    public void LodBoxCount()
+    {
+        var desired = new HashSet<LodSection>();
+        TerrainLod.CollectDesired(Vector3.Zero, desired);
+
+        var perLevel = new int[LodSection.MaxLevel + 1];
+        foreach (var box in desired) perLevel[box.Level]++;
+
+        int flat = (WorldGen.MeshableMax.x - WorldGen.MeshableMin.x + 1)
+                 * (WorldGen.MeshableMax.z - WorldGen.MeshableMin.z + 1)
+                 * ChunkConstants.SectionsPerChunk;
+
+        output.WriteLine($"World {WorldGen.Max.x - WorldGen.Min.x + 1} chunks across, player at origin");
+        for (int level = 0; level <= LodSection.MaxLevel; level++)
+            output.WriteLine($"  LOD {level}   {perLevel[level],6} boxes");
+
+        output.WriteLine($"  total  {desired.Count,6} boxes against {flat} sections at full detail "
+                       + $"= {flat / (double)desired.Count:F1}x fewer");
     }
 
     // ---- helpers ----

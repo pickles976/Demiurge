@@ -61,8 +61,12 @@ namespace Demiurge
 
         public static readonly CapsuleBody Body = new(Radius: 0.4f, Height: 1.8f);
 
-        /// <summary>Steepest ground that counts as standable; anything steeper acts as a wall.</summary>
-        public const float MaxSlopeDegrees = 50f;
+        /// <summary>
+        /// Steepest ground that counts as standable; anything steeper acts as a wall and the body slides
+        /// off it. High, because standable ground does not slide at all now — so this is purely "what can
+        /// I walk up", and the answer wanted was "almost anything short of a cliff".
+        /// </summary>
+        public const float MaxSlopeDegrees = 70f;
         public static readonly float MaxSlopeCos = MathF.Cos(MaxSlopeDegrees * (MathF.PI / 180f));
 
         /// <summary>Resting gap held between body and surface, so contact is never exactly zero.</summary>
@@ -132,7 +136,13 @@ namespace Demiurge
                 state.Grounded = false;
             }
 
-            state.Velocity.Y = MathF.Max(state.Velocity.Y - Gravity * dt, -TerminalVelocity);
+            // Gravity only applies while AIRBORNE. This is what stops a body creeping downhill: a
+            // grounded body that sinks a little each tick gets pushed back out PERPENDICULAR to the
+            // surface, and on a slope that perpendicular points partly downhill — measured at roughly
+            // 0.3 m/s on 30 degrees with no input. Never sinking means never being pushed sideways.
+            // The ground probe below keeps the body attached as it walks over bumps.
+            if (!state.Grounded)
+                state.Velocity.Y = MathF.Max(state.Velocity.Y - Gravity * dt, -TerminalVelocity);
 
             Move(terrain, ref state, dt);
             ProbeGround(terrain, ref state);
@@ -213,10 +223,7 @@ namespace Demiurge
                 float into = Vector3.Dot(state.Velocity, normal);
                 if (into < 0f) state.Velocity -= normal * into;
 
-                // Ground cannot launch you. Sliding along an uphill slope leaves the projection with
-                // upward velocity, and ProbeGround reads any upward velocity as "mid-jump, do not
-                // snap" — so without this the body ratchets off every hill it walks up. Climbing is
-                // the PUSHOUT's job, which has already happened above.
+                // Ground cannot launch you, and it cannot push you sideways either.
                 if (standable) state.Velocity.Y = MathF.Min(state.Velocity.Y, 0f);
             }
         }

@@ -224,7 +224,7 @@ namespace Demiurge
                         var chunk = columns[sz * ScratchWidth + sx];
                         int voxel = ChunkTransforms.WorldVoxelIndex(originX + sx, worldY, originZ + sz);
 
-                        scratch[ScratchIndex(sx, sy, sz)] = Sample.From(chunk.voxels[voxel]);
+                        scratch[ScratchIndex(sx, sy, sz)] = Sample.From(chunk[voxel]);
                     }
                 }
             }
