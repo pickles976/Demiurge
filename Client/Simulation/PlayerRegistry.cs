@@ -6,6 +6,7 @@ public class PlayerRegistry
 {
     private readonly Dictionary<ushort, Player> players = new();
     private readonly NetworkManager network;
+    private readonly TerrainState terrain;   // the local player predicts movement against it
 
     public LocalPlayer? LocalPlayer {get; private set;}
     public event Action<Player>? PlayerJoined; // sim -> view boundary
@@ -21,9 +22,10 @@ public class PlayerRegistry
         - NetworkConfig.InterpolationDelayTicks;
 
     // Add listeners
-    public PlayerRegistry(NetworkManager network)
+    public PlayerRegistry(NetworkManager network, TerrainState terrain)
     {
         this.network = network;
+        this.terrain = terrain;
         newestArrival = Stopwatch.GetTimestamp();
         network.PlayerSpawned += OnPlayerSpawned;
         network.PlayerDespawned += OnPlayerDespawned;
@@ -33,7 +35,7 @@ public class PlayerRegistry
     private void OnPlayerSpawned(PlayerSpawnData data)
     {
         Player player = data.PlayerId == network.ClientId
-            ? LocalPlayer = new LocalPlayer(network) { Id = data.PlayerId, Position = data.Position }
+            ? LocalPlayer = new LocalPlayer(network, terrain) { Id = data.PlayerId, Position = data.Position }
             : new RemotePlayer {Id = data.PlayerId, Position = data.Position};
 
         players[data.PlayerId] = player;
@@ -61,7 +63,7 @@ public class PlayerRegistry
         switch (player)
         {
             case LocalPlayer local:
-                local.Reconcile(data.Position, data.LastProcessedSequence);
+                local.Reconcile(data.Move, data.LastProcessedSequence);
                 break;
             case RemotePlayer remote:
                 remote.Snapshots.Store(data.Tick, data.Position);

@@ -24,6 +24,7 @@ public class LocalPlayerController : SyncScript
 				.With(PlayerStateFlags.Sprinting, false)
 				.With(PlayerStateFlags.Aiming, false)
 				.With(PlayerStateFlags.Crouching, false)
+				.With(PlayerStateFlags.Jumping, false)
 				.With(PlayerStateFlags.Shooting, false)
 				.With(PlayerStateFlags.Reloading, local.IsReloading);   // let an in-flight reload finish
 
@@ -42,6 +43,10 @@ public class LocalPlayerController : SyncScript
 			.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
 			.With(PlayerStateFlags.Aiming, aiming)
 			.With(PlayerStateFlags.Crouching, Input.IsKeyDown(Keys.LeftCtrl))
+			// Level-triggered on purpose: the shared step only acts on Jumping while grounded, so
+			// holding Space jumps again the moment you land. It also sidesteps IsKeyPressed, which
+			// re-fires on OS auto-repeat and is not a reliable one-shot for a held key.
+			.With(PlayerStateFlags.Jumping, Input.IsKeyDown(Keys.Space))
 			.With(PlayerStateFlags.Shooting, aiming && Input.IsMouseButtonDown(MouseButton.Left))
 			.With(PlayerStateFlags.Reloading, local.IsReloading);
 

@@ -6,7 +6,7 @@ using Demiurge.GameClient;
 public abstract class Player
 {
     public ushort Id { get; init; }
-    public Vector3 Position { get; set; }
+    public virtual Vector3 Position { get; set; }
     public PlayerStateFlags State { get; set; }
     public float Yaw { get; set; }
 }
@@ -21,9 +21,29 @@ public class RemotePlayer : Player
 public class LocalPlayer : Player
 {
     private readonly NetworkManager network;
+    private readonly TerrainState terrain;
     private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
     private uint sequence;
     private float accumulator;
+
+    /// <summary>
+    /// Predicted movement state, stepped by the same <see cref="PlayerMovement.Step"/> the server runs
+    /// authoritatively. A field so it can be passed by ref.
+    /// </summary>
+    public MoveState Move;
+
+    public override Vector3 Position
+    {
+        get => Move.Position;
+        set => Move.Position = value;
+    }
+
+    /// <summary>
+    /// A correction this large is worth knowing about. Was 1 mm when the step was flat arithmetic;
+    /// the collision step is long enough that a genuine disagreement is never this small, and both
+    /// ends run identical code over identical voxel bytes so it should stay near zero regardless.
+    /// </summary>
+    private const float ReconcileWarnDistance = 0.01f;
 
     public NetObject? Status {get; set;}
 
@@ -91,7 +111,11 @@ public class LocalPlayer : Player
     /// spawn/despawn replication and flows through Equip/Unequip.</summary>
     public void TryInteract() => network.SendInteract();
 
-    public LocalPlayer(NetworkManager network) => this.network = network;
+    public LocalPlayer(NetworkManager network, TerrainState terrain)
+    {
+        this.network = network;
+        this.terrain = terrain;
+    }
 
     public void Update(Vector3 intent, float dt)
     {
@@ -109,28 +133,40 @@ public class LocalPlayer : Player
             if (reloadTicksLeft > 0 && --reloadTicksLeft == 0)
                 Ammo = Stats.MagazineCapacity;     // reload complete
             var move = new PlayerInputData { Sequence = sequence++, Intent = intent, State = State, Yaw = Yaw };
-            Position = PlayerMovement.Step(Position, move.Intent, move.State, NetworkConfig.FixedDt); //predict
-            pendingMoves.Enqueue(move);
             network.SendInput(move);
+
+            // Prediction needs the same terrain the server is stepping against. Until ours has
+            // streamed in, the shared step would read unloaded chunks as impassable and wall us in
+            // place while the server walks us normally — so follow authority instead and keep SENDING
+            // input, which is what keeps it walking us. Nothing is queued for replay because nothing
+            // was predicted.
+            if (!terrain.FootprintLoaded(Move.Position))
+            {
+                pendingMoves.Clear();
+                continue;
+            }
+
+            PlayerMovement.Step(terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt);
+            pendingMoves.Enqueue(move);
         }
     }
 
-    public void Reconcile(Vector3 serverPosition, uint lastProcessedSequence)
+    public void Reconcile(MoveState authoritative, uint lastProcessedSequence)
     {
-        // Discard all pending moves the server has already simulated 
+        // Discard all pending moves the server has already simulated
         while (pendingMoves.Count > 0 && pendingMoves.Peek().Sequence <= lastProcessedSequence)
             pendingMoves.Dequeue();
 
-        var predicted = Position;
+        var predicted = Move.Position;
 
-        Position = serverPosition;                      // snap to authority...
+        Move = authoritative;                           // snap to authority...
         foreach (var move in pendingMoves)              // ...then re-apply what it hasn't seen
-            Position = PlayerMovement.Step(Position, move.Intent, move.State, NetworkConfig.FixedDt);
+            PlayerMovement.Step(terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt);
 
         // Diagnostic: in the happy path replay reproduces the prediction exactly.
         // Any hit here means client and server sims disagreed (or a bug).
-        float error = Vector3.Distance(predicted, Position);
-        if (error > 0.001f)
+        float error = Vector3.Distance(predicted, Move.Position);
+        if (error > ReconcileWarnDistance)
             Console.WriteLine($"[Reconcile] correction of {error:F4} at seq {lastProcessedSequence}");
     }
 }

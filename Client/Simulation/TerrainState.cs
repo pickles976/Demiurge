@@ -75,6 +75,31 @@ namespace Demiurge.GameClient
 
         public bool IsComplete(ChunkIndex index) => completed.Contains(index);
 
+        /// <summary>
+        /// Whether every chunk a body at this position collides against has fully arrived.
+        ///
+        /// Movement prediction needs this because unloaded terrain is IMPASSABLE in the shared step —
+        /// the right answer for the world's edge, but at spawn it would wall the player in place while
+        /// the server walks them normally. The body is under a metre wide, so its footprint plus the
+        /// sampling reach can only touch the chunks at its four horizontal corners.
+        /// </summary>
+        public bool FootprintLoaded(System.Numerics.Vector3 position)
+        {
+            // Radius plus the voxel the trilinear sample and its central difference reach past it.
+            float reach = PlayerMovement.Body.Radius + 2f;
+
+            for (int dz = -1; dz <= 1; dz += 2)
+                for (int dx = -1; dx <= 1; dx += 2)
+                {
+                    int worldX = (int)MathF.Floor(position.X + dx * reach);
+                    int worldZ = (int)MathF.Floor(position.Z + dz * reach);
+
+                    if (!IsComplete(ChunkTransforms.ChunkAt(worldX, worldZ))) return false;
+                }
+
+            return true;
+        }
+
         public void Reset()
         {
             Map.Reset();

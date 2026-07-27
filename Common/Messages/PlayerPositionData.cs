@@ -16,6 +16,12 @@ namespace Demiurge
         // Only used by the player that generated the input
         public uint LastProcessedSequence;
 
+        // The rest of the authoritative movement state. Position alone is not enough to replay from:
+        // reconciliation re-steps pending moves, and a replay that starts from the server's position
+        // but the client's velocity diverges on the first tick after every correction.
+        public Vector3 Velocity;
+        public bool Grounded;
+
         public void Serialize(Message message)
         {
             message.AddUShort(PlayerId);
@@ -24,6 +30,8 @@ namespace Demiurge
             message.AddUShort((ushort)State);
             message.AddFloat(Yaw);
             message.AddUInt(LastProcessedSequence);
+            message.AddVector3(Velocity);
+            message.AddBool(Grounded);
         }
 
         public void Deserialize(Message message)
@@ -34,6 +42,11 @@ namespace Demiurge
             State = (PlayerStateFlags)message.GetUShort();
             Yaw = message.GetFloat();
             LastProcessedSequence = message.GetUInt();
+            Velocity = message.GetVector3();
+            Grounded = message.GetBool();
         }
+
+        /// <summary>The movement half of this message, as the shared step wants it.</summary>
+        public MoveState Move => new() { Position = Position, Velocity = Velocity, Grounded = Grounded };
     }
 }

@@ -4,6 +4,8 @@ dotnet clean
 dotnet restore --no-cache
 dotnet build --no-incremental
 
+`dotnet run --launch-profile singleplayer`
+
 NOTES:
 - particle system broken
 https://github.com/stride3d/stride/issues/2496

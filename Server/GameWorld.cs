@@ -19,6 +19,10 @@ namespace Demiurge.GameServer
 
         private const int MaxQueuedMoves = 3;
 
+        /// <summary>Spawn column. Y comes off the terrain, never guessed.</summary>
+        private const float SpawnX = 0f;
+        private const float SpawnZ = 0f;
+
         /// <summary>
         /// The server's terrain, and the only authority on it. Clients receive it via
         /// <see cref="ChunkStreamer"/> and never generate any themselves.
@@ -54,6 +58,7 @@ namespace Demiurge.GameServer
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
 
             var player = new ServerPlayer { Id = clientId };
+            player.Move = PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
             player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
             obj =>
             {
@@ -135,7 +140,7 @@ namespace Demiurge.GameServer
 
                 for (int i = 0; i < toProcess && player.PendingMoves.TryDequeue(out var move); i++)
                 {
-                    player.Position = PlayerMovement.Step(player.Position, move.Intent, move.State, dt);
+                    PlayerMovement.Step(terrain, ref player.Move, move.Intent, move.State, dt);
                     player.State = move.State;
                     player.Yaw = move.Yaw;
                     player.LastIntent = move.Intent;
@@ -145,7 +150,7 @@ namespace Demiurge.GameServer
 
                 // Queue starved, just reuse last player input
                 if (!processedAny)
-                    player.Position = PlayerMovement.Step(player.Position, player.LastIntent, player.State, dt);
+                    PlayerMovement.Step(terrain, ref player.Move, player.LastIntent, player.State, dt);
             }
 
             // Save history
@@ -158,7 +163,7 @@ namespace Demiurge.GameServer
             foreach (var player in players.Values)
             {
                 if (player.Status is not {} status || status.Health.Current > 0) continue;
-                player.Position = Vector3.Zero;
+                player.Move = PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
                 player.History.Clear();
                 status.Health.Current = status.Health.Max;
                 status.Dirty |= NetComponents.Health;
@@ -188,7 +193,9 @@ namespace Demiurge.GameServer
                         Position = player.Position,
                         Yaw = player.Yaw,
                         State = player.State,
-                        LastProcessedSequence = player.LastProcessedSequence
+                        LastProcessedSequence = player.LastProcessedSequence,
+                        Velocity = player.Move.Velocity,
+                        Grounded = player.Move.Grounded
                     });
                 server.SendToAll(message);
             }

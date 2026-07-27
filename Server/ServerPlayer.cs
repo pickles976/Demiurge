@@ -5,7 +5,21 @@ namespace Demiurge.GameServer
     public class ServerPlayer
     {
         public ushort Id { get; init; }
-        public Vector3 Position { get; set; }
+
+        /// <summary>
+        /// Authoritative movement state, stepped by <see cref="PlayerMovement.Step"/>. A field rather
+        /// than a property so it can be passed by ref — a property would step a copy and throw the
+        /// result away.
+        /// </summary>
+        public MoveState Move;
+
+        /// <summary>Where the player is. Everything that only cares about position reads this.</summary>
+        public Vector3 Position
+        {
+            get => Move.Position;
+            set => Move.Position = value;
+        }
+
         public PlayerStateFlags State { get; set; }
         public Vector3 PendingIntent { get; set; }
         public float Yaw {get; set;}

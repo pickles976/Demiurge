@@ -93,13 +93,15 @@ using var game = new Game();
 
 // how does this work?
 var network = new NetworkManager();
-var registry = new PlayerRegistry(network);
-var objectRegistry = new ObjectRegistry(network);
 
 // Sim layer: the client's copy of the terrain, filled ONLY from the wire. The server owns terrain
 // and streams it; there is deliberately no client-side generator to fall back on.
+// Constructed before the registries because the local player predicts movement against it.
 var terrainState = new TerrainState();
 network.ChunkSlabsReceived += terrainState.Receive;
+
+var registry = new PlayerRegistry(network, terrainState);
+var objectRegistry = new ObjectRegistry(network);
 
 // View over that state, built in Start() once the graphics device exists.
 ClientTerrain? terrainView = null;
