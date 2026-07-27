@@ -284,8 +284,17 @@ namespace Demiurge
         /// the error lands in stripes aligned to the level-of-detail grid rather than uniformly.
         ///
         /// The shallowest solid voxel is the right answer because it is the one the isosurface actually
-        /// touches: it is the voxel a viewer sees. It also stays correct at the extremes — a block deep
-        /// underground is all clamped stone, and one with no solid voxel at all is air.
+        /// touches: it is the voxel a viewer sees.
+        ///
+        /// The material search reaches one STRIDE ABOVE the block, and that is the part that is easy to
+        /// get wrong. When the surface sits just above a block boundary, that block averages to air —
+        /// three air voxels against one solid — so the solid end of the crossing edge is the block BELOW,
+        /// whose own shallowest voxel is already more than a voxel down and therefore dirt. Searching up
+        /// a stride lets that block find the grass layer that is visually its surface. Without it, dirt
+        /// appears in bands wherever terrain height happens to land just above a coarse boundary.
+        ///
+        /// Distance still averages over the block alone; only the material search is widened. Extremes
+        /// stay right either way: deep underground is all clamped stone, and nothing solid is air.
         /// </summary>
         static bool TryDownsample(ChunkMap map, int x0, int y0, int z0, int stride, out Sample sample)
         {
@@ -299,15 +308,16 @@ namespace Demiurge
 
             for (int dz = 0; dz < stride; dz++)
             {
-                for (int dy = 0; dy < stride; dy++)
+                for (int dx = 0; dx < stride; dx++)
                 {
-                    for (int dx = 0; dx < stride; dx++)
+                    for (int dy = 0; dy < stride * 2; dy++)
                     {
                         if (!map.TryGetVoxel(x0 + dx, y0 + dy, z0 + dz, out var voxel)) return false;
 
                         float distance = voxel.Distance;
-                        total += distance;
-                        count++;
+
+                        // Only the block itself is what this sample's DISTANCE describes.
+                        if (dy < stride) { total += distance; count++; }
 
                         if (distance >= 0f || distance <= shallowest) continue;
 

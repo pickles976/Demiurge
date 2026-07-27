@@ -170,6 +170,38 @@ public class LodSectionTests
         Assert.Equal(BlockType.BlockType_Grass, surfaceMaterial);
     }
 
+    /// <summary>
+    /// The banding, at the grid position that actually produces it: a surface just ABOVE a coarse block
+    /// boundary. The block below is entirely solid and its shallowest voxel is already more than a voxel
+    /// deep, so it reports Dirt — and because the block containing the surface averages to air, that dirt
+    /// block is the solid end of the crossing edge and the mesher paints the quad with it.
+    /// </summary>
+    [Theory]
+    [InlineData(40.1f)]     // surface barely above the y=40 block boundary
+    [InlineData(40.4f)]
+    [InlineData(44.2f)]
+    public void CoarseMaterialIsGrassWhereverTheSurfaceFalls(float surface)
+    {
+        var map = SyntheticTerrain.Build((x, y, z) => y - surface, chunkRadius: 4);
+        var scratch = new Sample[ChunkMesher.ScratchVolume];
+
+        var box = new LodSection(0, LevelContaining(surface, 2), 0, 2);
+        Assert.True(ChunkMesher.TryFillScratch(map, box, scratch));
+
+        var material = BlockType.BlockType_Air;
+        float shallowest = float.NegativeInfinity;
+
+        foreach (var sample in scratch)
+        {
+            if (sample.Distance >= 0f || sample.Distance <= shallowest) continue;
+
+            shallowest = sample.Distance;
+            material = sample.Material;
+        }
+
+        Assert.Equal(BlockType.BlockType_Grass, material);
+    }
+
     static BlockType MaterialAt(ChunkMap map, int worldY)
     {
         Assert.True(map.TryGetVoxel(0, worldY, 0, out var voxel));

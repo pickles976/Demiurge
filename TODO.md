@@ -1,13 +1,8 @@
 # Chunk Generation
 
 # LLM Work
-- [ ] tune LOD level distances (currently 112 / 224 world units, TerrainLod.SplitWithin)
-      by looking. LodSection.MaxLevel is 2 on purpose: past that the +/-2.54
-      quantization band is so much smaller than a cell that edge crossings always
-      interpolate to the midpoint and the surface goes blocky. Raising it needs a
-      finer stored field, not a bigger stride.
-- [ ] switch to first-person view (keep third person controller as dead code)
-      - [ ] first-person
+- [ ] switch to third-person action view (keep third person top-down controller as dead code)
+      - [ ] third-person action view
       - [x] tilde for freecam
       - [ ] F5 for third-person camera
 - [ ] raycasting against terrain
