@@ -8,7 +8,7 @@ namespace Demiurge
     /// the section dirty and try again. An empty <paramref name="Mesh"/> with Ready true is the common
     /// case, not an error: most sections are entirely air or entirely solid.
     /// </summary>
-    public readonly record struct SectionMeshResult(SectionIndex Section, MeshData Mesh, bool Ready);
+    public readonly record struct SectionMeshResult(LodSection Section, MeshData Mesh, bool Ready);
 
     /// <summary>
     /// Meshes sections on worker threads. Submit sections, take finished geometry, upload it on the main
@@ -40,8 +40,14 @@ namespace Demiurge
         /// </summary>
         const float CreaseAngleDegrees = 50f;
 
+        /// <summary>
+        /// How far a coarse box's edge hangs down, in its OWN cell units — so it scales with the box and
+        /// stays proportional to the mismatch it hides. Two cells covers the worst seam observed.
+        /// </summary>
+        const float SkirtDepth = 2f;
+
         readonly ChunkMap map;
-        readonly BlockingCollection<SectionIndex> pending = new();
+        readonly BlockingCollection<LodSection> pending = new();
         readonly ConcurrentQueue<SectionMeshResult> finished = new();
         readonly CancellationTokenSource shutdown = new();
         readonly Thread[] workers;
@@ -67,7 +73,7 @@ namespace Demiurge
         }
 
         /// <summary>Main thread. Caller must have checked the neighbourhood is complete.</summary>
-        public void Submit(SectionIndex section)
+        public void Submit(LodSection section)
         {
             if (shutdown.IsCancellationRequested) return;
 
@@ -95,9 +101,16 @@ namespace Demiurge
 
                     MeshData mesh = ChunkMesher.GenerateMeshDualContouring(scratch);
 
-                    // DC puts a crease vertex in the right place; this gives it one normal per side so
-                    // the corner reads as an edge rather than a smooth blend.
-                    if (mesh.Indices.Length > 0) mesh = ChunkMesher.SplitCreases(mesh, CreaseAngleDegrees);
+                    if (mesh.Indices.Length > 0)
+                    {
+                        // DC puts a crease vertex in the right place; this gives it one normal per side
+                        // so the corner reads as an edge rather than a smooth blend.
+                        mesh = ChunkMesher.SplitCreases(mesh, CreaseAngleDegrees);
+
+                        // Only coarse boxes need a curtain: LOD 0 meets LOD 0 exactly, so a skirt there
+                        // would be geometry nobody can ever see.
+                        if (section.Level > 0) mesh = ChunkMesher.AddSkirt(mesh, SkirtDepth);
+                    }
 
                     finished.Enqueue(new SectionMeshResult(section, mesh, Ready: true));
                 }

@@ -233,6 +233,187 @@ namespace Demiurge
         }
 
         /// <summary>
+        /// Fills the scratch buffer for a box at any level of detail. Level 0 delegates to the fast path
+        /// above; coarser levels sample every Stride-th voxel and BOX FILTER the block between samples.
+        ///
+        /// Filtering rather than point sampling is not optional. Taking every 4th voxel lets a thin ridge
+        /// fall between samples and flip sign against the level below it, which puts a hole through the
+        /// terrain that the finer level does not have. Averaging the signed distance keeps the surface
+        /// roughly where the fine one had it.
+        ///
+        /// The absolute scale of the averaged distance does not matter: the mesher only reads it for edge
+        /// crossings (a ratio) and gradients (normalized), both scale-invariant. So world-voxel distances
+        /// go in unscaled even though a cell is now several voxels wide.
+        /// </summary>
+        public static bool TryFillScratch(ChunkMap map, LodSection section, Sample[] scratch)
+        {
+            if (section.Level == 0)
+                return TryFillScratch(map, new SectionIndex(section.X, section.Y, section.Z), scratch);
+
+            int stride = section.Stride;
+            int originX = section.OriginX - Apron * stride;
+            int originY = section.OriginY - Apron * stride;
+            int originZ = section.OriginZ - Apron * stride;
+
+            for (int sy = 0; sy < ScratchWidth; sy++)
+            {
+                for (int sz = 0; sz < ScratchWidth; sz++)
+                {
+                    for (int sx = 0; sx < ScratchWidth; sx++)
+                    {
+                        if (!TryDownsample(map, originX + sx * stride, originY + sy * stride,
+                                           originZ + sz * stride, stride, out var sample))
+                            return false;
+
+                        scratch[ScratchIndex(sx, sy, sz)] = sample;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// One coarse sample: mean signed distance over the block, and the material of its SHALLOWEST
+        /// SOLID voxel — the one nearest the isosurface from below.
+        ///
+        /// Not a most-common vote, which was the first thing tried and produced visible banding.
+        /// DensityToMaterial gives a column exactly one voxel of grass over about three of dirt, so any
+        /// block big enough to matter contains three times as much dirt as grass and the vote returns
+        /// dirt. Worse, whether it does depends on where the surface happens to fall inside the block, so
+        /// the error lands in stripes aligned to the level-of-detail grid rather than uniformly.
+        ///
+        /// The shallowest solid voxel is the right answer because it is the one the isosurface actually
+        /// touches: it is the voxel a viewer sees. It also stays correct at the extremes — a block deep
+        /// underground is all clamped stone, and one with no solid voxel at all is air.
+        /// </summary>
+        static bool TryDownsample(ChunkMap map, int x0, int y0, int z0, int stride, out Sample sample)
+        {
+            sample = default;
+
+            float total = 0f;
+            int count = 0;
+
+            var material = BlockType.BlockType_Air;
+            float shallowest = float.NegativeInfinity;
+
+            for (int dz = 0; dz < stride; dz++)
+            {
+                for (int dy = 0; dy < stride; dy++)
+                {
+                    for (int dx = 0; dx < stride; dx++)
+                    {
+                        if (!map.TryGetVoxel(x0 + dx, y0 + dy, z0 + dz, out var voxel)) return false;
+
+                        float distance = voxel.Distance;
+                        total += distance;
+                        count++;
+
+                        if (distance >= 0f || distance <= shallowest) continue;
+
+                        shallowest = distance;
+                        material = voxel.Material;
+                    }
+                }
+            }
+
+            sample = new Sample { Distance = total / count, Material = material };
+            return true;
+        }
+
+        /// <summary>
+        /// Extends the mesh's outer boundary downward into a vertical curtain, so a gap at a level-of-
+        /// detail seam shows skirt instead of sky.
+        ///
+        /// Two boxes at different levels contour from differently-filtered fields, so their surfaces do
+        /// not meet along the shared edge — that mismatch is THE hard problem in chunked LOD, and the
+        /// honest options are stitching (correct, complex) or hiding it. This hides it. Ugly if you stand
+        /// on the seam, invisible at the distance where levels actually change, and it ships.
+        ///
+        /// A boundary edge is one used by a single triangle whose endpoints both sit on a side face of the
+        /// box. Interior open edges — which dual contouring can produce around a hole — are left alone,
+        /// since a curtain there would be a wall in mid-air.
+        /// </summary>
+        public static MeshData AddSkirt(MeshData mesh, float depth)
+        {
+            if (mesh.Indices.Length == 0 || depth <= 0f) return mesh;
+
+            // Edge -> how many triangles use it, orientation ignored.
+            var uses = new Dictionary<(int, int), int>();
+
+            void Count(int a, int b)
+            {
+                var key = a < b ? (a, b) : (b, a);
+                uses[key] = uses.TryGetValue(key, out int n) ? n + 1 : 1;
+            }
+
+            for (int i = 0; i < mesh.Indices.Length; i += 3)
+            {
+                Count(mesh.Indices[i], mesh.Indices[i + 1]);
+                Count(mesh.Indices[i + 1], mesh.Indices[i + 2]);
+                Count(mesh.Indices[i + 2], mesh.Indices[i]);
+            }
+
+            var positions = new List<Vector3>(mesh.Positions);
+            var normals = new List<Vector3>(mesh.Normals);
+            var indices = new List<int>(mesh.Indices);
+
+            // Submeshes index into the index buffer, so the skirt has to go in ONE run appended at the
+            // end. It takes the first submesh's material; a curtain is only ever seen edge-on.
+            int skirtStart = indices.Count;
+
+            foreach (var ((a, b), count) in uses)
+            {
+                if (count != 1) continue;
+                if (!OnBoxSide(mesh.Positions[a]) || !OnBoxSide(mesh.Positions[b])) continue;
+
+                var down = new Vector3(0f, -depth, 0f);
+
+                int a2 = positions.Count; positions.Add(mesh.Positions[a] + down); normals.Add(mesh.Normals[a]);
+                int b2 = positions.Count; positions.Add(mesh.Positions[b] + down); normals.Add(mesh.Normals[b]);
+
+                // Both windings: a curtain has no meaningful facing and must not vanish from one side.
+                indices.AddRange([a, b, b2, a, b2, a2]);
+                indices.AddRange([b, a, a2, b, a2, b2]);
+            }
+
+            if (indices.Count == skirtStart) return mesh;
+
+            var submeshes = new List<Submesh>(mesh.Submeshes)
+            {
+                new(mesh.Submeshes.Length > 0 ? mesh.Submeshes[0].Material : BlockType.BlockType_Stone,
+                    skirtStart, indices.Count - skirtStart)
+            };
+
+            return new MeshData
+            {
+                Positions = [.. positions],
+                Normals = [.. normals],
+                Indices = [.. indices],
+                Submeshes = [.. submeshes],
+            };
+        }
+
+        /// <summary>
+        /// Whether a position sits in the outermost RING OF CELLS, which is what a boundary vertex means
+        /// for a dual method. Not "on the box's face" — dual contouring puts its vertex inside the cell,
+        /// so a boundary vertex lands around half a cell in and never touches the plane. Testing the
+        /// plane finds nothing at all, which is a skirt that silently does not exist.
+        ///
+        /// Cells run CellMin..CellMin+CellsPerAxis-1, so a vertex of the first cell lies in [-1, 0] and
+        /// one of the last lies in [15, 16].
+        /// </summary>
+        static bool OnBoxSide(Vector3 position)
+        {
+            const float Epsilon = 1e-3f;
+            const float Low = CellMin + 1;                    // 0: everything below is the first cell
+            const float High = CellMin + CellsPerAxis - 1;    // 15: everything above is the last
+
+            return position.X <= Low + Epsilon || position.X >= High - Epsilon
+                || position.Z <= Low + Epsilon || position.Z >= High - Epsilon;
+        }
+
+        /// <summary>
         /// Upper triangle of a symmetric 3x3. Only ever accumulates outer products n*nT, which are
         /// symmetric, so storing six floats instead of nine is free.
         /// </summary>

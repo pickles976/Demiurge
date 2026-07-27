@@ -305,7 +305,11 @@ void Update(Scene scene, GameTime time)
     // sections whose chunks Drain has already finished, so a worker never reads an array Drain is
     // writing. Interleaving them differently would break that.
     terrainState.Drain();
-    terrainView?.RebuildDirty();
+    // The PLAYER's position drives level of detail, never the camera's. Freecam must not be able to
+    // change what the terrain looks like — see TerrainLod. Before we spawn there is no player, so the
+    // world origin stands in; nothing is loaded yet anyway.
+    var lodOrigin = registry.LocalPlayer?.Position ?? System.Numerics.Vector3.Zero;
+    terrainView?.RebuildDirty(lodOrigin);
 
     // DISABLED: DebugTextSystem draws through FastTextRenderer, which crashes on Vulkan
     // (see the AddProfiler comment in Start()). Replaced by HUD.CreateDebugStats.

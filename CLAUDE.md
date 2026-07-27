@@ -118,6 +118,12 @@ inserted into the map on its *first* slab and keeps being written until its last
 stateless apart from the caller's scratch buffer. `ChunkMeshFactory` stays on the main thread — it
 creates GPU buffers, and off-thread resource creation is not worth gambling on this platform.
 
+**Uploads are batched and buffers are reference counted**, and both are load-bearing rather than tidy:
+one `Buffer.New` per section meant ~3,468 Vulkan allocations whose cost climbed to 11 ms each, and
+nothing freed them because `Scene = null` doesn't release GPU memory. That was the real reason terrain
+took 32 s to appear — see `stride_docs/code-only-runtime-and-assets.md` for the full measurement, and
+note the residual growth is still unexplained.
+
 The Bevy/Rust project at `/home/sebas/Projects/Demiurge` is the working reference this was
 ported from — `src/chunks/{utils,mod,tilemap}.rs`. When the terrain math looks wrong, diff
 against it before theorising, and note that `utils.rs` carries unit tests that double as the
@@ -161,6 +167,10 @@ spec for the coordinate transforms.
   view-distance meshing, and collision against anything but terrain.
 - Human terrain docs are in `docs/voxel/`; keep them terse and put implementation-heavy notes here
   or in `stride_docs/`.
+
+`docs/voxel/` has four docs, one per layer: **DATA_MODEL** (what a voxel is, and the wire format
+derived from it), **GENERATION** (seed to height), **MESHING** (field to triangles), **COLLISION**
+(field to contact). The two below are the ones with load-bearing surprises in them.
 
 **`docs/voxel/DATA_MODEL.md` is the design for where this is heading** — a quantized
 signed-distance field plus a material byte per voxel, why a dual method forces that rather than

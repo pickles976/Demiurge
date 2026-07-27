@@ -34,7 +34,8 @@ The top-level setup before `game.Run(...)` creates long-lived pure services:
    Riptide's unsynchronised static message pools concurrently.
 2. `network.Update()` pumps Riptide and delayed fake-latency deliveries.
 3. `terrainState.Drain()` moves chunk messages from the network thread into the main-thread map.
-4. `terrainView?.RebuildDirty()` meshes a time-budgeted slice of dirty sections.
+4. `terrainView?.RebuildDirty()` dispatches dirty sections to the mesher threads and uploads,
+   in batches, whatever they finished.
 5. local debug picking/physics code runs last.
 
 Do not move scene construction above `Run`; Stride's scene system and graphics services are not in
@@ -77,7 +78,7 @@ The client receives terrain:
 
 `ChunkTcpClient` (reader thread) -> `TerrainState.Receive()` -> `TerrainState.Drain()` (main thread)
 -> `ClientTerrain.MarkChunkDirty()` -> `ClientTerrain.RebuildDirty()`, which splits into
-`Dispatch()` -> `SectionMeshQueue` (worker threads) -> `Collect()` -> `ChunkMeshFactory.Build()`
+`Dispatch()` -> `SectionMeshQueue` (worker threads) -> `Collect()` -> `ChunkMeshFactory.UploadBatch()`
 
 ### Why terrain left Riptide
 
@@ -106,7 +107,33 @@ A blocking TCP write *is* backpressure, so there is no rate constant in the new 
   together: `ChunkMap`'s lookup is a `ConcurrentDictionary`, and `Dispatch()` only submits sections
   whose whole 3x3 chunk neighbourhood is complete, so no voxel a worker reads is still being written.
   `ChunkMesher` itself is stateless apart from the caller's scratch buffer.
-- `ChunkMeshFactory` is **main thread only** and no longer meshes anything — it creates GPU buffers.
+- `ChunkMeshFactory` is **main thread only** and no longer meshes anything — it creates GPU buffers,
+  and it does so in BATCHES: one vertex/index buffer pair shared by up to 64 sections, handed out as a
+  reference-counted `SectionBuffers` so the pair survives until the last of its sections is replaced.
+
+### Why uploads are batched, and what it cost to find out
+
+Terrain took 32 s to appear and three rounds of optimisation did not move it, because each round fixed
+something that was not the bottleneck. Instrumenting `ClientTerrain.Collect` settled it in one run:
+
+- 99% of an upload was the two `Buffer.New` calls, not our CPU prep.
+- The cost **grew**, 2 ms to 11.7 ms and still climbing. A constant cost is a budget problem; a growing
+  one is a resource problem.
+- Two causes compounded. Every `Buffer.New` is its own Vulkan device allocation (2 per section, ~3,468
+  total, near the 4096 cap many drivers impose), and **nothing was ever disposed** — `Scene = null`
+  detaches an entity but does not free GPU memory, so every re-mesh leaked a pair.
+
+Batching plus disposal took the load from 32 s to about 5 s. Measured caveats worth carrying:
+
+- Batch on "whatever finished this frame", NOT on a spatial region. Only ~14% of sections hold
+  geometry, so a chunk column averages 1.14 of them — column batching would buy ~1.1x and would couple
+  sections that re-mesh independently.
+- Indices are rewritten global to the shared buffer rather than using `VertexBufferBinding.vertexOffset`,
+  whose doc says "in Vertex ElementCount" while the backing API takes bytes. Wrong there renders garbage.
+- **Unresolved**: per-batch GPU cost still climbs (2.7 -> 12 ms) at only ~200 live allocations, which is
+  far too few to be an allocator limit. Working hypothesis, NOT verified: `Buffer.New` with initial data
+  uploads synchronously and blocks on a GPU that gets busier as terrain accumulates. Test by creating
+  the buffer empty and uploading through a command list.
 - `ClientTerrain` marks dependent neighbouring sections too, because a section mesh reads apron
   samples across section/chunk boundaries.
 - Nothing in the TCP path touches a Riptide `Message`, which is the only reason it may use threads

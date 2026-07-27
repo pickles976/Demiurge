@@ -100,6 +100,22 @@ namespace Demiurge.GameClient
         }
 
         /// <summary>
+        /// The same gate for a box at any level of detail. A coarse box's apron reaches further in world
+        /// voxels — MeshDependencyRadius SAMPLES at a stride of 4 is half a chunk — so it depends on more
+        /// chunks than a fine one, and the footprint has to be asked for rather than assumed to be 3x3.
+        /// </summary>
+        public bool FootprintComplete(LodSection section)
+        {
+            var (min, max) = section.ChunkFootprint();
+
+            for (int z = min.z; z <= max.z; z++)
+                for (int x = min.x; x <= max.x; x++)
+                    if (!IsComplete(new ChunkIndex { x = x, z = z })) return false;
+
+            return true;
+        }
+
+        /// <summary>
         /// Whether every chunk a body at this position collides against has fully arrived.
         ///
         /// Movement prediction needs this because unloaded terrain is IMPASSABLE in the shared step —
