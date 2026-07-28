@@ -151,7 +151,9 @@ namespace Demiurge
         public static Entity CreateEditorStatus(
             Game game,
             EditorToolSettings settings,
-            EditorSession session)
+            EditorSession session,
+            EditorControllerScript controller,
+            EditorInteractionState interactionState)
         {
             var text = new TextBlock
             {
@@ -176,7 +178,14 @@ namespace Demiurge
                     Page = new UIPage { RootElement = panel },
                     RenderGroup = RenderGroup.Group31,
                 },
-                new EditorStatusScript { Text = text, Settings = settings, Session = session },
+                new EditorStatusScript
+                {
+                    Text = text,
+                    Settings = settings,
+                    Session = session,
+                    Controller = controller,
+                    InteractionState = interactionState,
+                },
             };
         }
 
@@ -347,20 +356,37 @@ namespace Demiurge
             public required TextBlock Text { get; init; }
             public required EditorToolSettings Settings { get; init; }
             public required EditorSession Session { get; init; }
+            public required EditorControllerScript Controller { get; init; }
+            public required EditorInteractionState InteractionState { get; init; }
             private string previous = string.Empty;
 
             public override void Update()
             {
+                if (InteractionState.Playtesting)
+                {
+                    const string playtest =
+                        "PLAYTEST\n[F4] Return to editor";
+                    if (playtest == previous) return;
+                    previous = playtest;
+                    Text.Text = playtest;
+                    return;
+                }
+
                 string detail = Settings.Mode switch
                 {
                     EditorToolMode.Terrain =>
                         $"{Settings.TerrainMode} {Settings.TerrainShape} {Settings.TerrainHalfExtent * 2f}",
-                    EditorToolMode.Block => BlockCatalog.Id(Settings.Block),
-                    EditorToolMode.Object => Settings.ObjectId ?? "No object selected",
+                    EditorToolMode.Block =>
+                        $"{BlockCatalog.Id(Settings.Block)}  " +
+                        $"{Settings.BlockSize.X}x{Settings.BlockSize.Y}x{Settings.BlockSize.Z}",
+                    EditorToolMode.Object => Controller.SelectedPlacementId is { } selected
+                        ? $"Selected {EditorPlacementIds.Display(selected)}"
+                        : Settings.ObjectId ?? "No object selected",
                     _ => string.Empty,
                 };
                 string value =
                     "[1] Terrain   [2] Block   [3] Object\n" +
+                    "[U] Undo   [Y] Redo   [R] Rotate selection   [F4] Playtest\n" +
                     $"MODE: {Settings.Mode.ToString().ToUpperInvariant()}" +
                     (Session.Dirty ? "  *" : string.Empty) +
                     $"\n{detail}";

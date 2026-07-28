@@ -97,11 +97,7 @@ namespace Demiurge
             // a player digs the same hole repeatedly.
             onRegionEdited = (min, max) =>
             {
-                markingUrgent = true;
-                MarkRegionDirty(
-                    (int)MathF.Floor(min.X), (int)MathF.Floor(min.Y), (int)MathF.Floor(min.Z),
-                    (int)MathF.Ceiling(max.X), (int)MathF.Ceiling(max.Y), (int)MathF.Ceiling(max.Z));
-                markingUrgent = false;
+                MarkRegionDirty(min, max);
             };
             terrain.RegionEdited += onRegionEdited;
         }
@@ -127,6 +123,15 @@ namespace Demiurge
             MarkRegionDirty(originX, ChunkConstants.WorldMinY, originZ,
                             originX + ChunkConstants.ChunkWidth - 1, ChunkConstants.WorldMaxY - 1,
                             originZ + ChunkConstants.ChunkWidth - 1);
+        }
+
+        public void MarkRegionDirty(Vector3 min, Vector3 max)
+        {
+            markingUrgent = true;
+            MarkRegionDirty(
+                (int)MathF.Floor(min.X), (int)MathF.Floor(min.Y), (int)MathF.Floor(min.Z),
+                (int)MathF.Ceiling(max.X), (int)MathF.Ceiling(max.Y), (int)MathF.Ceiling(max.Z));
+            markingUrgent = false;
         }
 
         /// <summary>

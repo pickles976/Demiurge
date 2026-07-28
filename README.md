@@ -99,13 +99,18 @@ map status
 map save
 map validate
 map bake
-session host trench-test --build
-session editor trench-test
+session playtest
 ```
 
-`session host <map> --build` saves and bakes the current source, starts an in-process multiplayer
-server using that bake, and connects the local client. `session editor <map>` disposes the runtime
-session and returns to source editing.
+`session playtest`, or `F4`, starts an authoritative in-process server directly from the current
+in-memory editor terrain. It reuses the existing camera and terrain renderer, so entering play is
+fast. You spawn at the fly camera's exact position — including after dying — rather than at the
+map's player spawns, so play starts wherever you were looking. Runtime digging, spawns, and
+equipment are temporary; edited chunks are restored from the source document when you return.
+
+Run `session playtest-networked` when validating the complete shipping path. It saves and bakes,
+loads `runtime.dmap`, streams terrain to a fresh runtime client, and remeshes it. Run the same command
+again to return to the editor.
 
 Editor controls:
 
@@ -116,12 +121,14 @@ Space / Left Ctrl     move up / down
 Left Shift            speed boost
 Left mouse            terraform or place
 Right mouse           inverse terrain operation or remove block
-Mouse wheel           change terrain brush size
+Mouse wheel           change terrain or block brush size
+R                     rotate selected object or named structure
+F4                    toggle authoritative playtest
+U / Y                 undo / redo
 Delete                delete selected object
 Escape                cancel selection
 Ctrl+S                save source
 Ctrl+Shift+B           save and bake
-Ctrl+Z / Ctrl+Y       undo / redo
 ```
 
 Source maps are editable JSON. Runtime maps are complete binary packages:
@@ -145,6 +152,12 @@ spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
 ```
 
+Successful mob spawns print an actor ID such as `@60000`; pass that value to `equip`. Pickup
+spawns print a network object ID such as `#1`. Runtime spawns and equipment changes are temporary
+session state and are not written by `map save`. Editor placements instead use stable eight-character
+IDs: `editor object list` prints them, and `editor object equip <placement-id> <weapon>` persists a
+mob weapon in the source and runtime bake. Existing mobs default to an AK-47.
+
 Session commands:
 
 ```text
@@ -152,6 +165,8 @@ session status
 session editor <map-name>
 session host <map-name> [--build]
 session join <host>
+session playtest
+session playtest-networked
 ```
 
 Map and editor commands are documented in [docs/COMMANDS.md](docs/COMMANDS.md), including terrain

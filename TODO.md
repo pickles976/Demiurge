@@ -1,6 +1,6 @@
 # PVP Mechanics
 
-- [ ] brick wall
+- [ ] brick wall texture and block type
 
 - [ ] animation clean-up
     - [ ] keep gun pointed forward when not sprinting, don't wobble
@@ -16,21 +16,25 @@
     - [ ] mortars
 
     - [ ] shovel
+      - [ ] add helmet
     - [ ] add mosin-nagant
     - [ ] add SKS
     - [ ] add ppsh
     - [ ] heavy MG
-
-    - [ ] add wearables
-        - [x] add armor
-        - [ ] add helmet
-
-    - [ ] add health pack pickups
+    - [ ] flag 3D model
     - [ ] add black cats
 
-    - [ ] flag 3D model
+    - [ ] health regeneration
+    - [ ] switch to projectile-based weapons
 
-- [ ] switch to projectile-based weapons
+- [ ] add trees
+- [ ] tree destruction
+      - [ ] low LOD tree
+      - [ ] trees have health and take damage and change models to a broken version
+      - [ ] trees delete if the terrain beneath them goes away
+
+- [ ] create map
+
 
 - [ ] clean up UI and stuff
 

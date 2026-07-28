@@ -115,12 +115,14 @@ internal sealed class DedicatedServerConsole : IDisposable
                 ? """
                     spawn mob <x> <z>
                       Spawns a mob on the terrain at absolute X/Z coordinates.
+                      Success prints the actor ID used by 'equip', for example @60000.
                       Example: spawn mob 10 -15
                     """
                 : topics.Count > 1 && topics[1].Equals("pickup", StringComparison.OrdinalIgnoreCase)
                     ? """
                         spawn pickup <item> <x> <z>
                           Spawns an item pickup on the terrain at absolute X/Z coordinates.
+                          Success prints its network object ID, for example #1.
                           Example: spawn pickup ak47 0 0
                           Run 'items' to list item names.
                         """
@@ -138,6 +140,7 @@ internal sealed class DedicatedServerConsole : IDisposable
                   Equips a player or mob. Run 'players' to find actor IDs.
                   Example: equip @60000 ak47
                   The dedicated console cannot use @s.
+                  Equipment changes are session-only and are not written into map files.
                 """,
             "map" => """
                 Map commands:

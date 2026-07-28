@@ -53,6 +53,56 @@ namespace Demiurge
         }
 
         /// <summary>
+        /// Nearest floor crossing around a world-space point. Unlike <see cref="HighestSurface"/>,
+        /// this keeps an editor placement on the local trench or cave floor instead of moving it to
+        /// unrelated terrain higher in the same column.
+        /// </summary>
+        public static float? NearestSurfaceY(
+            ChunkMap map,
+            float worldX,
+            float worldZ,
+            float targetY,
+            float maxDistance = 1.5f)
+        {
+            if (!float.IsFinite(worldX) || !float.IsFinite(worldZ)
+                || !float.IsFinite(targetY) || !float.IsFinite(maxDistance)
+                || maxDistance < 0f)
+                throw new ArgumentOutOfRangeException(nameof(maxDistance));
+
+            int firstY = Math.Max(
+                ChunkConstants.WorldMinY,
+                (int)MathF.Floor(targetY - maxDistance) - 1);
+            int lastY = Math.Min(
+                ChunkConstants.WorldMaxY - 2,
+                (int)MathF.Ceiling(targetY + maxDistance));
+
+            float? nearest = null;
+            float nearestDistance = float.MaxValue;
+            for (int y = firstY; y <= lastY; y++)
+            {
+                if (!TerrainCollision.TrySampleRaw(
+                        map, new Vector3(worldX, y, worldZ), out float below)
+                    || !TerrainCollision.TrySampleRaw(
+                        map, new Vector3(worldX, y + 1f, worldZ), out float above))
+                    continue;
+
+                if (below >= 0f || above < 0f) continue;
+
+                float denominator = below - above;
+                float crossingY = MathF.Abs(denominator) < 1e-6f
+                    ? y
+                    : y + below / denominator;
+                float distance = MathF.Abs(crossingY - targetY);
+                if (distance > maxDistance || distance >= nearestDistance) continue;
+
+                nearest = crossingY;
+                nearestDistance = distance;
+            }
+
+            return nearest;
+        }
+
+        /// <summary>
         /// A spawn position on the surface at the given world column: the same X/Z, with Y on the
         /// ground. Falls back to the world floor if the column has no surface, so a caller can't get
         /// a silent null and place something at the origin.

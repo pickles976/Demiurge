@@ -50,6 +50,34 @@ public class TerrainEditTests
         Assert.Equal(MathF.Sqrt(3f * 3f + 3f * 3f), d, 4);
     }
 
+    [Fact]
+    public void OrganicBrushIsDeterministicBoundedAndNotSpherical()
+    {
+        var centre = new Vector3(20f, 30f, -10f);
+        var extent = new Vector3(4f);
+        float atCentre = TerrainEdits.ShapeDistance(
+            Vector3.Zero, extent, EditShape.Organic, centre);
+        float farAway = TerrainEdits.ShapeDistance(
+            new Vector3(8f, 0f, 0f), extent, EditShape.Organic, centre + new Vector3(8f, 0f, 0f));
+        float xSurface = TerrainEdits.ShapeDistance(
+            new Vector3(4f, 0f, 0f), extent, EditShape.Organic, centre + new Vector3(4f, 0f, 0f));
+        float zSurface = TerrainEdits.ShapeDistance(
+            new Vector3(0f, 0f, 4f), extent, EditShape.Organic, centre + new Vector3(0f, 0f, 4f));
+
+        Assert.True(atCentre < 0f);
+        Assert.True(farAway > 0f);
+        Assert.Equal(
+            xSurface,
+            TerrainEdits.ShapeDistance(
+                new Vector3(4f, 0f, 0f),
+                extent,
+                EditShape.Organic,
+                centre + new Vector3(4f, 0f, 0f)));
+        Assert.NotEqual(xSurface, zSurface);
+        Assert.InRange(xSurface, -0.76f, 0.76f);
+        Assert.InRange(zSurface, -0.76f, 0.76f);
+    }
+
     // ---- Adding ----
 
     /// <summary>
@@ -101,6 +129,50 @@ public class TerrainEditTests
 
         // Already solid and still solid: the edit must not repaint it.
         Assert.Equal(BlockType.BlockType_Grass, chunk[i].Material);
+    }
+
+    [Fact]
+    public void BlockCellCreatesAUnitSolidVolumeWithTheSelectedMaterial()
+    {
+        var chunk = new TerrainChunk(new ChunkIndex { x = 0, z = 0 });
+        for (int y = 0; y < ChunkConstants.ChunkHeight; y++)
+            chunk.FillSlab(y, Voxel.OutsideAbove);
+
+        TerrainEdits.ApplyBlockCell(
+            chunk,
+            new Vector3(8f, 64f, 8f),
+            BlockType.BlockType_Stone);
+
+        int centre = ChunkTransforms.WorldVoxelIndex(8, 64, 8);
+        Assert.Equal(-0.5f, chunk[centre].Distance, 4);
+        Assert.Equal(BlockType.BlockType_Stone, chunk[centre].Material);
+
+        Assert.True(chunk[ChunkTransforms.WorldVoxelIndex(7, 64, 8)].Distance > 0f);
+        Assert.True(chunk[ChunkTransforms.WorldVoxelIndex(9, 64, 8)].Distance > 0f);
+        Assert.True(chunk[ChunkTransforms.WorldVoxelIndex(8, 63, 8)].Distance > 0f);
+        Assert.True(chunk[ChunkTransforms.WorldVoxelIndex(8, 65, 8)].Distance > 0f);
+    }
+
+    [Fact]
+    public void BlockCellOwnsMaterialWhereItOverlapsExistingTerrain()
+    {
+        var chunk = new TerrainChunk(new ChunkIndex { x = 0, z = 0 });
+        for (int y = 0; y < ChunkConstants.ChunkHeight; y++)
+            chunk.FillSlab(y, Voxel.OutsideAbove);
+
+        int overlap = ChunkTransforms.WorldVoxelIndex(8, 64, 8);
+        chunk[overlap] = new Voxel
+        {
+            Distance = -0.5f,
+            Material = BlockType.BlockType_Grass,
+        };
+
+        TerrainEdits.ApplyBlockCell(
+            chunk,
+            new Vector3(8f, 64f, 8f),
+            BlockType.BlockType_Stone);
+
+        Assert.Equal(BlockType.BlockType_Stone, chunk[overlap].Material);
     }
 
     // ---- Subtracting ----
@@ -391,5 +463,31 @@ public class SubmeshTests
         Assert.Contains(BlockType.BlockType_Stone, materials);
         Assert.Contains(BlockType.BlockType_Grass, materials);
         Assert.DoesNotContain(BlockType.BlockType_Air, materials);
+    }
+
+    [Fact]
+    public void SampleCentredStoneBlockProducesAStoneSurfaceNetSubmesh()
+    {
+        const int sampleY = 20;
+        var map = SyntheticTerrain.Build((x, y, z) => 4f, chunkRadius: 2);
+        var chunk = map.Get(new ChunkIndex { x = 0, z = 0 })!;
+        TerrainEdits.ApplyBlockCell(
+            chunk,
+            new Vector3(8f, sampleY, 8f),
+            BlockType.BlockType_Stone);
+
+        int sectionY = (sampleY - ChunkConstants.WorldMinY) / ChunkConstants.SectionHeight;
+        var scratch = new Sample[ChunkMesher.ScratchVolume];
+        Assert.True(ChunkMesher.TryFillScratch(
+            map,
+            SectionIndex.Of(new ChunkIndex { x = 0, z = 0 }, sectionY),
+            scratch));
+
+        var mesh = ChunkMesher.GenerateMesh(scratch);
+
+        Assert.NotEmpty(mesh.Indices);
+        Assert.Equal(
+            [BlockType.BlockType_Stone],
+            mesh.Submeshes.Select(submesh => submesh.Material));
     }
 }

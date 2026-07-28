@@ -14,6 +14,72 @@ public sealed class EditorCoreTests
     }
 
     [Fact]
+    public void BlockTargetingSelectsSamplesAcrossTheSurface()
+    {
+        var samples = EditorTargeting.Samples(
+            new Vector3(3.25f, 12.5f, -2.25f), Vector3.UnitY);
+
+        Assert.Equal(new Int3(3, 12, -2), samples.Solid);
+        Assert.Equal(new Int3(3, 13, -2), samples.Air);
+    }
+
+    [Fact]
+    public void BlockBrushPreservesDimensionsAndBounds()
+    {
+        var anchor = new Int3(10, 20, 30);
+        var size = new Int3(3, 2, 1);
+
+        var cells = BlockBrush.Cells(anchor, size).ToArray();
+        var (min, max) = BlockBrush.Bounds(anchor, size);
+
+        Assert.Equal(6, cells.Length);
+        Assert.Equal(6, cells.Distinct().Count());
+        Assert.Equal(new Int3(9, 20, 30), min);
+        Assert.Equal(new Int3(11, 21, 30), max);
+        Assert.All(cells, cell =>
+            Assert.True(
+                cell.X >= min.X && cell.X <= max.X
+                && cell.Y >= min.Y && cell.Y <= max.Y
+                && cell.Z >= min.Z && cell.Z <= max.Z));
+    }
+
+    [Fact]
+    public void EditorCommandsConfigureOrganicAndBlockBrushes()
+    {
+        var session = new EditorSession(EditorDocument.Create("tool-settings"));
+        var settings = new EditorToolSettings();
+
+        Assert.True(EditorCommandParser.Execute(
+            "editor terrain shape organic", settings, session).Success);
+        Assert.Equal(EditShape.Organic, settings.TerrainShape);
+
+        Assert.True(EditorCommandParser.Execute(
+            "editor block size 5 2 1", settings, session).Success);
+        Assert.Equal(new Int3(5, 2, 1), settings.BlockSize);
+        Assert.False(EditorCommandParser.Execute(
+            "editor block rotate 90", settings, session).Success);
+    }
+
+    [Fact]
+    public void PlacementIdsResolveDisplayedPrefixes()
+    {
+        var document = EditorDocument.Create("placement-ids");
+        var mob = new EditorPlacement
+        {
+            Id = Guid.Parse("a1b2c3d4-1111-2222-3333-444444444444"),
+            Kind = EditorPlacementKind.Mob,
+            ArchetypeId = "demiurge:mob",
+            Cell = new Int3(2, 80, 2),
+            WeaponId = "demiurge:glock",
+        };
+        document.Placements.Add(mob);
+
+        Assert.Equal("a1b2c3d4", EditorPlacementIds.Display(mob.Id));
+        Assert.Equal(mob.Id, EditorPlacementIds.Resolve(document, "a1b2c3d4").Id);
+        Assert.Equal(mob.Id, EditorPlacementIds.Resolve(document, mob.Id.ToString()).Id);
+    }
+
+    [Fact]
     public void SourceRoundTripIsCanonical()
     {
         var document = EditorDocument.Create("canonical");
@@ -31,6 +97,14 @@ public sealed class EditorCoreTests
             Cell = new Int3(1, 50, 1),
             BlockId = "demiurge:dirt",
         });
+        document.Placements.Add(new EditorPlacement
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
+            Kind = EditorPlacementKind.Mob,
+            ArchetypeId = "demiurge:mob",
+            Cell = new Int3(2, 50, 2),
+            WeaponId = "demiurge:glock",
+        });
 
         string directory = Path.Combine(Path.GetTempPath(), "demiurge-editor-tests", Guid.NewGuid().ToString("N"));
         string path = Path.Combine(directory, "source.json");
@@ -40,6 +114,10 @@ public sealed class EditorCoreTests
             var loaded = SourceMapSerializer.Load(path);
             Assert.Equal(SourceMapSerializer.Hash(document), SourceMapSerializer.Hash(loaded));
             Assert.Equal([1L, 2L], loaded.Blocks.Select(block => block.Sequence));
+            Assert.Equal(
+                "demiurge:glock",
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == EditorPlacementKind.Mob).WeaponId);
         }
         finally
         {
@@ -73,6 +151,48 @@ public sealed class EditorCoreTests
         Assert.Equal(block.Id, session.BlockAt(target)?.Id);
     }
 
+    [Fact]
+    public void RestoringPlaytestTerrainDoesNotChangeSourceState()
+    {
+        var session = new EditorSession(EditorDocument.Create("playtest-restore"));
+        var index = new ChunkIndex { x = 0, z = 0 };
+        var chunk = Assert.IsType<TerrainChunk>(session.Terrain.Get(index));
+        int voxelIndex = ChunkTransforms.WorldVoxelIndex(4, ChunkConstants.WorldMinY, 4);
+        Voxel source = chunk[voxelIndex];
+        Assert.NotEqual(default, source);
+        chunk[voxelIndex] = default;
+        int changeCount = 0;
+        session.Changed += _ => changeCount++;
+
+        session.RestoreTerrain([index]);
+
+        Assert.Equal(source, session.Terrain.Get(index)![voxelIndex]);
+        Assert.False(session.Dirty);
+        Assert.Equal(0, session.History.UndoCount);
+        Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public void EvaluatedBlockUsesItsCanonicalMaterial()
+    {
+        var document = EditorDocument.Create("block-material");
+        document.Blocks.Add(new EditorBlockPlacement
+        {
+            Id = Guid.NewGuid(),
+            Sequence = 1,
+            Cell = new Int3(8, 90, 8),
+            BlockId = "demiurge:stone",
+        });
+
+        var chunk = new EditorTerrainEvaluator().EvaluateChunk(
+            document, new ChunkIndex { x = 0, z = 0 });
+
+        var voxel = chunk[ChunkTransforms.WorldVoxelIndex(8, 90, 8)];
+        Assert.Equal(-0.5f, voxel.Distance, 4);
+        Assert.Equal(BlockType.BlockType_Stone, voxel.Material);
+        Assert.True(chunk[ChunkTransforms.WorldVoxelIndex(9, 90, 8)].Distance > 0f);
+    }
+
     [Theory]
     [InlineData(0, false, 1, 2)]
     [InlineData(1, false, -2, 1)]
@@ -89,6 +209,14 @@ public sealed class EditorCoreTests
     public void BakedRuntimeRoundTripMatchesEditorTerrain()
     {
         var document = EditorDocument.Create("bake-parity");
+        document.Placements.Add(new EditorPlacement
+        {
+            Id = Guid.NewGuid(),
+            Kind = EditorPlacementKind.Mob,
+            ArchetypeId = "demiurge:mob",
+            Cell = document.Placements[0].Cell with { X = 2 },
+            WeaponId = "demiurge:glock",
+        });
         var runtime = EditorTerrainEvaluator.Bake(document);
         string directory = Path.Combine(
             Path.GetTempPath(), "demiurge-editor-tests", Guid.NewGuid().ToString("N"));
@@ -103,6 +231,10 @@ public sealed class EditorCoreTests
             Assert.Equal(SourceMapSerializer.Hash(document), loaded.SourceHash);
             Assert.Equal(runtime.ContentHash, loaded.ContentHash);
             Assert.Equal(runtime.Terrain.Count, loaded.Terrain.Count);
+            Assert.Equal(
+                ItemType.Glock,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == RuntimePlacementKind.Mob).Item);
 
             foreach (var expected in runtime.Terrain.Snapshot())
             {
@@ -230,5 +362,21 @@ public sealed class EditorCoreTests
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, error => error.Contains("intersects terrain"));
+    }
+
+    [Fact]
+    public void PlacementPositionUsesLocalSdfSurface()
+    {
+        var document = EditorDocument.Create("placement-surface");
+        var terrain = new EditorTerrainEvaluator().EvaluateAll(document);
+        float surfaceY = SurfaceQuery.SurfacePosition(terrain, 0.5f, 0.5f).Y;
+        var cell = new Int3(0, (int)MathF.Floor(surfaceY), 0);
+
+        var position = EditorPlacementPosition.Resolve(terrain, cell);
+
+        Assert.Equal(0.5f, position.X);
+        Assert.Equal(0.5f, position.Z);
+        Assert.True(TerrainCollision.TrySampleRaw(terrain, position, out float distance));
+        Assert.InRange(MathF.Abs(distance), 0f, 0.03f);
     }
 }

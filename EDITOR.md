@@ -88,9 +88,10 @@ Mouse                look
 Tilde                open or close terminal
 Ctrl+S               save source map
 Ctrl+Shift+B         bake runtime map
-Ctrl+Z / Ctrl+Y      undo / redo
+U / Y                undo / redo
 Escape               cancel active placement or clear selection
 Delete               delete selected editor object
+F4                   toggle fast in-editor authoritative playtest
 ```
 
 The runtime meaning of `F3` remains unchanged. Editor mode is already a fly camera, so `F3` has no
@@ -106,6 +107,8 @@ session editor <map-name>
 session host <map-name>
 session host <map-name> --build
 session join <host>
+session playtest
+session playtest-networked
 
 map list
 map new <map-name>
@@ -126,9 +129,25 @@ or current local session, starts a real in-process server from
 `maps/trench-test/runtime.dmap`, and connects the local client to it. The server binds the normal
 ports, runs the normal authority and replication paths, and accepts additional clients.
 
-`session host <map> --build` is the fast playtest path from the editor. It validates, saves, and
-bakes the current document first, then transitions only if all three steps succeed. Without
-`--build`, hosting rejects a missing or stale runtime bake instead of silently playing old data.
+`session playtest`, also bound to `F4`, is the fast playtest path. It validates the current document,
+clones its already-evaluated terrain for the authoritative in-process server, and attaches normal
+runtime networking, actors, controls, and views to the existing editor camera and terrain renderer.
+The local client begins with the editor terrain preloaded, while additional clients can still connect
+and receive the server clone through the normal terrain stream. Runtime terrain changes are tracked
+and the affected editor chunks are replayed from source on return; runtime object and equipment
+changes disappear with the server session.
+
+Both playtest commands spawn you at the fly camera's exact position rather than at the map's player
+spawns, so you test whatever you were looking at. The camera is usually in the air, so expect to
+fall the last few metres. That position is the spawn point for the whole playtest server — respawns
+after death, and any second client that connects to it, land there too. Player spawn placements
+still apply to `session host` and to a dedicated server.
+
+`session playtest-networked` is the slower release-path check. It saves and bakes the source,
+disposes the editor presentation, loads `runtime.dmap` into a fresh server, streams terrain to a
+fresh client, and remeshes it. Run the command again to return to the same editor state. Without
+`--build`, ordinary hosting rejects a missing or stale runtime bake instead of silently playing old
+data.
 
 `session join <host>` joins an existing server. A joining client cannot select that server's map;
 the remote server remains authoritative.
@@ -162,6 +181,9 @@ editor object pickup demiurge:body_armor
 editor object mob
 editor object spawn default
 editor object clear
+editor object list
+editor object select <placement-id>
+editor object equip <placement-id|selected> <weapon-id>
 
 editor rotate 90
 editor undo
@@ -203,6 +225,8 @@ stop
 
 World commands reuse `GameCommandParser`, `ServerCommandService`, `GameWorld`, `MobSystem`, and
 `ItemSystem`. The console must not grow a second implementation of spawn or equip behavior.
+Successful mob spawns return a labeled actor ID such as `@60000`; pickup spawns return a labeled
+network object ID such as `#1`.
 
 The dedicated console is an administrator command source:
 
@@ -218,6 +242,7 @@ The console has no player body, position, look direction, or actor identity. The
 - Spawn commands require absolute X and Z coordinates.
 - `equip` requires an explicit actor ID.
 - Y still comes from authoritative terrain through `SurfaceQuery`.
+- Runtime spawns and equipment are session-only and never mutate the source map.
 
 This keeps the shared grammar while making context-dependent behavior explicit. A future
 `execute as` command can provide actor-relative context without inventing an invisible console
@@ -255,8 +280,9 @@ Create a pure `EditorTargeting` helper that converts a `TerrainHit` into:
 - The adjacent air cell on the outside of the hit surface.
 - The world-space center and bounds of either cell.
 
-The conversion must use `floor(hit +/- normal * epsilon)`, not rounding. Unit tests must cover
-negative coordinates, exact integer boundaries, steep surfaces, and hits on chunk seams.
+Object-anchor conversion uses `floor(hit +/- normal * epsilon)`. Block mode instead steps half a
+voxel to either side of the surface and rounds to the solid and air SDF samples. Unit tests must
+cover negative coordinates, exact integer boundaries, steep surfaces, and hits on chunk seams.
 
 The target preview uses `LineRenderer`, which already provides immediate-mode world-space lines:
 
@@ -268,7 +294,7 @@ The target preview uses `LineRenderer`, which already provides immediate-mode wo
 ### Terrain Brush Mode
 
 The crosshair ray finds the terrain surface. The viewport draws the brush footprint and a simple
-wireframe sphere or box.
+wireframe sphere, box, or organic contour.
 
 ```text
 Left mouse            apply selected operation
@@ -289,6 +315,11 @@ frame. Sample the stroke by world distance:
 This makes brush density independent of framerate and avoids flooding the mesher during a stutter.
 All dabs in one stroke share operation, shape, size, strength, and material.
 
+The organic brush is a smooth ellipsoid displaced by bounded deterministic 3D value noise sampled
+in world space. World-space sampling makes adjacent dabs share one coherent field instead of
+repeating an identical local stamp. Its displacement remains below one voxel so the normal CSG
+margin still covers every changed sample.
+
 ### Block Placement Mode
 
 Block mode uses the adjacent air cell as the placement target and the solid-side cell as the removal
@@ -298,21 +329,27 @@ target.
 Left mouse       place the selected block
 Left mouse drag  place across newly entered cells
 Right mouse      remove the targeted placed block
+Mouse wheel      grow or shrink all brush dimensions
 ```
 
-The preview is a unit wireframe cube at the exact grid cell that will change. Dragging remembers
-cells already visited during the current gesture, so a stationary cursor cannot repeatedly place
-the same block.
+The preview is the wireframe bounds of the axis-aligned `X x Y x Z` sample brush. Plain block
+brushes have one shape and no rotation. Dragging remembers samples already visited during the
+current gesture, so overlapping brush placements do not rewrite the same block repeatedly. One drag
+remains one undo transaction.
 
 Each block is represented in the source map as an editor block placement. Evaluation turns it into
 an additive axis-aligned SDF box:
 
 ```text
-cell minimum:  (x, y, z)
-CSG center:    (x + 0.5, y + 0.5, z + 0.5)
+sample center: (x, y, z)
+CSG center:    (x, y, z)
 half extent:   (0.5, 0.5, 0.5)
 material:      selected BlockType
 ```
+
+Centering the box on a lattice sample is load-bearing: it gives surface nets one negative interior
+sample and places the reconstructed faces at `x/y/z +/- 0.5`. Centering it between samples leaves
+all eight corners on the zero boundary, producing no solid field for surface nets to render.
 
 Removing a block removes that source placement and reevaluates affected chunks. It does not apply a
 subtractive inverse brush. This preserves terrain that existed before the block was placed and
@@ -334,17 +371,18 @@ Left mouse after selection  move it to the highlighted cell
 Right mouse or Escape       cancel move / clear selection
 Delete                      delete selection
 R                           rotate selection or pending object by 90 degrees
-Shift+R                     rotate by 15 degrees
 ```
 
 Selection raycasts editor placement bounds and terrain, taking the nearest valid result. The first
 version uses a stable cell-sized selection proxy instead of depending on model mesh raycasts.
 
-Object anchors are explicit per placement kind:
-
-- Pickup: bottom-center of the target cell, with the item model's existing cosmetic offset.
-- Mob: feet at the support surface inside the target cell.
-- Player spawn: feet position plus yaw. It renders only as an editor marker.
+Every object source record stores a stable placement GUID and an integer anchor cell. World X/Z are
+the cell center. `EditorPlacementPosition` resolves world Y to the nearest upward SDF crossing around
+the cell center, so a placement follows the local floor in a trench or cave rather than the highest
+surface in the column. Preview views, validation, and runtime baking share this conversion. Pickups
+use the resolved support position, mobs use it as their feet, and player spawns use it as feet plus
+yaw after applying the vertical capsule clearance required on slopes. Player spawns render only as
+editor markers.
 
 The preview must show the selected model when cheap to do so and always show the target cell. A
 wireframe proxy is an acceptable first milestone before translucent ghost materials exist.
@@ -352,6 +390,11 @@ wireframe proxy is an acceptable first milestone before translucent ghost materi
 Clicking an existing object selects it without creating a new object. Once selected, the object
 remains in its old position while a ghost or outline follows the target. The next valid left click
 commits one move command. Escape leaves the original placement unchanged.
+
+Placing or selecting an object reports the first eight hexadecimal characters of its stable GUID.
+`editor object list` shows every placement and its properties; commands accept that short unique
+prefix or the full GUID. `editor object equip <placement-id|selected> <weapon-id>` updates a mob's
+persistent weapon through an undoable placement command.
 
 ## Input Ownership
 
@@ -551,7 +594,8 @@ text to the server. Introduce:
 public interface ITerminalCommandDispatcher
 {
     TerminalCommandResult Execute(string commandLine);
-    IReadOnlyList<string> Help();
+    IReadOnlyList<string> Complete(string commandLine);
+    IReadOnlyList<string> Help(string? topic = null);
 }
 ```
 
@@ -715,8 +759,13 @@ Use explicit DTO vector types rather than relying on reflection-based serializat
 - Canonical archetype ID
 - Integer anchor cell
 - Yaw
+- Optional canonical mob weapon ID; missing values retain the AK-47 default
 - Optional group ID
 - Kind-specific properties through versioned typed fields, not an unbounded string dictionary
+
+Runtime `equip` commands do not edit this document. Editor `object equip` does: the weapon ID is
+saved in `source.json`, copied into the runtime placement's existing item field during bake, and
+equipped by the server when that mob spawns.
 
 Use canonical source IDs:
 
@@ -893,6 +942,8 @@ The bake pipeline:
 7. Atomically replace `runtime.dmap`.
 
 The runtime package contains no generator dependency and no editor operation list.
+Runtime entities spawned or equipped after loading are not part of the package and are discarded on
+map rotation or shutdown.
 
 Version 1 writes bounds and chunk compatibility values into the header for validation, but requires
 them to equal the current runtime constants. This lets `ChunkTcpServer` and `TerrainLod` keep using

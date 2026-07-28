@@ -20,6 +20,8 @@ namespace Demiurge
         Box,
         /// <summary>Sphere. For dug things, where flat faces and right angles are the artefact.</summary>
         Sphere,
+        /// <summary>A smooth ellipsoid whose surface is displaced by bounded world-space noise.</summary>
+        Organic,
     }
 
     public enum EditMode
@@ -78,9 +80,81 @@ namespace Demiurge
         /// <summary>Distance to whichever primitive an edit is using. <paramref name="extent"/> is a
         /// half-extent for a box and a radius (its X) for a sphere.</summary>
         public static float ShapeDistance(Vector3 offsetFromCentre, Vector3 extent, EditShape shape)
-            => shape == EditShape.Sphere
-                ? SphereDistance(offsetFromCentre, extent.X)
-                : BoxDistance(offsetFromCentre, extent);
+            => ShapeDistance(offsetFromCentre, extent, shape, offsetFromCentre);
+
+        /// <summary>
+        /// Shape distance with an explicit world position. Only the organic brush uses world
+        /// position, which keeps overlapping dabs on one coherent noise field instead of stamping
+        /// the same local deformation repeatedly.
+        /// </summary>
+        public static float ShapeDistance(
+            Vector3 offsetFromCentre,
+            Vector3 extent,
+            EditShape shape,
+            Vector3 worldPosition)
+            => shape switch
+            {
+                EditShape.Sphere => SphereDistance(offsetFromCentre, extent.X),
+                EditShape.Box => BoxDistance(offsetFromCentre, extent),
+                EditShape.Organic => OrganicDistance(offsetFromCentre, extent, worldPosition),
+                _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "Unknown edit shape"),
+            };
+
+        private static float OrganicDistance(
+            Vector3 offsetFromCentre,
+            Vector3 extent,
+            Vector3 worldPosition)
+        {
+            var radius = Vector3.Max(Vector3.Abs(extent), new Vector3(0.1f));
+            var normalized = offsetFromCentre / radius;
+            float k0 = normalized.Length();
+            float k1 = (offsetFromCentre / (radius * radius)).Length();
+            float ellipsoid = k1 <= 1e-6f
+                ? -MathF.Min(radius.X, MathF.Min(radius.Y, radius.Z))
+                : k0 * (k0 - 1f) / k1;
+
+            float minimumRadius = MathF.Min(radius.X, MathF.Min(radius.Y, radius.Z));
+            float wavelength = MathF.Max(0.75f, minimumRadius * 0.8f);
+            float amplitude = MathF.Min(0.75f, minimumRadius * 0.3f);
+            Vector3 p = worldPosition / wavelength;
+            float noise = (ValueNoise(p) + 0.5f * ValueNoise(p * 2.03f + new Vector3(17.1f))) / 1.5f;
+            return ellipsoid + noise * amplitude;
+        }
+
+        private static float ValueNoise(Vector3 point)
+        {
+            int x = (int)MathF.Floor(point.X);
+            int y = (int)MathF.Floor(point.Y);
+            int z = (int)MathF.Floor(point.Z);
+            float tx = Fade(point.X - x);
+            float ty = Fade(point.Y - y);
+            float tz = Fade(point.Z - z);
+
+            float x00 = Lerp(Hash(x, y, z), Hash(x + 1, y, z), tx);
+            float x10 = Lerp(Hash(x, y + 1, z), Hash(x + 1, y + 1, z), tx);
+            float x01 = Lerp(Hash(x, y, z + 1), Hash(x + 1, y, z + 1), tx);
+            float x11 = Lerp(Hash(x, y + 1, z + 1), Hash(x + 1, y + 1, z + 1), tx);
+            return Lerp(Lerp(x00, x10, ty), Lerp(x01, x11, ty), tz);
+        }
+
+        private static float Hash(int x, int y, int z)
+        {
+            uint value = (uint)x * 0x8da6b343u
+                       ^ (uint)y * 0xd8163841u
+                       ^ (uint)z * 0xcb1ab31fu
+                       ^ 0x9e3779b9u;
+            value ^= value >> 16;
+            value *= 0x7feb352du;
+            value ^= value >> 15;
+            value *= 0x846ca68bu;
+            value ^= value >> 16;
+            return (value & 0x00ffffffu) * (2f / 0x00ffffffu) - 1f;
+        }
+
+        private static float Fade(float value)
+            => value * value * value * (value * (value * 6f - 15f) + 10f);
+
+        private static float Lerp(float a, float b, float amount) => a + (b - a) * amount;
 
         /// <summary>Signed distance to an axis-aligned box. Negative inside, exact outside.</summary>
         public static float BoxDistance(Vector3 offsetFromCentre, Vector3 halfExtent)
@@ -98,6 +172,35 @@ namespace Demiurge
         public static void ApplyBox(TerrainChunk chunk, Vector3 centre, Vector3 halfExtent,
                                     EditMode mode, BlockType fill, EditShape editShape = EditShape.Box,
                                     float strength = 1f)
+            => Apply(
+                chunk, centre, halfExtent, mode, fill, editShape, strength,
+                autoTerrainMaterial: true,
+                repaintExistingSolid: false);
+
+        /// <summary>
+        /// Adds one editor block cell to the sampled field.
+        ///
+        /// The centre is an integer SDF sample and the faces lie half a voxel away, so the stamp has
+        /// one negative interior sample. This is the same field operation as a generated wall,
+        /// reduced to a 1x1x1 volume. Unlike a terrain union, an authored block owns the material
+        /// inside its volume, including samples that overlap existing terrain.
+        /// </summary>
+        public static void ApplyBlockCell(TerrainChunk chunk, Vector3 centre, BlockType fill)
+            => Apply(
+                chunk, centre, new Vector3(0.5f), EditMode.Add, fill, EditShape.Box, 1f,
+                autoTerrainMaterial: false,
+                repaintExistingSolid: true);
+
+        private static void Apply(
+            TerrainChunk chunk,
+            Vector3 centre,
+            Vector3 halfExtent,
+            EditMode mode,
+            BlockType fill,
+            EditShape editShape,
+            float strength,
+            bool autoTerrainMaterial,
+            bool repaintExistingSolid)
         {
             strength = Math.Clamp(strength <= 0f ? 1f : strength, 0f, 1f);
             (int originX, int originZ) = ChunkTransforms.ChunkOrigin(chunk.index);
@@ -119,7 +222,7 @@ namespace Demiurge
                     for (int x = minX; x <= maxX; x++)
                     {
                         var world = new Vector3(originX + x, y, originZ + z);
-                        float shape = ShapeDistance(world - centre, halfExtent, editShape);
+                        float shape = ShapeDistance(world - centre, halfExtent, editShape, world);
 
                         int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
 
@@ -140,16 +243,17 @@ namespace Demiurge
                         // cases, and the third is the one that matters: rock that was already
                         // solid keeps whatever it was, so an edit can't repaint a vein.
                         if (combined >= 0f) voxel.Material = BlockType.BlockType_Air;
-                        else if (existing >= 0f)
+                        else if (existing >= 0f || repaintExistingSolid && shape < 0f)
                         {
                             // Grass is the auto-surface terrain fill. Classify the CSG surface from
                             // its local gradient so authored hills obey the same visual walkability
                             // rule as generated terrain: walkable faces are grass and steeper faces
                             // are stone.
-                            voxel.Material = fill == BlockType.BlockType_Grass
+                            voxel.Material = autoTerrainMaterial && fill == BlockType.BlockType_Grass
                                 ? AutoTerrainMaterial(
                                     voxel.Distance,
                                     shape,
+                                    world,
                                     world - centre,
                                     halfExtent,
                                     editShape)
@@ -165,17 +269,42 @@ namespace Demiurge
         private static BlockType AutoTerrainMaterial(
             float storedDistance,
             float shapeDistance,
+            Vector3 world,
             Vector3 offset,
             Vector3 extent,
             EditShape shape)
         {
             const float gradientStep = 0.25f;
-            float dx = ShapeDistance(offset + Vector3.UnitX * gradientStep, extent, shape)
-                     - ShapeDistance(offset - Vector3.UnitX * gradientStep, extent, shape);
-            float dy = ShapeDistance(offset + Vector3.UnitY * gradientStep, extent, shape)
-                     - ShapeDistance(offset - Vector3.UnitY * gradientStep, extent, shape);
-            float dz = ShapeDistance(offset + Vector3.UnitZ * gradientStep, extent, shape)
-                     - ShapeDistance(offset - Vector3.UnitZ * gradientStep, extent, shape);
+            float dx = ShapeDistance(
+                           offset + Vector3.UnitX * gradientStep,
+                           extent,
+                           shape,
+                           world + Vector3.UnitX * gradientStep)
+                     - ShapeDistance(
+                           offset - Vector3.UnitX * gradientStep,
+                           extent,
+                           shape,
+                           world - Vector3.UnitX * gradientStep);
+            float dy = ShapeDistance(
+                           offset + Vector3.UnitY * gradientStep,
+                           extent,
+                           shape,
+                           world + Vector3.UnitY * gradientStep)
+                     - ShapeDistance(
+                           offset - Vector3.UnitY * gradientStep,
+                           extent,
+                           shape,
+                           world - Vector3.UnitY * gradientStep);
+            float dz = ShapeDistance(
+                           offset + Vector3.UnitZ * gradientStep,
+                           extent,
+                           shape,
+                           world + Vector3.UnitZ * gradientStep)
+                     - ShapeDistance(
+                           offset - Vector3.UnitZ * gradientStep,
+                           extent,
+                           shape,
+                           world - Vector3.UnitZ * gradientStep);
 
             float horizontal = MathF.Sqrt(dx * dx + dz * dz);
             float slope = MathF.Abs(dy) <= 1e-6f ? float.PositiveInfinity : horizontal / MathF.Abs(dy);
@@ -249,7 +378,7 @@ namespace Demiurge
             // Small subtractive brushes can leave one or two negative samples detached from the
             // terrain. Surface nets correctly reconstructs those samples as a tiny closed mesh.
             // Remove them from the shared field so rendering, raycasts, and collision still agree.
-            if (mode == EditMode.Subtract && editShape == EditShape.Sphere)
+            if (mode == EditMode.Subtract && editShape is EditShape.Sphere or EditShape.Organic)
                 CullTinySolidComponents(map, low, high, MaxDisconnectedSolidSamples);
 
             return (new Vector3(low.X, low.Y, low.Z), new Vector3(high.X, high.Y, high.Z));

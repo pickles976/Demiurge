@@ -7,16 +7,23 @@ using Stride.Games;
 
 namespace Demiurge;
 
+public sealed record RuntimeClientEmbedding(
+    TerrainState Terrain,
+    ClientTerrain TerrainView,
+    Entity Camera,
+    Action<System.Numerics.Vector3, System.Numerics.Vector3>? TerrainEdited = null);
+
 public sealed class RuntimeClientSession : IClientSession
 {
     private readonly Game game;
     private readonly string host;
     private readonly ServerOptions? localServerOptions;
     private readonly List<Entity> ownedEntities = [];
+    private readonly RuntimeClientEmbedding? embedding;
 
     private readonly NetworkManager network;
-    private readonly TerrainState terrainState = new();
-    private readonly ChunkTcpClient chunkStream = new();
+    private readonly TerrainState terrainState;
+    private readonly ChunkTcpClient? chunkStream;
     private readonly ModelLocators modelLocators;
     private readonly WeaponMount weaponMount;
     private readonly LocalWeaponView localWeaponView = new();
@@ -31,6 +38,7 @@ public sealed class RuntimeClientSession : IClientSession
     private ObjectViewFactory? objectViews;
     private SoundManager? sound;
     private IPlayerStatus? playerStatus;
+    private Entity? camera;
 
     public ClientSessionKind Kind => ClientSessionKind.Runtime;
     public NetworkManager Network => network;
@@ -39,21 +47,32 @@ public sealed class RuntimeClientSession : IClientSession
         Game game,
         ClientInputState inputState,
         string? host = null,
-        ServerOptions? localServerOptions = null)
+        ServerOptions? localServerOptions = null,
+        RuntimeClientEmbedding? embedding = null)
     {
         this.game = game;
         this.inputState = inputState;
         this.host = host ?? NetworkConfig.ServerHost;
         this.localServerOptions = localServerOptions;
+        this.embedding = embedding;
+        terrainState = embedding?.Terrain ?? new TerrainState();
         network = new NetworkManager(this.host);
         modelLocators = ModelLocators.Load();
         weaponMount = new WeaponMount(modelLocators, ItemCosmetics.Model);
         registry = new PlayerRegistry(network, terrainState, weaponMount);
         objectRegistry = new ObjectRegistry(network);
 
-        chunkStream.ChunkReceived += terrainState.Receive;
+        if (embedding is null)
+        {
+            chunkStream = new ChunkTcpClient();
+            chunkStream.ChunkReceived += terrainState.Receive;
+            network.Welcomed += OnWelcomed;
+        }
+        else
+        {
+            terrainState.RegionEdited += OnEmbeddedTerrainEdited;
+        }
         network.TerrainEdited += terrainState.ReceiveEdit;
-        network.Welcomed += OnWelcomed;
         objectRegistry.ObjectSpawned += OnObjectSpawned;
         registry.PlayerJoined += OnPlayerJoined;
         objectRegistry.ObjectDespawned += OnObjectDespawned;
@@ -73,14 +92,15 @@ public sealed class RuntimeClientSession : IClientSession
         playerStatus = new PlayerStatus();
         game.Services.AddService<IPlayerStatus>(playerStatus);
 
-        terrainView = new ClientTerrain(scene, new ChunkMeshFactory(game, new TerrainMaterials(game)), terrainState);
+        terrainView = embedding?.TerrainView
+            ?? new ClientTerrain(scene, new ChunkMeshFactory(game, new TerrainMaterials(game)), terrainState);
 
         Add(HUD.CreateUI(game));
         Add(HUD.CreateDebugStats(game));
         Add(new Entity("TracerSystem") { new TracerSystem() });
 
-        var camera = game.Add3DCamera();
-        ownedEntities.Add(camera);
+        camera = embedding?.Camera ?? game.Add3DCamera();
+        if (embedding is null) ownedEntities.Add(camera);
         LineRenderer.Camera = camera.Get<CameraComponent>();
         sound = new SoundManager(camera);
         game.Services.AddService(sound);
@@ -133,21 +153,25 @@ public sealed class RuntimeClientSession : IClientSession
 
     public void Dispose()
     {
-        chunkStream.ChunkReceived -= terrainState.Receive;
+        if (chunkStream is not null) chunkStream.ChunkReceived -= terrainState.Receive;
         network.TerrainEdited -= terrainState.ReceiveEdit;
-        network.Welcomed -= OnWelcomed;
+        if (embedding is null)
+            network.Welcomed -= OnWelcomed;
+        else
+            terrainState.RegionEdited -= OnEmbeddedTerrainEdited;
         objectRegistry.ObjectSpawned -= OnObjectSpawned;
         registry.PlayerJoined -= OnPlayerJoined;
         objectRegistry.ObjectDespawned -= OnObjectDespawned;
 
-        chunkStream.Dispose();
+        chunkStream?.Dispose();
         objectViews?.Dispose();
         playerViews?.Dispose();
-        terrainView?.Dispose();
+        if (embedding is null) terrainView?.Dispose();
         objectRegistry.Dispose();
         registry.Dispose();
         network.Dispose();
 
+        if (embedding is not null && camera is not null) RemoveRuntimeCameraScripts(camera);
         foreach (var entity in ownedEntities.ToArray()) entity.Scene = null;
         ownedEntities.Clear();
 
@@ -166,7 +190,25 @@ public sealed class RuntimeClientSession : IClientSession
         ownedEntities.Add(entity);
     }
 
-    private void OnWelcomed(WelcomeData welcome) => chunkStream.Connect(host, welcome.ChunkToken);
+    private void OnWelcomed(WelcomeData welcome) => chunkStream!.Connect(host, welcome.ChunkToken);
+
+    private void OnEmbeddedTerrainEdited(
+        System.Numerics.Vector3 min,
+        System.Numerics.Vector3 max)
+    {
+        terrainView?.MarkRegionDirty(min, max);
+        embedding?.TerrainEdited?.Invoke(min, max);
+    }
+
+    private static void RemoveRuntimeCameraScripts(Entity entity)
+    {
+        entity.Remove<DebugFlyCameraScript>();
+        entity.Remove<FirstPersonCameraScript>();
+        entity.Remove<LocalPlayerController>();
+        entity.Remove<ReticleScript>();
+        entity.Remove<DigScript>();
+        entity.Remove<ShotEffectsScript>();
+    }
 
     private void OnObjectSpawned(NetObject obj)
     {

@@ -156,6 +156,17 @@ namespace Demiurge
                 .ThenBy(chunk => chunk.index.z)
                 .ToArray();
 
+        /// <summary>
+        /// Independent copy of the voxel field. Used when an editor playtest needs authoritative
+        /// server terrain without allowing temporary runtime edits to mutate the source map.
+        /// </summary>
+        public ChunkMap DeepClone()
+        {
+            var clone = new ChunkMap();
+            foreach (var chunk in Snapshot()) clone.Insert(chunk.DeepClone());
+            return clone;
+        }
+
         public int Count => chunks.Count;
 
     }
@@ -315,6 +326,24 @@ namespace Demiurge
         readonly Voxel[] uniform = new Voxel[ChunkConstants.ChunkHeight];
 
         public TerrainChunk(ChunkIndex index) => this.index = index;
+
+        /// <summary>Copies the compact slab representation without materialising uniform slabs.</summary>
+        public TerrainChunk DeepClone()
+        {
+            var clone = new TerrainChunk(index);
+            for (int slabY = 0; slabY < ChunkConstants.ChunkHeight; slabY++)
+            {
+                var slab = slabs[slabY];
+                if (slab is null)
+                {
+                    clone.FillSlab(slabY, uniform[slabY]);
+                    continue;
+                }
+
+                slab.AsSpan().CopyTo(clone.Materialize(slabY));
+            }
+            return clone;
+        }
 
         /// <summary>
         /// By flat voxel index, the layout everything already computes through

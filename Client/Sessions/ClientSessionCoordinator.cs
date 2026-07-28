@@ -16,6 +16,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
     private IClientSession? current;
     private DateTime lastEditUtc;
     private DateTime lastAutosaveUtc;
+    private EditorPlaytestState? playtestEditor;
 
     public event Action<TerminalOutput>? OutputReceived;
 
@@ -56,8 +57,14 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             {
                 if (current is not EditorClientSession editor)
                     return TerminalOutputFor(false, "Editor commands require an editor session");
+                if (editor.IsPlaytesting)
+                    return TerminalOutputFor(false, "Return to the editor before changing editor state");
                 if (tokens.Length > 1 && tokens[1].Equals("structure", StringComparison.OrdinalIgnoreCase))
                     return ExecuteStructure(tokens, editor);
+                if (tokens.Length > 2
+                    && tokens[1].Equals("object", StringComparison.OrdinalIgnoreCase)
+                    && tokens[2].ToLowerInvariant() is "list" or "select" or "equip")
+                    return ExecuteEditorObject(tokens, editor);
                 var result = EditorCommandParser.Execute(normalized, editor.Settings, editor.Editor);
                 return TerminalOutputFor(result.Success, result.Output);
             }
@@ -65,6 +72,12 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             if (current is RuntimeClientSession runtime)
             {
                 runtime.Network.SendCommand(commandLine);
+                return null;
+            }
+            if (current is EditorClientSession embedded
+                && embedded.PlaytestNetwork is { } playtestNetwork)
+            {
+                playtestNetwork.SendCommand(commandLine);
                 return null;
             }
 
@@ -76,22 +89,54 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
     }
 
-    public IReadOnlyList<string> Help()
+    public IReadOnlyList<string> Help(string? topic = null)
     {
+        string[] topics = (topic ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (topics.Length > 0) return DetailedHelp(topics);
+
         var lines = new List<string>
         {
-            "session <status|editor|host|join> ...",
+            "session <status|editor|host|join|playtest|playtest-networked> ...",
             "map <list|new|status|save|save-as|load|recover|discard-autosave|validate|bake> ...",
         };
-        if (current is EditorClientSession)
-            lines.Add("editor <status|mode|terrain|block|object|rotate|undo|redo> ...");
+        if (current is EditorClientSession editor)
+        {
+            if (editor.IsPlaytesting)
+            {
+                lines.Add("spawn mob [x z]");
+                lines.Add("spawn pickup <item> [x z]");
+                lines.Add("equip <@s|@actor-id> <item>");
+            }
+            else
+            {
+                lines.Add("editor <status|mode|terrain|block|object|rotate|undo|redo> ...");
+            }
+        }
         else
         {
             lines.Add("spawn mob [x z]");
             lines.Add("spawn pickup <item> [x z]");
             lines.Add("equip <@s|@actor-id> <item>");
         }
+        lines.Add("Type 'help <command>' for details. Press Tab to complete names and IDs.");
         return lines;
+    }
+
+    public IReadOnlyList<string> Complete(string commandLine)
+    {
+        string normalized = commandLine.StartsWith('/') ? commandLine[1..] : commandLine;
+        bool startsNewToken = normalized.Length > 0 && char.IsWhiteSpace(normalized[^1]);
+        string[] tokens = normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        int tokenIndex = startsNewToken ? tokens.Length : Math.Max(0, tokens.Length - 1);
+        string prefix = startsNewToken || tokens.Length == 0 ? string.Empty : tokens[^1];
+
+        IEnumerable<string> candidates = CompletionCandidates(tokens, tokenIndex);
+        return candidates
+            .Where(candidate => candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public void Dispose()
@@ -114,10 +159,172 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         current = null;
     }
 
+    private IEnumerable<string> CompletionCandidates(string[] tokens, int tokenIndex)
+    {
+        if (tokenIndex == 0)
+            return current is EditorClientSession activeEditor
+                ? activeEditor.IsPlaytesting
+                    ? ["spawn", "equip", "map", "session", "clear", "help"]
+                    : ["editor", "map", "session", "clear", "help"]
+                : ["spawn", "equip", "map", "session", "clear", "help"];
+
+        if (tokens.Length == 0) return [];
+        string root = tokens[0].ToLowerInvariant();
+
+        if (root == "editor" && current is EditorClientSession editor)
+        {
+            if (tokenIndex == 1)
+                return ["status", "mode", "terrain", "block", "object", "rotate", "undo", "redo", "structure"];
+            if (tokenIndex == 2 && tokens.Length > 1)
+                return tokens[1].ToLowerInvariant() switch
+                {
+                    "mode" => ["terrain", "block", "object"],
+                    "terrain" => ["operation", "shape", "size", "strength", "material"],
+                    "block" => BlockCatalog.All.Select(definition => definition.Id)
+                        .Concat(["size"]),
+                    "object" => ["pickup", "mob", "spawn", "clear", "list", "select", "equip"],
+                    _ => [],
+                };
+            if (tokenIndex == 3 && tokens.Length > 2)
+            {
+                string branch = $"{tokens[1].ToLowerInvariant()} {tokens[2].ToLowerInvariant()}";
+                return branch switch
+                {
+                    "terrain operation" => ["add", "subtract"],
+                    "terrain shape" => ["sphere", "box", "organic"],
+                    "terrain material" => BlockCatalog.All.Select(definition => definition.Id),
+                    "object pickup" => ItemCatalog.All.Select(definition => definition.Id),
+                    "object select" => editor.Editor.Document.Placements
+                        .Select(placement => EditorPlacementIds.Display(placement.Id)),
+                    "object equip" => editor.Editor.Document.Placements
+                        .Where(placement => placement.Kind == EditorPlacementKind.Mob)
+                        .Select(placement => EditorPlacementIds.Display(placement.Id))
+                        .Prepend("selected"),
+                    _ => [],
+                };
+            }
+            if (tokenIndex == 4 && tokens.Length > 3
+                && tokens[1].Equals("object", StringComparison.OrdinalIgnoreCase)
+                && tokens[2].Equals("equip", StringComparison.OrdinalIgnoreCase))
+                return ItemCatalog.All
+                    .Where(definition => WeaponConfig.Get(definition.Type) is not null)
+                    .Select(definition => definition.Id);
+        }
+
+        if (root == "spawn")
+        {
+            if (tokenIndex == 1) return ["mob", "pickup"];
+            if (tokenIndex == 2 && tokens.Length > 1
+                && tokens[1].Equals("pickup", StringComparison.OrdinalIgnoreCase))
+                return ItemCatalog.All.Select(definition => definition.Id);
+        }
+        if (root == "equip" && tokenIndex == 2)
+            return ItemCatalog.All.Select(definition => definition.Id);
+        if (root == "session" && tokenIndex == 1)
+            return ["status", "editor", "host", "join", "playtest", "playtest-networked"];
+        if (root == "help")
+        {
+            if (tokenIndex == 1)
+                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip"];
+            if (tokenIndex == 2 && tokens.Length > 1
+                && tokens[1].Equals("editor", StringComparison.OrdinalIgnoreCase))
+                return ["terrain", "block", "object"];
+        }
+
+        return [];
+    }
+
+    private IReadOnlyList<string> DetailedHelp(string[] topics)
+    {
+        string root = topics[0].ToLowerInvariant();
+        if (root == "editor" && topics.Length > 1) root = topics[1].ToLowerInvariant();
+
+        return root switch
+        {
+            "editor" =>
+            [
+                "Editor commands:",
+                "  editor mode <terrain|block|object>",
+                "  editor terrain <operation|shape|size|strength|material> ...",
+                "  editor block <block-id|size> ...",
+                "  editor object <pickup|mob|spawn|clear|list|select|equip> ...",
+                "  editor undo | editor redo",
+                "Use 'help terrain', 'help block', or 'help object' for details.",
+            ],
+            "terrain" =>
+            [
+                "Terrain brush:",
+                "  editor terrain operation <add|subtract>",
+                "  editor terrain shape <sphere|box|organic>",
+                "  editor terrain size <uniform|x y z>",
+                "  editor terrain strength <0..1>",
+                "  editor terrain material <block-id>",
+                "Mouse wheel changes size; Shift+wheel changes strength.",
+            ],
+            "block" =>
+            [
+                "Block brush:",
+                "  editor block <block-id>",
+                "  editor block size <uniform|x y z>",
+                $"Blocks: {string.Join(", ", BlockCatalog.All.Select(definition => definition.Id))}",
+                "Mouse wheel changes all three dimensions.",
+            ],
+            "object" =>
+            [
+                "Object placement:",
+                "  editor object pickup <item-id>",
+                "  editor object mob",
+                "  editor object spawn [spawn-id]",
+                "  editor object clear",
+                "  editor object list",
+                "  editor object select <placement-id>",
+                "  editor object equip <placement-id|selected> <weapon-id>",
+                $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
+                "Examples: editor object pickup demiurge:ak47 | editor object mob",
+                "Left click places the selected archetype and reports its stable placement ID.",
+            ],
+            "session" =>
+            [
+                "Session commands:",
+                "  session status",
+                "  session editor <map-name>",
+                "  session host <map-name> [--build]",
+                "  session join <host>",
+                "  session playtest",
+                "  session playtest-networked",
+                "F4 toggles the fast authoritative playtest inside the editor.",
+                "playtest-networked performs the full save/load/stream/remesh validation path.",
+            ],
+            "map" =>
+            [
+                "Map commands:",
+                "  map <list|new|status|save|save-as|load>",
+                "  map <recover|discard-autosave|validate|bake>",
+            ],
+            "spawn" =>
+            [
+                "Runtime spawning:",
+                "  spawn mob [x z]",
+                "  spawn pickup <item-id> [x z]",
+                "Successful spawns report a mob actor ID (@id) or pickup object ID (#id).",
+            ],
+            "equip" =>
+            [
+                "Runtime equipment:",
+                "  equip <@s|@actor-id> <item-id>",
+                $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
+                "Runtime equipment changes last for the current session only; map save does not record them.",
+            ],
+            _ => [$"No help topic named '{topics[0]}'. Type 'help' to list commands."],
+        };
+    }
+
     private TerminalOutput ExecuteSession(string[] tokens)
     {
         if (tokens.Length < 2)
-            return TerminalOutputFor(false, "Usage: session <status|editor|host|join> ...");
+            return TerminalOutputFor(
+                false,
+                "Usage: session <status|editor|host|join|playtest|playtest-networked> ...");
 
         switch (tokens[1].ToLowerInvariant())
         {
@@ -125,7 +332,8 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 return TerminalOutputFor(true, current switch
                 {
                     EditorClientSession editor =>
-                        $"editor map={editor.Editor.Document.Name} dirty={editor.Editor.Dirty}",
+                        $"editor map={editor.Editor.Document.Name} dirty={editor.Editor.Dirty}" +
+                        (editor.IsPlaytesting ? " mode=playtest" : string.Empty),
                     RuntimeClientSession => "runtime",
                     _ => "idle",
                 });
@@ -133,8 +341,74 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             case "editor":
                 if (tokens.Length != 3) return TerminalOutputFor(false, "Usage: session editor <map-name>");
                 if (!CanLeaveEditor(discard: false, out var error)) return TerminalOutputFor(false, error!);
+                playtestEditor = null;
                 transitions.Enqueue(SessionRequest.EditorMap(tokens[2]));
                 return TerminalOutputFor(true, $"Switching to editor map {tokens[2]}");
+
+            case "playtest":
+                if (tokens.Length != 2)
+                    return TerminalOutputFor(false, "Usage: session playtest");
+                if (current is EditorClientSession playtestSource)
+                {
+                    if (playtestSource.IsPlaytesting)
+                    {
+                        if (playtestSource.PlaytestNetwork is { } stoppingNetwork)
+                            stoppingNetwork.CommandResultReceived -= OnNetworkCommandResult;
+                        playtestSource.StopPlaytest();
+                        return TerminalOutputFor(true, "Returned to editor");
+                    }
+
+                    var runtimeMap = EditorTerrainEvaluator.Bake(
+                        playtestSource.Editor.Document,
+                        playtestSource.Editor.Terrain);
+                    playtestSource.StartPlaytest(runtimeMap);
+                    playtestSource.PlaytestNetwork!.CommandResultReceived += OnNetworkCommandResult;
+                    return TerminalOutputFor(
+                        true,
+                        $"Playtesting {playtestSource.Editor.Document.Name} in editor; press F4 to return");
+                }
+                if (current is RuntimeClientSession && playtestEditor is { } compatibilityResume)
+                {
+                    transitions.Enqueue(SessionRequest.ResumeEditor(
+                        compatibilityResume.Editor,
+                        compatibilityResume.Settings,
+                        compatibilityResume.Structures));
+                    return TerminalOutputFor(true, "Returning to editor");
+                }
+                return TerminalOutputFor(false, "Fast playtest requires an editor session");
+
+            case "playtest-networked":
+                if (tokens.Length != 2)
+                    return TerminalOutputFor(false, "Usage: session playtest-networked");
+                if (current is EditorClientSession networkedSource)
+                {
+                    if (networkedSource.IsPlaytesting)
+                    {
+                        if (networkedSource.PlaytestNetwork is { } embeddedNetwork)
+                            embeddedNetwork.CommandResultReceived -= OnNetworkCommandResult;
+                        networkedSource.StopPlaytest();
+                    }
+                    SaveAndBake(networkedSource);
+                    playtestEditor = new EditorPlaytestState(
+                        networkedSource.Editor,
+                        networkedSource.Settings,
+                        networkedSource.Structures);
+                    string name = networkedSource.Editor.Document.Name;
+                    transitions.Enqueue(SessionRequest.HostMap(
+                        name, maps.Paths.RuntimePath(name), networkedSource.PlaytestSpawn));
+                    return TerminalOutputFor(
+                        true,
+                        $"Starting full networked playtest for {name}");
+                }
+                if (current is RuntimeClientSession && playtestEditor is { } resume)
+                {
+                    transitions.Enqueue(SessionRequest.ResumeEditor(
+                        resume.Editor, resume.Settings, resume.Structures));
+                    return TerminalOutputFor(true, "Returning to editor");
+                }
+                return TerminalOutputFor(
+                    false,
+                    "Networked playtest requires an editor or a runtime started by playtest-networked");
 
             case "host":
             {
@@ -166,6 +440,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     EnsureCurrentRuntimeBake(tokens[2]);
                 }
 
+                playtestEditor = null;
                 transitions.Enqueue(SessionRequest.HostMap(tokens[2], maps.Paths.RuntimePath(tokens[2])));
                 return TerminalOutputFor(true, $"Hosting runtime map {tokens[2]}");
             }
@@ -174,6 +449,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 if (tokens.Length != 3) return TerminalOutputFor(false, "Usage: session join <host>");
                 if (!CanLeaveEditor(discard: false, out var joinError))
                     return TerminalOutputFor(false, joinError!);
+                playtestEditor = null;
                 transitions.Enqueue(SessionRequest.Join(tokens[2]));
                 return TerminalOutputFor(true, $"Joining {tokens[2]}");
 
@@ -353,6 +629,84 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
     }
 
+    private TerminalOutput ExecuteEditorObject(string[] tokens, EditorClientSession editor)
+    {
+        switch (tokens[2].ToLowerInvariant())
+        {
+            case "list":
+                if (tokens.Length != 3)
+                    return TerminalOutputFor(false, "Usage: editor object list");
+                if (editor.Editor.Document.Placements.Count == 0)
+                    return TerminalOutputFor(true, "No editor placements");
+                return TerminalOutputFor(
+                    true,
+                    string.Join(
+                        "\n",
+                        editor.Editor.Document.Placements
+                            .OrderBy(placement => placement.Kind)
+                            .ThenBy(placement => placement.Id)
+                            .Select(FormatEditorPlacement)));
+
+            case "select":
+                if (tokens.Length != 4)
+                    return TerminalOutputFor(false, "Usage: editor object select <placement-id>");
+                var selected = ResolveEditorPlacement(editor, tokens[3]);
+                editor.Controller.SelectPlacement(selected.Id, announce: false);
+                return TerminalOutputFor(
+                    true,
+                    $"Selected {selected.Kind.ToString().ToLowerInvariant()} placement " +
+                    EditorPlacementIds.Display(selected.Id));
+
+            case "equip":
+                if (tokens.Length != 5)
+                    return TerminalOutputFor(
+                        false,
+                        "Usage: editor object equip <placement-id|selected> <weapon-id>");
+                var mob = ResolveEditorPlacement(editor, tokens[3]);
+                if (mob.Kind != EditorPlacementKind.Mob)
+                    return TerminalOutputFor(false, $"Placement {EditorPlacementIds.Display(mob.Id)} is not a mob");
+                if (!ItemCatalog.TryResolve(tokens[4], out var weapon)
+                    || WeaponConfig.Get(weapon) is null)
+                    return TerminalOutputFor(false, $"Unknown weapon: {tokens[4]}");
+                string weaponId = ItemCatalog.Id(weapon);
+                editor.Editor.Execute(new UpdatePlacementCommand(
+                    $"Equip mob {EditorPlacementIds.Display(mob.Id)}",
+                    mob,
+                    mob with { WeaponId = weaponId }));
+                return TerminalOutputFor(
+                    true,
+                    $"Equipped mob placement {EditorPlacementIds.Display(mob.Id)} with {weaponId}");
+
+            default:
+                return TerminalOutputFor(false, $"Unknown editor object command: {tokens[2]}");
+        }
+    }
+
+    private static EditorPlacement ResolveEditorPlacement(EditorClientSession editor, string value)
+    {
+        if (value.Equals("selected", StringComparison.OrdinalIgnoreCase))
+        {
+            if (editor.Controller.SelectedPlacementId is not { } id
+                || editor.Editor.Placement(id) is not { } selected)
+                throw new ArgumentException("No editor placement is selected");
+            return selected;
+        }
+        return EditorPlacementIds.Resolve(editor.Editor.Document, value);
+    }
+
+    private static string FormatEditorPlacement(EditorPlacement placement)
+    {
+        string details = placement.Kind switch
+        {
+            EditorPlacementKind.Mob =>
+                $" weapon={placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47)}",
+            _ => string.Empty,
+        };
+        return $"{EditorPlacementIds.Display(placement.Id)} " +
+               $"{placement.Kind.ToString().ToLowerInvariant()} {placement.ArchetypeId} " +
+               $"cell={placement.Cell}{details}";
+    }
+
     private void ApplyTransition()
     {
         if (transitions.Count == 0) return;
@@ -367,13 +721,24 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             candidate = request.Kind switch
             {
                 SessionRequestKind.Editor => new EditorClientSession(
-                    game, inputState, request.Document
-                        ?? (maps.HasSource(request.MapName!)
-                            ? maps.Load(request.MapName!)
-                            : maps.New(request.MapName!))),
+                    game,
+                    inputState,
+                    request.EditorSession
+                        ?? new EditorSession(
+                            request.Document
+                            ?? (maps.HasSource(request.MapName!)
+                                ? maps.Load(request.MapName!)
+                                : maps.New(request.MapName!))),
+                    request.EditorSettings ?? new EditorToolSettings(),
+                    request.EditorStructures ?? new EditorStructureState()),
                 SessionRequestKind.Host => new RuntimeClientSession(
                     game, inputState, NetworkConfig.ServerHost,
-                    new ServerOptions { AllowCheats = true, MapPath = request.RuntimeMapPath }),
+                    new ServerOptions
+                    {
+                        AllowCheats = true,
+                        MapPath = request.RuntimeMapPath,
+                        SpawnOverride = request.SpawnOverride,
+                    }),
                 SessionRequestKind.GeneratedHost => new RuntimeClientSession(
                     game, inputState, NetworkConfig.ServerHost,
                     new ServerOptions { AllowCheats = true }),
@@ -382,6 +747,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             };
             candidate.Start(scene);
             current = candidate;
+            if (request.EditorSession is not null) playtestEditor = null;
             AttachCurrent();
             OutputReceived?.Invoke(new TerminalOutput(true, $"Session active: {current.Kind}"));
         }
@@ -390,6 +756,12 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             candidate?.Dispose();
             current = null;
             OutputReceived?.Invoke(new TerminalOutput(false, $"Session transition failed: {ex.Message}"));
+            if (request.Kind == SessionRequestKind.Host && playtestEditor is { } resume)
+            {
+                transitions.Enqueue(SessionRequest.ResumeEditor(
+                    resume.Editor, resume.Settings, resume.Structures));
+                OutputReceived?.Invoke(new TerminalOutput(true, "Returning to editor after failed playtest start"));
+            }
         }
     }
 
@@ -402,6 +774,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             editor.Editor.Changed += OnEditorChanged;
             editor.SaveRequested += OnEditorSaveRequested;
             editor.BakeRequested += OnEditorBakeRequested;
+            editor.FeedbackRequested += OnEditorFeedbackRequested;
             lastEditUtc = DateTime.UtcNow;
             if (maps.HasNewerAutosave(editor.Editor.Document.Name))
                 OutputReceived?.Invoke(new TerminalOutput(
@@ -416,9 +789,12 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             runtime.Network.CommandResultReceived -= OnNetworkCommandResult;
         if (current is EditorClientSession editor)
         {
+            if (editor.PlaytestNetwork is { } playtestNetwork)
+                playtestNetwork.CommandResultReceived -= OnNetworkCommandResult;
             editor.Editor.Changed -= OnEditorChanged;
             editor.SaveRequested -= OnEditorSaveRequested;
             editor.BakeRequested -= OnEditorBakeRequested;
+            editor.FeedbackRequested -= OnEditorFeedbackRequested;
         }
     }
 
@@ -426,6 +802,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         => OutputReceived?.Invoke(new TerminalOutput(result.Success, result.Output));
 
     private void OnEditorChanged(EditorChange change) => lastEditUtc = DateTime.UtcNow;
+
+    private void OnEditorFeedbackRequested(string message)
+        => OutputReceived?.Invoke(new TerminalOutput(true, message));
 
     private void OnEditorSaveRequested()
     {
@@ -535,11 +914,31 @@ public sealed record SessionRequest(
     string? MapName = null,
     string? RuntimeMapPath = null,
     string? Host = null,
-    EditorDocument? Document = null)
+    EditorDocument? Document = null,
+    EditorSession? EditorSession = null,
+    EditorToolSettings? EditorSettings = null,
+    EditorStructureState? EditorStructures = null,
+    System.Numerics.Vector3? SpawnOverride = null)
 {
     public static SessionRequest EditorMap(string name) => new(SessionRequestKind.Editor, MapName: name);
     public static SessionRequest EditorDocument(EditorDocument document) => new(SessionRequestKind.Editor, Document: document);
-    public static SessionRequest HostMap(string name, string path) => new(SessionRequestKind.Host, name, path);
+    public static SessionRequest ResumeEditor(
+        EditorSession editor,
+        EditorToolSettings settings,
+        EditorStructureState structures)
+        => new(
+            SessionRequestKind.Editor,
+            EditorSession: editor,
+            EditorSettings: settings,
+            EditorStructures: structures);
+    public static SessionRequest HostMap(
+        string name, string path, System.Numerics.Vector3? spawnOverride = null)
+        => new(SessionRequestKind.Host, name, path, SpawnOverride: spawnOverride);
     public static SessionRequest GeneratedHost() => new(SessionRequestKind.GeneratedHost);
     public static SessionRequest Join(string host) => new(SessionRequestKind.Join, Host: host);
 }
+
+internal sealed record EditorPlaytestState(
+    EditorSession Editor,
+    EditorToolSettings Settings,
+    EditorStructureState Structures);

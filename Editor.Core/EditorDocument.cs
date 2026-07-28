@@ -4,6 +4,7 @@ namespace Demiurge.Editor;
 
 public readonly record struct Int3(int X, int Y, int Z)
 {
+    public Vector3 SamplePosition => new(X, Y, Z);
     public Vector3 Centre => new(X + 0.5f, Y + 0.5f, Z + 0.5f);
 }
 
@@ -58,6 +59,7 @@ public sealed record EditorPlacement
     public required string ArchetypeId { get; init; }
     public required Int3 Cell { get; init; }
     public float Yaw { get; init; }
+    public string? WeaponId { get; init; }
     public Guid? GroupId { get; init; }
 }
 
@@ -89,7 +91,7 @@ public sealed record EditorDocument
                     Id = Guid.NewGuid(),
                     Kind = EditorPlacementKind.PlayerSpawn,
                     ArchetypeId = "demiurge:spawn/default",
-                    Cell = new Int3(0, (int)MathF.Ceiling(spawnY), 0),
+                    Cell = new Int3(0, (int)MathF.Floor(spawnY), 0),
                 },
             ],
         };

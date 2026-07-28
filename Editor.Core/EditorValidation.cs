@@ -75,6 +75,10 @@ public static class EditorValidation
                 case EditorPlacementKind.Mob:
                     if (placement.ArchetypeId != "demiurge:mob")
                         errors.Add($"Placement {placement.Id} has unknown mob {placement.ArchetypeId}");
+                    string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47);
+                    if (!ItemCatalog.TryResolve(weaponId, out var weapon)
+                        || WeaponConfig.Get(weapon) is null)
+                        errors.Add($"Placement {placement.Id} has unknown weapon {weaponId}");
                     break;
                 case EditorPlacementKind.PlayerSpawn:
                     spawns++;
@@ -103,21 +107,20 @@ public static class EditorValidation
 
         foreach (var placement in document.Placements)
         {
-            var position = new System.Numerics.Vector3(
-                placement.Cell.X + 0.5f,
-                placement.Cell.Y,
-                placement.Cell.Z + 0.5f);
+            bool hasSupport = EditorPlacementPosition.TryResolve(
+                terrain, placement.Cell, out _);
+            var position = EditorPlacementPosition.Resolve(terrain, placement);
             if (placement.Kind == EditorPlacementKind.PlayerSpawn)
             {
-                if (!TerrainCollision.TryDeepestContact(
+                if (!hasSupport
+                    || !TerrainCollision.TryDeepestContact(
                         terrain, PlayerMovement.Body, position, out var contact)
                     || contact.Distance < PlayerMovement.Body.Radius)
                     errors.Add($"Player spawn {placement.Id} intersects terrain");
                 continue;
             }
 
-            float surfaceY = SurfaceQuery.SurfacePosition(terrain, position.X, position.Z).Y;
-            if (MathF.Abs(surfaceY - position.Y) > 0.75f)
+            if (!hasSupport)
                 warnings.Add($"Placement {placement.Id} has no nearby support");
         }
 

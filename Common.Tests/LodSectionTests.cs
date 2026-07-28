@@ -106,6 +106,29 @@ public class LodSectionTests
         }
     }
 
+    [Fact]
+    public void DefaultMesherUsesSurfaceNetsPlacement()
+    {
+        var centre = new Vector3(8f, 40f, 8f);
+        var map = SyntheticTerrain.Build(
+            (x, y, z) => Vector3.Distance(new Vector3(x, y, z), centre) - 6f,
+            chunkRadius: 2);
+        var scratch = new Sample[ChunkMesher.ScratchVolume];
+        var section = new LodSection(0, LevelContaining(centre.Y, 0), 0, 0);
+
+        Assert.True(ChunkMesher.TryFillScratch(map, section, scratch));
+
+        var selected = ChunkMesher.GenerateMesh(scratch);
+        var dual = ChunkMesher.GenerateMeshDualContouring(scratch);
+        var surfaceNets = ChunkMesher.GenerateMeshFromSurfaceNet(scratch);
+
+        Assert.Equal(surfaceNets.Positions, selected.Positions);
+        Assert.Equal(surfaceNets.Indices, selected.Indices);
+        Assert.Contains(
+            selected.Positions.Zip(dual.Positions),
+            pair => Vector3.DistanceSquared(pair.First, pair.Second) > 1e-6f);
+    }
+
     /// <summary>Material must survive downsampling as a real block type, not average into nonsense or air.</summary>
     [Fact]
     public void CoarseSamplesKeepANonAirMaterial()

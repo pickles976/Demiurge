@@ -10,10 +10,12 @@ namespace Demiurge.GameServer
 
         public GameServer(ServerOptions options)
         {
-            RuntimeMap? map = options.MapPath is null
-                ? null
-                : RuntimeMapSerializer.Load(options.MapPath);
-            world = new GameWorld(server, map);
+            if (options.RuntimeMap is not null && options.MapPath is not null)
+                throw new ArgumentException("Specify either an in-memory runtime map or a map path, not both");
+
+            RuntimeMap? map = options.RuntimeMap
+                ?? (options.MapPath is null ? null : RuntimeMapSerializer.Load(options.MapPath));
+            world = new GameWorld(server, map, options.SpawnOverride);
             commands = new ServerCommandService(world, options.AllowCheats);
         }
 

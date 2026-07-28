@@ -29,7 +29,7 @@ public class ServerCommandServiceTests
 
         Assert.True(result.Success);
         Assert.Equal(new Vector3(12, 42, 17), Assert.Single(world.SpawnedMobs));
-        Assert.Contains("@60000", result.Output);
+        Assert.Contains("actor ID @60000", result.Output);
     }
 
     [Fact]
@@ -46,6 +46,7 @@ public class ServerCommandServiceTests
         Assert.Equal(ItemType.Ak47, pickup.Item);
         Assert.Equal(new Vector3(4, 42, 8), pickup.Position);
         Assert.Contains("demiurge:ak47", result.Output);
+        Assert.Contains("object ID #1", result.Output);
     }
 
     [Fact]

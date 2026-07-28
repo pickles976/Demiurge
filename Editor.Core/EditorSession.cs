@@ -71,6 +71,25 @@ public sealed class EditorSession
     public EditorPlacement? Placement(Guid id)
         => Document.Placements.FirstOrDefault(placement => placement.Id == id);
 
+    /// <summary>
+    /// Replays source operations for chunks temporarily changed by an in-editor playtest. This is
+    /// intentionally outside history and does not change the document's dirty state.
+    /// </summary>
+    public EditorChange RestoreTerrain(IEnumerable<ChunkIndex> chunks)
+    {
+        var affected = chunks
+            .Where(chunk =>
+                chunk.x >= WorldGen.Min.x && chunk.x <= WorldGen.Max.x
+                && chunk.z >= WorldGen.Min.z && chunk.z <= WorldGen.Max.z)
+            .ToHashSet();
+        if (affected.Count == 0) return EditorChange.None;
+
+        var change = new EditorChange(affected, new HashSet<Guid>());
+        ApplyTerrainChange(change);
+        Changed?.Invoke(change);
+        return change;
+    }
+
     private void ApplyTerrainChange(EditorChange change)
     {
         var replacements = evaluator.EvaluateChunks(

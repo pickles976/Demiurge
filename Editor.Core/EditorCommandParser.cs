@@ -8,6 +8,9 @@ public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn }
 
 public sealed record EditorToolSettings
 {
+    public const int MaxBlockBrushDimension = 64;
+    public const int MaxBlockBrushCells = 4096;
+
     public EditorToolMode Mode { get; set; } = EditorToolMode.Terrain;
     public EditMode TerrainMode { get; set; } = EditMode.Subtract;
     public EditShape TerrainShape { get; set; } = EditShape.Sphere;
@@ -15,6 +18,7 @@ public sealed record EditorToolSettings
     public float TerrainStrength { get; set; } = 1f;
     public BlockType TerrainMaterial { get; set; } = BlockType.BlockType_Grass;
     public BlockType Block { get; set; } = BlockType.BlockType_Stone;
+    public Int3 BlockSize { get; set; } = new(1, 1, 1);
     public EditorObjectChoiceKind ObjectKind { get; set; }
     public string? ObjectId { get; set; }
     public float ObjectYaw { get; set; }
@@ -86,7 +90,8 @@ public static class EditorCommandParser
                 {
                     "sphere" => EditShape.Sphere,
                     "box" => EditShape.Box,
-                    _ => throw new ArgumentException("Shape must be sphere or box"),
+                    "organic" or "noisy" => EditShape.Organic,
+                    _ => throw new ArgumentException("Shape must be sphere, box, or organic"),
                 };
                 break;
             case "size":
@@ -114,11 +119,30 @@ public static class EditorCommandParser
 
     private static EditorCommandResult SetBlock(string[] tokens, EditorToolSettings settings)
     {
-        if (tokens.Length != 2 || !BlockCatalog.TryResolve(tokens[1], out var block))
-            return EditorCommandResult.Fail("Usage: editor block <block-id>");
-        settings.Block = block;
+        if (tokens.Length < 2)
+            return EditorCommandResult.Fail("Usage: editor block <block-id|size> ...");
+
+        switch (tokens[1].ToLowerInvariant())
+        {
+            case "size":
+                if (tokens.Length is not (3 or 5))
+                    return EditorCommandResult.Fail("Usage: editor block size <uniform|x y z>");
+                int x = BlockDimension(tokens[2]);
+                var size = tokens.Length == 3
+                    ? new Int3(x, x, x)
+                    : new Int3(x, BlockDimension(tokens[3]), BlockDimension(tokens[4]));
+                BlockBrush.ValidateSize(size);
+                settings.BlockSize = size;
+                break;
+            default:
+                if (tokens.Length != 2 || !BlockCatalog.TryResolve(tokens[1], out var block))
+                    return EditorCommandResult.Fail("Usage: editor block <block-id|size> ...");
+                settings.Block = block;
+                break;
+        }
+
         settings.Mode = EditorToolMode.Block;
-        return EditorCommandResult.Ok($"Block: {BlockCatalog.Id(block)}");
+        return EditorCommandResult.Ok(Status(settings, session: null));
     }
 
     private static EditorCommandResult SetObject(string[] tokens, EditorToolSettings settings)
@@ -160,7 +184,7 @@ public static class EditorCommandParser
 
     private static string Status(EditorToolSettings settings, EditorSession? session)
     {
-        string status = $"mode={settings.Mode.ToString().ToLowerInvariant()} terrain={settings.TerrainMode.ToString().ToLowerInvariant()}/{settings.TerrainShape.ToString().ToLowerInvariant()} size={settings.TerrainHalfExtent * 2f} strength={settings.TerrainStrength:0.##} material={BlockCatalog.Id(settings.TerrainMaterial)} block={BlockCatalog.Id(settings.Block)} object={settings.ObjectId ?? "none"}";
+        string status = $"mode={settings.Mode.ToString().ToLowerInvariant()} terrain={settings.TerrainMode.ToString().ToLowerInvariant()}/{settings.TerrainShape.ToString().ToLowerInvariant()} size={settings.TerrainHalfExtent * 2f} strength={settings.TerrainStrength:0.##} material={BlockCatalog.Id(settings.TerrainMaterial)} block={BlockCatalog.Id(settings.Block)} blockSize={settings.BlockSize.X}x{settings.BlockSize.Y}x{settings.BlockSize.Z} object={settings.ObjectId ?? "none"}";
         if (session is null) return status;
         var diagnostics = session.Diagnostics();
         return status
@@ -173,6 +197,15 @@ public static class EditorCommandParser
     {
         float value = ParseFloat(token);
         if (value <= 0) throw new ArgumentException("Size must be positive");
+        return value;
+    }
+
+    private static int BlockDimension(string token)
+    {
+        if (!int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
+            || value is < 1 or > EditorToolSettings.MaxBlockBrushDimension)
+            throw new ArgumentException(
+                $"Block dimensions must be integers from 1 to {EditorToolSettings.MaxBlockBrushDimension}");
         return value;
     }
 

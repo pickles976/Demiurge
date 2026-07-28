@@ -47,7 +47,11 @@ World-changing runtime commands are parsed into typed values in Common and execu
 on the server. Single-player enables client-issued commands; a standalone server requires
 `--allow-cheats` for clients but its local stdin console is always trusted. Canonical item names live
 in `ItemCatalog` and are namespaced (`demiurge:ak47`), while `ItemType` remains the append-only
-numeric wire identity. See `docs/COMMANDS.md`.
+numeric wire identity. Runtime mob IDs are actor selectors (`@60000`); replicated object IDs use
+`#1`. Runtime spawn/equip commands mutate only the current server session and never modify or save
+the editor source map. Editor placements use stable GUIDs displayed as unique eight-character
+prefixes; `editor object equip` persists a mob weapon in that source placement. See
+`docs/COMMANDS.md`.
 
 ## Architecture
 
@@ -69,6 +73,36 @@ Both sessions must release entities, services, event handlers, sockets, and GPU 
 `Dispose()`. In runtime updates, terrain `Drain()` must still run before `RebuildDirty()`: Drain is
 the only writer of chunk voxels, and dispatch only hands out chunks Drain has finished. More detail
 is in `stride_docs/code-only-runtime-and-assets.md` and root `EDITOR.md`.
+
+Editor placements store a stable GUID and an integer anchor cell, not a raw world transform.
+`EditorPlacementPosition` is the one conversion to world space: X/Z come from the cell center and Y
+comes from the nearest upward SDF crossing around that cell. Preview views, validation, and runtime
+baking must all call its placement-kind-aware overload; player spawns additionally resolve the
+capsule clearance required on slopes. Using `Cell.Y` directly buries objects and using the highest
+column surface breaks trenches and caves. Plain block brushes are axis-aligned dimensions expanded
+into ordinary sample-centered block placements and have no rotation. Rotation remains meaningful
+for named structures and selected objects.
+
+`session playtest` / `F4` is the fast embedded playtest. It still starts the normal authoritative
+server and runtime networking, actor, input, and view systems, but borrows the editor camera,
+`ClientTerrain`, and preloaded terrain map. The server receives `ChunkMap.DeepClone()`, so runtime
+edits cannot mutate editor source through shared references. Client edits are tracked and
+`EditorSession.RestoreTerrain()` replays only affected chunks on return without touching history or
+dirty state. Runtime camera scripts must be removed before editor controls resume, and editor
+placement proxies stay hidden while runtime actor/object views are active.
+
+**A playtest spawns you at the editor fly camera's exact position**, not at the map's player spawns.
+`EditorClientSession.PlaytestSpawn` reads the camera transform and rides to the server as
+`ServerOptions.SpawnOverride`; `GameWorld.SpawnPlayerMove` prefers it over `RuntimePlacementKind.PlayerSpawn`
+and spawns ungrounded, since the camera is usually in the air. It is the whole session's spawn point, so
+dying in a playtest returns you to the same spot instead of to a map spawn. Both `session playtest` and
+`session playtest-networked` set it (the latter through `SessionRequest.HostMap`); a normal `session host`
+or dedicated server leaves it null and the map's spawns apply as before.
+
+`session playtest-networked` retains the full save, bake, runtime load, TCP terrain stream, and fresh
+client remesh path. Use it to validate persistence and transport. The fast path deliberately skips
+those expensive presentation and delivery steps; it is not a replacement for that release-path
+check.
 
 Runtime terrain has two separate load-bearing subscriptions:
 `NetworkManager.Welcomed -> ChunkTcpClient.Connect` opens the authenticated TCP stream, while
@@ -217,8 +251,10 @@ fact: **surface nets and dual contouring are one algorithm** differing only in w
 vertex goes (average of the edge crossings vs. a QEF solve). Both exist —
 `ChunkMesher.GenerateMeshFromSurfaceNet` and `GenerateMeshDualContouring` are two entry points onto
 one skeleton. `GenerateMesh` currently selects surface nets because its rounded placement suits dug
-terrain better; DC is retained for comparison. DC sharpens geometry but **not** shading, which needs
-vertex splitting by crease angle. That doc also records the limitations the article's author hit
+terrain better; DC is retained for comparison. Editor blocks must enclose an integer SDF sample
+instead of relying on DC to rescue a boundary-only field. DC sharpens geometry but **not** shading,
+which needs vertex splitting by crease angle. That doc also records the limitations the article's
+author hit
 afterwards — chunk LOD being the genuinely hard part, not the meshing.
 
 ### The rule that keeps the terrain math honest

@@ -22,7 +22,7 @@ namespace Demiurge.GameClient
     /// </summary>
     public class TerrainState : IClientTerrainSource
     {
-        public ChunkMap Map { get; } = new();
+        public ChunkMap Map { get; }
 
         /// <summary>Chunks that have received every slab, since the last drain.</summary>
         readonly HashSet<ChunkIndex> completed = new();
@@ -36,6 +36,18 @@ namespace Demiurge.GameClient
 
         readonly ConcurrentQueue<ChunkSlabsData> incoming = new();
         readonly ConcurrentQueue<TerrainEditData> edits = new();
+
+        public TerrainState()
+            : this(new ChunkMap(), complete: false)
+        {
+        }
+
+        public TerrainState(ChunkMap map, bool complete = true)
+        {
+            Map = map;
+            if (!complete) return;
+            foreach (var chunk in map.Snapshot()) completed.Add(chunk.index);
+        }
 
         /// <summary>Called from the NETWORK thread. Only queues.</summary>
         public void Receive(ChunkSlabsData data) => incoming.Enqueue(data);

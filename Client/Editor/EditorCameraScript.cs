@@ -7,6 +7,7 @@ namespace Demiurge;
 public sealed class EditorCameraScript : SyncScript
 {
     public required ClientInputState InputState { get; init; }
+    public required EditorInteractionState InteractionState { get; init; }
     public float Speed { get; set; } = 15f;
     public float BoostMultiplier { get; set; } = 4f;
     public float LookSensitivity { get; set; } = 0.004f;
@@ -14,6 +15,7 @@ public sealed class EditorCameraScript : SyncScript
     private float yaw;
     private float pitch = -0.35f;
     private bool mouseLocked;
+    private bool wasPlaytesting;
     private const float PitchLimit = MathUtil.PiOverTwo - 0.01f;
 
     public override void Start()
@@ -23,6 +25,19 @@ public sealed class EditorCameraScript : SyncScript
 
     public override void Update()
     {
+        if (InteractionState.Playtesting)
+        {
+            wasPlaytesting = true;
+            return;
+        }
+        if (wasPlaytesting)
+        {
+            var forward = Entity.Transform.Rotation * -Vector3.UnitZ;
+            yaw = MathF.Atan2(-forward.X, -forward.Z);
+            pitch = MathF.Asin(MathUtil.Clamp(forward.Y, -1f, 1f));
+            wasPlaytesting = false;
+        }
+
         if (InputState.TerminalOpen)
         {
             if (mouseLocked) Input.UnlockMousePosition();

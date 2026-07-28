@@ -13,8 +13,10 @@ public sealed class EditorControllerScript : SyncScript
     public required EditorSession Session { get; init; }
     public required EditorToolSettings Settings { get; init; }
     public required EditorStructureState Structures { get; init; }
+    public required EditorInteractionState InteractionState { get; init; }
     public Action? SaveRequested { get; init; }
     public Action? BakeRequested { get; init; }
+    public Action<string>? FeedbackRequested { get; init; }
 
     private readonly List<Float3> strokeDabs = [];
     private readonly Dictionary<EInt3, EditorBlockPlacement?> blockBefore = [];
@@ -37,9 +39,28 @@ public sealed class EditorControllerScript : SyncScript
     public NVector3? LodFocus => Entity.Transform.Position;
     public EInt3? TargetCell { get; private set; }
     public bool TargetIsValid { get; private set; }
+    public Guid? SelectedPlacementId => selectedPlacement;
+
+    public void SelectPlacement(Guid id, bool announce = true)
+    {
+        var placement = Session.Placement(id)
+            ?? throw new ArgumentException($"Placement {id} does not exist");
+        selectedPlacement = id;
+        Settings.Mode = EditorToolMode.Object;
+        if (announce)
+            FeedbackRequested?.Invoke(
+                $"Selected {placement.Kind.ToString().ToLowerInvariant()} placement " +
+                EditorPlacementIds.Display(id));
+    }
 
     public override void Update()
     {
+        if (InteractionState.Playtesting)
+        {
+            CaptureDisabledInput();
+            return;
+        }
+
         if (InputState.TerminalOpen)
         {
             CancelGestures();
@@ -64,10 +85,11 @@ public sealed class EditorControllerScript : SyncScript
 
         if (hit is { } terrainHit)
         {
-            var cells = EditorTargeting.Cells(terrainHit.Point, terrainHit.Normal);
-            TargetCell = cells.Air;
-            TargetIsValid = IsTargetValid(terrainHit, cells);
-            DrawPreview(terrainHit, cells);
+            var objectCells = EditorTargeting.Cells(terrainHit.Point, terrainHit.Normal);
+            var blockSamples = EditorTargeting.Samples(terrainHit.Point, terrainHit.Normal);
+            TargetCell = Settings.Mode == EditorToolMode.Block ? blockSamples.Air : objectCells.Air;
+            TargetIsValid = IsTargetValid(terrainHit, objectCells, blockSamples);
+            DrawPreview(terrainHit, objectCells, blockSamples);
 
             switch (Settings.Mode)
             {
@@ -75,10 +97,11 @@ public sealed class EditorControllerScript : SyncScript
                     HandleTerrain(terrainHit, left, right, leftPressed, rightPressed, leftReleased, rightReleased);
                     break;
                 case EditorToolMode.Block:
-                    HandleBlocks(cells, left, right, leftPressed, rightPressed, leftReleased, rightReleased);
+                    HandleBlocks(
+                        blockSamples, left, right, leftPressed, rightPressed, leftReleased, rightReleased);
                     break;
                 case EditorToolMode.Object:
-                    if (leftPressed) HandleObject(origin, direction, terrainHit, cells);
+                    if (leftPressed) HandleObject(origin, direction, terrainHit, objectCells);
                     break;
             }
         }
@@ -172,9 +195,11 @@ public sealed class EditorControllerScript : SyncScript
 
         if (left || right)
         {
-            EInt3 cell = blockRemoving ? cells.Solid : cells.Air;
-            if (!EditorValidation.IsCellInBounds(cell)) return;
-            if (blockCells.Add(cell)) blockBefore[cell] = Session.BlockAt(cell);
+            if (!TargetIsValid) return;
+            EInt3 anchor = blockRemoving ? cells.Solid : cells.Air;
+            foreach (var cell in BlockBrush.Cells(anchor, Settings.BlockSize))
+                if (blockCells.Add(cell))
+                    blockBefore[cell] = Session.BlockAt(cell);
         }
 
         if (leftReleased || rightReleased) CommitBlocks();
@@ -209,7 +234,7 @@ public sealed class EditorControllerScript : SyncScript
         var picked = PickPlacement(origin, direction, terrainHit.Distance);
         if (picked is { } id)
         {
-            selectedPlacement = id;
+            SelectPlacement(id);
             return;
         }
 
@@ -231,14 +256,21 @@ public sealed class EditorControllerScript : SyncScript
             EditorObjectChoiceKind.Spawn => EditorPlacementKind.PlayerSpawn,
             _ => throw new InvalidOperationException(),
         };
-        Session.Execute(new AddPlacementCommand(new EditorPlacement
+        var placement = new EditorPlacement
         {
             Id = Guid.NewGuid(),
             Kind = kind,
             ArchetypeId = Settings.ObjectId,
             Cell = cells.Air,
             Yaw = Settings.ObjectYaw,
-        }));
+            WeaponId = kind == EditorPlacementKind.Mob
+                ? ItemCatalog.Id(ItemType.Ak47)
+                : null,
+        };
+        Session.Execute(new AddPlacementCommand(placement));
+        FeedbackRequested?.Invoke(
+            $"Placed {kind.ToString().ToLowerInvariant()}; placement ID " +
+            $"{EditorPlacementIds.Display(placement.Id)}");
     }
 
     private Guid? PickPlacement(NVector3 origin, NVector3 direction, float terrainDistance)
@@ -247,8 +279,9 @@ public sealed class EditorControllerScript : SyncScript
         float bestDistance = terrainDistance;
         foreach (var placement in Session.Document.Placements)
         {
-            var min = new NVector3(placement.Cell.X, placement.Cell.Y, placement.Cell.Z);
-            var max = min + NVector3.One;
+            var position = EditorPlacementPosition.Resolve(Session.Terrain, placement);
+            var min = position - new NVector3(0.5f, 0f, 0.5f);
+            var max = position + new NVector3(0.5f, 1f, 0.5f);
             if (RayBox(origin, direction, min, max, out float distance) && distance < bestDistance)
             {
                 best = placement.Id;
@@ -265,13 +298,21 @@ public sealed class EditorControllerScript : SyncScript
         {
             Session.Execute(new DeletePlacementCommand(placement));
             selectedPlacement = null;
+            FeedbackRequested?.Invoke(
+                $"Deleted {placement.Kind.ToString().ToLowerInvariant()} placement " +
+                EditorPlacementIds.Display(placement.Id));
         }
         deleteWasDown = delete;
 
         bool rotate = Input.IsKeyDown(Keys.R);
-        if (rotate && !rotateWasDown && selectedPlacement is { } selected && Session.Placement(selected) is { } current)
-            Session.Execute(new UpdatePlacementCommand(
-                $"Rotate {current.Kind}", current, current with { Yaw = current.Yaw + MathF.PI / 2f }));
+        if (rotate && !rotateWasDown)
+        {
+            if (Settings.Mode == EditorToolMode.Block && Structures.Selected is not null)
+                Structures.QuarterTurns = (Structures.QuarterTurns + 1) % 4;
+            else if (selectedPlacement is { } selected && Session.Placement(selected) is { } current)
+                Session.Execute(new UpdatePlacementCommand(
+                    $"Rotate {current.Kind}", current, current with { Yaw = current.Yaw + MathF.PI / 2f }));
+        }
         rotateWasDown = rotate;
 
         if (Input.IsKeyDown(Keys.Escape)) selectedPlacement = null;
@@ -282,11 +323,11 @@ public sealed class EditorControllerScript : SyncScript
         bool ctrl = Input.IsKeyDown(Keys.LeftCtrl) || Input.IsKeyDown(Keys.RightCtrl);
         bool shift = Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift);
 
-        bool undo = ctrl && Input.IsKeyDown(Keys.Z);
+        bool undo = Input.IsKeyDown(Keys.U);
         if (undo && !undoWasDown) Session.Undo();
         undoWasDown = undo;
 
-        bool redo = ctrl && Input.IsKeyDown(Keys.Y);
+        bool redo = Input.IsKeyDown(Keys.Y);
         if (redo && !redoWasDown) Session.Redo();
         redoWasDown = redo;
 
@@ -335,24 +376,63 @@ public sealed class EditorControllerScript : SyncScript
         objectModeWasDown = IsModeKeyDown(Keys.D3, Keys.NumPad3);
     }
 
+    private void CaptureDisabledInput()
+    {
+        strokeDabs.Clear();
+        blockBefore.Clear();
+        blockCells.Clear();
+        leftWasDown = Input.IsMouseButtonDown(MouseButton.Left);
+        rightWasDown = Input.IsMouseButtonDown(MouseButton.Right);
+        deleteWasDown = Input.IsKeyDown(Keys.Delete);
+        rotateWasDown = Input.IsKeyDown(Keys.R);
+        undoWasDown = Input.IsKeyDown(Keys.U);
+        redoWasDown = Input.IsKeyDown(Keys.Y);
+        bool ctrl = Input.IsKeyDown(Keys.LeftCtrl) || Input.IsKeyDown(Keys.RightCtrl);
+        bool shift = Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift);
+        saveWasDown = ctrl && !shift && Input.IsKeyDown(Keys.S);
+        bakeWasDown = ctrl && shift && Input.IsKeyDown(Keys.B);
+        CaptureModeHotkeys();
+    }
+
     private bool IsModeKeyDown(Keys numberRow, Keys numberPad)
         => Input.IsKeyDown(numberRow) || Input.IsKeyDown(numberPad);
 
     private void HandleWheel()
     {
         float wheel = Input.MouseWheelDelta;
-        if (Settings.Mode != EditorToolMode.Terrain || MathF.Abs(wheel) < 0.01f) return;
+        if (MathF.Abs(wheel) < 0.01f) return;
 
-        bool shift = Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift);
-        if (shift)
-            Settings.TerrainStrength = Math.Clamp(Settings.TerrainStrength + MathF.Sign(wheel) * 0.1f, 0.1f, 1f);
-        else
-            Settings.TerrainHalfExtent = System.Numerics.Vector3.Max(
-                new NVector3(0.5f),
-                Settings.TerrainHalfExtent + new NVector3(MathF.Sign(wheel) * 0.25f));
+        if (Settings.Mode == EditorToolMode.Terrain)
+        {
+            bool shift = Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift);
+            if (shift)
+                Settings.TerrainStrength = Math.Clamp(
+                    Settings.TerrainStrength + MathF.Sign(wheel) * 0.1f, 0.1f, 1f);
+            else
+                Settings.TerrainHalfExtent = System.Numerics.Vector3.Max(
+                    new NVector3(0.5f),
+                    Settings.TerrainHalfExtent + new NVector3(MathF.Sign(wheel) * 0.25f));
+            return;
+        }
+
+        if (Settings.Mode == EditorToolMode.Block && Structures.Selected is null)
+        {
+            int delta = Math.Sign(wheel);
+            var size = new EInt3(
+                Math.Clamp(
+                    Settings.BlockSize.X + delta, 1, EditorToolSettings.MaxBlockBrushDimension),
+                Math.Clamp(
+                    Settings.BlockSize.Y + delta, 1, EditorToolSettings.MaxBlockBrushDimension),
+                Math.Clamp(
+                    Settings.BlockSize.Z + delta, 1, EditorToolSettings.MaxBlockBrushDimension));
+            if (BlockBrush.IsValidSize(size)) Settings.BlockSize = size;
+        }
     }
 
-    private void DrawPreview(TerrainHit hit, EditorTargetCells cells)
+    private void DrawPreview(
+        TerrainHit hit,
+        EditorTargetCells objectCells,
+        EditorTargetCells blockSamples)
     {
         var targetColor = TargetIsValid
             ? new Color(255, 255, 255, 230)
@@ -362,6 +442,9 @@ public sealed class EditorControllerScript : SyncScript
             case EditorToolMode.Terrain:
                 if (Settings.TerrainShape == EditShape.Sphere)
                     WorldPreviewRenderer.Sphere(hit.Point, Settings.TerrainHalfExtent.X, targetColor);
+                else if (Settings.TerrainShape == EditShape.Organic)
+                    WorldPreviewRenderer.Organic(
+                        hit.Point, Settings.TerrainHalfExtent, targetColor);
                 else
                     WorldPreviewRenderer.Cube(
                         hit.Point - Settings.TerrainHalfExtent,
@@ -374,21 +457,27 @@ public sealed class EditorControllerScript : SyncScript
                     {
                         var offset = StructureLibrary.Transform(
                             block.Offset, Structures.QuarterTurns, Structures.MirrorX);
-                        WorldPreviewRenderer.Cell(new EInt3(
-                            cells.Air.X + offset.X,
-                            cells.Air.Y + offset.Y,
-                            cells.Air.Z + offset.Z), targetColor);
+                        WorldPreviewRenderer.VoxelSample(new EInt3(
+                            blockSamples.Air.X + offset.X,
+                            blockSamples.Air.Y + offset.Y,
+                            blockSamples.Air.Z + offset.Z), targetColor);
                     }
                 }
                 else
                 {
-                    WorldPreviewRenderer.Cell(
-                        Input.IsMouseButtonDown(MouseButton.Right) ? cells.Solid : cells.Air, targetColor);
+                    var anchor = Input.IsMouseButtonDown(MouseButton.Right)
+                        ? blockSamples.Solid
+                        : blockSamples.Air;
+                    var (min, max) = BlockBrush.Bounds(anchor, Settings.BlockSize);
+                    WorldPreviewRenderer.Cube(
+                        min.SamplePosition - new NVector3(0.5f),
+                        max.SamplePosition + new NVector3(0.5f),
+                        targetColor);
                 }
                 break;
             case EditorToolMode.Object:
                 WorldPreviewRenderer.Cell(
-                    cells.Air,
+                    objectCells.Air,
                     TargetIsValid ? new Color(255, 220, 80, 230) : targetColor);
                 break;
         }
@@ -399,7 +488,10 @@ public sealed class EditorControllerScript : SyncScript
             WorldPreviewRenderer.Cell(placement.Cell, new Color(80, 255, 120, 220));
     }
 
-    private bool IsTargetValid(TerrainHit hit, EditorTargetCells cells)
+    private bool IsTargetValid(
+        TerrainHit hit,
+        EditorTargetCells objectCells,
+        EditorTargetCells blockSamples)
     {
         return Settings.Mode switch
         {
@@ -411,15 +503,24 @@ public sealed class EditorControllerScript : SyncScript
                     var offset = StructureLibrary.Transform(
                         block.Offset, Structures.QuarterTurns, Structures.MirrorX);
                     return EditorValidation.IsCellInBounds(new EInt3(
-                        cells.Air.X + offset.X,
-                        cells.Air.Y + offset.Y,
-                        cells.Air.Z + offset.Z));
+                        blockSamples.Air.X + offset.X,
+                        blockSamples.Air.Y + offset.Y,
+                        blockSamples.Air.Z + offset.Z));
                 }),
-            EditorToolMode.Block => EditorValidation.IsCellInBounds(
-                Input.IsMouseButtonDown(MouseButton.Right) ? cells.Solid : cells.Air),
-            EditorToolMode.Object => IsObjectTargetValid(cells.Air),
+            EditorToolMode.Block => IsBlockTargetValid(
+                Input.IsMouseButtonDown(MouseButton.Right)
+                    ? blockSamples.Solid
+                    : blockSamples.Air),
+            EditorToolMode.Object => IsObjectTargetValid(objectCells.Air),
             _ => false,
         };
+    }
+
+    private bool IsBlockTargetValid(EInt3 anchor)
+    {
+        var (min, max) = BlockBrush.Bounds(anchor, Settings.BlockSize);
+        return EditorValidation.IsCellInBounds(min)
+            && EditorValidation.IsCellInBounds(max);
     }
 
     private bool IsObjectTargetValid(EInt3 cell)
@@ -430,7 +531,9 @@ public sealed class EditorControllerScript : SyncScript
                 && Session.Placement(id)?.Kind == EditorPlacementKind.PlayerSpawn;
         if (!isSpawn) return true;
 
-        var feet = new NVector3(cell.X + 0.5f, cell.Y, cell.Z + 0.5f);
+        var feet = EditorPlacementPosition.ResolvePlayerFeet(
+            Session.Terrain,
+            EditorPlacementPosition.Resolve(Session.Terrain, cell));
         return TerrainCollision.TryDeepestContact(
                 Session.Terrain, PlayerMovement.Body, feet, out var contact)
             && contact.Distance >= PlayerMovement.Body.Radius;

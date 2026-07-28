@@ -53,9 +53,7 @@ public sealed class EditorTerrainEvaluator
             {
                 if (!BlockCatalog.TryResolve(block.BlockId, out var material))
                     throw new InvalidDataException($"Unknown material {block.BlockId}");
-                TerrainEdits.ApplyBox(
-                    chunk, block.Cell.Centre, new Vector3(0.5f), EditMode.Add, material,
-                    EditShape.Box, 1f);
+                TerrainEdits.ApplyBlockCell(chunk, block.Cell.SamplePosition, material);
             }
         }
 
@@ -80,7 +78,7 @@ public sealed class EditorTerrainEvaluator
 
     public static IReadOnlySet<ChunkIndex> AffectedChunks(EditorBlockPlacement block)
     {
-        var (low, high) = TerrainEdits.AffectedBounds(block.Cell.Centre, new Vector3(0.5f));
+        var (low, high) = TerrainEdits.AffectedBounds(block.Cell.SamplePosition, new Vector3(0.5f));
         var first = ChunkTransforms.ChunkAt(low.X, low.Z);
         var last = ChunkTransforms.ChunkAt(high.X, high.Z);
         var chunks = new HashSet<ChunkIndex>();
@@ -92,17 +90,27 @@ public sealed class EditorTerrainEvaluator
 
     public static RuntimeMap Bake(EditorDocument document)
     {
+        var terrain = new EditorTerrainEvaluator().EvaluateAll(document);
+        return Bake(document, terrain);
+    }
+
+    /// <summary>
+    /// Builds runtime metadata around an already-current editor terrain field. This is the fast
+    /// in-memory playtest path; persisted bakes still call <see cref="Bake(EditorDocument)"/> and
+    /// independently replay the source document.
+    /// </summary>
+    public static RuntimeMap Bake(EditorDocument document, ChunkMap terrain)
+    {
         var validation = EditorValidation.Validate(document);
         if (!validation.IsValid)
             throw new InvalidDataException(string.Join("; ", validation.Errors));
 
-        var terrain = new EditorTerrainEvaluator().EvaluateAll(document);
         var placements = document.Placements
             .OrderBy(placement => placement.Kind)
             .ThenBy(placement => placement.Id)
-            .Select(ToRuntimePlacement)
+            .Select(placement => ToRuntimePlacement(placement, terrain))
             .ToArray();
-        return new RuntimeMap
+        var runtime = new RuntimeMap
         {
             MapId = document.MapId,
             Name = document.Name,
@@ -110,11 +118,15 @@ public sealed class EditorTerrainEvaluator
             Placements = placements,
             SourceHash = SourceMapSerializer.Hash(document),
         };
+        var runtimeValidation = RuntimeMapValidation.Validate(runtime);
+        if (!runtimeValidation.IsValid)
+            throw new InvalidDataException(string.Join("; ", runtimeValidation.Errors));
+        return runtime;
     }
 
-    private static RuntimePlacement ToRuntimePlacement(EditorPlacement placement)
+    private static RuntimePlacement ToRuntimePlacement(EditorPlacement placement, ChunkMap terrain)
     {
-        var position = new Vector3(placement.Cell.X + 0.5f, placement.Cell.Y, placement.Cell.Z + 0.5f);
+        var position = EditorPlacementPosition.Resolve(terrain, placement);
         return placement.Kind switch
         {
             EditorPlacementKind.Pickup => new RuntimePlacement(
@@ -123,12 +135,21 @@ public sealed class EditorTerrainEvaluator
                     ? item
                     : throw new InvalidDataException($"Unknown item {placement.ArchetypeId}")),
             EditorPlacementKind.Mob => new RuntimePlacement(
-                RuntimePlacementKind.Mob, position, placement.Yaw),
+                RuntimePlacementKind.Mob, position, placement.Yaw,
+                Item: ResolveMobWeapon(placement)),
             EditorPlacementKind.PlayerSpawn => new RuntimePlacement(
                 RuntimePlacementKind.PlayerSpawn, position, placement.Yaw,
                 SpawnId: placement.ArchetypeId["demiurge:spawn/".Length..]),
             _ => throw new InvalidDataException($"Unknown placement kind {placement.Kind}"),
         };
+    }
+
+    private static ItemType ResolveMobWeapon(EditorPlacement placement)
+    {
+        string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47);
+        if (!ItemCatalog.TryResolve(weaponId, out var weapon) || WeaponConfig.Get(weapon) is null)
+            throw new InvalidDataException($"Unknown mob weapon {weaponId}");
+        return weapon;
     }
 
     private sealed class EditorOperationIndex

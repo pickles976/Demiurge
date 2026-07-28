@@ -505,10 +505,9 @@ namespace Demiurge
         /// that are the most likely thing to be inspected closely. Nothing about either call site
         /// looked wrong. Switching placement is a one-line edit HERE, and cannot be done by halves.
         ///
-        /// Currently SURFACE NETS. Dual contouring reconstructs a crease instead of rounding it,
-        /// which is the better answer for generated terrain and the wrong one for dug terrain: every
-        /// cut is axis-aligned, so DC faithfully reproduces the voxel grid's corners and a hand-dug
-        /// hollow comes out looking milled.
+        /// Currently SURFACE NETS. Its averaged placement keeps repeated digging edits smooth. Unit
+        /// editor blocks are represented by sample-centred box fields, so they have a real interior
+        /// sample and do not depend on dual contouring to appear.
         /// </summary>
         public static MeshData GenerateMesh(Sample[] scratch)
             => GenerateMeshFromSurfaceNet(scratch);

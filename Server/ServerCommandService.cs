@@ -78,7 +78,7 @@ internal sealed class ServerCommandService
 
         var mob = world.SpawnMob(position);
         return Result(requestId, true,
-            $"Spawned mob @{mob.Id} at {FormatPosition(mob.Position)}");
+            $"Spawned mob; actor ID @{mob.Id}; position {FormatPosition(mob.Position)}");
     }
 
     private CommandResultData SpawnPickup(uint requestId, ServerCommandSource source, SpawnPickupCommand command)
@@ -88,7 +88,7 @@ internal sealed class ServerCommandService
 
         var pickup = world.SpawnPickup(command.Item, position);
         return Result(requestId, true,
-            $"Spawned {ItemCatalog.Id(command.Item)} object #{pickup.NetworkId} at {FormatPosition(position)}");
+            $"Spawned {ItemCatalog.Id(command.Item)} pickup; object ID #{pickup.NetworkId}; position {FormatPosition(position)}");
     }
 
     private CommandResultData Equip(uint requestId, ServerCommandSource source, EquipCommand command)

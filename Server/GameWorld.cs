@@ -26,6 +26,7 @@ namespace Demiurge.GameServer
         private const float SpawnX = 0f;
         private const float SpawnZ = 0f;
         private readonly RuntimePlacement[] playerSpawns;
+        private readonly Vector3? spawnOverride;
         private int nextPlayerSpawn;
         public string MapName { get; }
 
@@ -35,9 +36,10 @@ namespace Demiurge.GameServer
         /// </summary>
         private readonly ChunkMap terrain;
 
-        public GameWorld(Server server, RuntimeMap? runtimeMap = null)
+        public GameWorld(Server server, RuntimeMap? runtimeMap = null, Vector3? spawnOverride = null)
         {
             this.server = server;
+            this.spawnOverride = spawnOverride;
             terrain = runtimeMap?.Terrain ?? new ChunkMap();
             MapName = runtimeMap?.Name ?? "generated";
 
@@ -89,7 +91,9 @@ namespace Demiurge.GameServer
                     case RuntimePlacementKind.Mob:
                         var mob = SpawnMob(placement.Position);
                         mob.Yaw = placement.Yaw;
-                        items.SpawnEquipped(mob, ItemType.Ak47);
+                        items.SpawnEquipped(
+                            mob,
+                            placement.Item == default ? ItemType.Ak47 : placement.Item);
                         break;
                 }
             }
@@ -297,6 +301,12 @@ namespace Demiurge.GameServer
 
         private MoveState SpawnPlayerMove()
         {
+            // The editor playtest hands us the fly camera's exact position and it outranks the
+            // map, so you drop in where you were looking. Not grounded: the point is wherever the
+            // camera was, in the air as often as not, and gravity takes it from there.
+            if (spawnOverride is { } forced)
+                return new MoveState { Position = forced, Velocity = Vector3.Zero, Grounded = false };
+
             if (playerSpawns.Length == 0)
                 return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
 

@@ -29,7 +29,7 @@ public sealed class EditorPlacementViewFactory : IDisposable
 
     private void OnChanged(EditorChange change)
     {
-        if (change.PlacementIds.Count > 0) RefreshAll();
+        if (change.PlacementIds.Count > 0 || change.TerrainChunks.Count > 0) RefreshAll();
     }
 
     private void RefreshAll()
@@ -49,8 +49,8 @@ public sealed class EditorPlacementViewFactory : IDisposable
                 views.Add(placement.Id, entity);
                 entity.Scene = scene;
             }
-            entity.Transform.Position = new Stride.Core.Mathematics.Vector3(
-                placement.Cell.X + 0.5f, placement.Cell.Y, placement.Cell.Z + 0.5f);
+            entity.Transform.Position = EditorPlacementPosition.Resolve(
+                session.Terrain, placement).ToStride();
             entity.Transform.Rotation = Stride.Core.Mathematics.Quaternion.RotationY(placement.Yaw);
         }
     }

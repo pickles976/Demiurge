@@ -79,6 +79,18 @@ public static class RuntimeMapValidation
                         errors.Add($"Player spawn {placement.SpawnId} intersects terrain");
                     break;
                 case RuntimePlacementKind.Mob:
+                    if (placement.Item != default)
+                    {
+                        try
+                        {
+                            if (WeaponConfig.Get(placement.Item) is null)
+                                errors.Add($"Mob item {placement.Item} is not a weapon");
+                        }
+                        catch (ArgumentOutOfRangeException)
+                        {
+                            errors.Add($"Unknown mob weapon {placement.Item}");
+                        }
+                    }
                     WarnIfUnsupported(map, placement, warnings);
                     break;
                 default:
@@ -104,9 +116,12 @@ public static class RuntimeMapValidation
         RuntimePlacement placement,
         List<string> warnings)
     {
-        float surfaceY = SurfaceQuery.SurfacePosition(
-            map.Terrain, placement.Position.X, placement.Position.Z).Y;
-        if (MathF.Abs(surfaceY - placement.Position.Y) > 0.75f)
+        float? surfaceY = SurfaceQuery.NearestSurfaceY(
+            map.Terrain,
+            placement.Position.X,
+            placement.Position.Z,
+            placement.Position.Y);
+        if (surfaceY is null || MathF.Abs(surfaceY.Value - placement.Position.Y) > 0.75f)
             warnings.Add(
                 $"{placement.Kind} at ({placement.Position.X:0.##}, {placement.Position.Y:0.##}, {placement.Position.Z:0.##}) has no nearby support");
     }

@@ -33,6 +33,9 @@ public static class WorldPreviewRenderer
             centre + new System.Numerics.Vector3(0.5f),
             color);
 
+    public static void VoxelSample(Demiurge.Editor.Int3 sample, Color color)
+        => VoxelSample(sample.SamplePosition, color);
+
     public static void Sphere(System.Numerics.Vector3 centre, float radius, Color color, int segments = 32)
     {
         for (int axis = 0; axis < 3; axis++)
@@ -53,6 +56,47 @@ public static class WorldPreviewRenderer
                 if (i == 0) first = point;
                 if (previous is { } from) LineRenderer.DrawLine(from, point, color);
                 previous = point;
+            }
+            if (previous is { } last) LineRenderer.DrawLine(last, first, color);
+        }
+    }
+
+    public static void Organic(
+        System.Numerics.Vector3 centre,
+        System.Numerics.Vector3 extent,
+        Color color,
+        int segments = 32)
+    {
+        float high = MathF.Max(extent.X, MathF.Max(extent.Y, extent.Z)) + 1f;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            Vector3? previous = null;
+            Vector3 first = default;
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * MathUtil.TwoPi / segments;
+                var direction = axis switch
+                {
+                    0 => new System.Numerics.Vector3(0f, MathF.Cos(angle), MathF.Sin(angle)),
+                    1 => new System.Numerics.Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)),
+                    _ => new System.Numerics.Vector3(MathF.Cos(angle), MathF.Sin(angle), 0f),
+                };
+
+                float low = 0f;
+                float upper = high;
+                for (int step = 0; step < 8; step++)
+                {
+                    float distance = (low + upper) * 0.5f;
+                    var offset = direction * distance;
+                    float field = TerrainEdits.ShapeDistance(
+                        offset, extent, EditShape.Organic, centre + offset);
+                    if (field < 0f) low = distance; else upper = distance;
+                }
+
+                var world = (centre + direction * ((low + upper) * 0.5f)).ToStride();
+                if (i == 0) first = world;
+                if (previous is { } from) LineRenderer.DrawLine(from, world, color);
+                previous = world;
             }
             if (previous is { } last) LineRenderer.DrawLine(last, first, color);
         }

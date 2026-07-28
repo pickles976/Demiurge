@@ -107,4 +107,29 @@ public class SurfaceQueryTests
         Assert.Equal(7.75f, position.Z, 4);
         Assert.Equal(12.5f, position.Y, 1);
     }
+
+    [Fact]
+    public void NearestSurfaceKeepsPlacementOnLocalFloor()
+    {
+        var map = FlatWorld(10f);
+        var chunk = map.Get(new ChunkIndex { x = 0, z = 0 })!;
+        for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
+        {
+            int y = ChunkTransforms.LocalYOf(i) + ChunkConstants.WorldMinY;
+            var voxel = chunk[i];
+            voxel.Distance = y switch
+            {
+                < 10 => -1f,
+                < 20 => 1f,
+                < 22 => -1f,
+                _ => 1f,
+            };
+            chunk[i] = voxel;
+        }
+
+        float? local = SurfaceQuery.NearestSurfaceY(map, 8.5f, 8.5f, 10f, 2f);
+
+        Assert.Equal(9.5f, local);
+        Assert.Equal(21.5f, SurfaceQuery.HighestSurfaceY(map, 8, 8));
+    }
 }

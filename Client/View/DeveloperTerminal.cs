@@ -28,6 +28,7 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
     private readonly ConcurrentQueue<TerminalOutput> pendingResults = new();
     private int historyIndex;
     private bool toggleWasDown;
+    private bool playtestWasDown;
 
     public override void Start()
     {
@@ -66,6 +67,11 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
         }
         toggleWasDown = toggleKeyDown;
 
+        bool playtestDown = Input.IsKeyDown(Keys.F4);
+        if (!InputState.TerminalOpen && playtestDown && !playtestWasDown)
+            Execute("session playtest");
+        playtestWasDown = playtestDown;
+
         if (!InputState.TerminalOpen) return;
 
         foreach (var keyEvent in Input.KeyEvents)
@@ -94,6 +100,9 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
                     break;
                 case Keys.Down:
                     if (keyEvent.RepeatCount == 0) RecallHistory(1);
+                    break;
+                case Keys.Tab:
+                    if (keyEvent.RepeatCount == 0) CompleteInput();
                     break;
             }
         }
@@ -173,7 +182,7 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
         }
         if (command.Equals("help", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (string line in Dispatcher.Help()) output.Add(line);
+            foreach (string line in Dispatcher.Help(arguments)) output.Add(line);
             return;
         }
 
@@ -191,6 +200,51 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
         input.Clear();
         if (historyIndex < history.Count) input.Append(history[historyIndex]);
         Refresh();
+    }
+
+    private void CompleteInput()
+    {
+        IReadOnlyList<string> candidates = Dispatcher.Complete(input.ToString());
+        if (candidates.Count == 0) return;
+
+        int tokenStart = input.Length;
+        while (tokenStart > 0 && !char.IsWhiteSpace(input[tokenStart - 1])) tokenStart--;
+        string prefix = input.ToString(tokenStart, input.Length - tokenStart);
+        string replacement = candidates.Count == 1
+            ? candidates[0]
+            : LongestCommonPrefix(candidates);
+
+        if (replacement.Length > prefix.Length)
+        {
+            if (tokenStart + replacement.Length > MaxInputLength) return;
+            input.Remove(tokenStart, input.Length - tokenStart);
+            input.Append(replacement);
+            if (candidates.Count == 1 && input.Length < MaxInputLength) input.Append(' ');
+        }
+        else
+        {
+            output.Add(string.Join("  ", candidates));
+            TrimOutput();
+        }
+
+        historyIndex = history.Count;
+        Refresh();
+    }
+
+    private static string LongestCommonPrefix(IReadOnlyList<string> values)
+    {
+        string first = values[0];
+        int length = first.Length;
+        for (int i = 1; i < values.Count && length > 0; i++)
+        {
+            int shared = 0;
+            int limit = Math.Min(length, values[i].Length);
+            while (shared < limit
+                && char.ToLowerInvariant(first[shared]) == char.ToLowerInvariant(values[i][shared]))
+                shared++;
+            length = shared;
+        }
+        return first[..length];
     }
 
     private void TrimOutput()
