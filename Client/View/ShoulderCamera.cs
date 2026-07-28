@@ -40,6 +40,18 @@ namespace Demiurge
 		/// </summary>
 		public float ZoomSpeed { get; set; } = 12f;
 
+		/// <summary>
+		/// How sharply the pivot chases the player. MUST match PlayerViewScript's smoothing of the local
+		/// player's model, and that is not a nicety.
+		///
+		/// Prediction advances in 30 Hz steps while rendering runs at whatever the frame rate is. The
+		/// model already eases between those steps; a camera reading the raw predicted position instead
+		/// snaps to each one, so the model oscillates AGAINST the camera every frame and the character
+		/// looks like it is vibrating. Following with the same curve makes the two move as one — any
+		/// residual lag is then shared, and shared lag is invisible.
+		/// </summary>
+		public float FollowSharpness { get; set; } = 20f;
+
 		public required PlayerRegistry Registry { get; init; }
 
 		/// <summary>
@@ -56,6 +68,8 @@ namespace Demiurge
 
 		float orbit;
 		float pitch;
+		Vector3 followed;
+		bool following;
 		float distance;
 		float shoulder;
 		bool mouseLocked;
@@ -106,7 +120,22 @@ namespace Demiurge
 			var offset = new Vector3(shoulder, 0f, distance);
 			Vector3.Transform(ref offset, ref rotation, out var rotated);
 
-			var pivot = local.Position.ToStride() + Vector3.UnitY * PivotHeight;
+			var feet = local.Position.ToStride();
+
+			// Snap on the first frame and after a teleport, ease otherwise: easing in from wherever the
+			// camera happened to be would sweep it across the world on spawn.
+			if (!following || Vector3.Distance(followed, feet) > 8f)
+			{
+				followed = feet;
+				following = true;
+			}
+			else
+			{
+				followed = Vector3.Lerp(followed, feet,
+					1f - MathF.Exp(-FollowSharpness * (float)Game.UpdateTime.Elapsed.TotalSeconds));
+			}
+
+			var pivot = followed + Vector3.UnitY * PivotHeight;
 
 			Entity.Transform.Position = pivot + rotated;
 			Entity.Transform.Rotation = rotation;

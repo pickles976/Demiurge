@@ -9,3 +9,4 @@ obj
 *.sdsnd
 .claude
 *.pdf
+/assets/locators.txt

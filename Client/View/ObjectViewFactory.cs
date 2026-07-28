@@ -9,15 +9,17 @@ public class ObjectViewFactory
 {
     private readonly Game game;
     private readonly Scene scene;
+    private readonly WeaponMount mount;
 
     // Scenery only. Items never appear here: their model comes from
     // ItemCosmetics and their behavior from the component mask.
     private readonly Dictionary<ObjectType, Func<NetObject, Entity>> builders;
 
-    public ObjectViewFactory(Game game, Scene scene, ObjectRegistry registry)
+    public ObjectViewFactory(Game game, Scene scene, ObjectRegistry registry, WeaponMount mount)
     {
         this.game = game;
         this.scene = scene;
+        this.mount = mount;
         builders = new()
         {
             [ObjectType.Crate] = _ => game.Create3DPrimitive(PrimitiveModelType.Cube,
@@ -47,7 +49,7 @@ public class ObjectViewFactory
         // transform (so no NetTransformScript alongside). Item+Owner is worn:
         // the attach presenter owns it instead.
         if (isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new PickupBobScript { Object = obj });
-        if (isItem && obj.Has.HasFlag(NetComponents.Owner)) entity.Add(new ItemAttachScript { Object = obj });
+        if (isItem && obj.Has.HasFlag(NetComponents.Owner)) entity.Add(new ItemAttachScript { Object = obj, Mount = mount });
         if (!isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
 

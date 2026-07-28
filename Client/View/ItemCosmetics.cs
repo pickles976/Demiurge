@@ -1,15 +1,20 @@
 using Demiurge;
+using Demiurge.GameClient;
 using Stride.Core.Mathematics;
 
 // Client-only item cosmetics, keyed by the same ItemType as ItemConfig.
 // Kept out of Common so the wire protocol and the server stay view-free.
 // Weapon shot effects (sound, tracer) live in WeaponFx.
 //
-// WHERE a worn item sits comes from the SLOT (replicated in AttachmentState),
-// not the item: every Hand item seats like a gun, every Chest item like armor.
-// A socket's Node is a bone name (from the rig — dump the gltf's node names if
-// unsure) linked via ModelNodeLinkComponent; null follows the Player_{id}
-// entity root instead.
+// WHICH BONE a worn item hangs off, and how it is ORIENTED there, comes from the
+// SLOT (replicated in AttachmentState): every Hand item points like a gun, every
+// Chest item lies like armor. A socket's Node is a bone name (from the rig — dump
+// the gltf's node names if unsure) linked via ModelNodeLinkComponent; null follows
+// the Player_{id} entity root instead.
+//
+// HOW FAR ALONG the item sits is the one thing that comes from the ITEM, because
+// it depends on where that model's author put its origin. It is read from the
+// model's `grip` locator rather than tuned by hand — see SeatFor.
 public static class ItemCosmetics
 {
     public readonly record struct Socket(string? Node, Vector3 Seat, Quaternion Rotation);
@@ -25,22 +30,27 @@ public static class ItemCosmetics
         _ => "assets/models/ak47.gltf",
     };
 
-    // Bone-relative gun seat, carried over from the old WeaponAttachScript.
-    private static readonly Vector3 HandSeat = new(0.0f, -3.75f / 16.0f, 0.425f / 16.0f);
-    private static readonly Quaternion HandRotation = Quaternion.RotationX(MathF.PI / 2.0f) * Quaternion.RotationZ(MathF.PI);
-
     // A new EquipSlot needs a row here — that's the whole client cost of a slot.
-    // Head and Back are untuned placeholders: eyeball them when the first
+    // Seats are the FALLBACK for models with no grip locator; a Hand item's real seat
+    // comes from WeaponMount, which owns it so the sim's muzzle can be derived from the
+    // same numbers. Head and Back are untuned placeholders: eyeball them when the first
     // helmet/backpack lands.
     private static readonly Dictionary<EquipSlot, Socket> SlotSockets = new()
     {
-        [EquipSlot.Hand] = new("right_hand", HandSeat, HandRotation),
+        [EquipSlot.Hand] = new("right_hand", Vector3.Zero, WeaponMount.HandRotation.ToStride()),
         [EquipSlot.Chest] = new("torso", Vector3.Zero, Quaternion.Identity),
         [EquipSlot.Head] = new("head", Vector3.Zero, Quaternion.Identity),
         [EquipSlot.Back] = new("torso", new Vector3(0f, 0f, -0.2f), Quaternion.Identity),
     };
 
     // Unknown slot off the wire: ride the player root rather than crash.
-    public static Socket GetSocket(EquipSlot slot) =>
-        SlotSockets.TryGetValue(slot, out var socket) ? socket : new Socket(null, Vector3.Zero, Quaternion.Identity);
+    public static Socket GetSocket(EquipSlot slot, ItemType type, WeaponMount mount)
+    {
+        if (!SlotSockets.TryGetValue(slot, out var socket))
+            return new Socket(null, Vector3.Zero, Quaternion.Identity);
+
+        return slot == EquipSlot.Hand
+            ? socket with { Seat = mount.Seat(type).ToStride() }
+            : socket;
+    }
 }

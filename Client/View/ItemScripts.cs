@@ -1,4 +1,5 @@
 using Demiurge;
+using Demiurge.GameClient;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
@@ -42,6 +43,7 @@ public class PickupBobScript : SyncScript
 public class ItemAttachScript : SyncScript
 {
     public required NetObject Object { get; init; }
+    public required WeaponMount Mount { get; init; }
 
     private Entity? owner;
     private bool boneLinked;
@@ -51,7 +53,7 @@ public class ItemAttachScript : SyncScript
         owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
         if (owner == null) return;
 
-        var socket = ItemCosmetics.GetSocket(Object.Attachment.Slot);
+        var socket = ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount);
         if (socket.Node is { } node)
         {
             if (boneLinked) return;   // latch: slot never changes in place (transitions are despawn/respawn)

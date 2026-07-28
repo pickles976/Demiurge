@@ -108,7 +108,15 @@ chunkStream.ChunkReceived += terrainState.Receive;
 // the Riptide handshake has completed.
 network.Welcomed += welcome => chunkStream.Connect(NetworkConfig.ServerHost, welcome.ChunkToken);
 
-var registry = new PlayerRegistry(network, terrainState);
+// Grip/barrel points measured off the source .gltf at build time — a weapon model has
+// no nodes left at runtime to read them from. See ModelLocators. WeaponMount turns them
+// into the two answers that must agree: where the renderer seats a gun, and where the
+// sim says its shots start. ItemCosmetics owns the ItemType -> model table, so the root
+// hands it over rather than letting Core reach into View for it.
+var modelLocators = ModelLocators.Load();
+var weaponMount = new WeaponMount(modelLocators, ItemCosmetics.Model);
+
+var registry = new PlayerRegistry(network, terrainState, weaponMount);
 var objectRegistry = new ObjectRegistry(network);
 
 // View over that state, built in Start() once the graphics device exists.
@@ -271,7 +279,7 @@ void Start(Scene rootScene)
     }
 
     var viewFactory = new PlayerViewFactory(game, rootScene, registry);
-    var ObjectViewFactory = new ObjectViewFactory(game, rootScene, objectRegistry);
+    var ObjectViewFactory = new ObjectViewFactory(game, rootScene, objectRegistry, weaponMount);
 
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
@@ -285,7 +293,9 @@ void Start(Scene rootScene)
     // The cursor reticle belongs to the old camera: the shoulder camera locks the mouse, so there is no
     // cursor to draw one at.
     // cameraEntity.Add(new CursorReticleScript());
-    cameraEntity.Add(new AimLineScript { Registry = registry });
+    // Aim line off: it drew where the old cursor-aimed camera was pointing, which the shoulder camera
+    // makes redundant — you are already looking down the shot. Kept as dead code like the camera itself.
+    // cameraEntity.Add(new AimLineScript { Registry = registry, Mount = weaponMount });
     cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
 
     network.Connect();

@@ -22,6 +22,7 @@ public class LocalPlayer : Player
 {
     private readonly NetworkManager network;
     private readonly TerrainState terrain;
+    private readonly WeaponMount mount;
     private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
     private uint sequence;
     private float accumulator;
@@ -88,7 +89,11 @@ public class LocalPlayer : Player
         cooldownTicks = Stats.TicksPerShot;
         Ammo--;
 
-        var origin = Position + new Vector3(0f, GunConfig.MuzzleHeight, 0f);
+        // The barrel of the gun we are actually holding, not a constant height on the
+        // player's centre axis. WeaponMount measures it off the same model the renderer
+        // draws, in the same pose the renderer is drawing (firing is aiming-only), so the
+        // tracer leaves the visible muzzle. Yaw-only, matching the fire direction.
+        var origin = Position + Vector3.Transform(mount.Muzzle(Weapon!.Item.Type), Quaternion.CreateFromYawPitchRoll(Yaw, 0f, 0f));
         network.SendFire(new PlayerFireData
         {
             Sequence = sequence,
@@ -111,10 +116,11 @@ public class LocalPlayer : Player
     /// spawn/despawn replication and flows through Equip/Unequip.</summary>
     public void TryInteract() => network.SendInteract();
 
-    public LocalPlayer(NetworkManager network, TerrainState terrain)
+    public LocalPlayer(NetworkManager network, TerrainState terrain, WeaponMount mount)
     {
         this.network = network;
         this.terrain = terrain;
+        this.mount = mount;
     }
 
     public void Update(Vector3 intent, float dt)

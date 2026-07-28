@@ -1,4 +1,5 @@
 using Demiurge;
+using Demiurge.GameClient;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
@@ -9,6 +10,7 @@ using Stride.Engine;
 public class AimLineScript : SyncScript
 {
     public required PlayerRegistry Registry { get; init; }
+    public required WeaponMount Mount { get; init; }
 
     public override void Update()
     {
@@ -19,7 +21,10 @@ public class AimLineScript : SyncScript
         var camera = Entity.Get<CameraComponent>();
         if (camera == null) return;
 
-        var muzzle = local.Position.ToStride() + Vector3.UnitY * GunConfig.MuzzleHeight;
+        // Same muzzle the sim fires from, so the line starts where the bullets do.
+        var muzzle = (local.Position + System.Numerics.Vector3.Transform(
+            Mount.Muzzle(local.Weapon!.Item.Type),
+            System.Numerics.Quaternion.CreateFromYawPitchRoll(local.Yaw, 0f, 0f))).ToStride();
         var muzzleScreen = MathExtensions.WorldToScreen(muzzle, camera.ViewProjectionMatrix, Game.Window.ClientBounds);
         var cursor = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);
         LineRenderer.DrawLine2D(muzzleScreen, cursor, Color.White);

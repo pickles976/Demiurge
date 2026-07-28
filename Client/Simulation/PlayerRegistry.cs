@@ -7,6 +7,7 @@ public class PlayerRegistry
     private readonly Dictionary<ushort, Player> players = new();
     private readonly NetworkManager network;
     private readonly TerrainState terrain;   // the local player predicts movement against it
+    private readonly WeaponMount mount;      // ... and derives its shot origin from it
 
     public LocalPlayer? LocalPlayer {get; private set;}
     public event Action<Player>? PlayerJoined; // sim -> view boundary
@@ -22,10 +23,11 @@ public class PlayerRegistry
         - NetworkConfig.InterpolationDelayTicks;
 
     // Add listeners
-    public PlayerRegistry(NetworkManager network, TerrainState terrain)
+    public PlayerRegistry(NetworkManager network, TerrainState terrain, WeaponMount mount)
     {
         this.network = network;
         this.terrain = terrain;
+        this.mount = mount;
         newestArrival = Stopwatch.GetTimestamp();
         network.PlayerSpawned += OnPlayerSpawned;
         network.PlayerDespawned += OnPlayerDespawned;
@@ -35,7 +37,7 @@ public class PlayerRegistry
     private void OnPlayerSpawned(PlayerSpawnData data)
     {
         Player player = data.PlayerId == network.ClientId
-            ? LocalPlayer = new LocalPlayer(network, terrain) { Id = data.PlayerId, Position = data.Position }
+            ? LocalPlayer = new LocalPlayer(network, terrain, mount) { Id = data.PlayerId, Position = data.Position }
             : new RemotePlayer {Id = data.PlayerId, Position = data.Position};
 
         players[data.PlayerId] = player;

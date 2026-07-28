@@ -44,7 +44,20 @@ namespace Demiurge
         /// <summary>Chunk the desired set was last computed for; null until the player exists.</summary>
         ChunkIndex? lodAnchor;
 
-        readonly List<LodSection> retired = new();
+        /// <summary>
+        /// Boxes at a level we no longer want, kept ON SCREEN until the boxes that replace them have
+        /// actually been uploaded. Detaching on the spot leaves a hole in the terrain for as long as
+        /// meshing and uploading take, which is very visible when walking across a level boundary.
+        /// </summary>
+        readonly List<(LodSection Old, List<LodSection> Replacements)> superseded = new();
+
+        /// <summary>
+        /// Boxes that have been meshed, whether or not they produced geometry. Distinct from
+        /// <see cref="entities"/> and the distinction matters: most boxes mesh to nothing, so waiting for
+        /// an ENTITY to appear would keep superseded geometry on screen forever wherever the replacement
+        /// turned out to be empty air.
+        /// </summary>
+        readonly HashSet<LodSection> resolved = new();
 
         readonly DirtySectionSink dirtySections;
 
@@ -151,17 +164,24 @@ namespace Demiurge
             lodAnchor = anchor;
             TerrainLod.CollectDesired(playerPosition, desired);
 
-            // Drop geometry at a level we no longer want. Collecting first because Detach mutates.
-            retired.Clear();
-            foreach (var live in entities.Keys)
-                if (!desired.Contains(live)) retired.Add(live);
-
-            foreach (var section in retired) Detach(section);
-
-            // And ask for anything newly wanted. Already-live boxes are skipped, so crossing a boundary
-            // only costs the ring that actually changed level.
+            // Ask for anything newly wanted. Already-live boxes are skipped, so crossing a boundary only
+            // costs the ring that actually changed level.
             foreach (var wanted in desired)
                 if (!entities.ContainsKey(wanted) && !inFlight.Contains(wanted)) EnqueueDirty(wanted);
+
+            // Mark what is now at the wrong level, but do NOT detach it yet — record which desired boxes
+            // have to arrive first. Retiring immediately is what opened a hole at every LOD transition.
+            foreach (var live in entities.Keys)
+            {
+                if (desired.Contains(live)) continue;
+                if (superseded.Exists(entry => entry.Old.Equals(live))) continue;
+
+                var replacements = new List<LodSection>();
+                foreach (var wanted in desired)
+                    if (Overlaps(live, wanted)) replacements.Add(wanted);
+
+                superseded.Add((live, replacements));
+            }
         }
 
         void Dispatch()
@@ -187,6 +207,7 @@ namespace Demiurge
 
                 dirtySet.Remove(section);
                 inFlight.Add(section);
+                resolved.Remove(section);      // being re-meshed: not settled until it comes back
                 meshers.Submit(section);
             }
         }
@@ -206,9 +227,37 @@ namespace Demiurge
                 if (Stopwatch.GetTimestamp() - start >= UploadBudgetTicks) { stats.BudgetHit(); break; }
             }
 
+            RetireCovered();
+
             stats.EndFrame(dirtyQueue.Count, inFlight.Count);
             return applied;
         }
+
+        /// <summary>
+        /// Detaches superseded geometry once every box that covers it is on screen. Until then the old and
+        /// new overlap, which draws that patch twice for a moment — far cheaper than a hole, and brief.
+        /// </summary>
+        void RetireCovered()
+        {
+            for (int i = superseded.Count - 1; i >= 0; i--)
+            {
+                var (old, replacements) = superseded[i];
+
+                foreach (var replacement in replacements)
+                    if (!resolved.Contains(replacement)) goto next;
+
+                Detach(old);
+                superseded.RemoveAt(i);
+
+                next: ;
+            }
+        }
+
+        /// <summary>Whether two boxes cover any of the same world voxels. Levels nest, so this is a box test.</summary>
+        static bool Overlaps(LodSection a, LodSection b)
+            => a.OriginX < b.OriginX + b.Size && b.OriginX < a.OriginX + a.Size
+            && a.OriginY < b.OriginY + b.Size && b.OriginY < a.OriginY + a.Size
+            && a.OriginZ < b.OriginZ + b.Size && b.OriginZ < a.OriginZ + a.Size;
 
         /// <summary>
         /// Drains finished results into one shared buffer pair. Empty meshes are applied immediately and
@@ -237,6 +286,7 @@ namespace Demiurge
                 if (result.Mesh.Indices.Length == 0)
                 {
                     Detach(result.Section);         // meshed to nothing: drop whatever was there
+                    resolved.Add(result.Section);
                     stats.Record(hasGeometry: false, 0, 0);
                     applied++;
                     continue;
@@ -254,7 +304,11 @@ namespace Demiurge
             var buffers = factory.UploadBatch(batch, built);
             long cost = Stopwatch.GetTimestamp() - before;
 
-            for (int i = 0; i < batch.Count; i++) Attach(batch[i].Section, built[i], buffers);
+            for (int i = 0; i < batch.Count; i++)
+            {
+                Attach(batch[i].Section, built[i], buffers);
+                resolved.Add(batch[i].Section);
+            }
 
             stats.Record(hasGeometry: true, cost, factory.LastGpuTicks, batch.Count);
             return applied + batch.Count;
