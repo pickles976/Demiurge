@@ -5,6 +5,7 @@
       <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
+      <PackageReference Include="NoiseDotNet" Version="1.0.2" />
       <PackageReference Include="RiptideNetworking.Riptide" Version="2.2.1" />
     </ItemGroup>
   </Project>

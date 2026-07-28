@@ -1,0 +1,140 @@
+// Per-frame grass blade matrix generation + LOD culling.
+shader GrassCull : ComputeShaderBase
+{
+    struct GrassSeed
+    {
+        float3 RootPosition;
+        uint   CellHash;
+    };
+
+    struct InstanceTransform
+    {
+        float4x4 Matrix;
+    };
+
+    stage StructuredBuffer<GrassSeed> Seeds;
+    stage int SeedCount;
+    stage int MaxBladesPerCell;
+
+    stage RWStructuredBuffer<InstanceTransform> OutWorld;
+
+    stage float3 CameraPos;
+    stage float GrassRadius;
+    stage float GrassRadiusSq;
+    stage float FadeStart;
+    stage float FadeRange;
+    stage float BaseBladesPerCell;
+    stage float LodMultiplier;
+    stage float LodExponent;
+
+    stage float WindTime;
+    stage float WindStrength;
+    stage float WindSpeed;
+    stage float WindFrequency;
+
+    stage Texture2D<float4> TrampleField;
+    stage SamplerState TrampleSampler;
+    stage float2 TrampleOriginWorld;
+    stage float TrampleTexelSize;
+    stage uint TrampleTextureSize;
+    stage int2 TrampleOffset;
+
+    stage uint WangHash(uint x)
+    {
+        x = (x ^ 61) ^ (x >> 16);
+        x *= 9;
+        x ^= x >> 4;
+        x *= 0x27d4eb2d;
+        x ^= x >> 15;
+        return x;
+    }
+
+    override void Compute()
+    {
+        uint seedIndex = streams.DispatchThreadId.x;
+        if (seedIndex >= (uint)SeedCount) return;
+
+        GrassSeed seed = Seeds[seedIndex];
+        float wx = seed.RootPosition.x;
+        float wy = seed.RootPosition.y;
+        float wz = seed.RootPosition.z;
+
+        float cdx = wx - CameraPos.x;
+        float cdz = wz - CameraPos.z;
+        float distSq = cdx * cdx + cdz * cdz;
+        float dist = sqrt(distSq);
+
+        float ft = max(dist - FadeStart, 0.0) / FadeRange;
+        float fadeFactor = saturate(1.0 - ft * ft);
+
+        float distRatio = saturate(dist / GrassRadius);
+        float invRatio = max(1.0 - distRatio, 1.0 / 65536.0);
+        float lodFactor = exp2(LodExponent * log2(invRatio));
+        float bladeCount = BaseBladesPerCell * LodMultiplier * lodFactor + 0.5;
+        float inRange = (distSq <= GrassRadiusSq) ? 1.0 : 0.0;
+
+        uint rng = seed.CellHash;
+        uint outBase = seedIndex * (uint)MaxBladesPerCell;
+
+        for (int b = 0; b < MaxBladesPerCell; b++)
+        {
+            rng = WangHash(rng + (uint)b);
+            float bx = wx + (rng & 0xFFFF) * (1.0 / 65535.0);
+            rng = WangHash(rng);
+            float bz = wz + (rng & 0xFFFF) * (1.0 / 65535.0);
+            rng = WangHash(rng);
+            float rndScale = (rng & 0xFFFF) * (1.0 / 65535.0);
+            rng = WangHash(rng);
+            float rndAngle = (rng & 0xFFFF) * (1.0 / 65535.0);
+
+            float mask = inRange * step((float)b + 0.5, bladeCount);
+
+            float baseScale = (0.6 + rndScale * 0.5) * fadeFactor;
+            float sx = baseScale * 0.22;
+            float sy = baseScale * 0.45;
+            float sz = baseScale * 0.22;
+            float angle = rndAngle * 3.14159265;
+            float cosA = cos(angle);
+            float sinA = sin(angle);
+
+            float fN = (float)TrampleTextureSize;
+            float2 logicalUv = (float2(bx, bz) - TrampleOriginWorld) / TrampleTexelSize;
+            float inWindow = step(0.0, logicalUv.x) * step(logicalUv.x, fN)
+                           * step(0.0, logicalUv.y) * step(logicalUv.y, fN);
+            float2 storageUv = logicalUv + float2((float)TrampleOffset.x, (float)TrampleOffset.y);
+            float2 sampleUv = (storageUv + 0.5) / fN;
+            float trampleAmount = TrampleField.SampleLevel(TrampleSampler, sampleUv, 0).x * inWindow;
+
+            float trampleT = 1.0 - saturate(trampleAmount);
+            float dxStep = 1.0 / fN;
+            float gx = (TrampleField.SampleLevel(TrampleSampler, sampleUv + float2(dxStep, 0), 0).x
+                     -  TrampleField.SampleLevel(TrampleSampler, sampleUv - float2(dxStep, 0), 0).x) * inWindow;
+            float gz = (TrampleField.SampleLevel(TrampleSampler, sampleUv + float2(0, dxStep), 0).x
+                     -  TrampleField.SampleLevel(TrampleSampler, sampleUv - float2(0, dxStep), 0).x) * inWindow;
+            float gLen = sqrt(gx * gx + gz * gz) + 1e-5;
+            float leanX = -gx / gLen;
+            float leanZ = -gz / gLen;
+
+            float crushY = 0.25 + 0.75 * trampleT;
+            float splayXZ = 1.0 + (1.0 - trampleT) * 0.4;
+            sy *= crushY;
+            sx *= splayXZ;
+            sz *= splayXZ;
+
+            float tiltAngle = (1.0 - trampleT) * 0.9;
+            float tiltCos = cos(tiltAngle);
+            float tiltSin = sin(tiltAngle);
+
+            float windX = sin(bx * WindFrequency + WindTime * WindSpeed) * WindStrength * trampleT;
+            float windZ = cos(bz * WindFrequency + WindTime * WindSpeed * 0.7) * WindStrength * trampleT * 0.3;
+
+            float4x4 m;
+            m[0] = float4(sx * cosA * mask, 0, sx * sinA * mask, 0);
+            m[1] = float4((leanX * tiltSin + windX) * sy * mask, sy * tiltCos * mask, (leanZ * tiltSin + windZ) * sy * mask, 0);
+            m[2] = float4(-sz * sinA * mask, 0, sz * cosA * mask, 0);
+            m[3] = float4(bx * mask, wy * mask, bz * mask, mask);
+
+            OutWorld[outBase + (uint)b].Matrix = m;
+        }
+    }
+};

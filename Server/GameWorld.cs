@@ -3,32 +3,168 @@ using System.Numerics;
 
 namespace Demiurge.GameServer
 {
-    internal class GameWorld
+    internal class GameWorld : ICommandWorld
     {
 
         private readonly Dictionary<ushort, ServerPlayer> players = new();
 
         private readonly ObjectReplication objects;
+        private readonly ItemSystem items;
+        private readonly MobSystem mobs;
         private readonly WeaponSystem weapons;
+        private readonly TerrainSystem terrainEdits;
+        private readonly ChunkTcpServer chunks;
 
         private readonly Server server;
 
         private uint _Tick = 0;
+        private ushort nextMobId = 60000;
 
         private const int MaxQueuedMoves = 3;
 
-        public GameWorld(Server server)
+        /// <summary>Spawn column. Y comes off the terrain, never guessed.</summary>
+        private const float SpawnX = 0f;
+        private const float SpawnZ = 0f;
+        private readonly RuntimePlacement[] playerSpawns;
+        private readonly Vector3? spawnOverride;
+        private int nextPlayerSpawn;
+        public string MapName { get; }
+
+        /// <summary>
+        /// The server's terrain, and the only authority on it. Clients receive it via
+        /// <see cref="ChunkTcpServer"/> and never generate any themselves.
+        /// </summary>
+        private readonly ChunkMap terrain;
+
+        public GameWorld(Server server, RuntimeMap? runtimeMap = null, Vector3? spawnOverride = null)
         {
             this.server = server;
+            this.spawnOverride = spawnOverride;
+            terrain = runtimeMap?.Terrain ?? new ChunkMap();
+            MapName = runtimeMap?.Name ?? "generated";
+
+            if (runtimeMap is null)
+                WorldGen.Generate(terrain);
+
+            playerSpawns = runtimeMap?.Placements
+                .Where(placement => placement.Kind == RuntimePlacementKind.PlayerSpawn)
+                .ToArray()
+                ?? [];
+
             objects = new ObjectReplication(server);
-            weapons = new WeaponSystem(server, objects);
+            items = new ItemSystem(objects);
+            mobs = new MobSystem(terrain);
+            weapons = new WeaponSystem(server, objects, terrain);
+            terrainEdits = new TerrainSystem(server, terrain);
 
-            objects.Spawn(ObjectType.ArmorPickup, NetComponents.Transform, new Vector3(3f, 0f, 3f));
+            chunks = new ChunkTcpServer(terrain);
+            chunks.Start();
 
-            weapons.SpawnPickup(WeaponType.AWP, new Vector3(3f, 0f, 0f));
-            weapons.SpawnPickup(WeaponType.Ak47, new Vector3(-3f, 0f, -3f));
-            weapons.SpawnPickup(WeaponType.Glock, new Vector3(-5f, 0f, -5f));
+            // Trees are temporarily disabled. TreeSystem and its client views remain available.
+            // new TreeSystem(objects, terrain).SpawnInitialTrees();
+
+            if (runtimeMap is null)
+            {
+                SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
+                SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
+                SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
+                SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
+
+                items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
+                items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
+            }
+            else
+            {
+                SpawnRuntimePlacements(runtimeMap.Placements);
+            }
         }
+
+        private void SpawnRuntimePlacements(IReadOnlyList<RuntimePlacement> placements)
+        {
+            foreach (var placement in placements)
+            {
+                switch (placement.Kind)
+                {
+                    case RuntimePlacementKind.Pickup:
+                        items.SpawnPickup(placement.Item, placement.Position);
+                        break;
+                    case RuntimePlacementKind.Mob:
+                        var mob = SpawnMob(placement.Position);
+                        mob.Yaw = placement.Yaw;
+                        items.SpawnEquipped(
+                            mob,
+                            placement.Item == default ? ItemType.Ak47 : placement.Item);
+                        break;
+                }
+            }
+        }
+
+        /// <summary>Places a pickup on the ground at a world column, rather than at a guessed Y.</summary>
+        private void SpawnPickupOnSurface(ItemType type, float worldX, float worldZ)
+            => items.SpawnPickup(type, SurfaceQuery.SurfacePosition(terrain, worldX, worldZ));
+
+        public ServerPlayer SpawnMob(Vector3? requestedPosition = null)
+        {
+            var position = requestedPosition ?? mobs.RandomSpawnPoint();
+            var mob = mobs.CreateMob(AllocateMobId(), position);
+            mob.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, mob.Position,
+            obj =>
+            {
+                obj.Owner = new OwnerState { PlayerId = mob.Id };
+                obj.Health = new HealthState { Current = 100, Max = 100 };
+            });
+            players[mob.Id] = mob;
+            server.SendToAll(CreateSpawnMessage(mob));
+            return mob;
+        }
+
+        public ServerObject SpawnPickup(ItemType type, Vector3 position)
+            => items.SpawnPickup(type, position);
+
+        public bool TryGetActor(ushort actorId, out ServerPlayer actor)
+            => players.TryGetValue(actorId, out actor!);
+
+        public IReadOnlyList<(ushort Id, bool IsMob)> ActorSnapshot()
+            => players.Values
+                .Select(player => (player.Id, player.IsMob))
+                .OrderBy(actor => actor.Id)
+                .ToArray();
+
+        public ServerObject Equip(ServerPlayer actor, ItemType type)
+            => items.SpawnEquipped(actor, type, dropReplaced: false);
+
+        public bool IsSpawnableColumn(float worldX, float worldZ)
+        {
+            var chunk = ChunkTransforms.ChunkAt((int)MathF.Floor(worldX), (int)MathF.Floor(worldZ));
+            return chunk.x >= WorldGen.MeshableMin.x && chunk.x <= WorldGen.MeshableMax.x
+                && chunk.z >= WorldGen.MeshableMin.z && chunk.z <= WorldGen.MeshableMax.z;
+        }
+
+        public Vector3 SurfacePosition(float worldX, float worldZ)
+            => SurfaceQuery.SurfacePosition(terrain, worldX, worldZ);
+
+        private ushort AllocateMobId()
+        {
+            const ushort firstMobId = 60000;
+            for (int attempts = 0; attempts <= ushort.MaxValue - firstMobId; attempts++)
+            {
+                ushort candidate = nextMobId;
+                nextMobId = candidate == ushort.MaxValue ? firstMobId : (ushort)(candidate + 1);
+                if (!players.ContainsKey(candidate)) return candidate;
+            }
+
+            throw new InvalidOperationException("No mob actor ids are available");
+        }
+
+        /// <summary>
+        /// Reserves this client's terrain stream and returns the token it must present on it. Must happen
+        /// before the client is welcomed, since the token rides in the Welcome message, and before
+        /// <see cref="AddPlayer"/>, which queues the world into the stream this creates.
+        /// </summary>
+        public Guid RegisterChunkStream(ushort clientId) => chunks.Register(clientId);
+
+        /// <summary>Stops the terrain listener and its writer threads.</summary>
+        public void Stop() => chunks.Dispose();
 
         public void AddPlayer(ushort clientId)
         {
@@ -38,6 +174,7 @@ namespace Demiurge.GameServer
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
 
             var player = new ServerPlayer { Id = clientId };
+            player.Move = SpawnPlayerMove();
             player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
             obj =>
             {
@@ -46,15 +183,19 @@ namespace Demiurge.GameServer
             });
             players[clientId] = player;
             server.SendToAll(CreateSpawnMessage(player));      // announce the newcomer
+
+            chunks.QueueWorldFor(clientId);                    // terrain follows over the next few ticks
         }
 
         public void RemovePlayer(ushort clientId)
         {
                 
                 
+            chunks.Forget(clientId);
+
             if (players.Remove(clientId, out var player))
             {
-                weapons.DespawnFor(player);
+                items.DespawnFor(player);
                 if (player.Status != null) objects.Despawn(player.Status.NetworkId);
             }
 
@@ -81,12 +222,24 @@ namespace Demiurge.GameServer
                 weapons.ApplyReload(player, _Tick);
         }
 
+        public void ApplyDig(ushort clientId, PlayerDigData dig)
+        {
+            if (players.TryGetValue(clientId, out var player))
+                terrainEdits.ApplyDig(player, dig, _Tick);
+        }
+
+        public void ApplyInteract(ushort clientId)
+        {
+            if (players.TryGetValue(clientId, out var player))
+                items.ApplyInteract(player);
+        }
+
         public void ApplyInput(ushort clientId, PlayerInputData input)
         {
             if (!players.TryGetValue(clientId, out var player)) return;
             if (input.Sequence <= player.LastReceivedSequence) return; // dupe or out of order
 
-            if (!IsFinite(input.Intent) || !float.IsFinite(input.Yaw)) return;
+            if (!IsFinite(input.Intent) || !float.IsFinite(input.Yaw) || !float.IsFinite(input.Pitch)) return;
 
             player.LastReceivedSequence = input.Sequence;
             player.PendingMoves.Enqueue(input);
@@ -100,6 +253,11 @@ namespace Demiurge.GameServer
 
             foreach (var player in players.Values)
             {
+                if (player.IsMob)
+                {
+                    mobs.Step(player, dt);
+                    continue;
+                }
 
                 // If the queue starts overflowing, consume at a faster rate
                 int toProcess = player.PendingMoves.Count > MaxQueuedMoves ? 2 : 1;
@@ -107,9 +265,10 @@ namespace Demiurge.GameServer
 
                 for (int i = 0; i < toProcess && player.PendingMoves.TryDequeue(out var move); i++)
                 {
-                    player.Position = PlayerMovement.Step(player.Position, move.Intent, move.State, dt);
+                    PlayerMovement.Step(terrain, ref player.Move, move.Intent, move.State, dt);
                     player.State = move.State;
                     player.Yaw = move.Yaw;
+                    player.Pitch = move.Pitch;
                     player.LastIntent = move.Intent;
                     player.LastProcessedSequence = move.Sequence;
                     processedAny = true;
@@ -117,9 +276,7 @@ namespace Demiurge.GameServer
 
                 // Queue starved, just reuse last player input
                 if (!processedAny)
-                    player.Position = PlayerMovement.Step(player.Position, player.LastIntent, player.State, dt);
-
-                weapons.TryPickup(player);
+                    PlayerMovement.Step(terrain, ref player.Move, player.LastIntent, player.State, dt);
             }
 
             // Save history
@@ -132,7 +289,7 @@ namespace Demiurge.GameServer
             foreach (var player in players.Values)
             {
                 if (player.Status is not {} status || status.Health.Current > 0) continue;
-                player.Position = Vector3.Zero;
+                player.Move = SpawnPlayerMove();
                 player.History.Clear();
                 status.Health.Current = status.Health.Max;
                 status.Dirty |= NetComponents.Health;
@@ -140,6 +297,23 @@ namespace Demiurge.GameServer
 
             objects.BroadcastDirtyStatess(_Tick);
             BroadcastPositions();
+        }
+
+        private MoveState SpawnPlayerMove()
+        {
+            // The editor playtest hands us the fly camera's exact position and it outranks the
+            // map, so you drop in where you were looking. Not grounded: the point is wherever the
+            // camera was, in the air as often as not, and gravity takes it from there.
+            if (spawnOverride is { } forced)
+                return new MoveState { Position = forced, Velocity = Vector3.Zero, Grounded = false };
+
+            if (playerSpawns.Length == 0)
+                return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
+
+            var spawn = playerSpawns[nextPlayerSpawn++ % playerSpawns.Length];
+            var move = PlayerMovement.SpawnAt(terrain, spawn.Position.X, spawn.Position.Z);
+            move.Position = spawn.Position;
+            return move;
         }
 
         private Message CreateSpawnMessage(ServerPlayer player)
@@ -161,8 +335,11 @@ namespace Demiurge.GameServer
                         Tick = _Tick,
                         Position = player.Position,
                         Yaw = player.Yaw,
+                        Pitch = player.Pitch,
                         State = player.State,
-                        LastProcessedSequence = player.LastProcessedSequence
+                        LastProcessedSequence = player.LastProcessedSequence,
+                        Velocity = player.Move.Velocity,
+                        Grounded = player.Move.Grounded
                     });
                 server.SendToAll(message);
             }

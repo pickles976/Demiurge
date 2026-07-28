@@ -5,17 +5,35 @@ namespace Demiurge.GameServer
     public class ServerPlayer
     {
         public ushort Id { get; init; }
-        public Vector3 Position { get; set; }
+        public bool IsMob { get; init; }
+
+        /// <summary>
+        /// Authoritative movement state, stepped by <see cref="PlayerMovement.Step"/>. A field rather
+        /// than a property so it can be passed by ref — a property would step a copy and throw the
+        /// result away.
+        /// </summary>
+        public MoveState Move;
+
+        /// <summary>Where the player is. Everything that only cares about position reads this.</summary>
+        public Vector3 Position
+        {
+            get => Move.Position;
+            set => Move.Position = value;
+        }
+
         public PlayerStateFlags State { get; set; }
         public Vector3 PendingIntent { get; set; }
         public float Yaw {get; set;}
-
-        // Gun. Ammo lives in the equipped weapon object's WeaponState — the
-        // player just holds the reference (0 = unarmed) and the timing gates.
+        public float Pitch {get; set;}
 
         public ServerObject? Status {get; set;}
 
-        public uint WeaponId { get; set; }         // NetworkId of the EquippedWeapon object
+        // What the player wears and holds: slot -> NetworkId of the equipped
+        // item object. Live state (ammo) lives ON the objects; the player just
+        // holds the references and the fire/reload timing gates below.
+        public Dictionary<EquipSlot, uint> Equipped { get; } = new();
+
+        public uint NextDigTick { get; set; }      // earliest tick the next dig is legal
         public uint NextFireTick { get; set; }     // earliest tick the next shot is legal
         public uint ReloadDoneTick { get; set; }   // firing is blocked until this tick
 

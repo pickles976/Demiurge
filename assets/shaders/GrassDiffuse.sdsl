@@ -1,0 +1,28 @@
+// Procedural grass blade diffuse: color gradient, midrib, edge darkening, blade shape alpha.
+shader GrassDiffuse : ComputeColor, Texturing
+{
+    cbuffer PerMaterial
+    {
+        stage float GrassColorScale;
+    }
+
+    override float4 Compute()
+    {
+        float2 uv = streams.TexCoord;
+        float height = 1.0 - uv.y;
+        float cx = uv.x - 0.5;
+
+        float3 baseCol = float3(0.07, 0.22, 0.03);
+        float3 midCol  = float3(0.15, 0.38, 0.08);
+        float3 tipCol  = float3(0.34, 0.54, 0.17);
+        float3 color = lerp(baseCol, midCol, smoothstep(0.0, 0.4, height));
+        color = lerp(color, tipCol, smoothstep(0.3, 1.0, height));
+
+        color *= lerp(0.65, 1.0, smoothstep(0.0, 0.25, height));
+        color *= 1.0 + 0.08 * exp(-abs(cx) * 20.0) * (1.0 - height * 0.5);
+        color *= lerp(0.9, 1.0, 1.0 - abs(cx) * 2.0);
+        color += float3(0.04, 0.06, 0.02) * smoothstep(0.7, 1.0, height);
+
+        return float4(color * GrassColorScale, 1.0);
+    }
+};

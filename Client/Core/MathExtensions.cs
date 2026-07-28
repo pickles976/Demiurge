@@ -70,6 +70,12 @@ namespace Demiurge
         }
 
         public static Stride.Core.Mathematics.Vector3 ToStride(this System.Numerics.Vector3 v) => new(v.X, v.Y, v.Z);
+        public static System.Numerics.Vector3 ToNumerics(this Stride.Core.Mathematics.Vector3 v) => new(v.X, v.Y, v.Z);
+
+        // Component-wise, NOT a convention change: both types store (x,y,z,w) for the
+        // same rotation. Stride only differs in the order it MULTIPLIES quaternions, so
+        // composing a rotation stays the caller's problem — see WeaponMount.HandRotation.
+        public static Stride.Core.Mathematics.Quaternion ToStride(this System.Numerics.Quaternion q) => new(q.X, q.Y, q.Z, q.W);
 
     }
 

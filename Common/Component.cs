@@ -3,24 +3,27 @@ using Riptide;
 
 namespace Demiurge
 {
-    /// What kind of thing to build on spawn. Only the view layer interprets /// this — the replication plumbing carries it opaquely.
+    /// <summary>What kind of scenery/logic thing to build on spawn. Items are
+    /// NOT here — they're all ObjectType.Item, and ItemState + the component
+    /// mask say everything else. Only the view interprets this; the replication
+    /// plumbing carries it opaquely. Append-only from here on.</summary>
     public enum ObjectType : ushort {
         Crate = 1,
         TrainingDummy,
-        WeaponPickup,
-        EquippedWeapon,
         PlayerStatus,
-        ArmorPickup,
-        EquippedArmor
+        Item,
+        Tree
     }
 
-    /// <summary>Which gun a WeaponState describes. Wire protocol (rides inside
-    /// WeaponState) and the key into WeaponConfig — append-only.</summary>
-    public enum WeaponType : ushort
+    /// <summary>Which item an ItemState describes — every pickup/wearable/weapon
+    /// in the game, one enum. Wire protocol (rides inside ItemState) and the key
+    /// into ItemConfig + ItemCosmetics — append-only.</summary>
+    public enum ItemType : ushort
     {
         Ak47 = 1,
         AWP = 2,
         Glock = 3,
+        BodyArmor = 4,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"
@@ -34,7 +37,9 @@ namespace Demiurge
         Health = 1 << 1,
         Weapon = 1 << 2,
         Owner = 1 << 3,
-        Armor = 1 << 4
+        Armor = 1 << 4,
+        Item = 1 << 5,
+        Attachment = 1 << 6
     }
 
     public struct TransformState : IMessageSerializable
@@ -54,15 +59,14 @@ namespace Demiurge
 
     }
 
-    /// <summary>Live weapon state only. The static numbers (capacity, cadence,
-    /// damage...) are NOT on the wire — both ends look them up in WeaponConfig
-    /// by Type, so they can't drift mid-match.</summary>
+    /// <summary>Live weapon state only — WHICH gun lives in ItemState; static
+    /// numbers live in ItemConfig, keyed by ItemState.Type, so they can't
+    /// drift mid-match. Present only on items whose config has a weapon section.</summary>
     public struct WeaponState : IMessageSerializable
     {
-        public WeaponType Type;
         public int CurrentAmmo;
-        public void Serialize(Message m) {m.AddUShort((ushort)Type); m.AddInt(CurrentAmmo);}
-        public void Deserialize(Message m) {Type = (WeaponType)m.GetUShort(); CurrentAmmo = m.GetInt();}
+        public void Serialize(Message m) => m.AddInt(CurrentAmmo);
+        public void Deserialize(Message m) => CurrentAmmo = m.GetInt();
     }
 
     /// <summary>Which player an object belongs to / is attached to. The view uses
@@ -83,6 +87,28 @@ namespace Demiurge
         public void Deserialize(Message m) {MaxValue = m.GetFloat(); Current = m.GetFloat(); }
     }
 
+    /// <summary>What an object IS, when it's an item. The mask around it is the
+    /// semantics: Item+Transform = pickup in the world, Item+Owner = equipped.
+    /// Static data (slot, stats, model) is looked up by Type in ItemConfig /
+    /// ItemCosmetics — never on the wire.</summary>
+    public struct ItemState : IMessageSerializable
+    {
+        public ItemType Type;
+        public void Serialize(Message m) => m.AddUShort((ushort)Type);
+        public void Deserialize(Message m) => Type = (ItemType)m.GetUShort();
+    }
+
+    /// <summary>WHERE on its owner an equipped item sits. Present iff Owner is —
+    /// this is the instance's slot, not the config's static default: a rifle in
+    /// Hand and a rifle on Back are the same ItemType in different Attachments.
+    /// The client keys its socket table (bone + seat) off this slot.</summary>
+    public struct AttachmentState : IMessageSerializable
+    {
+        public EquipSlot Slot;
+        public void Serialize(Message m) => m.AddByte((byte)Slot);
+        public void Deserialize(Message m) => Slot = (EquipSlot)m.GetByte();
+    }
+
     /// <summary>Some subset of an object's components, mask-prefixed. The if-chain
     /// order is the wire format; new components go at the end of both methods.</summary>
     public struct ComponentBundle : IMessageSerializable
@@ -93,6 +119,8 @@ namespace Demiurge
         public WeaponState Weapon;
         public OwnerState Owner;
         public ArmorState Armor;
+        public ItemState Item;
+        public AttachmentState Attachment;
 
         public void Serialize(Message m)
         {
@@ -102,6 +130,8 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Weapon)) m.AddSerializable(Weapon);
             if (Mask.HasFlag(NetComponents.Owner)) m.AddSerializable(Owner);
             if (Mask.HasFlag(NetComponents.Armor)) m.AddSerializable(Armor);
+            if (Mask.HasFlag(NetComponents.Item)) m.AddSerializable(Item);
+            if (Mask.HasFlag(NetComponents.Attachment)) m.AddSerializable(Attachment);
         }
 
         public void Deserialize(Message m)
@@ -112,6 +142,8 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Weapon)) Weapon = m.GetSerializable<WeaponState>();
             if (Mask.HasFlag(NetComponents.Owner)) Owner = m.GetSerializable<OwnerState>();
             if (Mask.HasFlag(NetComponents.Armor)) Armor = m.GetSerializable<ArmorState>();
+            if (Mask.HasFlag(NetComponents.Item)) Item = m.GetSerializable<ItemState>();
+            if (Mask.HasFlag(NetComponents.Attachment)) Attachment = m.GetSerializable<AttachmentState>();
         }
     }
 }

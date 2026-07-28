@@ -5,7 +5,7 @@ using Stride.Animations;
 using Stride.Engine;
 using Stride.Core.Mathematics;
 
-public class PlayerViewFactory
+public class PlayerViewFactory : IDisposable
 {
     private readonly Game game;
     private readonly Scene scene;
@@ -29,9 +29,17 @@ public class PlayerViewFactory
             animations.Animations.Add("Crouch", game.Content.Load<AnimationClip>("models/cat_orange_anim_Crouch"));
             animations.Animations.Add("CrouchWalk", game.Content.Load<AnimationClip>("models/cat_orange_anim_CrouchWalk"));
 
+        var model = new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf"));
+        if (player is LocalPlayer)
+        {
+            // First-person keeps the local player entity and skeleton alive for prediction,
+            // animation, and equipped-item sockets, but does not render the full body around the eye.
+            model.Enabled = false;
+        }
+
         var entity = new Entity($"Player_{player.Id}")
         {
-            new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf")),
+            model,
             new PlayerViewScript {Player = player, Registry = registry},
             animations,
         };
@@ -49,6 +57,14 @@ public class PlayerViewFactory
             playerEntity.Scene = null;
         }
 
+    }
+
+    public void Dispose()
+    {
+        registry.PlayerJoined -= CreatePlayerView;
+        registry.PlayerLeft -= DestroyPlayerView;
+        foreach (var entity in scene.Entities.Where(entity => entity.Name.StartsWith("Player_", StringComparison.Ordinal)).ToArray())
+            entity.Scene = null;
     }
 
 }

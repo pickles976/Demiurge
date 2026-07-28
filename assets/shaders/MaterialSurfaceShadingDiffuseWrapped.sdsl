@@ -1,0 +1,26 @@
+// Lambert diffuse with a soft foliage terminator. The engine has already folded attenuation,
+// shadowing, projected textures, and direct AO into lightColorNdotL, so replace only its NdotL.
+namespace Demiurge
+{
+    shader MaterialSurfaceShadingDiffuseWrapped<float TWrap> : IMaterialSurfaceShading, Math
+    {
+        override float3 ComputeDirectLightContribution()
+        {
+            float ndotl = dot(streams.normalWS, streams.lightDirectionWS);
+            float wrappedNdotL = saturate((ndotl + TWrap) / (1.0 + TWrap));
+
+            // DirectLightGroup clamps NdotL to 0.0001 before building lightColorNdotL. Dividing by
+            // that stored value preserves every other light factor and remains finite on the dark side.
+            float3 wrappedLight = streams.lightColorNdotL * (wrappedNdotL / streams.NdotL);
+
+            return streams.matDiffuseVisible / PI
+                 * wrappedLight
+                 * streams.matDiffuseSpecularAlphaBlend.x;
+        }
+
+        override float3 ComputeEnvironmentLightContribution()
+        {
+            return streams.matDiffuseVisible * streams.envLightDiffuseColor;
+        }
+    };
+}

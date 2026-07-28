@@ -28,8 +28,14 @@ namespace Demiurge
         /// <summary>Queue a tracer streak from start to end that fades over lifetime seconds.</summary>
         public static void Spawn(Vector3 start, Vector3 end, Color color, float lifetime)
         {
+            if (lifetime <= 0f || !IsFinite(start) || !IsFinite(end)) return;
+            if ((end - start).LengthSquared() < 1e-6f) return;
+
             Tracers.Add(new Tracer { Start = start, End = end, Age = 0f, Lifetime = lifetime, BaseColor = color });
         }
+
+        private static bool IsFinite(Vector3 v)
+            => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
         /// <summary>Advance all tracers, re-draw them faded, and drop expired ones. Call once per frame.</summary>
         public static void Update(float dt)
@@ -58,14 +64,17 @@ namespace Demiurge
     }
 
     /// <summary>
-    /// Drives <see cref="TracerManager"/> once per frame. Add a single instance of this
-    /// to the scene; guns just call <see cref="TracerManager.Spawn"/>.
+    /// Drives <see cref="TracerManager"/> and <see cref="ImpactManager"/> once per frame. Add a
+    /// single instance of this to the scene; guns just call the managers' Spawn.
     /// </summary>
     public class TracerSystem : SyncScript
     {
         public override void Update()
         {
-            TracerManager.Update((float)Game.UpdateTime.Elapsed.TotalSeconds);
+            float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+            TracerManager.Update(dt);
+            ImpactManager.Update(dt);
+            DamageTextManager.Update(dt);
         }
     }
 }

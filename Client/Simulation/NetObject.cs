@@ -13,6 +13,8 @@ public class NetObject
     public WeaponState Weapon;
     public OwnerState Owner;
     public ArmorState Armor;
+    public ItemState Item;
+    public AttachmentState Attachment;
     
     public SnapshotBuffer Snapshots { get; } = new();
 }

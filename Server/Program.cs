@@ -1,45 +1,35 @@
-using System.Diagnostics;
 using Riptide.Utils;
 
 namespace Demiurge.GameServer
 {
     internal class Program
     {
-
-        private const float FixedDt = NetworkConfig.FixedDt;
-
-        private static void Main()
+        private static void Main(string[] args)
         {
             RiptideLogger.Initialize(Console.WriteLine, Console.WriteLine,
                 Console.WriteLine, Console.WriteLine, includeTimestamps: true);
 
-            var gameServer = new GameServer();
-            gameServer.Start();
+            using var cancellation = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 
-            bool running = true;
-            Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+            // The loop itself lives in ServerHost so singleplayer runs exactly the same one.
+            var options = ParseOptions(args);
+            new ServerHost(options).Run(cancellation.Token);
+        }
 
-            var clock = Stopwatch.StartNew();
-            double accumulator = 0, lastTime = 0;
+        private static ServerOptions ParseOptions(string[] args)
+        {
+            bool allowCheats = args.Contains("--allow-cheats", StringComparer.OrdinalIgnoreCase);
+            string? mapPath = null;
 
-            while (running)
+            for (int i = 0; i < args.Length; i++)
             {
-                double now = clock.Elapsed.TotalSeconds;
-                accumulator += now - lastTime;
-                lastTime = now;
-
-                gameServer.PumpNetwork();          // pump Riptide every iteration
-
-                while (accumulator >= FixedDt)     // simulate in fixed steps
-                {
-                    gameServer.Tick(FixedDt);
-                    accumulator -= FixedDt;
-                }
-
-                Thread.Sleep(1);
+                if (!args[i].Equals("--map", StringComparison.OrdinalIgnoreCase)) continue;
+                if (++i >= args.Length) throw new ArgumentException("--map requires a runtime map path");
+                mapPath = Path.GetFullPath(args[i]);
             }
 
-            gameServer.Stop();
+            return new ServerOptions { AllowCheats = allowCheats, MapPath = mapPath };
         }
     }
 }

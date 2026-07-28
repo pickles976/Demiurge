@@ -1,86 +1,212 @@
-https://stride3d.github.io/stride-community-toolkit/manual/code-only/create-project.html#example-code
+# DemiurgeSharp
 
+DemiurgeSharp is a code-only Stride 4.3 multiplayer game built on .NET 10. It uses an
+authoritative dedicated server, streamed smooth-voxel terrain, first-person combat, and an in-engine
+map editor. The project currently targets Linux and Vulkan; there is no Stride Game Studio project.
+
+## Prerequisites
+
+- .NET 10 SDK
+- A Vulkan-capable GPU and driver
+- Linux is the actively tested platform
+
+Build and run the non-benchmark tests:
+
+```bash
+dotnet restore
+dotnet build DemiurgeSharp.slnx
+dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark"
+```
+
+When dependency state needs a clean rebuild:
+
+```bash
 dotnet clean
 dotnet restore --no-cache
-dotnet build --no-incremental
+dotnet build DemiurgeSharp.slnx --no-incremental
+```
 
-NOTES:
-- particle system broken
-https://github.com/stride3d/stride/issues/2496
+## Run The Game
 
-`dotnet run` -- client
-`dotnet run --project Server/DemiurgeServer.csproj` -- server
+### Single Player
 
-`dotnet build DemiurgeSharp.slnx`
+Single player starts a real authoritative server inside the client process and connects through the
+normal network paths. This is the fastest way to test gameplay and server changes:
 
-4a. PVP Mechanics
-- [x] sniper rifle
-    - [x] make lookahead range tied to the weapon itself
-- [ ] add wearables
-    - [ ] net config
-    - [ ] pickupable
-    - [ ] wearable
-    - [ ] spawn model
-    - [ ] armor server component
-    - [ ] add helmet
-    - [ ] add armor
-- [ ] Player health
-    - [ ] add health pack pickups
-    - [x] pistol pickup
-    - [ ] shotgun pickup
-        - [ ] multiple pellets per-shot
-    - [ ] grenade pickup
-        - [ ] throwing arc
-        - [ ] server-side splash damage 
+```bash
+dotnet run --launch-profile singleplayer
+```
 
-- [ ] clean up UI and stuff
+The equivalent explicit form is:
 
-5. Generate a map with perlin noise
-6. Simple UI for playing with noise
-7. Generate meshes for chunks + performance enhancements
-8. Create water, ground, and grass shaders
-https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
-- [ ] grass
-    - [ ] compute shader
-    - [ ] no asset, just direct geometry
-    - [ ] simplex noise
-        - [ ] height
-        - [ ] color
-    - [ ] animate wind
-    - [ ] squish the grass
+```bash
+dotnet run -- --singleplayer
+```
 
-8a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
+### Dedicated Server And Client
 
-10. Play around with scripting
-    - [ ] add a debug terminal
-    - [ ] add some basic scripting functionality with basic parser 
-11. Add inventory UI
-12. Host server and test with buddies
-- [ ] digital ocean droplet
-- [ ] hook up scrungy.com domain name
-13. Create a simple free-for-all demo for testing
-    - [ ] load a map from a PNG
-    - [ ] random spawns
-    - [ ] fixed health kit locations
-    
-14. Bug Fixes from FFA demo
+Start the server in one terminal:
 
-15. Create structures
-16. CTF gamemode
+```bash
+dotnet run --project Server/DemiurgeServer.csproj
+```
 
-Debug Stuff
-- [ ] debug draw chunk borders
+Start a client in another terminal:
 
-- generate textures with noise
-- generate trees with noise
-- create a water shader for tiles
+```bash
+dotnet run
+```
 
-Areola vid
-https://www.youtube.com/watch?v=Y0Ko0kvwfgA
+The client connects to `127.0.0.1:7777`; terrain streams over port `7778`. To permit connected
+clients to issue world-changing developer commands:
 
-https://nicogo1705.github.io/AssetStore/asset?id=com.nicogo.grass
-nicogo1705.github.io/AssetStore/asset?id=com.nicogo.marching-cube-compute-shader
+```bash
+dotnet run --project Server/DemiurgeServer.csproj -- --allow-cheats
+```
 
+Load a baked map at server startup:
 
-SDSL overview
-https://hackmd.io/@vN9HDo5XQAGVCM_epmoJBA/S1LxeorWT
+```bash
+dotnet run --project Server/DemiurgeServer.csproj -- \
+  --map maps/trench-test/runtime.dmap
+```
+
+The dedicated server has an stdin console. Type `help` for all commands or `help <command>` for
+command-specific grammar and examples. Useful commands include `status`, `players`, `items`,
+`spawn`, `equip`, `map load`, and `stop`.
+
+## Map Editor
+
+Launch directly into a source map:
+
+```bash
+dotnet run -- --editor trench-test
+```
+
+The editor loads `maps/trench-test/source.json`, or creates a new document when it does not exist.
+Open the terminal with backtick/tilde and choose an editing mode:
+
+```text
+editor mode terrain
+editor mode block
+editor mode object
+```
+
+Typical workflow:
+
+```text
+map status
+map save
+map validate
+map bake
+session playtest
+```
+
+`session playtest`, or `F4`, starts an authoritative in-process server directly from the current
+in-memory editor terrain. It reuses the existing camera and terrain renderer, so entering play is
+fast. You spawn at the fly camera's exact position — including after dying — rather than at the
+map's player spawns, so play starts wherever you were looking. Runtime digging, spawns, and
+equipment are temporary; edited chunks are restored from the source document when you return.
+
+Run `session playtest-networked` when validating the complete shipping path. It saves and bakes,
+loads `runtime.dmap`, streams terrain to a fresh runtime client, and remeshes it. Run the same command
+again to return to the editor.
+
+Editor controls:
+
+```text
+1 / 2 / 3             terrain / block / object mode
+WASD / mouse          fly and look
+Space / Left Ctrl     move up / down
+Left Shift            speed boost
+Left mouse            terraform or place
+Right mouse           inverse terrain operation or remove block
+Mouse wheel           change terrain or block brush size
+R                     rotate selected object or named structure
+F4                    toggle authoritative playtest
+U / Y                 undo / redo
+Delete                delete selected object
+Escape                cancel selection
+Ctrl+S                save source
+Ctrl+Shift+B           save and bake
+```
+
+Source maps are editable JSON. Runtime maps are complete binary packages:
+
+```text
+maps/<name>/source.json
+maps/<name>/autosave.json
+maps/<name>/runtime.dmap
+maps/<name>/structures/
+```
+
+## Developer Commands
+
+The in-game terminal opens with backtick/tilde. In runtime mode, `F3` toggles the free camera.
+
+Runtime commands:
+
+```text
+spawn mob [x z]
+spawn pickup <item> [x z]
+equip <@s|@actor-id> <item>
+```
+
+Successful mob spawns print an actor ID such as `@60000`; pass that value to `equip`. Pickup
+spawns print a network object ID such as `#1`. Runtime spawns and equipment changes are temporary
+session state and are not written by `map save`. Editor placements instead use stable eight-character
+IDs: `editor object list` prints them, and `editor object equip <placement-id> <weapon>` persists a
+mob weapon in the source and runtime bake. Existing mobs default to an AK-47.
+
+Session commands:
+
+```text
+session status
+session editor <map-name>
+session host <map-name> [--build]
+session join <host>
+session playtest
+session playtest-networked
+```
+
+Map and editor commands are documented in [docs/COMMANDS.md](docs/COMMANDS.md), including terrain
+brush settings, block and object palettes, structures, autosave recovery, item aliases, and the
+dedicated-server console.
+
+## Project Layout
+
+```text
+Common/             shared protocol, voxel math, movement, commands, runtime map format
+Server/             authoritative simulation, replication, terrain streaming, server console
+Client/             Stride composition, networking, simulation mirrors, rendering, input
+Editor.Core/        engine-independent source documents, undo/redo, validation, baking
+Common.Tests/       shared logic and voxel tests
+Server.Tests/       authoritative command and gameplay tests
+Editor.Core.Tests/  editor persistence, history, structures, validation, bake parity
+assets/             models, textures, shaders, sounds
+```
+
+The main dependency direction is:
+
+```text
+Common <- Server
+Common <- Editor.Core <- Client
+Common <- Client
+```
+
+The server is authoritative. The client follows `Netcode -> Simulation -> View`; do not mutate view
+state directly from network callbacks. `Common` and `Editor.Core` avoid Stride dependencies so their
+logic remains headless and testable.
+
+## Further Reading
+
+- [CLAUDE.md](CLAUDE.md): architecture invariants and implementation guidance
+- [RECIPES.md](RECIPES.md): checklists for adding replicated gameplay features
+- [EDITOR.md](EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
+- [docs/COMMANDS.md](docs/COMMANDS.md): terminal command reference
+- [docs/voxel/](docs/voxel/): voxel data, generation, meshing, and collision
+- [docs/networking/](docs/networking/): replication and gameplay message flows
+- [stride_docs/](stride_docs/): Stride-specific runtime and rendering findings
+
+The code-only Stride setup follows the
+[Stride Community Toolkit guide](https://stride3d.github.io/stride-community-toolkit/manual/code-only/create-project.html#example-code).

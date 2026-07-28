@@ -10,7 +10,7 @@ namespace Demiurge
     public struct PlayerFiredData : IMessageSerializable
     {
         public ushort PlayerId;
-        public WeaponType Weapon;
+        public ItemType Weapon;
         public Vector3 Origin;
         public Vector3 Direction;
 
@@ -25,7 +25,7 @@ namespace Demiurge
         public void Deserialize(Message message)
         {
             PlayerId = message.GetUShort();
-            Weapon = (WeaponType)message.GetUShort();
+            Weapon = (ItemType)message.GetUShort();
             Origin = message.GetVector3();
             Direction = message.GetVector3();
         }

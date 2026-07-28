@@ -1,12 +1,32 @@
 namespace Demiurge
 {
     /// <summary>Shot geometry globals that are NOT per-weapon: HitRadius models
-    /// target size (stand-in collider around an object's origin) and MuzzleHeight
-    /// models the character rig. Per-weapon numbers live in WeaponConfig.</summary>
+    /// target size (stand-in collider around an object's origin). Per-weapon numbers
+    /// live in ItemConfig.
+    ///
+    /// A shot's ORIGIN is deliberately not here any more. It used to be a MuzzleHeight
+    /// constant on the player's centre axis, which put every gun's bullets in the same
+    /// wrong place; it now comes from the barrel of the weapon actually held, measured
+    /// off that model — client-side, in WeaponMount, since the server only ever
+    /// range-checks the origin it is handed and never computes one.</summary>
     public static class GunConfig
     {
         public const float HitRadius = 0.6f;
-        public const float MuzzleHeight = 0.4f;
         public const float PlayerCenterHeight = 0.5f;
+
+        /// <summary>
+        /// How far a shot's claimed origin may sit from the server's position for that player before
+        /// the shot is thrown away. A sanity gate on a client-supplied number, not a tight bound.
+        ///
+        /// Two terms, and the first is easy to under-budget. A muzzle is wherever the held weapon's
+        /// BARREL is, swung by the aim pitch about the chest, so it reaches furthest at extreme
+        /// angles rather than level: the longest weapon measures 2.25 m from the player origin at
+        /// 83 degrees of pitch, against 1.71 m level. The rest is prediction drift, the same
+        /// allowance the flat 2 m here used to be spending entirely on.
+        ///
+        /// RE-MEASURE THIS when a longer weapon lands — the failure is silent. Shots simply stop
+        /// registering at steep angles for that one gun, with no error anywhere.
+        /// </summary>
+        public const float MaxFireOriginDistance = 4f;
     }
 }

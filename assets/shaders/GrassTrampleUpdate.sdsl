@@ -1,0 +1,49 @@
+// Trample field update. One R8 texel stores the local crushed amount around the player.
+shader GrassTrampleUpdate : ComputeShaderBase
+{
+    struct TrampleSource
+    {
+        float3 Position;
+        float  Radius;
+    };
+
+    stage RWTexture2D<float4> Field;
+    stage StructuredBuffer<TrampleSource> Sources;
+
+    stage int    SourceCount;
+    stage float  DecayPerFrame;
+    stage float2 OriginWorld;
+    stage float  TexelWorldSize;
+    stage uint   TextureSize;
+    stage int2   Offset;
+
+    override void Compute()
+    {
+        uint2 storageId = streams.DispatchThreadId.xy;
+        if (storageId.x >= TextureSize || storageId.y >= TextureSize) return;
+
+        int N = (int)TextureSize;
+        int lx = ((int)storageId.x - Offset.x) % N;
+        int lz = ((int)storageId.y - Offset.y) % N;
+        if (lx < 0) lx += N;
+        if (lz < 0) lz += N;
+
+        float2 worldXZ = OriginWorld + float2((float)lx, (float)lz) * TexelWorldSize;
+
+        float decayed = max(Field[storageId].x - DecayPerFrame, 0.0);
+        float fresh = 0.0;
+
+        for (int i = 0; i < SourceCount; i++)
+        {
+            TrampleSource src = Sources[i];
+            float dx = worldXZ.x - src.Position.x;
+            float dz = worldXZ.y - src.Position.z;
+            float distSq = dx * dx + dz * dz;
+            float r = max(src.Radius, 0.01);
+            if (distSq < r * r)
+                fresh = max(fresh, 1.0 - sqrt(distSq) / r);
+        }
+
+        Field[storageId] = float4(max(decayed, fresh), 0.0, 0.0, 1.0);
+    }
+};

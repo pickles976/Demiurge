@@ -1,8 +1,9 @@
 using Demiurge;
 using Demiurge.GameClient;
 
-public class ObjectRegistry
+public class ObjectRegistry : IDisposable
 {
+    private readonly NetworkManager network;
     private readonly Dictionary<uint, NetObject> objects = new();
 
     // Updates that arrived before their spawn (reliable spawn racing unreliable/
@@ -17,11 +18,23 @@ public class ObjectRegistry
     /// (tracer hit tests). Netcode writes, view reads — same contract as ever.</summary>
     public IEnumerable<NetObject> Objects => objects.Values;
 
+    public bool TryGet(uint networkId, out NetObject obj) => objects.TryGetValue(networkId, out obj!);
+
     public ObjectRegistry(NetworkManager network)
     {
+        this.network = network;
         network.ObjectSpawned += OnSpawn;
         network.ObjectDespawned += OnDespawn;
         network.ObjectStateReceived += OnState;
+    }
+
+    public void Dispose()
+    {
+        network.ObjectSpawned -= OnSpawn;
+        network.ObjectDespawned -= OnDespawn;
+        network.ObjectStateReceived -= OnState;
+        objects.Clear();
+        pendingUpdates.Clear();
     }
 
     private void OnSpawn(ObjectSpawnData data)
@@ -78,5 +91,7 @@ public class ObjectRegistry
         if (state.Mask.HasFlag(NetComponents.Weapon)) obj.Weapon = state.Weapon;
         if (state.Mask.HasFlag(NetComponents.Owner)) obj.Owner = state.Owner;
         if (state.Mask.HasFlag(NetComponents.Armor)) obj.Armor = state.Armor;
+        if (state.Mask.HasFlag(NetComponents.Item)) obj.Item = state.Item;
+        if (state.Mask.HasFlag(NetComponents.Attachment)) obj.Attachment = state.Attachment;
     }
 }

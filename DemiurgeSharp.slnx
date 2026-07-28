@@ -1,9 +1,17 @@
 <Solution>
+  <Folder Name="/Common.Tests/">
+    <Project Path="Common.Tests/DemiurgeCommon.Tests.csproj" />
+  </Folder>
   <Folder Name="/Common/">
     <Project Path="Common/DemiurgeCommon.csproj" />
   </Folder>
+  <Folder Name="/Editor/">
+    <Project Path="Editor.Core/DemiurgeEditor.Core.csproj" />
+    <Project Path="Editor.Core.Tests/DemiurgeEditor.Core.Tests.csproj" />
+  </Folder>
   <Folder Name="/Server/">
     <Project Path="Server/DemiurgeServer.csproj" />
+    <Project Path="Server.Tests/DemiurgeServer.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/GltfAssetGenerator/GltfAssetGenerator.csproj" />

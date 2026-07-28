@@ -4,7 +4,7 @@ using Stride.Core.Diagnostics;
 
 namespace Demiurge.GameClient
 {
-    public class NetworkManager
+    public class NetworkManager : IDisposable
     {
 
         private readonly PriorityQueue<Action, double> delayed = new();
@@ -14,6 +14,7 @@ namespace Demiurge.GameClient
 
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
         private readonly Client client = new();
+        private readonly string host;
 
         /// The id of this client that was assigned by the server during this session
         public ushort ClientId { get; private set; }
@@ -27,8 +28,26 @@ namespace Demiurge.GameClient
         public event Action<ObjectDespawnData>? ObjectDespawned;
         public event Action<ObjectStateData>? ObjectStateReceived;
 
+        /// <summary>
+        /// Carries the token for the separate terrain stream, so the composition root can connect it.
+        /// Terrain itself does NOT come through here any more — see <see cref="ChunkTransport"/>.
+        /// </summary>
+        public event Action<WelcomeData>? Welcomed;
+
         public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
+
+        /// <summary>An edit the server has already made. Raised on the NETWORK thread when fake
+        /// latency is off, so the handler must only queue — see TerrainState.ReceiveEdit.</summary>
+        public event Action<TerrainEditData>? TerrainEdited;
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
+        public event Action<CommandResultData>? CommandResultReceived;
+
+        private uint nextCommandRequestId;
+
+        public NetworkManager(string? host = null)
+        {
+            this.host = host ?? NetworkConfig.ServerHost;
+        }
 
         private void Dispatch(Action deliver)
         {
@@ -45,7 +64,14 @@ namespace Demiurge.GameClient
         {
             client.MessageReceived += OnMessageReceived;
             client.Connected += (_, _) => Log.Info("Connected to server");
-            client.Connect($"127.0.0.1:{NetworkConfig.Port}", useMessageHandlers: false);
+            client.Connect($"{host}:{NetworkConfig.Port}", useMessageHandlers: false);
+        }
+
+        public void Dispose()
+        {
+            client.Disconnect();
+            client.MessageReceived -= OnMessageReceived;
+            delayed.Clear();
         }
 
         /// <summary>Pump once per frame from Program.cs Update().</summary>
@@ -76,6 +102,33 @@ namespace Demiurge.GameClient
             client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerReload));
         }
 
+        public void SendInteract()
+        {
+            client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerInteract));
+        }
+
+        public void SendDig(PlayerDigData dig)
+        {
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerDig);
+            message.AddSerializable(dig);
+            client.Send(message);
+        }
+
+        public uint SendCommand(string command)
+        {
+            nextCommandRequestId++;
+            if (nextCommandRequestId == 0) nextCommandRequestId++;
+
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.CommandRequest);
+            message.AddSerializable(new CommandRequestData
+            {
+                RequestId = nextCommandRequestId,
+                Command = command,
+            });
+            client.Send(message);
+            return nextCommandRequestId;
+        }
+
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {
@@ -85,7 +138,11 @@ namespace Demiurge.GameClient
             {
                 case ServerToClientId.Welcome:
                     var welcome = e.Message.GetSerializable<WelcomeData>();
-                    Dispatch(() => ClientId = welcome.ClientId);
+                    Dispatch(() =>
+                    {
+                        ClientId = welcome.ClientId;
+                        Welcomed?.Invoke(welcome);
+                    });
                     break;
                 case ServerToClientId.PlayerSpawn:
                     var spawn = e.Message.GetSerializable<PlayerSpawnData>();
@@ -118,6 +175,14 @@ namespace Demiurge.GameClient
                 case ServerToClientId.HitConfirm:
                     var confirm = e.Message.GetSerializable<HitConfirmData>();
                     Dispatch(() => HitConfirmed?.Invoke(confirm));
+                    break;
+                case ServerToClientId.TerrainEdit:
+                    var edit = e.Message.GetSerializable<TerrainEditData>();
+                    Dispatch(() => TerrainEdited?.Invoke(edit));
+                    break;
+                case ServerToClientId.CommandResult:
+                    var commandResult = e.Message.GetSerializable<CommandResultData>();
+                    Dispatch(() => CommandResultReceived?.Invoke(commandResult));
                     break;
             }
         }
