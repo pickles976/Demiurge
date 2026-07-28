@@ -13,5 +13,20 @@ namespace Demiurge
     {
         public const float HitRadius = 0.6f;
         public const float PlayerCenterHeight = 0.5f;
+
+        /// <summary>
+        /// How far a shot's claimed origin may sit from the server's position for that player before
+        /// the shot is thrown away. A sanity gate on a client-supplied number, not a tight bound.
+        ///
+        /// Two terms, and the first is easy to under-budget. A muzzle is wherever the held weapon's
+        /// BARREL is, swung by the aim pitch about the chest, so it reaches furthest at extreme
+        /// angles rather than level: the longest weapon measures 2.25 m from the player origin at
+        /// 83 degrees of pitch, against 1.71 m level. The rest is prediction drift, the same
+        /// allowance the flat 2 m here used to be spending entirely on.
+        ///
+        /// RE-MEASURE THIS when a longer weapon lands — the failure is silent. Shots simply stop
+        /// registering at steep angles for that one gun, with no error anywhere.
+        /// </summary>
+        public const float MaxFireOriginDistance = 4f;
     }
 }

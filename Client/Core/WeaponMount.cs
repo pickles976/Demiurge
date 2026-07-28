@@ -22,6 +22,12 @@ namespace Demiurge.GameClient
 
         private const string HandBone = "right_hand";
 
+        /// <summary>The bone the aim pitch is applied to. It parents the neck AND both shoulders, so
+        /// rotating it swings head, arms, hands and — through the hand's ModelNodeLinkComponent —
+        /// the gun, all from one override. Everything below pivots about it, which is why the muzzle
+        /// has to pivot about it too.</summary>
+        public const string AimBone = "upper_chest";
+
         /// <summary>The pose the muzzle is measured in. Firing is aiming-only
         /// (LocalPlayerController gates TryFire on it), and this clip holds the arm still
         /// — its hand transform is constant to four decimals across the whole clip — so
@@ -42,13 +48,29 @@ namespace Demiurge.GameClient
         private readonly ModelLocators locators;
         private readonly Func<ItemType, string> modelOf;
         private readonly ModelLocators.Pose firingHand;
+        private readonly Vector3 aimPivot;
 
         public WeaponMount(ModelLocators locators, Func<ItemType, string> modelOf)
         {
             this.locators = locators;
             this.modelOf = modelOf;
             firingHand = locators.Require(PlayerModel, HandBone, FiringPose);
+            aimPivot = locators.Require(PlayerModel, AimBone, FiringPose).Translation;
         }
+
+        /// <summary>
+        /// The aim pitch as a rotation in the player's own space, positive being up.
+        ///
+        /// NEGATIVE about X: a rotation of +theta about X carries +Z (the way the character faces)
+        /// toward -Y, which would drop the barrel while the player looks up.
+        ///
+        /// This is only a player-space rotation because the aim bone's parents are unrotated in the
+        /// firing pose — the Aiming clip animates arms only, leaving torso and upper_chest at
+        /// identity — so the bone's local frame and the player's coincide. A clip that leaned the
+        /// torso would break that equivalence, and the muzzle would drift off the drawn barrel.
+        /// </summary>
+        public static Quaternion PitchRotation(float pitch) =>
+            Quaternion.CreateFromAxisAngle(Vector3.UnitX, -pitch);
 
         /// <summary>Where to put the model relative to the hand bone so that its GRIP
         /// lands on the bone, whatever its author chose as the model origin — the thing
@@ -70,19 +92,25 @@ namespace Demiurge.GameClient
         /// <summary>Where this weapon's barrel is, relative to the player's origin and
         /// before the player's yaw is applied — i.e. the offset a shot starts at.
         ///
-        /// Chains the same three facts the renderer chains: the barrel's offset from the
-        /// grip in model space, rotated into hand space by HandRotation, then placed by
-        /// the hand's own transform in the firing pose. Falls back to the player's centre
-        /// height for a weapon with no barrel locator, which is wrong but visible rather
-        /// than putting shots underground.</summary>
-        public Vector3 Muzzle(ItemType type)
+        /// Chains the same facts the renderer chains, in the same order: the barrel's offset from
+        /// the grip in model space, rotated into hand space by HandRotation, placed by the hand's
+        /// own transform in the firing pose, then swung about the aim bone by the aim pitch —
+        /// because on screen that bone is what carries the arms and the gun. Get this pivot wrong
+        /// and the shot leaves a point that drifts further from the drawn barrel the further you
+        /// look up or down.
+        ///
+        /// Falls back to the player's centre height for a weapon with no barrel locator, which is
+        /// wrong but visible rather than putting shots underground.</summary>
+        public Vector3 Muzzle(ItemType type, float pitch = 0f)
         {
             var model = modelOf(type);
             if (locators.Get(model, "grip") is not { } grip || locators.Get(model, "barrel") is not { } barrel)
                 return new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
 
             var gripToBarrel = Vector3.Transform(barrel.Translation - grip.Translation, HandRotation);
-            return firingHand.Translation + Vector3.Transform(gripToBarrel, firingHand.Rotation);
+            var unpitched = firingHand.Translation + Vector3.Transform(gripToBarrel, firingHand.Rotation);
+
+            return aimPivot + Vector3.Transform(unpitched - aimPivot, PitchRotation(pitch));
         }
     }
 }

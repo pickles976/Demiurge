@@ -283,7 +283,7 @@ void Start(Scene rootScene)
 
     var cameraEntity = game.Add3DCamera();
     LineRenderer.Camera = cameraEntity.Get<CameraComponent>();
-    cameraEntity.Add(new LocalPlayerController { CameraEntity = cameraEntity, Registry = registry });
+    cameraEntity.Add(new LocalPlayerController { CameraEntity = cameraEntity, Registry = registry, Terrain = terrainState });
     // Over-the-shoulder action camera. ThirdPersonCameraScript — the high, cursor-aimed one — is kept
     // in PlayerCamera.cs as dead code; swap the two lines to go back to it.
     cameraEntity.Add(new ShoulderCameraScript { Registry = registry });
@@ -292,11 +292,14 @@ void Start(Scene rootScene)
     cameraEntity.Add(new DebugFlyCameraScript());
     // The cursor reticle belongs to the old camera: the shoulder camera locks the mouse, so there is no
     // cursor to draw one at.
+    // Dead code, along with the cursor-aimed ThirdPersonCameraScript it belongs to — the shoulder
+    // camera locks the mouse to the centre, so there is no cursor for it to follow.
     // cameraEntity.Add(new CursorReticleScript());
+    cameraEntity.Add(new ReticleScript { Registry = registry });
     // Aim line off: it drew where the old cursor-aimed camera was pointing, which the shoulder camera
     // makes redundant — you are already looking down the shot. Kept as dead code like the camera itself.
     // cameraEntity.Add(new AimLineScript { Registry = registry, Mount = weaponMount });
-    cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network });
+    cameraEntity.Add(new ShotEffectsScript { Registry = registry, Objects = objectRegistry, Network = network, Terrain = terrainState });
 
     network.Connect();
 

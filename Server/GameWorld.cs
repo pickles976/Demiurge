@@ -34,7 +34,7 @@ namespace Demiurge.GameServer
             this.server = server;
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
-            weapons = new WeaponSystem(server, objects);
+            weapons = new WeaponSystem(server, objects, terrain);
 
             // Before anything is placed: spawn positions are queried off the terrain.
             WorldGen.Generate(terrain);
@@ -128,7 +128,7 @@ namespace Demiurge.GameServer
             if (!players.TryGetValue(clientId, out var player)) return;
             if (input.Sequence <= player.LastReceivedSequence) return; // dupe or out of order
 
-            if (!IsFinite(input.Intent) || !float.IsFinite(input.Yaw)) return;
+            if (!IsFinite(input.Intent) || !float.IsFinite(input.Yaw) || !float.IsFinite(input.Pitch)) return;
 
             player.LastReceivedSequence = input.Sequence;
             player.PendingMoves.Enqueue(input);
@@ -152,6 +152,7 @@ namespace Demiurge.GameServer
                     PlayerMovement.Step(terrain, ref player.Move, move.Intent, move.State, dt);
                     player.State = move.State;
                     player.Yaw = move.Yaw;
+                    player.Pitch = move.Pitch;
                     player.LastIntent = move.Intent;
                     player.LastProcessedSequence = move.Sequence;
                     processedAny = true;
@@ -201,6 +202,7 @@ namespace Demiurge.GameServer
                         Tick = _Tick,
                         Position = player.Position,
                         Yaw = player.Yaw,
+                        Pitch = player.Pitch,
                         State = player.State,
                         LastProcessedSequence = player.LastProcessedSequence,
                         Velocity = player.Move.Velocity,

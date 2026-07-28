@@ -71,6 +71,7 @@ public class PlayerRegistry
                 remote.Snapshots.Store(data.Tick, data.Position);
                 remote.Position = data.Position;
                 remote.Yaw = data.Yaw;
+                remote.Pitch = data.Pitch;
                 remote.State = data.State;
                 break;
         }

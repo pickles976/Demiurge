@@ -1,5 +1,6 @@
 using System.Numerics;
 using Demiurge;
+using Demiurge.GameClient;
 using Stride.Engine;
 using Stride.Input;
 
@@ -7,6 +8,33 @@ public class LocalPlayerController : SyncScript
 {
 	public required Entity CameraEntity { get; init; }
 	public required PlayerRegistry Registry { get; init; }
+	public required TerrainState Terrain { get; init; }
+
+	/// <summary>How far down the line of sight to look for something to aim at.</summary>
+	public float MaxAimDistance { get; set; } = 200f;
+
+	/// <summary>
+	/// Where the camera's line of sight lands — the point shots are aimed AT, and the point the
+	/// reticle draws. Owned here rather than in <see cref="ReticleScript"/> so that the two cannot
+	/// disagree: the reticle is a picture of this number, not a second opinion about it.
+	///
+	/// Never null while there is a camera, because a line of sight that meets nothing still has to
+	/// aim somewhere — see <see cref="ComputeAimPoint"/>.
+	/// </summary>
+	public Vector3? AimPoint { get; private set; }
+
+	/// <summary>
+	/// The point to shoot at. Terrain if the line of sight meets any, otherwise a point far enough
+	/// down it that the shot is near enough parallel to the view.
+	///
+	/// The fallback matters more than it looks: without it, aiming at the sky would have nothing to
+	/// converge on, and the obvious repair — falling back to the camera's direction — is exactly the
+	/// parallel-ray bug this method exists to avoid, reappearing only when you aim upward.
+	/// </summary>
+	private Vector3 ComputeAimPoint(Stride.Core.Mathematics.Vector3 eye, Stride.Core.Mathematics.Vector3 forward)
+		=> TerrainRaycast.Cast(Terrain.Map, eye, forward, MaxAimDistance) is { } hit
+			? hit.Point
+			: (Vector3)(eye + forward * MaxAimDistance);
 
 	public override void Update()
 	{
@@ -57,6 +85,7 @@ public class LocalPlayerController : SyncScript
 		if (shoulder != null)
 		{
 			local.Yaw = shoulder.Yaw;
+			local.Pitch = shoulder.Pitch;
 		}
 		else if (intent != Vector3.Zero)
 		{
@@ -66,12 +95,21 @@ public class LocalPlayerController : SyncScript
 
 		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
 
-		// After the rotation block. Holding LMB is level-triggered input, but TryFire's
-		// cooldown gate turns it into one edge-triggered PlayerFire per shot — that's
-		// where "hold to fire at 10/s" comes from. Aiming-only, so the fire direction
-		// (the yaw the aim code just pointed at the cursor) is always meaningful.
-		if (aiming && Input.IsMouseButtonDown(MouseButton.Left))
-			local.TryFire(new Vector3(MathF.Sin(local.Yaw), 0f, MathF.Cos(local.Yaw)), Registry.RenderTick);
+		// Where the line of sight lands, resolved AFTER the rotation block so it uses this frame's
+		// camera rather than last frame's. The reticle reads it back off this script.
+		var cameraTransform = CameraEntity.Transform;
+		AimPoint = ComputeAimPoint(
+			cameraTransform.Position,
+			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
+
+		// Holding LMB is level-triggered input, but TryFire's cooldown gate turns it into one
+		// edge-triggered PlayerFire per shot — that's where "hold to fire at 10/s" comes from.
+		//
+		// A POINT, not a direction. The muzzle is not the camera, so a direction copied from the
+		// camera would send the bullet parallel to the line of sight and never onto the reticle —
+		// see TryFire. Aiming-only, so the aim point is always the one the reticle is showing.
+		if (aiming && Input.IsMouseButtonDown(MouseButton.Left) && AimPoint is { } target)
+			local.TryFire(target, Registry.RenderTick);
 
 		if (Input.IsKeyPressed(Keys.R))
 			local.TryReload();

@@ -16,8 +16,13 @@ public class ShotEffectsScript : SyncScript
     public required PlayerRegistry Registry { get; init; }
     public required ObjectRegistry Objects { get; init; }
     public required NetworkManager Network { get; init; }
+    public required TerrainState Terrain { get; init; }
 
     private const float TracerLifetime = 0.1f;   // the old GunScript's tracer look
+
+    /// <summary>Dust, not sparks: pale and a little transparent, so a burst of them reads as one
+    /// kicked-up cloud rather than seven separate lines.</summary>
+    private static readonly Color ImpactColor = new(214, 198, 172, 205);
 
     private SoundManager sound = null!;
     private LocalPlayer? subscribed;
@@ -65,10 +70,20 @@ public class ShotEffectsScript : SyncScript
                 && t < distance)
                 distance = t;
 
+        // Terrain stops the shot if it gets there first, matching what the server decides — it runs
+        // this same cast before awarding a hit, so a tracer that buries itself in a hillside is
+        // showing you a shot that really was stopped, not just a shortened line.
+        TerrainHit? ground = TerrainRaycast.Cast(Terrain.Map, origin, direction, distance);
+        if (ground is { } g) distance = g.Distance;
+
         var fx = WeaponFx.Get(weapon);
         var start = origin.ToStride();
         var end = (origin + direction * distance).ToStride();
         TracerManager.Spawn(start, end, fx.TracerColor, TracerLifetime);
         sound.PlayOneShotSpatial(fx.ShotSoundPath, start);
+
+        // Debris only where there is ground to kick up — a shot into the sky or into a player
+        // leaves nothing behind.
+        if (ground is { } hit) ImpactManager.Spawn(hit.Point.ToStride(), hit.Normal.ToStride(), ImpactColor);
     }
 }

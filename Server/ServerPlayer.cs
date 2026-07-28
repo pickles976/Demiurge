@@ -23,6 +23,7 @@ namespace Demiurge.GameServer
         public PlayerStateFlags State { get; set; }
         public Vector3 PendingIntent { get; set; }
         public float Yaw {get; set;}
+        public float Pitch {get; set;}
 
         public ServerObject? Status {get; set;}
 

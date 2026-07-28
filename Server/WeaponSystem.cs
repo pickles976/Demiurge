@@ -11,11 +11,13 @@ namespace Demiurge.GameServer
     {
         private readonly Server server;
         private readonly ObjectReplication objects;
+        private readonly ChunkMap terrain;
 
-        public WeaponSystem(Server server, ObjectReplication objects)
+        public WeaponSystem(Server server, ObjectReplication objects, ChunkMap terrain)
         {
             this.server = server;
             this.objects = objects;
+            this.terrain = terrain;
         }
 
         public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick, IEnumerable<ServerPlayer> players)
@@ -40,8 +42,10 @@ namespace Demiurge.GameServer
             if (weapon.Weapon.CurrentAmmo <= 0) return;
 
             // The client supplies the aim, but the shot must leave from roughly where
-            // the server has the player. 2m tolerance covers prediction drift.
-            if (Vector3.DistanceSquared(fire.Origin, player.Position) > 2f * 2f) return;
+            // the server has the player. See GunConfig.MaxFireOriginDistance for what the
+            // tolerance has to cover — a barrel swung to full pitch reaches further than it looks.
+            if (Vector3.DistanceSquared(fire.Origin, player.Position)
+                > GunConfig.MaxFireOriginDistance * GunConfig.MaxFireOriginDistance) return;
 
             player.NextFireTick = tick + (uint)stats.TicksPerShot;
             weapon.Weapon.CurrentAmmo--;
@@ -100,7 +104,15 @@ namespace Demiurge.GameServer
         private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange, ServerPlayer shooter, IEnumerable<ServerPlayer> players, double renderTick)
         {
             ServerObject? nearest = null;
-            float nearestT = float.MaxValue;
+
+            // Terrain first, as a ceiling on how far anything else can be hit from. Cover has to be
+            // decided HERE and not just drawn on the client: the client already stops its tracer at
+            // the ground, so without this a shot into a hillside still takes the health off whoever
+            // is behind it, and the disagreement surfaces as phantom damage rather than as a bug in
+            // this function.
+            float nearestT = TerrainRaycast.Cast(terrain, origin, direction, maxRange) is { } ground
+                ? ground.Distance
+                : float.MaxValue;
 
             foreach (var obj in objects.All)
             {

@@ -66,6 +66,11 @@ namespace Demiurge
 		/// </summary>
 		public float Yaw { get; private set; }
 
+		/// <summary>Look angle above the horizon, radians, positive is up. Unlike <see cref="Yaw"/>
+		/// this needs no reconciling with a different convention: the orbit's 180-degree flip is a
+		/// horizontal matter, and pitch means the same thing to the camera and to the player.</summary>
+		public float Pitch => pitch;
+
 		float orbit;
 		float pitch;
 		Vector3 followed;

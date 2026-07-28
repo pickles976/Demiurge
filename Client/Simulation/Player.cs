@@ -9,6 +9,10 @@ public abstract class Player
     public virtual Vector3 Position { get; set; }
     public PlayerStateFlags State { get; set; }
     public float Yaw { get; set; }
+
+    /// <summary>Look angle above the horizon, radians, positive is up. Drives the head and gun aim,
+    /// and the direction a shot travels; the BODY still only yaws.</summary>
+    public float Pitch { get; set; }
 }
 
 // netcode writes, view reads
@@ -82,18 +86,40 @@ public class LocalPlayer : Player
         Ammo = 0;
     }
 
-    public void TryFire(Vector3 direction, double renderTick)
+    /// <summary>
+    /// Fires at a point in the world rather than along a direction, and that distinction is the
+    /// whole reason shots land where the reticle is.
+    ///
+    /// The reticle marks where the CAMERA's line of sight lands, but a bullet leaves the MUZZLE,
+    /// which is about 0.3 m to one side of the camera and 0.6 m below it. Firing along the camera's
+    /// direction sends the bullet on a ray PARALLEL to the camera's — and parallel rays never meet,
+    /// so the impact sat permanently down and to the left of the reticle by exactly that offset, at
+    /// every range. Aiming AT the point converges the two instead.
+    ///
+    /// Taking a target also puts the aiming where the origin is known. The caller does not have the
+    /// muzzle position — it depends on the weapon and the pitch — so a caller computing a direction
+    /// could not have accounted for it.
+    /// </summary>
+    public void TryFire(Vector3 aimPoint, double renderTick)
     {
         if (!IsArmed || cooldownTicks > 0 || IsReloading || Ammo == 0) return;
-
-        cooldownTicks = Stats.TicksPerShot;
-        Ammo--;
 
         // The barrel of the gun we are actually holding, not a constant height on the
         // player's centre axis. WeaponMount measures it off the same model the renderer
         // draws, in the same pose the renderer is drawing (firing is aiming-only), so the
-        // tracer leaves the visible muzzle. Yaw-only, matching the fire direction.
-        var origin = Position + Vector3.Transform(mount.Muzzle(Weapon!.Item.Type), Quaternion.CreateFromYawPitchRoll(Yaw, 0f, 0f));
+        // tracer leaves the visible muzzle. Pitch swings the barrel about the chest exactly
+        // as the bone override swings it on screen; only the yaw is the body's.
+        var origin = Position + Vector3.Transform(
+            mount.Muzzle(Weapon!.Item.Type, Pitch), Quaternion.CreateFromYawPitchRoll(Yaw, 0f, 0f));
+
+        // Degenerate only if the aim point is inside the muzzle; spend no ammo on it.
+        var toTarget = aimPoint - origin;
+        if (toTarget.LengthSquared() < 1e-6f) return;
+        var direction = Vector3.Normalize(toTarget);
+
+        cooldownTicks = Stats.TicksPerShot;
+        Ammo--;
+
         network.SendFire(new PlayerFireData
         {
             Sequence = sequence,
@@ -138,7 +164,7 @@ public class LocalPlayer : Player
             if (cooldownTicks > 0) cooldownTicks--;
             if (reloadTicksLeft > 0 && --reloadTicksLeft == 0)
                 Ammo = Stats.MagazineCapacity;     // reload complete
-            var move = new PlayerInputData { Sequence = sequence++, Intent = intent, State = State, Yaw = Yaw };
+            var move = new PlayerInputData { Sequence = sequence++, Intent = intent, State = State, Yaw = Yaw, Pitch = Pitch };
             network.SendInput(move);
 
             // Prediction needs the same terrain the server is stepping against. Until ours has

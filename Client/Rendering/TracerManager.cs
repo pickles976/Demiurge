@@ -58,14 +58,16 @@ namespace Demiurge
     }
 
     /// <summary>
-    /// Drives <see cref="TracerManager"/> once per frame. Add a single instance of this
-    /// to the scene; guns just call <see cref="TracerManager.Spawn"/>.
+    /// Drives <see cref="TracerManager"/> and <see cref="ImpactManager"/> once per frame. Add a
+    /// single instance of this to the scene; guns just call the managers' Spawn.
     /// </summary>
     public class TracerSystem : SyncScript
     {
         public override void Update()
         {
-            TracerManager.Update((float)Game.UpdateTime.Elapsed.TotalSeconds);
+            float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+            TracerManager.Update(dt);
+            ImpactManager.Update(dt);
         }
     }
 }

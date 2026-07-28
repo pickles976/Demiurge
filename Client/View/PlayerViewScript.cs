@@ -48,6 +48,62 @@ public class PlayerViewScript : SyncScript
         State = Player.State;
 
         PlayAnimations();
+        ApplyAimPitch();
+    }
+
+    // The bone the aim swings, resolved once by name — see WeaponMount.AimBone for why this one.
+    private int aimNode = -1;
+    private Quaternion aimBase = Quaternion.Identity;
+    private Quaternion aimWritten;
+    private bool haveWritten;
+
+    /// <summary>
+    /// Leans the upper body to the player's look angle, so the head and the gun point where the shot
+    /// is actually going. Everything below the bone follows for free, including the weapon entity —
+    /// it is linked to a hand further down the same chain.
+    ///
+    /// The frame order is what makes this delicate. ScriptSystem is registered before SceneSystem, so
+    /// per frame: scripts Update, then TransformProcessor turns the node transforms into matrices,
+    /// then AnimationProcessor writes the nodes again in DRAW. Writing here therefore does reach the
+    /// matrices — but it also survives into the next frame's read for any node the playing clips do
+    /// not touch, and Aiming touches neither the torso nor this bone. Composing onto whatever is
+    /// there would then compound the lean every frame until the character span.
+    ///
+    /// So the animated pose is tracked explicitly: if the node no longer holds the exact value last
+    /// written, a clip has refreshed it and that becomes the new base. Comparing floats for exact
+    /// equality is sound precisely here — it is a value compared against itself, with no arithmetic
+    /// in between.
+    /// </summary>
+    private void ApplyAimPitch()
+    {
+        var skeleton = Entity.Get<ModelComponent>()?.Skeleton;
+        if (skeleton == null) return;
+
+        if (aimNode < 0)
+        {
+            aimNode = Array.FindIndex(skeleton.Nodes, n => n.Name == Demiurge.GameClient.WeaponMount.AimBone);
+            if (aimNode < 0) return;   // rig without the bone: no aim lean rather than a crash
+        }
+
+        ref var node = ref skeleton.NodeTransformations[aimNode];
+
+        if (!haveWritten || node.Transform.Rotation != aimWritten)
+            aimBase = node.Transform.Rotation;
+
+        // Same rotation the sim swings the muzzle by, so the bullet leaves the barrel it is drawn
+        // leaving.
+        //
+        // Order matters and is easy to get backwards, because Stride multiplies as "apply a, THEN
+        // b" — the reverse of the usual convention. The clip's own rotation has to be applied first
+        // and the aim lean on top, in the PARENT's frame, which is what makes the lean mean the same
+        // thing however the walk cycle happens to be swinging the chest at that instant. Reversed,
+        // it would still look right while aiming — the Aiming clip leaves this bone at identity, so
+        // the two orders agree there — and go wrong only while walking or crouching.
+        var composed = aimBase * Demiurge.GameClient.WeaponMount.PitchRotation(Player.Pitch).ToStride();
+
+        node.Transform.Rotation = composed;
+        aimWritten = composed;
+        haveWritten = true;
     }
 
     private void PlayAnimations()

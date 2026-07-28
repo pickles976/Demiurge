@@ -22,6 +22,10 @@ namespace Demiurge
         public Vector3 Velocity;
         public bool Grounded;
 
+        /// <summary>Look angle above the horizon, radians, positive is up. Replicated because a
+        /// remote player's head and gun aim with it. APPENDED — never inserted.</summary>
+        public float Pitch;
+
         public void Serialize(Message message)
         {
             message.AddUShort(PlayerId);
@@ -32,6 +36,7 @@ namespace Demiurge
             message.AddUInt(LastProcessedSequence);
             message.AddVector3(Velocity);
             message.AddBool(Grounded);
+            message.AddFloat(Pitch);
         }
 
         public void Deserialize(Message message)
@@ -44,6 +49,7 @@ namespace Demiurge
             LastProcessedSequence = message.GetUInt();
             Velocity = message.GetVector3();
             Grounded = message.GetBool();
+            Pitch = message.GetFloat();
         }
 
         /// <summary>The movement half of this message, as the shared step wants it.</summary>
