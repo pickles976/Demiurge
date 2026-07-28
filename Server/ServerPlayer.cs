@@ -32,6 +32,7 @@ namespace Demiurge.GameServer
         // holds the references and the fire/reload timing gates below.
         public Dictionary<EquipSlot, uint> Equipped { get; } = new();
 
+        public uint NextDigTick { get; set; }      // earliest tick the next dig is legal
         public uint NextFireTick { get; set; }     // earliest tick the next shot is legal
         public uint ReloadDoneTick { get; set; }   // firing is blocked until this tick
 

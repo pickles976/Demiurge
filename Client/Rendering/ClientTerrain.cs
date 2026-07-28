@@ -29,6 +29,21 @@ namespace Demiurge
         readonly List<(LodSection Section, MeshData Mesh)> batch = new();
         readonly List<Entity> built = new();
         readonly Queue<LodSection> dirtyQueue = new();
+
+        /// <summary>
+        /// Sections dirtied by an EDIT rather than by streaming, dispatched ahead of the ordinary
+        /// queue.
+        ///
+        /// Not a micro-optimisation: the ordinary queue holds the whole world as it loads, so a dig
+        /// with no lane of its own waits behind thousands of sections nobody is looking at. The
+        /// player is standing over the hole watching nothing happen. There is no throughput argument
+        /// here at all — the same work gets done either way — it is purely about which of two
+        /// equally cheap jobs the player is actually waiting on.
+        /// </summary>
+        readonly Queue<LodSection> urgentQueue = new();
+
+        /// <summary>Set while an edit is being marked, so the sink knows which lane to use.</summary>
+        bool markingUrgent;
         readonly HashSet<LodSection> dirtySet = new();
 
         /// <summary>
@@ -74,6 +89,19 @@ namespace Demiurge
             // A chunk becomes meshable when its last slab arrives — and so do its neighbours, whose
             // aprons read into it, which MarkChunkDirty already accounts for.
             terrain.ChunkCompleted += MarkChunkDirty;
+
+            // Edits arrive already applied to the field; all that is left is to re-mesh what moved.
+            // Marking is separate from rebuilding on purpose, so several digs landing in one frame
+            // collapse into one re-mesh of the section they share — which is the normal case, since
+            // a player digs the same hole repeatedly.
+            terrain.RegionEdited += (min, max) =>
+            {
+                markingUrgent = true;
+                MarkRegionDirty(
+                    (int)MathF.Floor(min.X), (int)MathF.Floor(min.Y), (int)MathF.Floor(min.Z),
+                    (int)MathF.Ceiling(max.X), (int)MathF.Ceiling(max.Y), (int)MathF.Ceiling(max.Z));
+                markingUrgent = false;
+            };
         }
 
         public void Dispose() => meshers.Dispose();
@@ -186,30 +214,43 @@ namespace Demiurge
 
         void Dispatch()
         {
+            // Edits first, and NOT capped by MaxDispatchScan: that cap exists to stop a huge streaming
+            // backlog being walked every frame, and the urgent lane only ever holds the few sections
+            // around a player's hands.
+            while (inFlight.Count < MaxInFlight && urgentQueue.Count > 0)
+                if (!TryDispatch(urgentQueue.Dequeue(), urgentQueue)) break;
+
             int scans = Math.Min(dirtyQueue.Count, MaxDispatchScan);
 
             while (scans-- > 0 && inFlight.Count < MaxInFlight && dirtyQueue.Count > 0)
+                TryDispatch(dirtyQueue.Dequeue(), dirtyQueue);
+        }
+
+        /// <summary>
+        /// Submits one section, or puts it back in <paramref name="requeue"/> if it cannot go yet.
+        /// Returns false only when it was requeued, so a caller draining a lane can stop rather than
+        /// spin on a section that will not become dispatchable this frame.
+        /// </summary>
+        bool TryDispatch(LodSection section, Queue<LodSection> requeue)
+        {
+            // No longer wanted at this level — the player moved and it was replaced by a coarser or
+            // finer box, so meshing it would be work nobody will look at.
+            if (!desired.Contains(section)) { dirtySet.Remove(section); return true; }
+
+            // Already being meshed: leave it queued so the newer request is honoured after the
+            // in-flight result lands, rather than racing two jobs for one section.
+            // Not complete yet: a worker would read voxels the main thread is still decoding.
+            if (inFlight.Contains(section) || !terrain.FootprintComplete(section))
             {
-                var section = dirtyQueue.Dequeue();
-
-                // No longer wanted at this level — the player moved and it was replaced by a coarser or
-                // finer box, so meshing it would be work nobody will look at.
-                if (!desired.Contains(section)) { dirtySet.Remove(section); continue; }
-
-                // Already being meshed: leave it queued so the newer request is honoured after the
-                // in-flight result lands, rather than racing two jobs for one section.
-                // Not complete yet: a worker would read voxels the main thread is still decoding.
-                if (inFlight.Contains(section) || !terrain.FootprintComplete(section))
-                {
-                    dirtyQueue.Enqueue(section);
-                    continue;
-                }
-
-                dirtySet.Remove(section);
-                inFlight.Add(section);
-                resolved.Remove(section);      // being re-meshed: not settled until it comes back
-                meshers.Submit(section);
+                requeue.Enqueue(section);
+                return false;
             }
+
+            dirtySet.Remove(section);
+            inFlight.Add(section);
+            resolved.Remove(section);      // being re-meshed: not settled until it comes back
+            meshers.Submit(section);
+            return true;
         }
 
         int Collect()
@@ -402,9 +443,12 @@ namespace Demiurge
             // The desired set already excludes anything outside the meshable region and anything at the
             // wrong level for where the player is, so it is the only membership test needed.
             if (!desired.Contains(section)) return;
-            if (!dirtySet.Add(section)) return;
 
-            dirtyQueue.Enqueue(section);
+            // An already-queued section that an edit now touches is PROMOTED: it is in dirtySet, so
+            // the ordinary path would drop this call and leave the dig waiting in the slow lane.
+            if (!dirtySet.Add(section) && !markingUrgent) return;
+
+            (markingUrgent ? urgentQueue : dirtyQueue).Enqueue(section);
         }
 
         /// <summary>

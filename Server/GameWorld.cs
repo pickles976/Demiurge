@@ -11,6 +11,7 @@ namespace Demiurge.GameServer
         private readonly ObjectReplication objects;
         private readonly ItemSystem items;
         private readonly WeaponSystem weapons;
+        private readonly TerrainSystem terrainEdits;
         private readonly ChunkTcpServer chunks;
 
         private readonly Server server;
@@ -35,6 +36,7 @@ namespace Demiurge.GameServer
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
             weapons = new WeaponSystem(server, objects, terrain);
+            terrainEdits = new TerrainSystem(server, terrain);
 
             // Before anything is placed: spawn positions are queried off the terrain.
             WorldGen.Generate(terrain);
@@ -115,6 +117,12 @@ namespace Demiurge.GameServer
         {
             if (players.TryGetValue(clientId, out var player))
                 weapons.ApplyReload(player, _Tick);
+        }
+
+        public void ApplyDig(ushort clientId, PlayerDigData dig)
+        {
+            if (players.TryGetValue(clientId, out var player))
+                terrainEdits.ApplyDig(player, dig, _Tick);
         }
 
         public void ApplyInteract(ushort clientId)

@@ -61,6 +61,9 @@ namespace Demiurge.GameServer
                 case ClientToServerId.PlayerInteract:
                     world.ApplyInteract(e.FromConnection.Id);
                     break;
+                case ClientToServerId.PlayerDig:
+                    world.ApplyDig(e.FromConnection.Id, e.Message.GetSerializable<PlayerDigData>());
+                    break;
             }
         }
     }

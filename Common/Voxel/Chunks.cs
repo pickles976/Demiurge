@@ -260,6 +260,14 @@ namespace Demiurge
         public static BlockType DensityToMaterial(float storedDistance, float trueDistance)
             => DensityToMaterial(storedDistance, trueDistance, slope: 0f);
 
+        /// <summary>
+        /// How deep the dirt goes before it becomes stone, in voxels below the surface.
+        ///
+        /// This is a DIGGING budget as much as a look: bare hands only move soil, so it sets how far
+        /// down a player can get before needing a tool. Deep enough to sink a shelter into a hillside.
+        /// </summary>
+        public const float SoilDepth = 9f;
+
         /// <inheritdoc cref="DensityToMaterial(float, float)"/>
         /// <param name="slope">tan of the surface angle at this column, from <see cref="ColumnSlopes"/>.</param>
         public static BlockType DensityToMaterial(float storedDistance, float trueDistance, float slope)
@@ -277,7 +285,7 @@ namespace Demiurge
             if (storedDistance >= -1f) return BlockType.BlockType_Grass;
 
             float depth = -trueDistance;
-            if (depth < 4f) return BlockType.BlockType_Dirt;
+            if (depth < SoilDepth) return BlockType.BlockType_Dirt;
             return BlockType.BlockType_Stone;
         }
     }

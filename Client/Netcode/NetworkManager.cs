@@ -34,6 +34,10 @@ namespace Demiurge.GameClient
         public event Action<WelcomeData>? Welcomed;
 
         public event Action<PlayerFiredData>? PlayerFired;   // cosmetic: remote shot FX
+
+        /// <summary>An edit the server has already made. Raised on the NETWORK thread when fake
+        /// latency is off, so the handler must only queue — see TerrainState.ReceiveEdit.</summary>
+        public event Action<TerrainEditData>? TerrainEdited;
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
 
         private void Dispatch(Action deliver)
@@ -87,6 +91,13 @@ namespace Demiurge.GameClient
             client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerInteract));
         }
 
+        public void SendDig(PlayerDigData dig)
+        {
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerDig);
+            message.AddSerializable(dig);
+            client.Send(message);
+        }
+
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {
@@ -133,6 +144,10 @@ namespace Demiurge.GameClient
                 case ServerToClientId.HitConfirm:
                     var confirm = e.Message.GetSerializable<HitConfirmData>();
                     Dispatch(() => HitConfirmed?.Invoke(confirm));
+                    break;
+                case ServerToClientId.TerrainEdit:
+                    var edit = e.Message.GetSerializable<TerrainEditData>();
+                    Dispatch(() => TerrainEdited?.Invoke(edit));
                     break;
             }
         }

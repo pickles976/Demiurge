@@ -2,11 +2,19 @@
 
 # LLM Work
 - [ ] add digging
-      - [ ] highlight the surface you are going to dig (ghost block?)
-      - [ ] left click with no weapon
-      - [ ] dig instantly
+      - [x] highlight the surface you are going to dig (ghost block?)
+      - [x] left click with no weapon
+      - [x] dig instantly
+      - [x] better digging
+      - [x] make dirt 3 deeper
+      - [x] we can dig behind us
       - [ ] dig just a little bit
-      
+
+- [ ] add first person view
+
+- [ ] make some slopes too steep to walk up
+- [ ] make those slopes stone
+
 - [ ] add placing blocks
       - [ ] place an entire block
 

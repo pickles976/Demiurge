@@ -99,12 +99,14 @@ namespace Demiurge
                         continue;
                     }
 
-                    MeshData mesh = ChunkMesher.GenerateMeshDualContouring(scratch);
+                    MeshData mesh = ChunkMesher.GenerateMesh(scratch);
 
                     if (mesh.Indices.Length > 0)
                     {
-                        // DC puts a crease vertex in the right place; this gives it one normal per side
-                        // so the corner reads as an edge rather than a smooth blend.
+                        // Shading, not geometry: one normal per side of a corner so it reads as an
+                        // edge rather than a smooth blend. Independent of where the vertex was
+                        // placed — it splits whatever creases the mesher left, and surface nets
+                        // simply leaves fewer of them than dual contouring did.
                         mesh = ChunkMesher.SplitCreases(mesh, CreaseAngleDegrees);
 
                         // Only coarse boxes need a curtain: LOD 0 meets LOD 0 exactly, so a skirt there

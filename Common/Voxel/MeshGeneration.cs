@@ -494,6 +494,25 @@ namespace Demiurge
             DualContouring,
         }
 
+        /// <summary>
+        /// THE mesher the game renders with. One choice point, called by everything that has to
+        /// agree about where the surface is — the section meshers and the dig outline both go
+        /// through here.
+        ///
+        /// That indirection is not ceremony. The outline is only useful because it traces the exact
+        /// triangles on screen, and it once called surface nets while the renderer called dual
+        /// contouring: an outline permanently a little off the surface, worst at the sharp creases
+        /// that are the most likely thing to be inspected closely. Nothing about either call site
+        /// looked wrong. Switching placement is a one-line edit HERE, and cannot be done by halves.
+        ///
+        /// Currently SURFACE NETS. Dual contouring reconstructs a crease instead of rounding it,
+        /// which is the better answer for generated terrain and the wrong one for dug terrain: every
+        /// cut is axis-aligned, so DC faithfully reproduces the voxel grid's corners and a hand-dug
+        /// hollow comes out looking milled.
+        /// </summary>
+        public static MeshData GenerateMesh(Sample[] scratch)
+            => GenerateMeshFromSurfaceNet(scratch);
+
         /// <summary>Surface nets over a filled scratch buffer. Positions are chunk-local.</summary>
         public static MeshData GenerateMeshFromSurfaceNet(Sample[] scratch)
             => Generate(scratch, Placement.SurfaceNets);

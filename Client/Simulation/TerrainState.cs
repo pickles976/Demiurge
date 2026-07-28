@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Numerics;
 
 namespace Demiurge.GameClient
 {
@@ -29,10 +30,23 @@ namespace Demiurge.GameClient
         /// <summary>Raised per completed chunk. The View subscribes to mesh it.</summary>
         public event Action<ChunkIndex>? ChunkCompleted;
 
+        /// <summary>Raised per applied edit, with the world-space bounds it changed. The View
+        /// subscribes to re-mesh exactly that much.</summary>
+        public event Action<Vector3, Vector3>? RegionEdited;
+
         readonly ConcurrentQueue<ChunkSlabsData> incoming = new();
+        readonly ConcurrentQueue<TerrainEditData> edits = new();
 
         /// <summary>Called from the NETWORK thread. Only queues.</summary>
         public void Receive(ChunkSlabsData data) => incoming.Enqueue(data);
+
+        /// <summary>
+        /// Called from the NETWORK thread. Only queues — and that is not a formality here. Mesher
+        /// WORKER threads read these voxel arrays, so writing an edit straight from the network
+        /// thread would race a surface-nets pass mid-section and produce torn geometry that no
+        /// later frame corrects.
+        /// </summary>
+        public void ReceiveEdit(TerrainEditData edit) => edits.Enqueue(edit);
 
         /// <summary>
         /// Called from the MAIN thread once per frame. Applies everything that arrived and raises
@@ -45,6 +59,16 @@ namespace Demiurge.GameClient
             while (incoming.TryDequeue(out var data))
             {
                 Apply(data);
+                applied++;
+            }
+
+            // After the arrivals, so an edit that lands in the same frame as the chunk it edits is
+            // applied to the arrived data rather than to a chunk that is about to be overwritten by
+            // it. Chunks are streamed once, so losing an edit that way would never be corrected.
+            while (edits.TryDequeue(out var edit))
+            {
+                var (min, max) = TerrainEdits.ApplyBox(Map, edit.Centre, edit.HalfExtent, edit.Mode, edit.Fill, edit.Shape);
+                RegionEdited?.Invoke(min, max);
                 applied++;
             }
 

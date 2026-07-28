@@ -13,6 +13,15 @@ using System.Numerics;
 
 namespace Demiurge
 {
+    /// <summary>Which primitive an edit combines into the field.</summary>
+    public enum EditShape
+    {
+        /// <summary>Axis-aligned box. For built things — walls, floors, anything meant to look cut.</summary>
+        Box,
+        /// <summary>Sphere. For dug things, where flat faces and right angles are the artefact.</summary>
+        Sphere,
+    }
+
     public enum EditMode
     {
         /// <summary>Union: solid where either the terrain or the shape is solid.</summary>
@@ -26,6 +35,38 @@ namespace Demiurge
         /// <summary>How far past the shape the field still has to be rewritten: one voxel for the
         /// edge crossing, one more for the central difference behind it.</summary>
         const int Margin = 2;
+
+        /// <summary>
+        /// The inclusive world voxel range an edit rewrites — the shape's extent, rounded out to
+        /// whole voxels, plus the <see cref="Margin"/>.
+        ///
+        /// One definition, used both to drive the write loop and to report what changed, because
+        /// they must not disagree. They did: the reported range was once computed straight off the
+        /// shape without rounding out, which under-reported it by up to a voxel — enough for the
+        /// client to skip re-meshing a section at the edge of a dig and leave stale triangles
+        /// hanging in the air.
+        /// </summary>
+        public static ((int X, int Y, int Z) Low, (int X, int Y, int Z) High)
+            AffectedBounds(Vector3 centre, Vector3 halfExtent)
+        {
+            var min = centre - halfExtent;
+            var max = centre + halfExtent;
+
+            return (((int)MathF.Floor(min.X) - Margin, (int)MathF.Floor(min.Y) - Margin, (int)MathF.Floor(min.Z) - Margin),
+                    ((int)MathF.Ceiling(max.X) + Margin, (int)MathF.Ceiling(max.Y) + Margin, (int)MathF.Ceiling(max.Z) + Margin));
+        }
+
+        /// <summary>Signed distance to a sphere. Negative inside, exact outside, smooth everywhere —
+        /// which is the point: it has no faces to leave flat and no edges to leave sharp.</summary>
+        public static float SphereDistance(Vector3 offsetFromCentre, float radius)
+            => offsetFromCentre.Length() - radius;
+
+        /// <summary>Distance to whichever primitive an edit is using. <paramref name="extent"/> is a
+        /// half-extent for a box and a radius (its X) for a sphere.</summary>
+        public static float ShapeDistance(Vector3 offsetFromCentre, Vector3 extent, EditShape shape)
+            => shape == EditShape.Sphere
+                ? SphereDistance(offsetFromCentre, extent.X)
+                : BoxDistance(offsetFromCentre, extent);
 
         /// <summary>Signed distance to an axis-aligned box. Negative inside, exact outside.</summary>
         public static float BoxDistance(Vector3 offsetFromCentre, Vector3 halfExtent)
@@ -41,18 +82,19 @@ namespace Demiurge
         /// become solid; it is ignored when subtracting.
         /// </summary>
         public static void ApplyBox(TerrainChunk chunk, Vector3 centre, Vector3 halfExtent,
-                                    EditMode mode, BlockType fill)
+                                    EditMode mode, BlockType fill, EditShape editShape = EditShape.Box)
         {
             (int originX, int originZ) = ChunkTransforms.ChunkOrigin(chunk.index);
+            var (low, high) = AffectedBounds(centre, halfExtent);
 
             // Local bounds of the affected region, clamped to the chunk. A box reaching past a
             // border affects the neighbour too — that's the caller's problem, not this function's.
-            int minX = Math.Max(0, (int)MathF.Floor(centre.X - halfExtent.X) - Margin - originX);
-            int maxX = Math.Min(ChunkConstants.ChunkWidth - 1, (int)MathF.Ceiling(centre.X + halfExtent.X) + Margin - originX);
-            int minZ = Math.Max(0, (int)MathF.Floor(centre.Z - halfExtent.Z) - Margin - originZ);
-            int maxZ = Math.Min(ChunkConstants.ChunkWidth - 1, (int)MathF.Ceiling(centre.Z + halfExtent.Z) + Margin - originZ);
-            int minY = Math.Max(ChunkConstants.WorldMinY, (int)MathF.Floor(centre.Y - halfExtent.Y) - Margin);
-            int maxY = Math.Min(ChunkConstants.WorldMaxY - 1, (int)MathF.Ceiling(centre.Y + halfExtent.Y) + Margin);
+            int minX = Math.Max(0, low.X - originX);
+            int maxX = Math.Min(ChunkConstants.ChunkWidth - 1, high.X - originX);
+            int minZ = Math.Max(0, low.Z - originZ);
+            int maxZ = Math.Min(ChunkConstants.ChunkWidth - 1, high.Z - originZ);
+            int minY = Math.Max(ChunkConstants.WorldMinY, low.Y);
+            int maxY = Math.Min(ChunkConstants.WorldMaxY - 1, high.Y);
 
             for (int y = minY; y <= maxY; y++)
             {
@@ -61,7 +103,7 @@ namespace Demiurge
                     for (int x = minX; x <= maxX; x++)
                     {
                         var world = new Vector3(originX + x, y, originZ + z);
-                        float shape = BoxDistance(world - centre, halfExtent);
+                        float shape = ShapeDistance(world - centre, halfExtent, editShape);
 
                         int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
 
@@ -103,6 +145,39 @@ namespace Demiurge
 
             return (new Vector3(originX + half, ChunkConstants.WorldMinY + DebugHeight / 2f, originZ + half),
                     new Vector3(DebugWidth / 2f, DebugHeight / 2f, half));
+        }
+
+        /// <summary>
+        /// The same edit across every chunk it touches, and the entry point anything gameplay-side
+        /// should use.
+        ///
+        /// The per-chunk <see cref="ApplyBox(TerrainChunk, Vector3, Vector3, EditMode, BlockType)"/>
+        /// clamps to its own chunk and leaves the rest to the caller — fine for a whole-chunk debug
+        /// wall, wrong for a dig, which lands on a chunk border as often as anywhere else and would
+        /// otherwise be carved out on one side of the seam and left solid on the other.
+        ///
+        /// The <see cref="Margin"/> is included in the span for the same reason it exists inside
+        /// ApplyBox: a neighbouring chunk with no part of the SHAPE in it can still hold grid points
+        /// whose distance the shape changes.
+        ///
+        /// Returns the world-space bounds actually touched, so a caller can mark exactly that much
+        /// for re-meshing rather than guessing.
+        /// </summary>
+        public static (Vector3 Min, Vector3 Max) ApplyBox(ChunkMap map, Vector3 centre, Vector3 halfExtent,
+                                                          EditMode mode, BlockType fill,
+                                                          EditShape editShape = EditShape.Box)
+        {
+            var (low, high) = AffectedBounds(centre, halfExtent);
+
+            var first = ChunkTransforms.ChunkAt(low.X, low.Z);
+            var last = ChunkTransforms.ChunkAt(high.X, high.Z);
+
+            for (int cz = first.z; cz <= last.z; cz++)
+                for (int cx = first.x; cx <= last.x; cx++)
+                    if (map.Get(new ChunkIndex { x = cx, z = cz }) is { } chunk)
+                        ApplyBox(chunk, centre, halfExtent, mode, fill, editShape);
+
+            return (new Vector3(low.X, low.Y, low.Z), new Vector3(high.X, high.Y, high.Z));
         }
 
         /// <summary>A wall down the middle of the chunk, 2 wide, 32 tall from WorldMinY.</summary>

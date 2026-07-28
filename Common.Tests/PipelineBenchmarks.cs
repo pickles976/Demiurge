@@ -196,7 +196,7 @@ public class PipelineBenchmarks(ITestOutputHelper output)
 
         foreach (var s in sections.Take(40))                       // warm up
             if (ChunkMesher.TryFillScratch(map, s, scratch))
-                ChunkMesher.SplitCreases(ChunkMesher.GenerateMeshDualContouring(scratch));
+                ChunkMesher.SplitCreases(ChunkMesher.GenerateMesh(scratch));
 
         long fill = 0, contour = 0, crease = 0;
         int withGeometry = 0, triangles = 0;
@@ -209,7 +209,7 @@ public class PipelineBenchmarks(ITestOutputHelper output)
             fill += t1 - t0;
             if (!ok) continue;
 
-            var mesh = ChunkMesher.GenerateMeshDualContouring(scratch);
+            var mesh = ChunkMesher.GenerateMesh(scratch);
             long t2 = Stopwatch.GetTimestamp();
             contour += t2 - t1;
             if (mesh.Indices.Length == 0) continue;
@@ -256,7 +256,7 @@ public class PipelineBenchmarks(ITestOutputHelper output)
                     sampled++;
                     var section = new SectionIndex(x, sy, z);
                     if (!ChunkMesher.TryFillScratch(map, section, scratch)) continue;
-                    if (ChunkMesher.GenerateMeshDualContouring(scratch).Indices.Length > 0) withGeometry++;
+                    if (ChunkMesher.GenerateMesh(scratch).Indices.Length > 0) withGeometry++;
                 }
 
         int allSections = TotalMeshableSections();

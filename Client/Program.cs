@@ -104,6 +104,11 @@ var terrainState = new TerrainState();
 var chunkStream = new ChunkTcpClient();
 chunkStream.ChunkReceived += terrainState.Receive;
 
+// Terrain edits come over Riptide rather than the chunk stream: they are 26-byte commands, not bulk
+// data, and they have to interleave with gameplay rather than queue behind a megabyte of terrain.
+// Both handlers only ENQUEUE — Drain applies them on the main thread.
+network.TerrainEdited += terrainState.ReceiveEdit;
+
 // Welcome carries the token that identifies us on that stream, so the connection can only be made once
 // the Riptide handshake has completed.
 network.Welcomed += welcome => chunkStream.Connect(NetworkConfig.ServerHost, welcome.ChunkToken);
@@ -296,6 +301,7 @@ void Start(Scene rootScene)
     // camera locks the mouse to the centre, so there is no cursor for it to follow.
     // cameraEntity.Add(new CursorReticleScript());
     cameraEntity.Add(new ReticleScript { Registry = registry });
+    cameraEntity.Add(new DigScript { Registry = registry, Terrain = terrainState, Network = network });
     // Aim line off: it drew where the old cursor-aimed camera was pointing, which the shoulder camera
     // makes redundant — you are already looking down the shot. Kept as dead code like the camera itself.
     // cameraEntity.Add(new AimLineScript { Registry = registry, Mount = weaponMount });

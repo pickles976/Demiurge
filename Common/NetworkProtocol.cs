@@ -53,7 +53,9 @@ namespace Demiurge
         ObjectState,
         PlayerFired,
         HitConfirm,
-        ChunkSlabs
+        ChunkSlabs,
+        // Appended, never inserted — these values ARE the protocol.
+        TerrainEdit
     }
 
     public enum ClientToServerId : ushort
@@ -61,7 +63,9 @@ namespace Demiurge
         PlayerInput = 1,
         PlayerFire,
         PlayerReload,
-        PlayerInteract
+        PlayerInteract,
+        // Appended, never inserted — these values ARE the protocol.
+        PlayerDig
     }
 
     public static class MessageExtensions
