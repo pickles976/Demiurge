@@ -45,6 +45,20 @@ namespace Demiurge.GameClient
             Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2f),
             Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI));
 
+        /// <summary>
+        /// First-person view-model orientation. <see cref="HandRotation"/> is only half of the
+        /// third-person chain: it lives under the animated right_hand bone, whose aiming pose swings
+        /// the barrel forward. A camera-relative model has no hand bone, so this applies that missing
+        /// quarter-turn directly: model +Z (barrel) ends up on camera -Z, and model +Y remains up.
+        /// </summary>
+        public static readonly Quaternion FirstPersonRotation = Quaternion.Concatenate(
+            HandRotation,
+            Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f));
+
+        public const float FirstPersonScale = 1.5f;
+        public static readonly Vector3 HipGripOffset = new(0.30f, -0.34f, -0.38f);
+        public static readonly Vector3 AimGripOffset = new(0.08f, -0.22f, -0.30f);
+
         private readonly ModelLocators locators;
         private readonly Func<ItemType, string> modelOf;
         private readonly ModelLocators.Pose firingHand;
@@ -84,10 +98,25 @@ namespace Demiurge.GameClient
         ///
         /// Zero for a model with no grip locator, which is correct for armor and the
         /// honest fallback for a weapon whose locator someone forgot.</summary>
-        public Vector3 Seat(ItemType type) =>
+        public Vector3 Seat(ItemType type) => Seat(type, HandRotation);
+
+        public Vector3 Seat(ItemType type, Quaternion rotation) =>
             locators.Get(modelOf(type), "grip") is { } grip
-                ? -Vector3.Transform(grip.Translation, HandRotation)
+                ? -Vector3.Transform(grip.Translation, rotation)
                 : Vector3.Zero;
+
+        public Vector3 FirstPersonModelOffset(ItemType type, Vector3 gripOffset, float scale = FirstPersonScale)
+            => gripOffset + Seat(type, FirstPersonRotation) * scale;
+
+        public Vector3 FirstPersonMuzzleOffset(ItemType type, Vector3 gripOffset, float scale = FirstPersonScale)
+        {
+            var model = modelOf(type);
+            if (locators.Get(model, "barrel") is not { } barrel)
+                return FirstPersonModelOffset(type, gripOffset, scale);
+
+            return FirstPersonModelOffset(type, gripOffset, scale)
+                 + Vector3.Transform(barrel.Translation * scale, FirstPersonRotation);
+        }
 
         /// <summary>Where this weapon's barrel is, relative to the player's origin and
         /// before the player's yaw is applied — i.e. the offset a shot starts at.

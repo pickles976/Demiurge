@@ -9,7 +9,8 @@ namespace Demiurge
 	/// looking where they look, offset to one side so the body does not cover the middle of the screen.
 	/// Aiming pulls in tighter and closer to the shoulder.
 	///
-	/// Replaces <see cref="ThirdPersonCameraScript"/>, which is kept as dead code. That one is a
+	/// Kept as dead code beside <see cref="FirstPersonCameraScript"/>. Replaces
+	/// <see cref="ThirdPersonCameraScript"/> when active; that one is a
 	/// different game: high and far back, aimed with the mouse CURSOR against a look-ahead point, so the
 	/// mouse stays visible and the camera never rotates with the player. The two cannot share code
 	/// meaningfully — this one owns the player's facing rather than following it.

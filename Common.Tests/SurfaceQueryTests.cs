@@ -50,6 +50,37 @@ public class SurfaceQueryTests
         Assert.Null(SurfaceQuery.HighestSurfaceY(FlatWorld(12.5f), 9999, 9999));
     }
 
+    [Fact]
+    public void HighestSurfaceReportsTheMaterialUnderTheSurface()
+    {
+        var map = FlatWorld(12.5f);
+
+        var surface = SurfaceQuery.HighestSurface(map, 8, 8);
+
+        Assert.NotNull(surface);
+        Assert.Equal(BlockType.BlockType_Grass, surface!.Value.Material);
+        Assert.Equal(12.5f, surface.Value.Y, 1);
+    }
+
+    [Fact]
+    public void TreeEligibilityRequiresGrassSurface()
+    {
+        var map = FlatWorld(12.5f);
+
+        Assert.True(TreePlacement.IsTreeEligible(map, 8, 8, out _));
+
+        var chunk = map.Get(new ChunkIndex { x = 0, z = 0 })!;
+        for (int y = ChunkConstants.WorldMinY; y < ChunkConstants.WorldMaxY; y++)
+        {
+            int i = ChunkTransforms.WorldVoxelIndex(8, y, 8);
+            var voxel = chunk[i];
+            if (voxel.Distance < 0f) voxel.Material = BlockType.BlockType_Stone;
+            chunk[i] = voxel;
+        }
+
+        Assert.False(TreePlacement.IsTreeEligible(map, 8, 8, out _));
+    }
+
     /// <summary>
     /// Carving through a column must not make the surface vanish — the bedrock plane is always solid,
     /// so there is always something to stand on. See ChunkConstants.BedrockThickness.

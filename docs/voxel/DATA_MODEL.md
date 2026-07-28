@@ -180,6 +180,29 @@ matter: DC emits a vertex only for cells with a sign change, so every cell produ
 at least one solid corner to read a material from. There is no cell that needs a material and has
 only air.
 
+### Tiny-component cleanup after digging
+
+A subtractive edit can leave one or two negative lattice samples disconnected from the main solid
+field. Surface nets is correct to reconstruct those samples, but the result is a floating
+sub-voxel mesh. Do not filter it from the generated mesh: collision and raycasts would still see
+solid terrain that rendering hid.
+
+`TerrainEdits.CullTinySolidComponents` instead runs on the shared field after a spherical
+subtraction. For the current brush it flood-fills only the edit's `7x7x7` affected box:
+
+- six-neighbour solid components touching the scan boundary are retained, because they may connect
+  to arbitrary terrain outside the box;
+- components larger than four solid samples are retained;
+- components containing a sample deeper than `-0.5` are retained;
+- only fully enclosed, shallow components of four samples or fewer are changed to air;
+- an incomplete chunk neighborhood cancels cleanup rather than making a guess.
+
+The scan is bounded to 343 samples for a dig, uses stack memory, and runs only at the accepted edit
+rate (currently 2 Hz). Removed negative distances are mirrored positive instead of saturated, which
+eliminates the sign change without introducing an unnecessarily harsh gradient near retained
+geometry. Because the operation is in `Common` and is part of `ApplyBox`, the server and every
+client replay the same deterministic cleanup.
+
 ## Chunk dimensions
 
 > System-level from here down — a destination, not a next step. A flat `Voxel[ChunkVolume]` per

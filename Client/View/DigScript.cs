@@ -21,6 +21,7 @@ namespace Demiurge
         public required PlayerRegistry Registry { get; init; }
         public required TerrainState Terrain { get; init; }
         public required NetworkManager Network { get; init; }
+        public required ClientInputState InputState { get; init; }
 
         /// <summary>Points around the brush ring. Enough that the curve reads as one at arm's
         /// length, few enough that projecting each is free.</summary>
@@ -29,9 +30,9 @@ namespace Demiurge
 
         /// <summary>Local rate limit, matching the server's TicksPerDig. Not a substitute for the
         /// server's gate — it just stops us spamming requests it would throw away.</summary>
-        private const float MinDigInterval = 6f / NetworkConfig.TickRate;
+        private const float MinDigInterval = 1f / Digging.HoldHz;
 
-        private float sinceDig;
+        private float sinceDig = MinDigInterval;
         private bool wasDown;
 
         /// <summary>The voxel currently under the crosshair, or null if nothing is in reach.</summary>
@@ -42,6 +43,11 @@ namespace Demiurge
             sinceDig += (float)Game.UpdateTime.Elapsed.TotalSeconds;
             Target = null;
 
+            if (InputState.TerminalOpen)
+            {
+                wasDown = false;
+                return;
+            }
             if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
             if (Registry.LocalPlayer is not { } local) return;
 
@@ -52,7 +58,7 @@ namespace Demiurge
             if (FindTarget() is not var (hit, target)) return;
             Target = target;
 
-            DrawBrush(target, hit.Normal);
+            DrawBrush(hit.Point, target, hit.Normal);
 
             // Edge-triggered: one dig per click, and holding the button repeats at the rate limit
             // rather than every frame.
@@ -109,15 +115,34 @@ namespace Demiurge
         /// shape as you swept across ground that was not changing. A ring is a statement about the
         /// TOOL: this much comes out, from here.
         /// </summary>
-        private void DrawBrush(System.Numerics.Vector3 target, System.Numerics.Vector3 normal)
+        private void DrawBrush(System.Numerics.Vector3 hitPoint, System.Numerics.Vector3 target, System.Numerics.Vector3 normal)
         {
             int count = Digging.ProjectedRing(Terrain.Map, target, normal, ring);
-            if (count == 0) return;   // bite fully buried: nothing would open, so show nothing
+            if (count == 0) count = FallbackRing(hitPoint, normal, ring);
 
             ringWorld.Clear();
             for (int i = 0; i < count; i++) ringWorld.Add(ring[i].ToStride());
 
             LineRenderer.DrawPolyline(ringWorld, new Color(255, 255, 255, 230), closed: true);
+        }
+
+        private static int FallbackRing(System.Numerics.Vector3 centre, System.Numerics.Vector3 normal, Span<System.Numerics.Vector3> into)
+        {
+            if (into.Length == 0) return 0;
+            if (normal.LengthSquared() < 1e-6f) return 0;
+            normal = System.Numerics.Vector3.Normalize(normal);
+
+            var reference = MathF.Abs(normal.Y) < 0.9f ? System.Numerics.Vector3.UnitY : System.Numerics.Vector3.UnitX;
+            var u = System.Numerics.Vector3.Normalize(System.Numerics.Vector3.Cross(normal, reference));
+            var v = System.Numerics.Vector3.Cross(normal, u);
+
+            for (int i = 0; i < into.Length; i++)
+            {
+                float angle = i * (MathF.PI * 2f / into.Length);
+                into[i] = centre + Digging.BiteRadius * (u * MathF.Cos(angle) + v * MathF.Sin(angle));
+            }
+
+            return into.Length;
         }
     }
 }

@@ -12,6 +12,7 @@ public class PlayerRegistry
     public LocalPlayer? LocalPlayer {get; private set;}
     public event Action<Player>? PlayerJoined; // sim -> view boundary
     public event Action<Player>? PlayerLeft;
+    public IEnumerable<Player> Players => players.Values;
 
 
     // Shared interpolation clock. 
@@ -50,6 +51,8 @@ public class PlayerRegistry
         players.Remove(data.PlayerId);
         PlayerLeft?.Invoke(player);
     }
+
+    public bool TryGet(ushort playerId, out Player player) => players.TryGetValue(playerId, out player!);
 
     private void OnPlayerPosition(PlayerPositionData data)
     {

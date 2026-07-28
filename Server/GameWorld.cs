@@ -3,13 +3,14 @@ using System.Numerics;
 
 namespace Demiurge.GameServer
 {
-    internal class GameWorld
+    internal class GameWorld : ICommandWorld
     {
 
         private readonly Dictionary<ushort, ServerPlayer> players = new();
 
         private readonly ObjectReplication objects;
         private readonly ItemSystem items;
+        private readonly MobSystem mobs;
         private readonly WeaponSystem weapons;
         private readonly TerrainSystem terrainEdits;
         private readonly ChunkTcpServer chunks;
@@ -17,6 +18,7 @@ namespace Demiurge.GameServer
         private readonly Server server;
 
         private uint _Tick = 0;
+        private ushort nextMobId = 60000;
 
         private const int MaxQueuedMoves = 3;
 
@@ -35,6 +37,7 @@ namespace Demiurge.GameServer
             this.server = server;
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
+            mobs = new MobSystem(terrain);
             weapons = new WeaponSystem(server, objects, terrain);
             terrainEdits = new TerrainSystem(server, terrain);
 
@@ -43,15 +46,68 @@ namespace Demiurge.GameServer
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
 
+            // Trees are temporarily disabled. TreeSystem and its client views remain available.
+            // new TreeSystem(objects, terrain).SpawnInitialTrees();
+
             SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
             SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
             SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
             SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
+
+            items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
+            items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
         }
 
         /// <summary>Places a pickup on the ground at a world column, rather than at a guessed Y.</summary>
         private void SpawnPickupOnSurface(ItemType type, float worldX, float worldZ)
             => items.SpawnPickup(type, SurfaceQuery.SurfacePosition(terrain, worldX, worldZ));
+
+        public ServerPlayer SpawnMob(Vector3? requestedPosition = null)
+        {
+            var position = requestedPosition ?? mobs.RandomSpawnPoint();
+            var mob = mobs.CreateMob(AllocateMobId(), position);
+            mob.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, mob.Position,
+            obj =>
+            {
+                obj.Owner = new OwnerState { PlayerId = mob.Id };
+                obj.Health = new HealthState { Current = 100, Max = 100 };
+            });
+            players[mob.Id] = mob;
+            server.SendToAll(CreateSpawnMessage(mob));
+            return mob;
+        }
+
+        public ServerObject SpawnPickup(ItemType type, Vector3 position)
+            => items.SpawnPickup(type, position);
+
+        public bool TryGetActor(ushort actorId, out ServerPlayer actor)
+            => players.TryGetValue(actorId, out actor!);
+
+        public ServerObject Equip(ServerPlayer actor, ItemType type)
+            => items.SpawnEquipped(actor, type, dropReplaced: false);
+
+        public bool IsSpawnableColumn(float worldX, float worldZ)
+        {
+            var chunk = ChunkTransforms.ChunkAt((int)MathF.Floor(worldX), (int)MathF.Floor(worldZ));
+            return chunk.x >= WorldGen.MeshableMin.x && chunk.x <= WorldGen.MeshableMax.x
+                && chunk.z >= WorldGen.MeshableMin.z && chunk.z <= WorldGen.MeshableMax.z;
+        }
+
+        public Vector3 SurfacePosition(float worldX, float worldZ)
+            => SurfaceQuery.SurfacePosition(terrain, worldX, worldZ);
+
+        private ushort AllocateMobId()
+        {
+            const ushort firstMobId = 60000;
+            for (int attempts = 0; attempts <= ushort.MaxValue - firstMobId; attempts++)
+            {
+                ushort candidate = nextMobId;
+                nextMobId = candidate == ushort.MaxValue ? firstMobId : (ushort)(candidate + 1);
+                if (!players.ContainsKey(candidate)) return candidate;
+            }
+
+            throw new InvalidOperationException("No mob actor ids are available");
+        }
 
         /// <summary>
         /// Reserves this client's terrain stream and returns the token it must present on it. Must happen
@@ -150,6 +206,11 @@ namespace Demiurge.GameServer
 
             foreach (var player in players.Values)
             {
+                if (player.IsMob)
+                {
+                    mobs.Step(player, dt);
+                    continue;
+                }
 
                 // If the queue starts overflowing, consume at a faster rate
                 int toProcess = player.PendingMoves.Count > MaxQueuedMoves ? 2 : 1;

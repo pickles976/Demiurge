@@ -62,12 +62,21 @@ namespace Demiurge
         public static readonly CapsuleBody Body = new(Radius: 0.4f, Height: 1.8f);
 
         /// <summary>
-        /// Steepest ground that counts as standable; anything steeper acts as a wall and the body slides
-        /// off it. High, because standable ground does not slide at all now — so this is purely "what can
-        /// I walk up", and the answer wanted was "almost anything short of a cliff".
+        /// Steepest ground that counts as standable. Anything steeper acts as a wall, so mountainsides
+        /// can have faces the player reads as terrain but cannot simply walk up. Chunk generation uses
+        /// this same angle for exposed stone, making bare rock the visual cue for "find another route".
         /// </summary>
-        public const float MaxSlopeDegrees = 70f;
+        public const float MaxSlopeDegrees = 55f;
         public static readonly float MaxSlopeCos = MathF.Cos(MaxSlopeDegrees * (MathF.PI / 180f));
+
+        /// <summary>
+        /// Below this angle the smoothed collision normal is unambiguously floor-like and wins over
+        /// a cell-local derivative that might select the wall side of a CSG corner. Steeper contacts
+        /// use the exact local normal so density saturation cannot make a cliff look walkable.
+        /// </summary>
+        const float PreciseSlopeThresholdDegrees = 45f;
+        static readonly float PreciseSlopeThresholdCos =
+            MathF.Cos(PreciseSlopeThresholdDegrees * (MathF.PI / 180f));
 
         /// <summary>Resting gap held between body and surface, so contact is never exactly zero.</summary>
         public const float SkinWidth = 0.02f;
@@ -206,7 +215,7 @@ namespace Demiurge
                 if (depth <= 0f) return;
 
                 var normal = contact.Normal;
-                bool standable = normal.Y >= MaxSlopeCos;
+                bool standable = StandabilityY(contact) >= MaxSlopeCos;
 
                 // Too steep to stand on: flatten the normal so it acts as a wall. Left alone, its
                 // vertical component would walk the body straight up the face — the pushout becomes
@@ -256,7 +265,7 @@ namespace Demiurge
             var probe = foot with { Y = foot.Y - MathF.Max(gap, 0f) };
             if (!TerrainCollision.TrySample(terrain, probe, out var below)) return;
 
-            if (below.Normal.Y < MaxSlopeCos) return;              // too steep to stand on
+            if (StandabilityY(below) < MaxSlopeCos) return;        // too steep to stand on
 
             state.Grounded = true;
 
@@ -265,5 +274,10 @@ namespace Demiurge
             state.Position = state.Position with { Y = state.Position.Y - gap };
             Resolve(terrain, ref state);
         }
+
+        static float StandabilityY(in FieldPoint contact)
+            => contact.Normal.Y >= PreciseSlopeThresholdCos
+                ? contact.Normal.Y
+                : contact.SurfaceNormal.Y;
     }
 }

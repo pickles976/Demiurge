@@ -95,15 +95,15 @@ Mouse buttons do **not** have this problem: `MouseDeviceState.HandleButtonDown` 
 button is already in `downButtons`.
 
 The canonical fix, as used by `DebugFlyCameraScript` in `Client/View/DebugFlyCamera.cs` for its
-tilde toggle — a mode toggle is exactly the case where a mid-hold re-fire is visible, because it
+F3 toggle — a mode toggle is exactly the case where a mid-hold re-fire is visible, because it
 strobes the mode on and off:
 
 ```csharp
-private bool tildeWasDown;
+private bool toggleWasDown;
 
-var tildeDown = Input.IsKeyDown(Keys.OemTilde);
-if (tildeDown && !tildeWasDown) Toggle();
-tildeWasDown = tildeDown;
+var toggleDown = Input.IsKeyDown(Keys.F3);
+if (toggleDown && !toggleWasDown) Toggle();
+toggleWasDown = toggleDown;
 ```
 
 Repo bindings still using bare `IsKeyPressed` on keys a player might hold: `Keys.R` (reload) and
@@ -292,7 +292,8 @@ Notes:
 
 - **Tilde / backtick is `Keys.OemTilde`** (`== Keys.Oem3 == 146`), verified present in
   Stride.Input.dll. `KeyboardSDL.SDLKeys.MapKey` maps SDL keycode 96 (`` ` ``, `SDLK_BACKQUOTE`) to
-  `Keys.Oem3`. This is the usual console-toggle key.
+  `Keys.Oem3`. The terminal toggles on an unshifted edge; Shift+tilde is left as committed text so
+  command coordinates can use `~`.
 - Modifiers are **side-specific only**: there is no `Keys.Shift`/`Ctrl`/`Alt` — use `LeftShift`,
   `RightShift`, `LeftCtrl`, `RightCtrl`, `LeftAlt`, `RightAlt`.
 - Number-row digits are `D0`..`D9`; numpad digits are `NumPad0`..`NumPad9`.

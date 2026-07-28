@@ -37,6 +37,20 @@ namespace Demiurge
         const int Margin = 2;
 
         /// <summary>
+        /// Largest disconnected solid component a subtractive brush may discard. Sample count is
+        /// only one eligibility check; boundary contact and interior depth protect real overhangs.
+        /// </summary>
+        public const int MaxDisconnectedSolidSamples = 4;
+
+        /// <summary>A small component with a deeply interior sample may be narrow but is not merely
+        /// an isosurface remnant. Only shallow fragments are eligible for automatic cleanup.</summary>
+        public const float MaxDisconnectedSolidDepth = 0.5f;
+
+        /// <summary>Bounds stack usage and prevents large debug/building edits from doing a local
+        /// cleanup whose boundary no longer means "near this edit". A normal dig scans 343 samples.</summary>
+        const int MaxCleanupSamples = 4096;
+
+        /// <summary>
         /// The inclusive world voxel range an edit rewrites — the shape's extent, rounded out to
         /// whole voxels, plus the <see cref="Margin"/>.
         ///
@@ -82,8 +96,10 @@ namespace Demiurge
         /// become solid; it is ignored when subtracting.
         /// </summary>
         public static void ApplyBox(TerrainChunk chunk, Vector3 centre, Vector3 halfExtent,
-                                    EditMode mode, BlockType fill, EditShape editShape = EditShape.Box)
+                                    EditMode mode, BlockType fill, EditShape editShape = EditShape.Box,
+                                    float strength = 1f)
         {
+            strength = Math.Clamp(strength <= 0f ? 1f : strength, 0f, 1f);
             (int originX, int originZ) = ChunkTransforms.ChunkOrigin(chunk.index);
             var (low, high) = AffectedBounds(centre, halfExtent);
 
@@ -108,9 +124,11 @@ namespace Demiurge
                         int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
 
                         float existing = chunk[i].Distance;
-                        float combined = mode == EditMode.Add
+                        float full = mode == EditMode.Add
                             ? MathF.Min(existing, shape)
                             : MathF.Max(existing, -shape);
+
+                        float combined = strength >= 1f ? full : Partial(existing, full, halfExtent, mode, strength);
 
                         // No edit may open the world floor — see ChunkConstants.BedrockThickness.
                         combined = ChunkConstants.ClampToWorldFloor(y, combined);
@@ -127,6 +145,22 @@ namespace Demiurge
                         chunk[i] = voxel;
                     }
                 }
+            }
+        }
+
+        static float Partial(float existing, float full, Vector3 extent, EditMode mode, float strength)
+        {
+            if (mode == EditMode.Add)
+            {
+                if (full >= existing) return existing;
+                float step = MathF.Max(extent.X, MathF.Max(extent.Y, extent.Z)) * 2f * strength;
+                return MathF.Max(full, existing - step);
+            }
+            else
+            {
+                if (full <= existing) return existing;
+                float step = MathF.Max(extent.X, MathF.Max(extent.Y, extent.Z)) * 2f * strength;
+                return MathF.Min(full, existing + step);
             }
         }
 
@@ -165,7 +199,8 @@ namespace Demiurge
         /// </summary>
         public static (Vector3 Min, Vector3 Max) ApplyBox(ChunkMap map, Vector3 centre, Vector3 halfExtent,
                                                           EditMode mode, BlockType fill,
-                                                          EditShape editShape = EditShape.Box)
+                                                          EditShape editShape = EditShape.Box,
+                                                          float strength = 1f)
         {
             var (low, high) = AffectedBounds(centre, halfExtent);
 
@@ -175,9 +210,135 @@ namespace Demiurge
             for (int cz = first.z; cz <= last.z; cz++)
                 for (int cx = first.x; cx <= last.x; cx++)
                     if (map.Get(new ChunkIndex { x = cx, z = cz }) is { } chunk)
-                        ApplyBox(chunk, centre, halfExtent, mode, fill, editShape);
+                        ApplyBox(chunk, centre, halfExtent, mode, fill, editShape, strength);
+
+            // Small subtractive brushes can leave one or two negative samples detached from the
+            // terrain. Surface nets correctly reconstructs those samples as a tiny closed mesh.
+            // Remove them from the shared field so rendering, raycasts, and collision still agree.
+            if (mode == EditMode.Subtract && editShape == EditShape.Sphere)
+                CullTinySolidComponents(map, low, high, MaxDisconnectedSolidSamples);
 
             return (new Vector3(low.X, low.Y, low.Z), new Vector3(high.X, high.Y, high.Z));
+        }
+
+        /// <summary>
+        /// Removes tiny, shallow face-connected solid components fully enclosed by a local scan
+        /// box. Components touching the box boundary are protected because they may connect to
+        /// terrain outside it, and components with a deeply negative sample are protected because
+        /// they contain meaningful interior volume. Returns the number of solid lattice samples
+        /// changed to air.
+        ///
+        /// This intentionally uses six-neighbour connectivity. An edge- or corner-only attachment
+        /// is not robust at the field's sample rate and is itself a common source of tiny ambiguous
+        /// surface-net geometry.
+        /// </summary>
+        public static int CullTinySolidComponents(
+            ChunkMap map,
+            (int X, int Y, int Z) low,
+            (int X, int Y, int Z) high,
+            int maxComponentSamples = MaxDisconnectedSolidSamples)
+        {
+            int minY = Math.Max(low.Y, ChunkConstants.WorldMinY);
+            int maxY = Math.Min(high.Y, ChunkConstants.WorldMaxY - 1);
+            int widthX = high.X - low.X + 1;
+            int widthY = maxY - minY + 1;
+            int widthZ = high.Z - low.Z + 1;
+
+            if (maxComponentSamples < 1 || widthX < 1 || widthY < 1 || widthZ < 1) return 0;
+
+            int volume = checked(widthX * widthY * widthZ);
+            if (volume > MaxCleanupSamples) return 0;
+
+            Span<byte> state = stackalloc byte[volume]; // 0 air, 1 unvisited solid, 2 visited solid
+            Span<sbyte> density = stackalloc sbyte[volume];
+            Span<int> queue = stackalloc int[volume];
+
+            for (int ly = 0; ly < widthY; ly++)
+                for (int lz = 0; lz < widthZ; lz++)
+                    for (int lx = 0; lx < widthX; lx++)
+                    {
+                        int index = Index(lx, ly, lz, widthX, widthZ);
+                        if (!map.TryGetVoxel(low.X + lx, minY + ly, low.Z + lz, out var voxel))
+                            return 0; // An incomplete neighborhood is unsafe to classify.
+                        density[index] = voxel.Density;
+                        if (voxel.Distance < 0f) state[index] = 1;
+                    }
+
+            int removed = 0;
+
+            for (int start = 0; start < volume; start++)
+            {
+                if (state[start] != 1) continue;
+
+                int head = 0;
+                int tail = 0;
+                queue[tail++] = start;
+                state[start] = 2;
+                bool touchesBoundary = false;
+                bool hasDeepInterior = false;
+
+                while (head < tail)
+                {
+                    int index = queue[head++];
+                    Decode(index, widthX, widthZ, out int lx, out int ly, out int lz);
+                    if (density[index] * Voxel.InverseScale < -MaxDisconnectedSolidDepth)
+                        hasDeepInterior = true;
+
+                    if (lx == 0 || lx == widthX - 1 ||
+                        ly == 0 || ly == widthY - 1 ||
+                        lz == 0 || lz == widthZ - 1)
+                        touchesBoundary = true;
+
+                    if (lx > 0) EnqueueSolid(index - 1, state, queue, ref tail);
+                    if (lx + 1 < widthX) EnqueueSolid(index + 1, state, queue, ref tail);
+                    if (lz > 0) EnqueueSolid(index - widthX, state, queue, ref tail);
+                    if (lz + 1 < widthZ) EnqueueSolid(index + widthX, state, queue, ref tail);
+                    int layer = widthX * widthZ;
+                    if (ly > 0) EnqueueSolid(index - layer, state, queue, ref tail);
+                    if (ly + 1 < widthY) EnqueueSolid(index + layer, state, queue, ref tail);
+                }
+
+                if (touchesBoundary || hasDeepInterior || tail > maxComponentSamples) continue;
+
+                for (int i = 0; i < tail; i++)
+                {
+                    Decode(queue[i], widthX, widthZ, out int lx, out int ly, out int lz);
+                    int worldX = low.X + lx;
+                    int worldY = minY + ly;
+                    int worldZ = low.Z + lz;
+                    var chunk = map.Get(ChunkTransforms.ChunkAt(worldX, worldZ))!;
+                    int voxelIndex = ChunkTransforms.WorldVoxelIndex(worldX, worldY, worldZ);
+                    var voxel = chunk[voxelIndex];
+
+                    // Mirror the old near-surface distance instead of saturating it. All-positive
+                    // samples emit no geometry, while the gentle magnitude preserves useful
+                    // gradients for any retained surface nearby.
+                    voxel.Distance = MathF.Max(Voxel.InverseScale, -voxel.Distance);
+                    voxel.Material = BlockType.BlockType_Air;
+                    chunk[voxelIndex] = voxel;
+                    removed++;
+                }
+            }
+
+            return removed;
+        }
+
+        static int Index(int x, int y, int z, int widthX, int widthZ)
+            => (y * widthZ + z) * widthX + x;
+
+        static void Decode(int index, int widthX, int widthZ, out int x, out int y, out int z)
+        {
+            x = index % widthX;
+            int yz = index / widthX;
+            z = yz % widthZ;
+            y = yz / widthZ;
+        }
+
+        static void EnqueueSolid(int index, Span<byte> state, Span<int> queue, ref int tail)
+        {
+            if (state[index] != 1) return;
+            state[index] = 2;
+            queue[tail++] = index;
         }
 
         /// <summary>A wall down the middle of the chunk, 2 wide, 32 tall from WorldMinY.</summary>

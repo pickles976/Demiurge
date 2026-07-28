@@ -34,6 +34,38 @@ namespace Demiurge.GameServer
             });
         }
 
+        public ServerObject SpawnEquipped(ServerPlayer player, ItemType type, bool dropReplaced = true)
+        {
+            var stats = ItemConfig.Get(type);
+            if (stats.Category != ItemCategory.Equippable)
+                throw new InvalidOperationException($"{type} cannot be equipped");
+
+            if (player.Equipped.Remove(stats.Slot, out uint currentId) && objects.TryGet(currentId, out var current))
+            {
+                if (dropReplaced)
+                    Drop(current, player.Position);
+                else
+                    objects.Despawn(current.NetworkId);
+            }
+
+            var weapon = WeaponConfig.Get(type);
+            var armor = ArmorConfig.Get(type);
+            var mask = NetComponents.Item | NetComponents.Owner | NetComponents.Attachment;
+            if (weapon != null) mask |= NetComponents.Weapon;
+            if (armor != null) mask |= NetComponents.Armor;
+
+            var equipped = objects.Spawn(ObjectType.Item, mask, player.Position, obj =>
+            {
+                obj.Item = new ItemState { Type = type };
+                obj.Owner = new OwnerState { PlayerId = player.Id };
+                obj.Attachment = new AttachmentState { Slot = stats.Slot };
+                if (weapon is { } w) obj.Weapon = new WeaponState { CurrentAmmo = w.MagazineCapacity };
+                if (armor is { } a) obj.Armor = new ArmorState { MaxValue = a.Max, Current = a.Max };
+            });
+            player.Equipped[stats.Slot] = equipped.NetworkId;
+            return equipped;
+        }
+
         /// <summary>E pressed: equip the nearest pickup in radius, swapping out
         /// whatever occupies its slot. Server-authoritative — the client sends
         /// no target, so there is nothing to validate beyond proximity.</summary>

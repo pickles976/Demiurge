@@ -278,6 +278,10 @@ public class TerrainGenerationTests
         Assert.Equal(BlockType.BlockType_Stone, ChunkGenerator.DensityToMaterial(Surface, Surface, steep));
     }
 
+    [Fact]
+    public void StoneSlopeThresholdMatchesTheWalkableSlopeLimit()
+        => Assert.Equal(PlayerMovement.MaxSlopeDegrees, ChunkGenerator.GrassLimitDegrees);
+
     /// <summary>A steep column is rock all the way down, not a stripe of grass over dirt.</summary>
     [Fact]
     public void SteepColumnsAreStoneAtEveryDepth()

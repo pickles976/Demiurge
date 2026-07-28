@@ -6,8 +6,8 @@ namespace Demiurge
 {
 
 	/// <summary>
-	/// Debug free-fly camera. Tilde detaches the camera from the follow rig and flies it on
-	/// WASD + mouse look; tilde again hands control back to <see cref="ThirdPersonCameraScript"/>,
+	/// Debug free-fly camera. F3 detaches the camera from the follow rig and flies it on
+	/// WASD + mouse look; F3 again hands control back to <see cref="FirstPersonCameraScript"/>,
 	/// which re-derives its pose from the player — so re-entering always starts fresh from the
 	/// follow position rather than wherever this was left.
 	///
@@ -20,6 +20,8 @@ namespace Demiurge
 	/// </summary>
 	public class DebugFlyCameraScript : SyncScript
 	{
+		public required ClientInputState InputState { get; init; }
+
 		public float Speed { get; set; } = 15.0f;
 
 		public float BoostMultiplier { get; set; } = 4.0f;
@@ -32,7 +34,8 @@ namespace Demiurge
 
 		private float yaw;
 		private float pitch;
-		private bool tildeWasDown;
+		private bool toggleWasDown;
+		private bool mouseLocked;
 
 		// Just short of straight up/down, so forward never degenerates.
 		private const float PitchLimit = MathUtil.PiOverTwo - 0.01f;
@@ -42,13 +45,26 @@ namespace Demiurge
 		public override void Update()
 		{
 			// Edge-detect by hand rather than using IsKeyPressed: KeyboardSDL.OnKeyEvent never
-			// checks e.Repeat, so IsKeyPressed re-fires on OS key auto-repeat and holding tilde
+			// checks e.Repeat, so IsKeyPressed re-fires on OS key auto-repeat and holding F3
 			// would strobe the mode on and off.
-			var tildeDown = Input.IsKeyDown(Keys.OemTilde);
-			if (tildeDown && !tildeWasDown) Toggle();
-			tildeWasDown = tildeDown;
+			var toggleDown = Input.IsKeyDown(Keys.F3);
+			if (!InputState.TerminalOpen && toggleDown && !toggleWasDown) Toggle();
+			toggleWasDown = toggleDown;
 
 			if (!Active) return;
+			if (InputState.TerminalOpen)
+			{
+				if (mouseLocked) Input.UnlockMousePosition();
+				mouseLocked = false;
+				return;
+			}
+
+			if (!mouseLocked)
+			{
+				Input.LockMousePosition(forceCenter: true);
+				Game.IsMouseVisible = false;
+				mouseLocked = true;
+			}
 
 			Look();
 			Move((float)Game.UpdateTime.Elapsed.TotalSeconds);
@@ -68,10 +84,13 @@ namespace Demiurge
 				yaw = MathF.Atan2(-forward.X, -forward.Z);
 
 				Input.LockMousePosition(forceCenter: true);
+				Game.IsMouseVisible = false;
+				mouseLocked = true;
 			}
 			else
 			{
 				Input.UnlockMousePosition();
+				mouseLocked = false;
 			}
 		}
 

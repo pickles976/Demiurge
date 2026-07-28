@@ -67,23 +67,15 @@ class the "never compute a block's world position twice" rule exists to prevent.
 down. Without it a cliff shows a one-voxel diagonal stripe of grass over dirt, because the surface
 cuts across columns and each column contributes exactly one grass voxel.
 
-### The threshold is not derived from the movement limit, and that was a real finding
+### The threshold is the movement limit
 
-The plan was `GrassLimitDegrees = MaxSlopeDegrees - 10`, so green would mean walkable and grey would
-mean it isn't — the player reading the collision rule off the terrain.
-
-**Measured, the steepest column in the whole world is 48.7°.** The 50° walk limit never triggers, so
-grass cannot signal a distinction that does not exist. Tying them would have put the threshold at 40°,
-where under 1% of the world is rock and the feature is invisible. It is an independent **25°** instead,
-chosen against the measured slope histogram, which puts stone at ~6% of the surface band.
-
-Attempting to make terrain steeper by shortening the detail/ridge wavelengths **also mostly failed** —
-47° to 48.7°. At persistence 0.5 and lacunarity 2 every octave contributes the same gradient
-magnitude, so shortening the base wavelength adds fine detail rather than steepness.
+`GrassLimitDegrees` aliases `PlayerMovement.MaxSlopeDegrees`, currently **55°**. Grass therefore means
+ordinary movement can stand on and climb the surface; exposed stone means the collision normal is
+past the walkability limit. `StoneSlopeThresholdMatchesTheWalkableSlopeLimit` pins that coupling, and
+the whole-world material regression requires generated terrain to retain both grass and stone.
 
 The limit is structural: **a smooth fbm heightmap cannot make cliffs.** Genuinely steep faces need
-terracing, a spline applied to slope itself, or a 3D density term. Revisit the derived threshold if
-terrain ever gets real cliffs.
+terracing, a spline applied to slope itself, or a 3D density term.
 
 ## The height budget
 

@@ -33,7 +33,16 @@ assembly attributes.
 If the build goes weird after dependency changes: `dotnet clean && dotnet restore --no-cache && dotnet build --no-incremental`.
 
 Projects: `DemiurgeSharp.csproj` (client), `Server/DemiurgeServer.csproj`,
-`Common/DemiurgeCommon.csproj`, `tools/GltfAssetGenerator`.
+`Common/DemiurgeCommon.csproj`, `Common.Tests/DemiurgeCommon.Tests.csproj`,
+`Server.Tests/DemiurgeServer.Tests.csproj`, `tools/GltfAssetGenerator`.
+
+## Developer terminal
+
+Backtick/tilde opens the terminal; `F3` toggles the free camera. World-changing commands are parsed
+into typed values in Common and executed authoritatively on the server. Single-player enables them;
+a standalone server requires `--allow-cheats`. Canonical item names live in `ItemCatalog` and are
+namespaced (`demiurge:ak47`), while `ItemType` remains the append-only numeric wire identity. See
+`docs/COMMANDS.md` for grammar, security boundaries, and extension points.
 
 ## Architecture
 
@@ -150,16 +159,19 @@ spec for the coordinate transforms.
   heights, **padded one column on every side** so slope can be central-differenced at a chunk edge —
   index it through `ChunkTransforms.PaddedColumnIndexOf`, never by hand. Three noise fields (erosion,
   fbm detail, folded ridge) go through `TerrainShape`'s splines; see `docs/voxel/GENERATION.md`.
-- **Steep columns are bare stone.** `DensityToMaterial` takes a slope, and the threshold is 25
-  degrees — chosen against the measured slope distribution, not derived from the movement limit. See
-  GENERATION.md for why that derivation had to be abandoned.
+- **Steep columns are bare stone.** `DensityToMaterial` takes a slope, and its 55-degree threshold
+  directly aliases `PlayerMovement.MaxSlopeDegrees`. Grass means ordinary movement can climb it;
+  stone means the contact is too steep to stand on. Keep those values coupled.
 - **The bottom voxel plane is permanently solid** (`ChunkConstants.BedrockThickness`), enforced at
   every write. Two reasons in one invariant: you can't dig out of the world, and the lowest grid
   point any section *owns* is `WorldMinY`, so carving it away leaves a sign change on an edge
   nobody emits a quad for — a hole you see through.
 - Edits are CSG on the field, not voxel assignment: `TerrainEdits` uses `min` for add and
   `max(d, -shape)` for subtract, and writes `Margin` past the shape because a voxel just outside a
-  cut is now measured from the cut, not from the old surface.
+  cut is now measured from the cut, not from the old surface. After spherical subtraction it scans
+  only the 7³ affected neighborhood and removes fully enclosed components of at most four shallow
+  solid samples. Boundary-connected, deeply solid, and larger components are protected; see
+  DATA_MODEL.md.
 - Textures come from `BlockTextures` (a `BlockType` → files manifest) through a triplanar shader
   with per-cell variant selection. A type with no entry draws the purple prototype texture, i.e.
   obviously-missing rather than a plausible wrong material.
@@ -172,7 +184,9 @@ spec for the coordinate transforms.
   roughness** — which is what stops mountains costing more to stream than plains.
 - Terrain **collision** exists and is shared (`Common/Voxel/TerrainCollision.cs` +
   `PlayerMovement`); see `docs/voxel/COLLISION.md`. Still missing: LOD, per-player chunk tracking,
-  view-distance meshing, and collision against anything but terrain.
+  view-distance meshing, and collision against anything but terrain. Collision carries a smoothed
+  pushout normal and an exact cell-local surface normal; contacts above 45 degrees use the latter
+  for the 55-degree standability check so saturated neighboring samples cannot make cliffs walkable.
 - Human terrain docs are in `docs/voxel/`; keep them terse and put implementation-heavy notes here
   or in `stride_docs/`.
 
@@ -189,9 +203,10 @@ storage layer.
 fact: **surface nets and dual contouring are one algorithm** differing only in where the cell's
 vertex goes (average of the edge crossings vs. a QEF solve). Both exist —
 `ChunkMesher.GenerateMeshFromSurfaceNet` and `GenerateMeshDualContouring` are two entry points onto
-one skeleton. DC sharpens geometry but **not** shading, which needs vertex splitting by crease
-angle. That doc also records the limitations the article's author hit afterwards — chunk LOD being
-the genuinely hard part, not the meshing.
+one skeleton. `GenerateMesh` currently selects surface nets because its rounded placement suits dug
+terrain better; DC is retained for comparison. DC sharpens geometry but **not** shading, which needs
+vertex splitting by crease angle. That doc also records the limitations the article's author hit
+afterwards — chunk LOD being the genuinely hard part, not the meshing.
 
 ### The rule that keeps the terrain math honest
 

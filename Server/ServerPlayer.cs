@@ -5,6 +5,7 @@ namespace Demiurge.GameServer
     public class ServerPlayer
     {
         public ushort Id { get; init; }
+        public bool IsMob { get; init; }
 
         /// <summary>
         /// Authoritative movement state, stepped by <see cref="PlayerMovement.Step"/>. A field rather

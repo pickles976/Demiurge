@@ -34,13 +34,24 @@ namespace Demiurge
         /// </summary>
         public const float BiteRadius = 0.7f;
 
+        /// <summary>How many accepted dig edits should amount to one old full-strength bite.</summary>
+        public const int ClicksPerVoxel = 2;
+
+        /// <summary>Strength of one accepted dig relative to the old full bite.</summary>
+        public const float BiteStrength = 1f / ClicksPerVoxel;
+
+        /// <summary>Held digging cadence. The client sends at this rate; the server enforces it.</summary>
+        public const float HoldHz = 2f;
+
+        public const uint TicksPerDig = NetworkConfig.TickRate / 2;
+
         /// <summary>The radius packed as an extent, since an edit carries one vector for both
         /// primitives — a half-extent for a box, a radius in X for a sphere.</summary>
         public static readonly Vector3 Bite = new(BiteRadius, BiteRadius, BiteRadius);
 
         /// <summary>
         /// Where a player looks and reaches FROM, above their feet. Matches
-        /// ShoulderCameraScript.PivotHeight — the camera orbits the head, so sharing the number is
+        /// FirstPersonCameraScript.EyeHeight, so sharing the number is
         /// what keeps "what the crosshair covers" and "what the hand can get to" the same question.
         /// </summary>
         public const float EyeHeight = 1.55f;

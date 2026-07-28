@@ -5,9 +5,11 @@ namespace Demiurge
     /// <summary>
     /// A body's contact with the field at one point: how far away the surface is, and which way is
     /// out of it. Distance is CORRECTED (see <see cref="TerrainCollision.TrySample"/>) — negative
-    /// means the point is inside terrain. Normal is a unit vector pointing out.
+    /// means the point is inside terrain. <see cref="Normal"/> is smoothed across cells for stable
+    /// pushout; <see cref="SurfaceNormal"/> is the exact containing-cell derivative used to classify
+    /// steep slopes without neighboring density saturation biasing the result.
     /// </summary>
-    public readonly record struct FieldPoint(float Distance, Vector3 Normal);
+    public readonly record struct FieldPoint(float Distance, Vector3 Normal, Vector3 SurfaceNormal);
 
     /// <summary>
     /// The player's body, as collision sees it: a vertical capsule, tested as a small stack of
@@ -48,11 +50,8 @@ namespace Demiurge
     /// </summary>
     public static class TerrainCollision
     {
-        /// <summary>
-        /// Half-width of the central difference, in voxels. Wider than the mesher's whole-voxel
-        /// stencil would be smoother still, but also blunts thin features; half a voxel keeps the
-        /// pushout direction continuous across cell boundaries without rounding off ledges.
-        /// </summary>
+        /// <summary>Half-width of the smoothed collision-normal stencil. The exact cell derivative
+        /// is retained separately for slope classification.</summary>
         const float GradientStep = 0.5f;
 
         /// <summary>
@@ -68,7 +67,18 @@ namespace Demiurge
         /// </summary>
         public static bool TrySampleRaw(ChunkMap map, Vector3 p, out float distance)
         {
+            return TrySampleCell(map, p, out distance, out _);
+        }
+
+        /// <summary>
+        /// Trilinear value and its exact analytical gradient inside the containing cell. Deriving
+        /// both from the same eight corners avoids a cross-cell finite-difference stencil pulling
+        /// saturated samples into an otherwise well-resolved steep surface.
+        /// </summary>
+        static bool TrySampleCell(ChunkMap map, Vector3 p, out float distance, out Vector3 gradient)
+        {
             distance = 0f;
+            gradient = Vector3.Zero;
 
             int x0 = (int)MathF.Floor(p.X);
             int y0 = (int)MathF.Floor(p.Y);
@@ -94,6 +104,15 @@ namespace Demiurge
             float y1z1 = Lerp(d[6], d[7], tx);
 
             distance = Lerp(Lerp(y0z0, y1z0, ty), Lerp(y0z1, y1z1, ty), tz);
+
+            float dx = Lerp(Lerp(d[1] - d[0], d[3] - d[2], ty),
+                            Lerp(d[5] - d[4], d[7] - d[6], ty), tz);
+            float dy = Lerp(Lerp(d[2] - d[0], d[3] - d[1], tx),
+                            Lerp(d[6] - d[4], d[7] - d[5], tx), tz);
+            float dz = Lerp(Lerp(d[4] - d[0], d[5] - d[1], tx),
+                            Lerp(d[6] - d[2], d[7] - d[3], tx), ty);
+            gradient = new Vector3(dx, dy, dz);
+
             return true;
         }
 
@@ -115,20 +134,23 @@ namespace Demiurge
         {
             point = default;
 
-            if (!TrySampleRaw(map, p, out float raw)) return false;
+            if (!TrySampleCell(map, p, out float raw, out var cellGradient)) return false;
             if (!TryGradient(map, p, out var gradient)) return false;
 
             float length = gradient.Length();
+            float cellLength = cellGradient.Length();
 
             // Clamped-out interior: no length to divide by and no direction to escape along. Report
             // the raw value (still correctly signed, so callers see "inside") and push straight up.
             if (length <= MinGradientLength)
             {
-                point = new FieldPoint(raw, Vector3.UnitY);
+                point = new FieldPoint(raw, Vector3.UnitY, Vector3.UnitY);
                 return true;
             }
 
-            point = new FieldPoint(raw / length, gradient / length);
+            var normal = gradient / length;
+            var surfaceNormal = cellLength > MinGradientLength ? cellGradient / cellLength : normal;
+            point = new FieldPoint(raw / length, normal, surfaceNormal);
             return true;
         }
 
@@ -139,7 +161,7 @@ namespace Demiurge
         /// </summary>
         public static bool TryDeepestContact(ChunkMap map, in CapsuleBody body, Vector3 feet, out FieldPoint deepest)
         {
-            deepest = new FieldPoint(float.MaxValue, Vector3.UnitY);
+            deepest = new FieldPoint(float.MaxValue, Vector3.UnitY, Vector3.UnitY);
 
             for (int i = 0; i < CapsuleBody.SampleCount; i++)
             {
@@ -150,7 +172,7 @@ namespace Demiurge
             return true;
         }
 
-        /// <summary>Central difference of the trilinear field. Six samples, forty-eight voxel reads.</summary>
+        /// <summary>Smoothed central difference used for stable pushout at cell boundaries.</summary>
         static bool TryGradient(ChunkMap map, Vector3 p, out Vector3 gradient)
         {
             gradient = Vector3.Zero;

@@ -10,16 +10,26 @@ public class ObjectViewFactory
     private readonly Game game;
     private readonly Scene scene;
     private readonly WeaponMount mount;
+    private readonly PlayerRegistry players;
+    private readonly Entity cameraEntity;
+    private readonly LocalWeaponView weaponView;
+    private readonly TreeViewFactory.Manager treeViews;
 
     // Scenery only. Items never appear here: their model comes from
     // ItemCosmetics and their behavior from the component mask.
     private readonly Dictionary<ObjectType, Func<NetObject, Entity>> builders;
 
-    public ObjectViewFactory(Game game, Scene scene, ObjectRegistry registry, WeaponMount mount)
+    public ObjectViewFactory(Game game, Scene scene, ObjectRegistry registry, WeaponMount mount,
+                             PlayerRegistry players, Entity cameraEntity, LocalWeaponView weaponView,
+                             ModelLocators modelLocators)
     {
         this.game = game;
         this.scene = scene;
         this.mount = mount;
+        this.players = players;
+        this.cameraEntity = cameraEntity;
+        this.weaponView = weaponView;
+        treeViews = new TreeViewFactory.Manager(game, scene, players, modelLocators);
         builders = new()
         {
             [ObjectType.Crate] = _ => game.Create3DPrimitive(PrimitiveModelType.Cube,
@@ -34,6 +44,11 @@ public class ObjectViewFactory
     private void CreateView(NetObject obj)
     {
         bool isItem = obj.Has.HasFlag(NetComponents.Item);
+        if (!isItem && obj.Type == ObjectType.Tree)
+        {
+            treeViews.Add(obj);
+            return;
+        }
 
         Entity entity;
         if (isItem)
@@ -49,7 +64,8 @@ public class ObjectViewFactory
         // transform (so no NetTransformScript alongside). Item+Owner is worn:
         // the attach presenter owns it instead.
         if (isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new PickupBobScript { Object = obj });
-        if (isItem && obj.Has.HasFlag(NetComponents.Owner)) entity.Add(new ItemAttachScript { Object = obj, Mount = mount });
+        if (isItem && obj.Has.HasFlag(NetComponents.Owner))
+            entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Priority = 15 });
         if (!isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
 
@@ -59,6 +75,14 @@ public class ObjectViewFactory
 
     private void DestroyView(NetObject obj)
     {
+        if (obj.Type == ObjectType.Tree)
+        {
+            treeViews.Remove(obj.NetworkId);
+            return;
+        }
+
+        if (weaponView.NetworkId == obj.NetworkId) weaponView.Clear();
+
         if (scene.Entities.FirstOrDefault(e => e.Name == $"NetObject_{obj.NetworkId}") is { } entity)
         {
             scene.Entities.Remove(entity);

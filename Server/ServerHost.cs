@@ -19,12 +19,17 @@ namespace Demiurge.GameServer
     /// </summary>
     public sealed class ServerHost : IDisposable
     {
-        readonly GameServer server = new();
+        readonly GameServer server;
         readonly Stopwatch clock = new();
 
         double accumulator;
         double lastTime;
         bool bound;
+
+        public ServerHost(bool allowCheats = false)
+        {
+            server = new GameServer(allowCheats);
+        }
 
         /// <summary>
         /// Binds the socket. Throws if the port is taken — synchronously, so the caller can report it

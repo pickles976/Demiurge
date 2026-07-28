@@ -67,7 +67,7 @@ namespace Demiurge.GameClient
             // it. Chunks are streamed once, so losing an edit that way would never be corrected.
             while (edits.TryDequeue(out var edit))
             {
-                var (min, max) = TerrainEdits.ApplyBox(Map, edit.Centre, edit.HalfExtent, edit.Mode, edit.Fill, edit.Shape);
+                var (min, max) = TerrainEdits.ApplyBox(Map, edit.Centre, edit.HalfExtent, edit.Mode, edit.Fill, edit.Shape, edit.Strength);
                 RegionEdited?.Invoke(min, max);
                 applied++;
             }

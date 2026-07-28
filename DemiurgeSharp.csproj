@@ -23,6 +23,7 @@
     <!-- The build tool under tools/ is its own project; don't compile it as part of the game. -->
     <Compile Remove="tools/**/*.cs" />
     <Compile Remove="Server/**/*.cs" />
+    <Compile Remove="Server.Tests/**/*.cs" />
     <Compile Remove="Common/**/*.cs" />
     <Compile Remove="Common.Tests/**/*.cs" />
     <Compile Remove="*.cs" />

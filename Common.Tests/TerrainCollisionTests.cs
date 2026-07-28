@@ -67,15 +67,12 @@ public class TerrainCollisionTests
     }
 
     /// <summary>
-    /// The correction's own limit, recorded rather than papered over: past about 45 degrees the
-    /// gradient stencil reaches grid points beyond the +/-2.54 quantization clamp, so the difference
-    /// comes out shallower than the true slope and the corrected distance is biased LONG — the body
-    /// sits slightly into the face. It stays far better than the uncorrected value, and anything
-    /// steeper than MaxSlopeDegrees is treated as a wall anyway (where the normal gets flattened and
-    /// its exact tilt stops mattering), so this is a bound on the error, not a bug to chase.
+    /// A steep cell still has enough unsaturated corners to classify its local trilinear gradient.
+    /// The smoothed pushout normal can pull in saturated neighboring samples, so standability uses
+    /// SurfaceNormal while collision keeps Normal stable across cell boundaries.
     /// </summary>
     [Fact]
-    public void SteepSlopeCorrectionIsBiasedButStillFarBetterThanRaw()
+    public void SteepSlopeClassificationUsesTheLocalCellGradient()
     {
         var map = SyntheticTerrain.Slope(60f);
         var probe = new Vector3(0f, Ground + 1f, 0f);
@@ -87,7 +84,7 @@ public class TerrainCollisionTests
 
         Assert.True(MathF.Abs(point.Distance - True60) < 0.05f, $"corrected: {point.Distance}");
         Assert.True(MathF.Abs(raw - True60) > 0.4f, $"raw was already close, so the test proves nothing: {raw}");
-        Assert.True(point.Distance > True60, "the clamp biases the distance long, not short");
+        Assert.Equal(True60, point.SurfaceNormal.Y, 2);
     }
 
     /// <summary>The gradient DIRECTION never needed correcting — for `y - h(x,z)` it is already the normal.</summary>

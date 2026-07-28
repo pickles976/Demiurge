@@ -1,131 +1,181 @@
+using Demiurge.GameClient;
 using Stride.Core.Mathematics;
 using Stride.Engine;
-using Stride.Graphics;
-using Stride.Rendering;
-using Stride.Rendering.Materials;
-using Stride.Rendering.Materials.ComputeColors;
 
 namespace Demiurge
 {
     /// <summary>
-    /// Scatters many copies of the grass model over a rectangle and renders them
-    /// all in a single draw call via GPU instancing (InstancingComponent +
-    /// InstancingUserArray).
-    ///
-    /// Instancing is purely visual: physics and per-entity scripts know nothing
-    /// about the copies. The instance matrices are absolute world transforms
-    /// (ModelTransformUsage.Ignore, the default), so the entity's own transform
-    /// is irrelevant — position the field via <paramref name="center"/>.
-    ///
-    /// The whole field is one render object with one merged bounding box, so it
-    /// frustum-culls all-or-nothing. If the field grows large, create several
-    /// smaller fields (chunks) instead of one big one.
+    /// Terrain-following grass source. It streams one seed per grassable voxel column into
+    /// <see cref="GpuGrassRenderer"/>, which expands them into chunk-local blade meshes.
     /// </summary>
-
     public static class GrassField
     {
-        public static Entity Create(
-            Game game,
-            Vector3 center,
-            float sizeX = 50f,
-            float sizeZ = 50f,
-            float cellSize = 0.5f,
-            int seed = 12345
-        )
-        {
-            EnsureInstancingRenderFeature(game);
+        public const float DefaultRadius = 45f;
+        public const float DefaultCellSize = 1f;
 
-            var entity = new Entity("GrassField")
+        public static Entity CreateFollower(Game game, PlayerRegistry registry, TerrainState terrain)
+            => new("GrassField")
             {
-                new ModelComponent(game.Content.Load<Model>("models/grass")),
-            };
-
-            entity.Get<ModelComponent>().Materials[0] = CreateMaterial(game);
-            var instancing = new InstancingUserArray();
-            instancing.UpdateWorldMatrices(ScatterMatrices(center, sizeX, sizeZ, cellSize, seed));
-            entity.Add(new InstancingComponent { Type = instancing });
-
-            return entity;
-        }
-
-        /// <summary>
-        /// Double-sided cutout material: both faces of the quads render, and
-        /// texels below the alpha threshold are discarded in the color pass AND
-        /// the shadow pass (the cutoff feature enables the pixel shader during
-        /// depth-only rendering).
-        /// </summary>
-        private static Material CreateMaterial(Game game)
-        {
-            var texture = game.Content.Load<Texture>("models/grass_tex0");
-
-            return Material.New(game.GraphicsDevice, new MaterialDescriptor
-            {
-                Attributes =
-                  {
-                      CullMode = CullMode.None,
-                      Diffuse = new MaterialDiffuseMapFeature(
-                          new ComputeTextureColor(texture) { Filtering = TextureFilter.Point }),
-                      DiffuseModel = new MaterialDiffuseLambertModelFeature(),
-                      Transparency = new MaterialTransparencyCutoffFeature
-                      {
-                          Alpha = new ComputeFloat(0.05f),
-                      },
-                  },
-            });
-        }
-
-        /// <summary>
-        /// One instance per grid cell, jittered inside its cell so no rows or
-        /// columns read at a glance, with random yaw and slight scale variation
-        /// so the copies don't look stamped. Deterministic for a given seed.
-        /// </summary>
-        private static Matrix[] ScatterMatrices(Vector3 center, float sizeX, float sizeZ, float cellSize, int seed)
-        {
-            int nx = Math.Max(1, (int)(sizeX / cellSize));
-            int nz = Math.Max(1, (int)(sizeZ / cellSize));
-            var rng = new Random(seed);
-            var matrices = new Matrix[nx * nz];
-
-            float startX = center.X - sizeX * 0.5f;
-            float startZ = center.Z - sizeZ * 0.5f;
-            int i = 0;
-
-            for (int ix = 0; ix < nx; ix++)
-            {
-                for (int iz = 0; iz < nz; iz++)
+                new GrassFollowerScript
                 {
-                    var position = new Vector3(
-                        startX + (ix + rng.NextSingle()) * cellSize,
-                        center.Y,
-                        startZ + (iz + rng.NextSingle()) * cellSize);
+                    Registry = registry,
+                    Terrain = terrain,
+                    Radius = DefaultRadius,
+                    CellSize = DefaultCellSize,
+                },
+            };
+    }
 
-                    float yaw = rng.NextSingle() * MathUtil.TwoPi;
-                    float scale = 0.8f + rng.NextSingle() * 0.4f;
+    public sealed class GrassFollowerScript : SyncScript
+    {
+        private const int MaxSeedChunksPerFrame = 1;
 
-                    matrices[i++] = Matrix.Scaling(scale)
-                                  * Matrix.RotationY(yaw)
-                                  * Matrix.Translation(position);
+        public required PlayerRegistry Registry { get; init; }
+        public required TerrainState Terrain { get; init; }
+
+        public float Radius { get; init; } = GrassField.DefaultRadius;
+        public float CellSize { get; init; } = GrassField.DefaultCellSize;
+        public int MaxInstances { get; init; } = 500_000;
+
+        private readonly Dictionary<ChunkIndex, ChunkIndex> active = new();
+        private readonly HashSet<ChunkIndex> dirty = new();
+        private GpuGrassRenderer? renderer;
+        private ChunkIndex? lastAnchor;
+
+        public override void Start()
+        {
+            renderer = new GpuGrassRenderer(Services, ((Game)Game).GraphicsDevice, MaxInstances);
+            renderer.SetGrassDistance(Radius);
+            renderer.SetLodParams(multiplier: 0.85f, exponent: 1.7f);
+            renderer.SetWind(strength: 0.12f, speed: 1.4f, frequency: 0.75f);
+            renderer.GrassEntity.Scene = Entity.Scene;
+
+            Terrain.ChunkCompleted += chunk => dirty.Add(chunk);
+            Terrain.RegionEdited += (min, max) => MarkEditedChunks(min, max);
+        }
+
+        public override void Update()
+        {
+            if (renderer == null) return;
+            if (Registry.LocalPlayer is not { } local)
+            {
+                renderer.ClearSeeds();
+                return;
+            }
+
+            var playerPosition = local.Position.ToStride();
+            RefreshActiveChunks(playerPosition);
+            RebuildDirtyChunks();
+
+            renderer.ClearTrampleSources();
+            renderer.AddTrampleSource(playerPosition, radius: 1.4f);
+            renderer.Update(playerPosition, (Game)Game);
+        }
+
+        public override void Cancel()
+        {
+            renderer?.Dispose();
+            renderer = null;
+        }
+
+        private void RefreshActiveChunks(Vector3 center)
+        {
+            var anchor = ChunkTransforms.ChunkAt(center);
+            if (lastAnchor is { } previous && previous.Equals(anchor) && dirty.Count == 0) return;
+
+            lastAnchor = anchor;
+            float radiusSq = Radius * Radius;
+            var min = ChunkTransforms.ChunkAt(
+                (int)MathF.Floor(center.X - Radius),
+                (int)MathF.Floor(center.Z - Radius));
+            var max = ChunkTransforms.ChunkAt(
+                (int)MathF.Floor(center.X + Radius),
+                (int)MathF.Floor(center.Z + Radius));
+            var wanted = new HashSet<ChunkIndex>();
+
+            for (int z = min.z; z <= max.z; z++)
+            {
+                for (int x = min.x; x <= max.x; x++)
+                {
+                    var chunk = new ChunkIndex { x = x, z = z };
+                    if (!Terrain.IsComplete(chunk)) continue;
+
+                    var (originX, originZ) = ChunkTransforms.ChunkOrigin(chunk);
+                    float nearestX = MathUtil.Clamp(center.X, originX, originX + ChunkConstants.ChunkWidth);
+                    float nearestZ = MathUtil.Clamp(center.Z, originZ, originZ + ChunkConstants.ChunkWidth);
+                    float dx = nearestX - center.X;
+                    float dz = nearestZ - center.Z;
+                    if (dx * dx + dz * dz > radiusSq) continue;
+
+                    wanted.Add(chunk);
+                    if (!active.ContainsKey(chunk))
+                    {
+                        active[chunk] = chunk;
+                        dirty.Add(chunk);
+                    }
                 }
             }
 
-            return matrices;
+            foreach (var chunk in active.Keys.ToArray())
+            {
+                if (wanted.Contains(chunk)) continue;
+
+                active.Remove(chunk);
+                dirty.Remove(chunk);
+                renderer?.RemoveChunk(ChunkKey(chunk));
+            }
         }
 
-        /// <summary>
-        /// The default compositor has no InstancingRenderFeature, so instanced
-        /// entities silently render a single copy without this. Idempotent;
-        /// must run after the compositor exists (game.AddGraphicsCompositor()).
-        /// </summary>
-        private static void EnsureInstancingRenderFeature(Game game)
+        private void RebuildDirtyChunks()
         {
-            var meshRenderFeature = game.SceneSystem.GraphicsCompositor.RenderFeatures
-                .OfType<MeshRenderFeature>()
-                .First();
+            if (renderer == null) return;
 
-            if (!meshRenderFeature.RenderFeatures.Any(f => f is InstancingRenderFeature))
-                meshRenderFeature.RenderFeatures.Add(new InstancingRenderFeature());
+            int rebuilt = 0;
+            foreach (var chunk in dirty.ToArray())
+            {
+                dirty.Remove(chunk);
+                if (!active.ContainsKey(chunk) || !Terrain.IsComplete(chunk)) continue;
+
+                var seeds = BuildChunkSeeds(chunk);
+                renderer.SetChunkSeeds(ChunkKey(chunk), seeds);
+                if (++rebuilt >= MaxSeedChunksPerFrame) break;
+            }
         }
 
-    }
+        private GrassSeed[] BuildChunkSeeds(ChunkIndex chunk)
+        {
+            var (originX, originZ) = ChunkTransforms.ChunkOrigin(chunk);
+            int step = Math.Max(1, (int)MathF.Round(CellSize));
+            var seeds = new List<GrassSeed>((ChunkConstants.ChunkWidth / step) * (ChunkConstants.ChunkWidth / step));
 
+            for (int lx = 0; lx < ChunkConstants.ChunkWidth; lx += step)
+            {
+                for (int lz = 0; lz < ChunkConstants.ChunkWidth; lz += step)
+                {
+                    int worldX = originX + lx;
+                    int worldZ = originZ + lz;
+
+                    if (SurfaceQuery.HighestSurface(Terrain.Map, worldX, worldZ) is not { } surface) continue;
+                    if (surface.Material != BlockType.BlockType_Grass) continue;
+
+                    var position = new Vector3(worldX, surface.Y + 0.02f, worldZ);
+                    seeds.Add(new GrassSeed(position, GrassScatter.HashCell(worldX, worldZ, seed: 17)));
+                }
+            }
+
+            return seeds.ToArray();
+        }
+
+        private void MarkEditedChunks(System.Numerics.Vector3 min, System.Numerics.Vector3 max)
+        {
+            var first = ChunkTransforms.ChunkAt((int)MathF.Floor(min.X), (int)MathF.Floor(min.Z));
+            var last = ChunkTransforms.ChunkAt((int)MathF.Floor(max.X), (int)MathF.Floor(max.Z));
+
+            for (int z = first.z; z <= last.z; z++)
+                for (int x = first.x; x <= last.x; x++)
+                    dirty.Add(new ChunkIndex { x = x, z = z });
+        }
+
+        private static Int3 ChunkKey(ChunkIndex chunk) => new(chunk.x, 0, chunk.z);
+    }
 }

@@ -81,10 +81,18 @@ just downward), and a standable contact clamps `Velocity.Y ≤ 0` — climbing i
 that is exactly the difference between clearing a 1.5 m ledge and bouncing off it. `JumpSpeed` adds
 back `g·dt/2` so the *discrete* apex matches `JumpHeight`.
 
-## Known limit
+## Steep-slope gradients
 
-Past about 45° the gradient stencil reaches grid points beyond the ±2.54 clamp, so the measured slope
-comes out shallower than reality and the corrected distance is biased **long** — the body sits slightly
-into the face. At 60° that is 0.54 against a true 0.5, versus 1.0 uncorrected. Anything steeper than
-`MaxSlopeDegrees` is flattened into a wall anyway, so the exact tilt stops mattering. Recorded as a test
-rather than a comment.
+`TrySample` carries two normals. `Normal` remains the smoothed central-difference normal used for
+collision pushout; making pushout use a cell-local derivative caused discontinuities at wall/floor
+corners and stopped the capsule short. `SurfaceNormal` is the exact analytical gradient of the
+trilinear cell, derived from the same eight corners used for distance, and is used only for
+walkability classification on contacts whose smoothed normal is already steeper than 45°. Below
+that boundary the smoothed normal is unambiguously floor-like and avoids selecting the wall side
+of a CSG floor/wall corner.
+
+This split matters on a true 65° slope: the smoothing stencil can reach a neighboring cell
+saturated at ±2.54 even though the current cell is well resolved, making the pushout normal appear
+to be 54.7°. Using that normal for classification incorrectly passed a 55° walkability check. The
+cell-local `SurfaceNormal` measures the field at the contact while stable movement retains the
+smoothed normal.

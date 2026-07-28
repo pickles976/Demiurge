@@ -9,6 +9,9 @@ public class LocalPlayerController : SyncScript
 	public required Entity CameraEntity { get; init; }
 	public required PlayerRegistry Registry { get; init; }
 	public required TerrainState Terrain { get; init; }
+	public required WeaponMount Mount { get; init; }
+	public required LocalWeaponView WeaponView { get; init; }
+	public required ClientInputState InputState { get; init; }
 
 	/// <summary>How far down the line of sight to look for something to aim at.</summary>
 	public float MaxAimDistance { get; set; } = 200f;
@@ -45,7 +48,7 @@ public class LocalPlayerController : SyncScript
 		// zero-intent move every tick rather than going silent: when the server's move queue
 		// starves it re-steps with the last intent it saw, forever (GameWorld.Tick), so a player
 		// frozen mid-sprint would keep running server-side while the client stopped predicting.
-		if (CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
+		if (InputState.TerminalOpen || CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
 		{
 			local.State = local.State
 				.With(PlayerStateFlags.Moving, false)
@@ -78,11 +81,16 @@ public class LocalPlayerController : SyncScript
 			.With(PlayerStateFlags.Shooting, aiming && Input.IsMouseButtonDown(MouseButton.Left))
 			.With(PlayerStateFlags.Reloading, local.IsReloading);
 
-		// Rotation. The shoulder camera OWNS facing — you look where the camera looks, which is what
-		// makes an over-the-shoulder camera feel like one. Turning only while aiming or standing still,
-		// as the old cursor-aimed camera did, reads as the character ignoring the mouse.
-		var shoulder = CameraEntity.Get<ShoulderCameraScript>();
-		if (shoulder != null)
+		// Rotation. The active look camera owns facing — you look where the camera looks. Turning
+		// only while aiming or standing still, as the old cursor-aimed camera did, reads as the
+		// character ignoring the mouse.
+		var firstPerson = CameraEntity.Get<FirstPersonCameraScript>();
+		if (firstPerson != null)
+		{
+			local.Yaw = firstPerson.Yaw;
+			local.Pitch = firstPerson.Pitch;
+		}
+		else if (CameraEntity.Get<ShoulderCameraScript>() is { } shoulder)
 		{
 			local.Yaw = shoulder.Yaw;
 			local.Pitch = shoulder.Pitch;
@@ -108,8 +116,8 @@ public class LocalPlayerController : SyncScript
 		// A POINT, not a direction. The muzzle is not the camera, so a direction copied from the
 		// camera would send the bullet parallel to the line of sight and never onto the reticle —
 		// see TryFire. Aiming-only, so the aim point is always the one the reticle is showing.
-		if (aiming && Input.IsMouseButtonDown(MouseButton.Left) && AimPoint is { } target)
-			local.TryFire(target, Registry.RenderTick);
+		if (local.IsArmed && aiming && Input.IsMouseButtonDown(MouseButton.Left) && AimPoint is { } target)
+			local.TryFire(target, Registry.RenderTick, FireOrigin(local));
 
 		if (Input.IsKeyPressed(Keys.R))
 			local.TryReload();
@@ -117,6 +125,21 @@ public class LocalPlayerController : SyncScript
 		if (Input.IsKeyPressed(Keys.E))
 			local.TryInteract();
 
+	}
+
+	private Vector3 FireOrigin(LocalPlayer local)
+	{
+		if (WeaponView.MuzzleWorld is { } muzzle && WeaponView.NetworkId == local.Weapon?.NetworkId)
+			return muzzle;
+
+		var cameraTransform = CameraEntity.Transform;
+		var grip = local.State.HasFlag(PlayerStateFlags.Aiming)
+			? WeaponMount.AimGripOffset
+			: WeaponMount.HipGripOffset;
+		var offset = Mount.FirstPersonMuzzleOffset(local.Weapon!.Item.Type, grip).ToStride();
+
+		return (Vector3)(cameraTransform.Position
+			+ Stride.Core.Mathematics.Vector3.Transform(offset, cameraTransform.Rotation));
 	}
 
 	private Vector3 ComputeIntent()
@@ -135,5 +158,3 @@ public class LocalPlayerController : SyncScript
 
 	}
 }
-
-

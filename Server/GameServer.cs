@@ -6,8 +6,13 @@ namespace Demiurge.GameServer
     {
         private readonly Server server = new();
         private readonly GameWorld world;
+        private readonly ServerCommandService commands;
 
-        public GameServer() => world = new GameWorld(server);
+        public GameServer(bool allowCheats)
+        {
+            world = new GameWorld(server);
+            commands = new ServerCommandService(world, allowCheats);
+        }
 
         public void Start()
         {
@@ -42,6 +47,7 @@ namespace Demiurge.GameServer
 
         private void OnClientDisconnected(object? sender, ServerDisconnectedEventArgs e)
         {
+            commands.Forget(e.Client.Id);
             world.RemovePlayer(e.Client.Id);
         }
 
@@ -63,6 +69,14 @@ namespace Demiurge.GameServer
                     break;
                 case ClientToServerId.PlayerDig:
                     world.ApplyDig(e.FromConnection.Id, e.Message.GetSerializable<PlayerDigData>());
+                    break;
+                case ClientToServerId.CommandRequest:
+                    var result = commands.Execute(
+                        e.FromConnection.Id,
+                        e.Message.GetSerializable<CommandRequestData>());
+                    var response = Message.Create(MessageSendMode.Reliable, ServerToClientId.CommandResult);
+                    response.AddSerializable(result);
+                    server.Send(response, e.FromConnection.Id);
                     break;
             }
         }

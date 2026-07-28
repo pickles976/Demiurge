@@ -8,7 +8,7 @@ namespace Demiurge
     /// The aiming reticle: a centre-screen crosshair, plus a marker on the terrain the camera is
     /// pointing at.
     ///
-    /// Centre-screen and not at the cursor, because <see cref="ShoulderCameraScript"/> locks the
+    /// Centre-screen and not at the cursor, because <see cref="FirstPersonCameraScript"/> locks the
     /// mouse to the middle of the window and hides it — there is no cursor to sit under. That is
     /// also why <see cref="CursorReticleScript"/> cannot be reused: it belongs to the dead
     /// cursor-aimed <see cref="ThirdPersonCameraScript"/>.
@@ -21,6 +21,7 @@ namespace Demiurge
     public class ReticleScript : SyncScript
     {
         public required PlayerRegistry Registry { get; init; }
+        public required ClientInputState InputState { get; init; }
 
         // Screen-space, in pixels from the centre. Aiming pulls the gap in — the usual shorthand for
         // the shot being tighter, and it costs nothing to read.
@@ -36,7 +37,7 @@ namespace Demiurge
         {
             // The fly camera detaches from the player and owns the view; a reticle for a gun nobody
             // is holding is just clutter on the debug view.
-            if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
+            if (InputState.TerminalOpen || Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
             if (Registry.LocalPlayer is not { } local) return;
 
             bool aiming = local.State.HasFlag(PlayerStateFlags.Aiming);

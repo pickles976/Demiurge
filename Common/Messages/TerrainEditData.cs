@@ -26,6 +26,9 @@ namespace Demiurge
         /// <summary>Which primitive. APPENDED — never inserted.</summary>
         public EditShape Shape;
 
+        /// <summary>How much of the edit to apply. 1 is the old full-strength CSG bite.</summary>
+        public float Strength;
+
         public void Serialize(Message message)
         {
             message.AddVector3(Centre);
@@ -33,6 +36,7 @@ namespace Demiurge
             message.AddByte((byte)Mode);
             message.AddByte((byte)Fill);   // BlockType is a byte enum; match its real width
             message.AddByte((byte)Shape);
+            message.AddFloat(Strength);
         }
 
         public void Deserialize(Message message)
@@ -42,6 +46,7 @@ namespace Demiurge
             Mode = (EditMode)message.GetByte();
             Fill = (BlockType)message.GetByte();
             Shape = (EditShape)message.GetByte();
+            Strength = message.GetFloat();
         }
     }
 }

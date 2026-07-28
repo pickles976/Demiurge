@@ -44,15 +44,29 @@ public class ItemAttachScript : SyncScript
 {
     public required NetObject Object { get; init; }
     public required WeaponMount Mount { get; init; }
+    public required PlayerRegistry Registry { get; init; }
+    public required Entity CameraEntity { get; init; }
+    public required LocalWeaponView WeaponView { get; init; }
+
+    private const float ViewModelSharpness = 18f;
 
     private Entity? owner;
     private bool boneLinked;
+    private Vector3 viewGripOffset = WeaponMount.HipGripOffset;
+    private bool firstViewFrame = true;
 
     public override void Update()
     {
         owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
         if (owner == null) return;
 
+        if (IsLocalHandWeapon())
+        {
+            UpdateFirstPersonWeapon();
+            return;
+        }
+
+        Entity.Get<ModelComponent>()!.Enabled = true;
         var socket = ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount);
         if (socket.Node is { } node)
         {
@@ -75,5 +89,59 @@ public class ItemAttachScript : SyncScript
             Entity.Transform.Position = owner.Transform.Position + Vector3.Transform(socket.Seat, owner.Transform.Rotation);
             Entity.Transform.Rotation = owner.Transform.Rotation * socket.Rotation;
         }
+    }
+
+    private bool IsLocalHandWeapon()
+        => Registry.LocalPlayer is { } local
+           && Object.Owner.PlayerId == local.Id
+           && Object.Attachment.Slot == EquipSlot.Hand
+           && Object.Has.HasFlag(NetComponents.Weapon);
+
+    private void UpdateFirstPersonWeapon()
+    {
+        var model = Entity.Get<ModelComponent>();
+        if (model == null) return;
+
+        if (CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
+        {
+            model.Enabled = false;
+            WeaponView.Clear();
+            return;
+        }
+        model.Enabled = true;
+
+        if (boneLinked)
+        {
+            Entity.Remove<ModelNodeLinkComponent>();
+            boneLinked = false;
+        }
+
+        bool aiming = Registry.LocalPlayer?.State.HasFlag(PlayerStateFlags.Aiming) == true;
+        var targetGripOffset = aiming ? WeaponMount.AimGripOffset : WeaponMount.HipGripOffset;
+
+        if (firstViewFrame)
+        {
+            viewGripOffset = targetGripOffset;
+            firstViewFrame = false;
+        }
+        else
+        {
+            float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+            viewGripOffset = Vector3.Lerp(viewGripOffset, targetGripOffset,
+                1f - MathF.Exp(-ViewModelSharpness * dt));
+        }
+
+        var cameraRotation = CameraEntity.Transform.Rotation;
+        var weaponRotation = WeaponMount.FirstPersonRotation;
+        var modelOffset = Mount.FirstPersonModelOffset(Object.Item.Type, viewGripOffset).ToStride();
+        var muzzleOffset = Mount.FirstPersonMuzzleOffset(Object.Item.Type, viewGripOffset).ToStride();
+
+        Entity.Transform.Scale = new Vector3(WeaponMount.FirstPersonScale);
+        Entity.Transform.Position = CameraEntity.Transform.Position + Vector3.Transform(modelOffset, cameraRotation);
+        Entity.Transform.Rotation = weaponRotation.ToStride() * cameraRotation;
+
+        WeaponView.MuzzleWorld = (System.Numerics.Vector3)(CameraEntity.Transform.Position + Vector3.Transform(muzzleOffset, cameraRotation));
+        WeaponView.Weapon = Object.Item.Type;
+        WeaponView.NetworkId = Object.NetworkId;
     }
 }

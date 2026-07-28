@@ -12,6 +12,8 @@ namespace Demiurge
     /// </summary>
     public static class SurfaceQuery
     {
+        public readonly record struct SurfaceHit(float Y, BlockType Material);
+
         /// <summary>
         /// World Y of the highest surface in a column, or null if the column has no surface at all
         /// (entirely air, or a chunk that isn't loaded).
@@ -21,6 +23,14 @@ namespace Demiurge
         /// it sits ON the ground rather than up to a voxel above or below it.
         /// </summary>
         public static float? HighestSurfaceY(ChunkMap map, int worldX, int worldZ)
+            => HighestSurface(map, worldX, worldZ)?.Y;
+
+        /// <summary>
+        /// Highest surface in a column, plus the material of the solid voxel directly under it.
+        /// That material is what the renderer shows on the surface triangle, and what foliage should
+        /// use for spawn eligibility.
+        /// </summary>
+        public static SurfaceHit? HighestSurface(ChunkMap map, int worldX, int worldZ)
         {
             if (!map.TryGetVoxel(worldX, ChunkConstants.WorldMaxY - 1, worldZ, out var above)) return null;
 
@@ -33,7 +43,7 @@ namespace Demiurge
                 if (below.Distance < 0f && above.Distance >= 0f)
                 {
                     float t = below.Distance / (below.Distance - above.Distance);
-                    return y + t;
+                    return new SurfaceHit(y + t, below.Material);
                 }
 
                 above = below;

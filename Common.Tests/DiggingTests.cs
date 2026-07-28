@@ -45,6 +45,24 @@ public class DiggingTests
         Assert.False(IsSolid(map, target));
     }
 
+    [Fact]
+    public void PartialDigsMatchOneFullBiteAtTheTarget()
+    {
+        var full = SyntheticTerrain.Flat();
+        var partial = SyntheticTerrain.Flat();
+        var target = new Vector3(4f, 12f, 7f);
+
+        TerrainEdits.ApplyBox(full, target, Digging.Bite, EditMode.Subtract, BlockType.BlockType_Air);
+
+        for (int i = 0; i < Digging.ClicksPerVoxel; i++)
+            TerrainEdits.ApplyBox(partial, target, Digging.Bite, EditMode.Subtract, BlockType.BlockType_Air,
+                EditShape.Sphere, Digging.BiteStrength);
+
+        Assert.True(TerrainCollision.TrySampleRaw(full, target, out float fullDensity));
+        Assert.True(TerrainCollision.TrySampleRaw(partial, target, out float partialDensity));
+        Assert.Equal(fullDensity, partialDensity, 4);
+    }
+
     /// <summary>
     /// The case that fails silently. A bite centred on a chunk border spans two chunks, and the
     /// per-chunk ApplyBox clamps to its own — so a map-wide edit that forgot to iterate would carve

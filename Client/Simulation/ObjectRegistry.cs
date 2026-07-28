@@ -17,6 +17,8 @@ public class ObjectRegistry
     /// (tracer hit tests). Netcode writes, view reads — same contract as ever.</summary>
     public IEnumerable<NetObject> Objects => objects.Values;
 
+    public bool TryGet(uint networkId, out NetObject obj) => objects.TryGetValue(networkId, out obj!);
+
     public ObjectRegistry(NetworkManager network)
     {
         network.ObjectSpawned += OnSpawn;

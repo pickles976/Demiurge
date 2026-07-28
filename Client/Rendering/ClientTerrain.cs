@@ -216,9 +216,12 @@ namespace Demiurge
         {
             // Edits first, and NOT capped by MaxDispatchScan: that cap exists to stop a huge streaming
             // backlog being walked every frame, and the urgent lane only ever holds the few sections
-            // around a player's hands.
-            while (inFlight.Count < MaxInFlight && urgentQueue.Count > 0)
-                if (!TryDispatch(urgentQueue.Dequeue(), urgentQueue)) break;
+            // around a player's hands. Scan the whole urgent lane rather than stopping on the first
+            // blocked section: repeated digs usually touch a section whose previous mesh is still in
+            // flight, and that must not hold ready neighbouring sections behind it.
+            int urgentScans = urgentQueue.Count;
+            while (urgentScans-- > 0 && inFlight.Count < MaxInFlight && urgentQueue.Count > 0)
+                TryDispatch(urgentQueue.Dequeue(), urgentQueue);
 
             int scans = Math.Min(dirtyQueue.Count, MaxDispatchScan);
 

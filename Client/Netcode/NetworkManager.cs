@@ -39,6 +39,9 @@ namespace Demiurge.GameClient
         /// latency is off, so the handler must only queue — see TerrainState.ReceiveEdit.</summary>
         public event Action<TerrainEditData>? TerrainEdited;
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
+        public event Action<CommandResultData>? CommandResultReceived;
+
+        private uint nextCommandRequestId;
 
         private void Dispatch(Action deliver)
         {
@@ -98,6 +101,21 @@ namespace Demiurge.GameClient
             client.Send(message);
         }
 
+        public uint SendCommand(string command)
+        {
+            nextCommandRequestId++;
+            if (nextCommandRequestId == 0) nextCommandRequestId++;
+
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.CommandRequest);
+            message.AddSerializable(new CommandRequestData
+            {
+                RequestId = nextCommandRequestId,
+                Command = command,
+            });
+            client.Send(message);
+            return nextCommandRequestId;
+        }
+
 
         private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
         {
@@ -148,6 +166,10 @@ namespace Demiurge.GameClient
                 case ServerToClientId.TerrainEdit:
                     var edit = e.Message.GetSerializable<TerrainEditData>();
                     Dispatch(() => TerrainEdited?.Invoke(edit));
+                    break;
+                case ServerToClientId.CommandResult:
+                    var commandResult = e.Message.GetSerializable<CommandResultData>();
+                    Dispatch(() => CommandResultReceived?.Invoke(commandResult));
                     break;
             }
         }

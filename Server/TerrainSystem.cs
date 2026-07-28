@@ -18,11 +18,11 @@ namespace Demiurge.GameServer
         private readonly ChunkMap terrain;
 
         /// <summary>
-        /// Minimum ticks between one player's digs — 6 at 30 Hz, so five voxels a second. Slow
+        /// Minimum ticks between one player's digs — 15 at 30 Hz, so two edits a second. Slow
         /// enough to read as hand-digging, and it bounds the re-meshing a single player can force on
         /// everyone else near them.
         /// </summary>
-        private const uint TicksPerDig = 6;
+        private const uint TicksPerDig = Digging.TicksPerDig;
 
         public TerrainSystem(Server server, ChunkMap terrain)
         {
@@ -61,13 +61,14 @@ namespace Demiurge.GameServer
                 Mode = EditMode.Subtract,
                 Fill = BlockType.BlockType_Air,
                 Shape = EditShape.Sphere,
+                Strength = Digging.BiteStrength,
             });
         }
 
         /// <summary>Applies an edit to the authoritative field and tells everyone to do the same.</summary>
         public void Apply(TerrainEditData edit)
         {
-            TerrainEdits.ApplyBox(terrain, edit.Centre, edit.HalfExtent, edit.Mode, edit.Fill, edit.Shape);
+            TerrainEdits.ApplyBox(terrain, edit.Centre, edit.HalfExtent, edit.Mode, edit.Fill, edit.Shape, edit.Strength);
 
             // Reliable: a dropped edit would leave that client's world permanently disagreeing with
             // the server's, with nothing to correct it — chunks are streamed once and never resent.

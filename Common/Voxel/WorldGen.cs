@@ -68,8 +68,8 @@ namespace Demiurge
         /// </summary>
         static void ApplyFixedEdits(ChunkMap map)
         {
-            if (map.Get(new ChunkIndex { x = 0, z = 0 }) is { } wall) TerrainEdits.AddWall(wall);
-            if (map.Get(new ChunkIndex { x = 0, z = 1 }) is { } trench) TerrainEdits.CarveTrench(trench);
+            // if (map.Get(new ChunkIndex { x = 0, z = 0 }) is { } wall) TerrainEdits.AddWall(wall);
+            // if (map.Get(new ChunkIndex { x = 0, z = 1 }) is { } trench) TerrainEdits.CarveTrench(trench);
         }
     }
 }

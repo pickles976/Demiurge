@@ -7,6 +7,7 @@
   </Folder>
   <Folder Name="/Server/">
     <Project Path="Server/DemiurgeServer.csproj" />
+    <Project Path="Server.Tests/DemiurgeServer.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/GltfAssetGenerator/GltfAssetGenerator.csproj" />

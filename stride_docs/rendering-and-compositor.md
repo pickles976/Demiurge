@@ -307,6 +307,34 @@ Side effect worth knowing: `RequiresNormalBuffer` and `RequiresSpecularRoughness
 `=> LocalReflections.Enabled`, so disabling SSR also drops those G-buffer passes.
 `RequiresVelocityBuffer` comes from the antialiasing effect.
 
+### 3.1 SSAO and FXAA artifacts on cutout/procedural geometry
+
+`AddCleanUIStage()` installs a fresh `PostProcessingEffects`, which silently enables both
+`AmbientOcclusion` and `Antialiasing` (FXAA). Neither is part of the direct-lighting material:
+they alter the finished frame afterward.
+
+Stride 4.3's ambient occlusion reconstructs positions from the camera depth buffer, computes raw AO
+at a reduced temporary size, and depth-blurs the result. Alpha-cutout grass participates in that
+depth buffer. A dense field of intersecting cards therefore becomes a dense field of tiny
+screen-space occluders, producing dark bands that move with the camera. On triangulated surface-net
+terrain, the same depth reconstruction and blur can expose triangle diagonals and silhouettes as
+dark zig-zags that resemble directional-shadow acne even when shadow maps are disabled.
+
+FXAA is also screen-space and follows contrast edges. On alpha-cutout blades and high-contrast
+procedural silhouettes it can turn those unstable AO edges into crawling or flickering pixels.
+
+This project disables both immediately after `AddCleanUIStage()`:
+
+```csharp
+postFx.AmbientOcclusion.Enabled = false;
+postFx.Antialiasing.Enabled = false;
+```
+
+If ambient occlusion returns, it needs a terrain/foliage-aware solution rather than the compositor
+default. In particular, foliage should not contribute to the AO depth input as thousands of opaque
+intersecting cards. If antialiasing returns, prefer a tested MSAA or temporal path; do not assume
+default FXAA is neutral on cutout geometry.
+
 ---
 
 ## 4. Materials in code
@@ -341,6 +369,76 @@ is used at `Program.cs:169-178` and `GrassField.cs:62-73`. Both spellings are eq
   ```
   The cutoff feature enables the pixel shader during depth-only rendering, so alpha-clipping
   applies to the **shadow pass** too.
+
+### 4.1 Thin-card foliage normals
+
+Stride's ordinary `MaterialDiffuseLambertModelFeature` lights whatever vertex normal reaches the
+pixel shader. It does not automatically derive two-sided lighting for grass/leaf cards. Giving every
+vertical card `Vector3.UnitY` is stable but physically wrong: no card's brightness can respond to
+whether it faces toward or away from the directional light. Worse, Stride's standard
+`MaterialSurfaceLightingAndShading.sdsl` flips `streams.normalWS` when `streams.IsFrontFace` is
+false. A two-sided card carrying `UnitY` therefore alternates between `+Y` and `-Y` based on which
+side the camera sees, producing apparently random bright and dark faces.
+
+`GpuGrassRenderer` instead gives each card its horizontal geometric normal and uses
+`CullMode.None`. Stride keeps that normal on the rasterized front side and flips it on the back side,
+so the two visible sides receive `+N` and `-N` without duplicate geometry. Brightness is then fixed
+by each side's world orientation to the directional light. The card winding must agree with the
+normal: because Stride's front faces are clockwise, the triangle cross product points opposite the
+normal when viewed from that normal's side.
+
+Pure Lambert still creates a hard terminator on thin foliage: direct light becomes zero as soon as
+`N dot L` crosses zero. `MaterialDiffuseWrappedModelFeature` substitutes
+`saturate((N dot L + wrap) / (1 + wrap))` for that one factor while preserving Stride's light color,
+attenuation, shadowing, projection, and direct AO. Grass uses `wrap = 0.35`: enough to suggest light
+transmission through a blade while retaining a visibly brighter light-facing side.
+
+The scene lighting complements that material response with a warm directional key and cool ambient
+sky fill. The calibrated values are directional intensity `11`, ambient intensity `2.25`; this is a
+much gentler contrast ratio than the old white `20:1` pair.
+
+### 4.2 Grass geometry and streaming
+
+Grass scene creation is currently commented out at the `Client/Program.cs` composition root. The
+implementation below is retained for later profiling and re-enablement, but no grass renderer or
+follower script runs in the current game.
+
+Grass blades are one two-sided triangle each: three vertices and three indices. The triangle itself
+provides the tapered silhouette, so the material does not need alpha cutoff. Its root is shifted
+`0.25 m` below the sampled terrain surface and its total triangle height grows by the same amount;
+the visible tip therefore stays at exactly the old height while small terrain/grass mismatches are
+hidden underground.
+
+Do not combine the whole follower radius into one generated mesh. Crossing a terrain-chunk boundary
+then requires reallocating every CPU vertex/index array and replacing both full-field Vulkan
+buffers in one frame. `GpuGrassRenderer` instead owns one entity and buffer pair per terrain chunk.
+The follower extracts seeds for at most one dirty chunk per frame, and the renderer uploads at most
+one chunk mesh per frame. Distance density is quantized in five-blade steps so ordinary movement
+does not continuously trigger mesh rebuilds. This trades a few dozen draw calls for bounded update
+latency, chunk-level culling, and much smaller temporary allocations.
+
+### 4.3 Tree models and foliage anchors
+
+Trees use the authored `assets/models/tree.gltf` for their trunk and branches. Do not try to find
+its `node_1` through `node_5` foliage anchors on Stride's runtime `Model`: static GLTF nodes are
+collapsed during import and their transforms are baked into the mesh. `GltfAssetGenerator`
+extracts those node transforms into `assets/locators.txt` at build time, and
+`TreeViewFactory` requires all five through `ModelLocators`.
+
+Each anchor receives one shared alpha-cutout quad. Its horizontal normal points away from the
+model origin; the center anchor receives a deterministic radial normal. The quad uses clockwise
+front-face winding, `CullMode.None`, and the same wrapped diffuse model described in §4.1, so its
+front and back sides respond consistently to world-space light. All tree instances share the GLTF
+model, foliage model, material, buffers, and noise-generated leaf texture.
+
+Tree spawning is currently disabled at the `GameWorld` composition root. When enabled, the server
+creates 1,605 authoritative trees over the full generated map. Instantiating all of those as Stride
+entities rendered roughly 15 FPS because `tree.gltf` has five mesh primitives per instance.
+`TreeViewFactory.Manager` retains all replicated objects but creates views only within 140 m,
+removes them beyond 165 m, and re-evaluates after 8 m of player movement. This raised the observed
+steady-state rate to roughly 125–145 FPS while avoiding boundary churn. Replication still sends the
+full tree set to a newly connected client; server-side spatial interest management remains the next
+scaling step if connection catch-up becomes material.
 
 ### Assigning to a model
 
@@ -564,7 +662,17 @@ property on the light.
 Ambient (`Client/Program.cs:295-298`):
 
 ```csharp
-new Entity("Ambient Light") { new LightComponent { Intensity = 1.0f, Type = new LightAmbient() } };
+new Entity("Sky Fill")
+{
+    new LightComponent
+    {
+        Intensity = 2.25f,
+        Type = new LightAmbient
+        {
+            Color = new ColorRgbProvider(new Color(170, 195, 230)),
+        },
+    },
+};
 ```
 
 Directional with shadows (`Client/Program.cs:300-330`):
@@ -572,10 +680,10 @@ Directional with shadows (`Client/Program.cs:300-330`):
 ```csharp
 new LightComponent
 {
-    Intensity = 20.0f,
+    Intensity = 11.0f,
     Type = new LightDirectional
     {
-        Color = new ColorRgbProvider(Color.White),
+        Color = new ColorRgbProvider(new Color(255, 235, 205)),
         Shadow =
         {
             Enabled = true,
@@ -591,9 +699,9 @@ entity.Transform.Rotation = Quaternion.RotationX(MathUtil.DegreesToRadians(-30.0
                           * Quaternion.RotationY(MathUtil.DegreesToRadians(-180.0f));
 ```
 
-**Intensity conventions in this scene:** ambient `1.0`, directional `20.0`. Directional
-intensities are much larger than ambient; treat these two as the calibrated baseline rather than
-re-deriving.
+**Intensity conventions in this scene:** cool ambient sky fill `2.25`, warm directional key `11`.
+Treat these two as the calibrated baseline rather than copying the toolkit helper's white `1/20`
+defaults.
 
 **Why shadows work at all:** `GraphicsCompositorHelper.CreateDefault` only attaches a
 `ShadowMapRenderer` to the `ForwardLightingRenderFeature` on the `graphicsProfile >= Level_10_0`
@@ -602,6 +710,57 @@ The lower branch has **no shadow renderer at all**. Don't lower the profile.
 
 `game.AddDirectionalLight()` `[toolkit]` is a one-call shortcut; it is present but commented out
 at `Client/Program.cs:161` in favour of the explicit light above.
+
+### 8.1 Directional shadow artifacts on procedural terrain/grass
+
+Stride 4.3 directional shadows are not a stable world-space lookup in the way a terrain-heavy game
+might expect. The receiver shader chooses a cascade from view-space depth and applies a normal-based
+world-space offset before sampling:
+
+```sdsl
+// Stride.Rendering/Assets/Shadows/ShadowMapReceiverDirectional.sdsl
+shadowPosition += GetShadowPositionOffset(OffsetScales[lightIndex],
+                                          streams.NdotL,
+                                          streams.normalWS);
+```
+
+```sdsl
+// Stride.Rendering/Assets/Shadows/ShadowMapReceiverBase.sdsl
+return 2.0f * ShadowMapTextureTexelSize.x * offsetScale
+     * saturate(1.0f - nDotL) * normal;
+```
+
+Those parameters come from `LightShadowMap.BiasParameters`: defaults are `DepthBias = 0.01f` and
+`NormalOffsetScale = 10f` (`Stride.Rendering.Lights.LightShadowMap`, Stride.Rendering.dll). For
+directional lights, cascade selection is based on `streams.DepthVS` in
+`ShadowMapReceiverDirectional.sdsl`, and the default directional setup uses four cascades with
+`ProjectionSnapping` (`LightDirectionalShadowMap`, Stride.Rendering.dll).
+
+In this project that combination can produce visible view-dependent artifacts when directional
+shadows are enabled:
+
+- banding across dense alpha-cutout grass as the camera moved;
+- zig-zag shadow acne/flicker along surface-net terrain edges where vertex normals change rapidly.
+
+Directional shadows are currently disabled. If they are re-enabled, first try reducing the
+normal-offset term instead of changing mesh normals:
+
+```csharp
+Shadow =
+{
+    Enabled = true,
+    Size = LightShadowMapSize.Large,
+    Filter = new LightShadowMapFilterTypePcf { FilterSize = LightShadowMapFilterTypePcfSize.Filter5x5 },
+    CascadeCount = LightShadowMapCascadeCount.TwoCascades,
+    StabilizationMode = LightShadowMapStabilizationMode.ViewSnapping,
+    DepthRange = { IsAutomatic = false, ManualMinDistance = 0f, ManualMaxDistance = 80f },
+    BiasParameters = { DepthBias = 0.02f, NormalOffsetScale = 0f },
+}
+```
+
+Treat those values as a starting point, not final tuning. The important point is that
+`NormalOffsetScale` is normal-driven and the cascade choice is view-driven; both can make otherwise
+static geometry look like it is shaded from the camera.
 
 ---
 

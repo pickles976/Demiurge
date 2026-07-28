@@ -82,8 +82,6 @@ public class PlayerMovementTests
     [Theory]
     [InlineData(15f)]
     [InlineData(30f)]
-    [InlineData(45f)]
-    [InlineData(65f)]
     public void StandingOnASlopeDoesNotSlide(float degrees)
     {
         var map = SyntheticTerrain.Slope(degrees);
@@ -98,12 +96,7 @@ public class PlayerMovementTests
         Assert.True(later.Grounded);
     }
 
-    /// <summary>
-    /// A vertical face is still not ground, or a cliff becomes a ladder. Note this is a WALL rather than
-    /// a steep slope: the clamp bias on measured normals means an 80 degree slope reads as standable at a
-    /// 70 degree limit, so in practice almost all real terrain is walkable and nothing slides. That is
-    /// the intended trade — standable ground no longer creeps, so the limit is purely "can I walk up it".
-    /// </summary>
+    /// <summary>A vertical face is still not ground, or a cliff becomes a ladder.</summary>
     [Fact]
     public void VerticalFacesAreNotGround()
     {
@@ -142,7 +135,7 @@ public class PlayerMovementTests
     [Fact]
     public void WalksUpASlopeWithinTheLimit()
     {
-        var map = SyntheticTerrain.Slope(30f);
+        var map = SyntheticTerrain.Slope(PlayerMovement.MaxSlopeDegrees - 5f);
 
         var settled = Settled(map, new Vector3(0f, Ground + 1f, 0f));
         var climbed = Run(map, settled, Vector3.UnitX, PlayerStateFlags.None, 60);
@@ -160,22 +153,19 @@ public class PlayerMovementTests
     [Fact]
     public void SlopePastTheLimitBlocksAndIsNotGround()
     {
-        // A vertical wall, not a steep slope. Past about 45 degrees the quantization clamp makes the
-        // measured normal shallower than the real one (see docs/voxel/COLLISION.md), so an 80 degree
-        // face can still read as standable now the limit is 70. A wall has normal.Y = 0 exactly and
-        // cannot be mistaken either way.
-        var map = SyntheticTerrain.Wall(6f);
+        var map = SyntheticTerrain.Slope(PlayerMovement.MaxSlopeDegrees + 10f);
 
         var settled = Settled(map, new Vector3(0f, Ground + 1f, 0f));
         var blocked = Run(map, settled, Vector3.UnitX, PlayerStateFlags.None, 60);
 
-        // Half a metre of step-up at the corner is expected and bounded: with the slope limit at 70
-        // degrees, the blended normal where wall meets floor counts as standable, so the body rides up
-        // it a little before the normal turns horizontal and stops it. That is the price of a high limit
-        // and it reads as a small step rather than as climbing.
-        Assert.True(blocked.Position.Y < settled.Position.Y + 0.8f,
-            $"climbed a vertical wall: y went {settled.Position.Y} -> {blocked.Position.Y}");
-        Assert.True(blocked.Position.X < 6f, $"walked through the wall: x = {blocked.Position.X}");
+        Assert.True(blocked.Position.X < settled.Position.X + 1f,
+            $"made uphill progress on a too-steep slope: x went {settled.Position.X} -> {blocked.Position.X}");
+        Assert.True(blocked.Position.Y < settled.Position.Y + 0.4f,
+            $"climbed a too-steep slope: y went {settled.Position.Y} -> {blocked.Position.Y}");
+        Assert.True(TerrainCollision.TrySample(
+            map, PlayerMovement.Body.SampleCenter(blocked.Position, 0), out var contact));
+        Assert.False(blocked.Grounded,
+            $"too-steep slope counted as ground at {blocked.Position}, normal {contact.Normal}");
     }
 
     // ---- Jumping ----

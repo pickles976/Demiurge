@@ -3,10 +3,12 @@
 How voxels become triangles. Storage is [DATA_MODEL.md](DATA_MODEL.md), which deliberately
 knows nothing about a renderer; this is the other half of that split.
 
-**Status (2026-07-26).** Both meshers, per-16³-section meshing, crease splitting and per-material
-submeshes are implemented and in use; DC is what `ChunkMeshFactory` calls. What is still open is
-everything under "Known limitations" — LOD above all. The concept section below is unchanged and
-still the thing to read first.
+**Status (2026-07-28).** Both meshers, per-16³-section meshing, crease splitting and per-material
+submeshes are implemented. `ChunkMesher.GenerateMesh` currently selects surface nets; dual
+contouring remains available through `GenerateMeshDualContouring`. Surface nets is active because
+its averaged placement rounds spherical dig cuts instead of reproducing voxel-grid corners as
+sharply as the QEF placement. What is still open is everything under "Known limitations" — LOD
+above all. The concept section below is unchanged and still the thing to read first.
 
 **How to read this.** The first section is a *concept* — surface nets and dual contouring are
 one algorithm — and it applies to the first line of mesher code you write. "Known limitations"

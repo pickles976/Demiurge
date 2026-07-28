@@ -63,10 +63,11 @@ carries the bit; giving items a NEW trait is the last recipe below.
 If the item just gets worn somewhere, data rows are the whole job:
 
 1. `Common/Component.cs`: append to `ItemType`.
-2. `Common/ItemConfig.cs`: one row — `Category = Equippable`, its `EquipSlot`.
-3. `Client/View/ItemCosmetics.cs`: one row in `Model(...)` — plus the assets.
+2. `Common/ItemCatalog.cs`: one canonical namespaced ID and any input aliases.
+3. `Common/ItemConfig.cs`: one row — `Category = Equippable`, its `EquipSlot`.
+4. `Client/View/ItemCosmetics.cs`: one row in `Model(...)` — plus the assets.
    WHERE it sits comes from its slot's socket row, not the item.
-4. Spawn it somewhere: `items.SpawnPickup(ItemType.TopHat, pos)`.
+5. Spawn it somewhere: `items.SpawnPickup(ItemType.TopHat, pos)`.
 
 Pickup bob, E-to-equip, swap-drop, attach, despawn-on-disconnect, late-join
 catch-up: all free. They key off `ItemState` and the config, not the item.
@@ -77,11 +78,12 @@ A weapon is an equippable with a row in the weapon trait table — same recipe,
 two extra rows of numbers:
 
 1. `Common/Component.cs`: append to `ItemType`.
-2. `Common/ItemConfig.cs`: one row — `Category = Equippable`, Hand slot.
-3. `Common/WeaponConfig.cs`: one row — capacity, cadence, reload, damage, range.
-4. `Client/View/ItemCosmetics.cs`: one row in `Model(...)`;
+2. `Common/ItemCatalog.cs`: one canonical namespaced ID and any input aliases.
+3. `Common/ItemConfig.cs`: one row — `Category = Equippable`, Hand slot.
+4. `Common/WeaponConfig.cs`: one row — capacity, cadence, reload, damage, range.
+5. `Client/View/ItemCosmetics.cs`: one row in `Model(...)`;
    `Client/View/WeaponFx.cs`: one row (shot sound, tracer color) + assets.
-5. Spawn: `items.SpawnPickup(ItemType.Shotgun, pos)`.
+6. Spawn: `items.SpawnPickup(ItemType.Shotgun, pos)`.
 
 Prediction, validation, ammo replication, FX all key off the type; the
 WeaponConfig row is what puts `WeaponState` in the spawn mask, which is what

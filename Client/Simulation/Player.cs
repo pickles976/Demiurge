@@ -22,12 +22,11 @@ public class RemotePlayer : Player
 
 }
 
-public class LocalPlayer : Player
-{
-    private readonly NetworkManager network;
-    private readonly TerrainState terrain;
-    private readonly WeaponMount mount;
-    private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
+    public class LocalPlayer : Player
+    {
+        private readonly NetworkManager network;
+        private readonly TerrainState terrain;
+        private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
     private uint sequence;
     private float accumulator;
 
@@ -96,21 +95,12 @@ public class LocalPlayer : Player
     /// so the impact sat permanently down and to the left of the reticle by exactly that offset, at
     /// every range. Aiming AT the point converges the two instead.
     ///
-    /// Taking a target also puts the aiming where the origin is known. The caller does not have the
-    /// muzzle position — it depends on the weapon and the pitch — so a caller computing a direction
-    /// could not have accounted for it.
+        /// The caller supplies the muzzle origin from the current view-model, so the predicted shot,
+        /// tracer, and server request all start from the same barrel the player sees.
     /// </summary>
-    public void TryFire(Vector3 aimPoint, double renderTick)
+    public void TryFire(Vector3 aimPoint, double renderTick, Vector3 origin)
     {
         if (!IsArmed || cooldownTicks > 0 || IsReloading || Ammo == 0) return;
-
-        // The barrel of the gun we are actually holding, not a constant height on the
-        // player's centre axis. WeaponMount measures it off the same model the renderer
-        // draws, in the same pose the renderer is drawing (firing is aiming-only), so the
-        // tracer leaves the visible muzzle. Pitch swings the barrel about the chest exactly
-        // as the bone override swings it on screen; only the yaw is the body's.
-        var origin = Position + Vector3.Transform(
-            mount.Muzzle(Weapon!.Item.Type, Pitch), Quaternion.CreateFromYawPitchRoll(Yaw, 0f, 0f));
 
         // Degenerate only if the aim point is inside the muzzle; spend no ammo on it.
         var toTarget = aimPoint - origin;
@@ -142,12 +132,11 @@ public class LocalPlayer : Player
     /// spawn/despawn replication and flows through Equip/Unequip.</summary>
     public void TryInteract() => network.SendInteract();
 
-    public LocalPlayer(NetworkManager network, TerrainState terrain, WeaponMount mount)
-    {
-        this.network = network;
-        this.terrain = terrain;
-        this.mount = mount;
-    }
+        public LocalPlayer(NetworkManager network, TerrainState terrain, WeaponMount mount)
+        {
+            this.network = network;
+            this.terrain = terrain;
+        }
 
     public void Update(Vector3 intent, float dt)
     {

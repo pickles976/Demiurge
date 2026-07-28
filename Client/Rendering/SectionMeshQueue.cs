@@ -103,10 +103,9 @@ namespace Demiurge
 
                     if (mesh.Indices.Length > 0)
                     {
-                        // Shading, not geometry: one normal per side of a corner so it reads as an
-                        // edge rather than a smooth blend. Independent of where the vertex was
-                        // placed — it splits whatever creases the mesher left, and surface nets
-                        // simply leaves fewer of them than dual contouring did.
+                        // Surface nets still shares one gradient normal across every face meeting at
+                        // a cell vertex. Split only genuine creases; otherwise a sharp edge shades as
+                        // a smooth fan and exposes the arbitrary triangle diagonal as a zig-zag.
                         mesh = ChunkMesher.SplitCreases(mesh, CreaseAngleDegrees);
 
                         // Only coarse boxes need a curtain: LOD 0 meets LOD 0 exactly, so a skirt there

@@ -11,7 +11,8 @@ namespace Demiurge
         Crate = 1,
         TrainingDummy,
         PlayerStatus,
-        Item
+        Item,
+        Tree
     }
 
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon

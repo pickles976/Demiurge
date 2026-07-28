@@ -17,6 +17,65 @@ namespace Demiurge
 {
     public class HUD
     {
+        public static Entity CreateTerminal(
+            Game game,
+            ClientInputState inputState,
+            NetworkManager network)
+        {
+            var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
+
+            var outputText = new TextBlock
+            {
+                Text = "",
+                TextColor = new Color(220, 225, 230),
+                Font = font,
+                TextSize = 18,
+                WrapText = true,
+                Height = 220,
+                Margin = new Thickness(12, 10, 12, 0),
+            };
+
+            var promptText = new TextBlock
+            {
+                Text = "> _",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 20,
+                Margin = new Thickness(12, 4, 12, 10),
+            };
+
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                Width = 820,
+                Height = 275,
+                BackgroundColor = new Color(8, 10, 12, 220),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(16, 16, 16, 16),
+            };
+            panel.Children.Add(outputText);
+            panel.Children.Add(promptText);
+
+            return new Entity("DeveloperTerminal")
+            {
+                new UIComponent
+                {
+                    Page = new UIPage { RootElement = panel },
+                    RenderGroup = RenderGroup.Group31,
+                },
+                new DeveloperTerminalScript
+                {
+                    InputState = inputState,
+                    Network = network,
+                    Panel = panel,
+                    OutputText = outputText,
+                    PromptText = promptText,
+                    Priority = -100,
+                },
+            };
+        }
+
         public static Entity CreateUI(Game game)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");

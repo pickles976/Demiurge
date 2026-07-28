@@ -15,48 +15,47 @@ https://github.com/stride3d/stride/issues/2496
 
 `dotnet build DemiurgeSharp.slnx`
 
-4a. PVP Mechanics
-- [x] sniper rifle
-    - [x] make lookahead range tied to the weapon itself
-- [ ] add wearablesS
-    - [x] add armor
-    - [ ] add helmet
-- [ ] Player health
-    - [x] pistol pickup
-    - [ ] add health pack pickups
-    - [ ] shotgun pickup
-        - [ ] multiple pellets per-shot
-    - [ ] grenade pickup
-        - [ ] throwing arc
-        - [ ] server-side splash damage 
+Developer terminal: backtick/tilde. Free camera: `F3`. See `docs/COMMANDS.md`.
 
-- [ ] clean up UI and stuff
-
-8. Create water, ground, and grass shaders
-
-Tree shader, grass shader, etc
-https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
-
-
-8a. Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
-
-10. Play around with scripting
-    - [ ] add a debug terminal
-    - [ ] add some basic scripting functionality with basic parser 
-
-11. Add inventory UI
-12. Host server and test with buddies
-- [ ] digital ocean droplet
-- [ ] hook up scrungy.com domain name
-13. Create a simple free-for-all demo for testing
+6. Map Editor System
+    - [ ] load specific maps on server start
+    - [ ] map editing
+        - [ ] saving and loading
+        - [ ] editing in 3D
+            - [ ] map editor
+            - [ ] structure editor
+            - [ ] load and save structures
+            - [ ] create walls and structures
+            - [ ] spawn structures in the world
+            - [ ] set spawn points for teams
+7. Add inventory UI
+8. Create a simple free-for-all demo for testing
     - [ ] load a map from a PNG
     - [ ] random spawns
     - [ ] fixed health kit locations
-    
-14. Bug Fixes from FFA demo
+9. Host server and test with buddies
+- [ ] digital ocean droplet
+- [ ] hook up scrungy.com domain name
+10. Bug Fixes from FFA demo
 
-15. Create structures
-16. CTF gamemode
+11. Create structures
+    - [ ] spawn castles
+    - [ ] spawn mortars
+12. one-sided assault gamemode
+
+13. Open-World Systems
+
+Add client proxy for tracking what chunks are active and what objects to replicate (this is gonna be a huge fucking pain >:())
+- [ ] track loaded chunks per player (server-side)
+- [ ] load chunks as player moves around
+- [ ] view-distance meshing: don't mesh sections past a radius.
+
+- [ ] read about cave carving
+- [ ] add cave carving
+
+- [ ] add resource deposits
+
+- [ ] how far should we be able to see?
 
 Debug Stuff
 - [ ] debug draw chunk borders
@@ -67,13 +66,15 @@ https://www.youtube.com/watch?v=Y0Ko0kvwfgA
 https://nicogo1705.github.io/AssetStore/asset?id=com.nicogo.grass
 nicogo1705.github.io/AssetStore/asset?id=com.nicogo.marching-cube-compute-shader
 
-
 SDSL overview
 https://hackmd.io/@vN9HDo5XQAGVCM_epmoJBA/S1LxeorWT
 
 https://m.youtube.com/watch?v=PLMcCKeJ6f0&list=WL&index=56&pp=iAQBsAgC
 https://www.boristhebrave.com/2018/04/15/dual-contouring-tutorial/
 https://bonsairobo.medium.com/smooth-voxel-mapping-a-technical-deep-dive-on-real-time-surface-nets-and-texturing-ef06d0f8ca14
+
+Tree shader, grass shader, etc
+https://www.youtube.com/watch?v=GOfttJQ-FGw&t=19s
 
 
 Big Systems

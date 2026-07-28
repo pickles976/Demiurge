@@ -179,6 +179,120 @@ public class TerrainEditTests
     }
 }
 
+public class SdfCleanupTests
+{
+    const int SampleY = 20;
+
+    static ChunkMap Air()
+        => SyntheticTerrain.Build((x, y, z) => 4f);
+
+    static void SetSolid(ChunkMap map, int worldX, int worldY, int worldZ, float distance = -0.1f)
+    {
+        var chunk = map.Get(ChunkTransforms.ChunkAt(worldX, worldZ))!;
+        int index = ChunkTransforms.WorldVoxelIndex(worldX, worldY, worldZ);
+        var voxel = chunk[index];
+        voxel.Distance = distance;
+        voxel.Material = BlockType.BlockType_Stone;
+        chunk[index] = voxel;
+    }
+
+    static Voxel At(ChunkMap map, int worldX, int worldY, int worldZ)
+    {
+        Assert.True(map.TryGetVoxel(worldX, worldY, worldZ, out var voxel));
+        return voxel;
+    }
+
+    [Fact]
+    public void SphericalSubtractRemovesTinyEnclosedSolidFragment()
+    {
+        var map = Air();
+        SetSolid(map, 2, SampleY, 0);
+
+        TerrainEdits.ApplyBox(map, new Vector3(0, SampleY, 0), Digging.Bite,
+            EditMode.Subtract, BlockType.BlockType_Air, EditShape.Sphere);
+
+        var voxel = At(map, 2, SampleY, 0);
+        Assert.True(voxel.Distance > 0f);
+        Assert.Equal(BlockType.BlockType_Air, voxel.Material);
+    }
+
+    [Fact]
+    public void ComponentTouchingCleanupBoundaryIsProtected()
+    {
+        var map = Air();
+        SetSolid(map, 0, SampleY, 2);
+        SetSolid(map, 1, SampleY, 2);
+
+        int removed = TerrainEdits.CullTinySolidComponents(
+            map, (0, SampleY - 2, 0), (4, SampleY + 2, 4));
+
+        Assert.Equal(0, removed);
+        Assert.True(At(map, 0, SampleY, 2).Distance < 0f);
+        Assert.True(At(map, 1, SampleY, 2).Distance < 0f);
+    }
+
+    [Fact]
+    public void ComponentAboveTinyThresholdIsProtected()
+    {
+        var map = Air();
+        for (int x = 1; x <= 5; x++) SetSolid(map, x, SampleY, 2);
+
+        int removed = TerrainEdits.CullTinySolidComponents(
+            map, (0, SampleY - 2, 0), (6, SampleY + 2, 4));
+
+        Assert.Equal(0, removed);
+        for (int x = 1; x <= 5; x++) Assert.True(At(map, x, SampleY, 2).Distance < 0f);
+    }
+
+    [Fact]
+    public void DeepSolidSampleIsProtected()
+    {
+        var map = Air();
+        SetSolid(map, 2, SampleY, 2, distance: -0.8f);
+
+        int removed = TerrainEdits.CullTinySolidComponents(
+            map, (0, SampleY - 2, 0), (4, SampleY + 2, 4));
+
+        Assert.Equal(0, removed);
+        Assert.Equal(-0.8f, At(map, 2, SampleY, 2).Distance, 2);
+    }
+
+    [Fact]
+    public void TinyComponentIsRemovedAcrossChunkBoundary()
+    {
+        var map = Air();
+        SetSolid(map, 15, SampleY, 0);
+        SetSolid(map, 16, SampleY, 0);
+
+        int removed = TerrainEdits.CullTinySolidComponents(
+            map, (13, SampleY - 2, -2), (19, SampleY + 2, 2));
+
+        Assert.Equal(2, removed);
+        Assert.True(At(map, 15, SampleY, 0).Distance > 0f);
+        Assert.True(At(map, 16, SampleY, 0).Distance > 0f);
+    }
+
+    [Fact]
+    public void CleanupEliminatesTheFloatingSurfaceNetMesh()
+    {
+        var map = Air();
+        SetSolid(map, 2, SampleY, 2);
+        int sectionY = (SampleY - ChunkConstants.WorldMinY) / ChunkConstants.SectionHeight;
+        var section = SectionIndex.Of(new ChunkIndex { x = 0, z = 0 }, sectionY);
+        var scratch = new Sample[ChunkMesher.ScratchVolume];
+
+        Assert.True(ChunkMesher.TryFillScratch(map, section, scratch));
+        Assert.NotEmpty(ChunkMesher.GenerateMeshFromSurfaceNet(scratch).Indices);
+
+        int removed = TerrainEdits.CullTinySolidComponents(
+            map, (0, SampleY - 2, 0), (4, SampleY + 2, 4));
+
+        Assert.Equal(1, removed);
+        Assert.True(ChunkMesher.TryFillScratch(map, section, scratch));
+        Assert.Empty(ChunkMesher.GenerateMeshFromSurfaceNet(scratch).Indices);
+    }
+}
+
 /// <summary>
 /// Indices are grouped per material so each can draw with its own texture. These pin the grouping,
 /// not the appearance.

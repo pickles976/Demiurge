@@ -152,18 +152,10 @@ namespace Demiurge
         /// <summary>
         /// Where grass stops and bare rock starts, in degrees of surface slope.
         ///
-        /// NOT derived from <see cref="PlayerMovement.MaxSlopeDegrees"/>, though it was tempting: the
-        /// idea was that green means walkable and grey means it isn't, so the player reads the collision
-        /// rule off the terrain. This terrain cannot support that. Measured over the whole map, the
-        /// steepest column is about 49 degrees, so the 50-degree walk limit never triggers and grass
-        /// cannot signal a distinction that doesn't exist. Tying them would have put the threshold at 40
-        /// degrees, where under 1% of the world is rock and the feature is invisible.
-        ///
-        /// 25 degrees is chosen against the measured slope distribution instead: it leaves plains fully
-        /// green while making a meaningful fraction of mountainsides bare, which is the look wanted. Retune
-        /// by looking, not by reasoning — and revisit the derived version if terrain ever gets real cliffs.
+        /// This is deliberately the same number as <see cref="PlayerMovement.MaxSlopeDegrees"/>: grass
+        /// means walkable soil, bare stone means the slope is too steep to climb by ordinary movement.
         /// </summary>
-        public const float GrassLimitDegrees = 25f;
+        public const float GrassLimitDegrees = PlayerMovement.MaxSlopeDegrees;
 
         /// <summary>The same limit as a gradient magnitude, which is what a heightmap slope measures.</summary>
         public static readonly float GrassLimitSlope = MathF.Tan(GrassLimitDegrees * (MathF.PI / 180f));
