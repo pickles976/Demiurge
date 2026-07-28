@@ -76,6 +76,49 @@ public class ServerCommandServiceTests
         Assert.Contains("does not exist", result.Output);
     }
 
+    [Fact]
+    public void ConsoleIsTrustedButRequiresAbsoluteSpawnCoordinates()
+    {
+        var world = new FakeCommandWorld();
+        var service = new ServerCommandService(world, allowCheats: false);
+
+        var missing = service.ExecuteConsole("spawn mob");
+        var relative = service.ExecuteConsole("spawn mob ~2 3");
+        var absolute = service.ExecuteConsole("spawn mob 2 3");
+
+        Assert.False(missing.Success);
+        Assert.False(relative.Success);
+        Assert.True(absolute.Success);
+        Assert.Equal(new Vector3(2, 42, 3), Assert.Single(world.SpawnedMobs));
+    }
+
+    [Fact]
+    public void ConsoleRejectsSelfButCanEquipExplicitActor()
+    {
+        var world = new FakeCommandWorld();
+        world.AddActor(60000, Vector3.Zero, isMob: true);
+        var service = new ServerCommandService(world, allowCheats: false);
+
+        Assert.False(service.ExecuteConsole("equip @s glock").Success);
+        Assert.True(service.ExecuteConsole("equip @60000 glock").Success);
+        Assert.Equal((ushort)60000, world.EquippedActor);
+    }
+
+    [Fact]
+    public void DedicatedConsoleHelpExplainsSpawnGrammarAndItems()
+    {
+        string root = DedicatedServerConsole.HelpText([]);
+        string spawn = DedicatedServerConsole.HelpText(["spawn"]);
+        string pickup = DedicatedServerConsole.HelpText(["spawn", "pickup"]);
+        string items = DedicatedServerConsole.HelpText(["items"]);
+
+        Assert.Contains("spawn pickup <item> <x> <z>", root);
+        Assert.Contains("spawn mob 10 -15", spawn);
+        Assert.Contains("spawn pickup ak47 0 0", pickup);
+        Assert.Contains("demiurge:ak47", items);
+        Assert.Contains("aliases: ak47", items);
+    }
+
     private static CommandResultData Execute(
         ServerCommandService service,
         ushort issuer,

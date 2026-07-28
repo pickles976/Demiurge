@@ -27,36 +27,53 @@ internal sealed class ServerCommandService
         if (!world.TryGetActor(issuerId, out var issuer))
             return Result(request.RequestId, false, "Command source is not an active player");
 
-        var parsed = GameCommandParser.Parse(request.Command ?? string.Empty);
+        return ExecuteParsed(
+            new ServerCommandSource(ServerCommandSourceKind.Player, issuer),
+            request.RequestId,
+            request.Command ?? string.Empty);
+    }
+
+    public CommandResultData ExecuteConsole(string command)
+        => ExecuteParsed(
+            new ServerCommandSource(ServerCommandSourceKind.Console, null),
+            requestId: 0,
+            command);
+
+    private CommandResultData ExecuteParsed(
+        ServerCommandSource source,
+        uint requestId,
+        string input)
+    {
+        var parsed = GameCommandParser.Parse(input);
         if (!parsed.Success)
-            return Result(request.RequestId, false, parsed.Error!);
+            return Result(requestId, false, parsed.Error!);
 
         CommandResultData result;
         try
         {
             result = parsed.Command switch
             {
-                SpawnMobCommand command => SpawnMob(request.RequestId, issuer, command),
-                SpawnPickupCommand command => SpawnPickup(request.RequestId, issuer, command),
-                EquipCommand command => Equip(request.RequestId, issuer, command),
-                _ => Result(request.RequestId, false, "Unsupported command"),
+                SpawnMobCommand command => SpawnMob(requestId, source, command),
+                SpawnPickupCommand command => SpawnPickup(requestId, source, command),
+                EquipCommand command => Equip(requestId, source, command),
+                _ => Result(requestId, false, "Unsupported command"),
             };
         }
         catch (Exception ex)
         {
-            result = Result(request.RequestId, false, $"Command failed: {ex.Message}");
+            result = Result(requestId, false, $"Command failed: {ex.Message}");
         }
 
         Console.WriteLine(
-            $"[Command] actor={issuerId} success={result.Success} input={request.Command} output={result.Output}");
+            $"[Command] source={source.Kind.ToString().ToLowerInvariant()} actor={source.Actor?.Id.ToString() ?? "-"} success={result.Success} input={input} output={result.Output}");
         return result;
     }
 
     public void Forget(ushort clientId) => rateWindows.Remove(clientId);
 
-    private CommandResultData SpawnMob(uint requestId, ServerPlayer issuer, SpawnMobCommand command)
+    private CommandResultData SpawnMob(uint requestId, ServerCommandSource source, SpawnMobCommand command)
     {
-        if (!TryResolvePosition(issuer, command.Position, out var position, out string? error))
+        if (!TryResolvePosition(source, command.Position, out var position, out string? error))
             return Result(requestId, false, error!);
 
         var mob = world.SpawnMob(position);
@@ -64,9 +81,9 @@ internal sealed class ServerCommandService
             $"Spawned mob @{mob.Id} at {FormatPosition(mob.Position)}");
     }
 
-    private CommandResultData SpawnPickup(uint requestId, ServerPlayer issuer, SpawnPickupCommand command)
+    private CommandResultData SpawnPickup(uint requestId, ServerCommandSource source, SpawnPickupCommand command)
     {
-        if (!TryResolvePosition(issuer, command.Position, out var position, out string? error))
+        if (!TryResolvePosition(source, command.Position, out var position, out string? error))
             return Result(requestId, false, error!);
 
         var pickup = world.SpawnPickup(command.Item, position);
@@ -74,9 +91,12 @@ internal sealed class ServerCommandService
             $"Spawned {ItemCatalog.Id(command.Item)} object #{pickup.NetworkId} at {FormatPosition(position)}");
     }
 
-    private CommandResultData Equip(uint requestId, ServerPlayer issuer, EquipCommand command)
+    private CommandResultData Equip(uint requestId, ServerCommandSource source, EquipCommand command)
     {
-        ushort actorId = command.Target.IsSelf ? issuer.Id : command.Target.ActorId;
+        if (command.Target.IsSelf && source.Actor is null)
+            return Result(requestId, false, "@s is unavailable from the dedicated server console");
+
+        ushort actorId = command.Target.IsSelf ? source.Actor!.Id : command.Target.ActorId;
         if (!world.TryGetActor(actorId, out var target))
             return Result(requestId, false, $"Actor @{actorId} does not exist");
 
@@ -89,22 +109,39 @@ internal sealed class ServerCommandService
     }
 
     private bool TryResolvePosition(
-        ServerPlayer issuer,
+        ServerCommandSource source,
         CommandPosition? requested,
         out Vector3 position,
         out string? error)
     {
         float x;
         float z;
-        if (requested is { } coordinates)
+        if (source.Kind == ServerCommandSourceKind.Console)
         {
-            x = coordinates.X.Resolve(issuer.Position.X);
-            z = coordinates.Z.Resolve(issuer.Position.Z);
+            if (requested is not { } consoleCoordinates)
+            {
+                position = default;
+                error = "Dedicated server console spawn commands require absolute X and Z coordinates";
+                return false;
+            }
+            if (consoleCoordinates.X.Relative || consoleCoordinates.Z.Relative)
+            {
+                position = default;
+                error = "Relative coordinates are unavailable from the dedicated server console";
+                return false;
+            }
+            x = consoleCoordinates.X.Value;
+            z = consoleCoordinates.Z.Value;
+        }
+        else if (requested is { } coordinates)
+        {
+            x = coordinates.X.Resolve(source.Actor!.Position.X);
+            z = coordinates.Z.Resolve(source.Actor.Position.Z);
         }
         else
         {
-            x = issuer.Position.X + MathF.Sin(issuer.Yaw) * DefaultSpawnDistance;
-            z = issuer.Position.Z + MathF.Cos(issuer.Yaw) * DefaultSpawnDistance;
+            x = source.Actor!.Position.X + MathF.Sin(source.Actor.Yaw) * DefaultSpawnDistance;
+            z = source.Actor.Position.Z + MathF.Cos(source.Actor.Yaw) * DefaultSpawnDistance;
         }
 
         if (!float.IsFinite(x) || !float.IsFinite(z) || !world.IsSpawnableColumn(x, z))
@@ -142,3 +179,13 @@ internal sealed class ServerCommandService
 
     private readonly record struct RateWindow(long Start, int Count);
 }
+
+internal enum ServerCommandSourceKind
+{
+    Player,
+    Console,
+}
+
+internal readonly record struct ServerCommandSource(
+    ServerCommandSourceKind Kind,
+    ServerPlayer? Actor);

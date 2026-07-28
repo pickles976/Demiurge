@@ -82,4 +82,15 @@ public class CommandParserTests
         Assert.False(result.Success);
         Assert.Contains("exceeds", result.Error);
     }
+
+    [Fact]
+    public void SuggestsPickupGrammarWhenAnItemIsUsedAsTheSpawnKind()
+    {
+        var result = GameCommandParser.Parse("spawn ak47 0 0");
+
+        Assert.False(result.Success);
+        Assert.Equal(
+            "'ak47' is an item. Use 'spawn pickup demiurge:ak47 <x> <z>'",
+            result.Error);
+    }
 }

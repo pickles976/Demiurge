@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Demiurge;
 using Demiurge.GameClient;
 
-public class PlayerRegistry
+public class PlayerRegistry : IDisposable
 {
     private readonly Dictionary<ushort, Player> players = new();
     private readonly NetworkManager network;
@@ -53,6 +53,15 @@ public class PlayerRegistry
     }
 
     public bool TryGet(ushort playerId, out Player player) => players.TryGetValue(playerId, out player!);
+
+    public void Dispose()
+    {
+        network.PlayerSpawned -= OnPlayerSpawned;
+        network.PlayerDespawned -= OnPlayerDespawned;
+        network.PlayerPositionReceived -= OnPlayerPosition;
+        players.Clear();
+        LocalPlayer = null;
+    }
 
     private void OnPlayerPosition(PlayerPositionData data)
     {

@@ -1,5 +1,14 @@
 # In-Game Map Editor Implementation Plan
 
+## Implementation Status
+
+The first production slice is implemented. It includes versioned source and runtime formats,
+deterministic bake/load, editor/runtime session switching, terrain and block tools, object and spawn
+placement, grouped undo/redo, named structures, stale-bake protection, and the dedicated-server
+stdin command host. The phase checklists below remain the design and verification record; items that
+require multi-client manual testing, recovery UI, background bake cancellation, or profiling are
+still follow-up validation rather than silently claimed complete.
+
 ## Goal
 
 Build a solo, in-engine map editor with the feel of Halo Forge without copying Forge's controls.
@@ -105,6 +114,8 @@ map save
 map save-as <map-name>
 map load <map-name>
 map load <map-name> --discard
+map recover
+map discard-autosave
 map validate
 map bake
 ```
@@ -142,7 +153,7 @@ editor terrain shape box
 editor terrain size 3
 editor terrain size 3 2 5
 editor terrain strength 1
-editor terrain material demiurge:dirt
+editor terrain material demiurge:grass
 
 editor block demiurge:stone
 
@@ -162,6 +173,10 @@ names, matching the current `ItemCatalog` behavior.
 
 `editor status` prints the current mode, selected palette entry, brush settings, and selection.
 `map status` prints source path, dirty state, source hash, last bake hash, and last bake path.
+
+Grass is the default automatic terrain fill. Additive CSG derives surface material from its local
+slope: grass through the 55-degree movement limit and stone above it. Explicitly selecting dirt or
+stone overrides automatic classification.
 
 The terminal remains available in runtime mode. Its existing `spawn` and `equip` commands continue
 to be server-authoritative runtime commands. Session and map commands are local coordinator

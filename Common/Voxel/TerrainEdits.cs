@@ -140,12 +140,46 @@ namespace Demiurge
                         // cases, and the third is the one that matters: rock that was already
                         // solid keeps whatever it was, so an edit can't repaint a vein.
                         if (combined >= 0f) voxel.Material = BlockType.BlockType_Air;
-                        else if (existing >= 0f) voxel.Material = fill;
+                        else if (existing >= 0f)
+                        {
+                            // Grass is the auto-surface terrain fill. Classify the CSG surface from
+                            // its local gradient so authored hills obey the same visual walkability
+                            // rule as generated terrain: walkable faces are grass and steeper faces
+                            // are stone.
+                            voxel.Material = fill == BlockType.BlockType_Grass
+                                ? AutoTerrainMaterial(
+                                    voxel.Distance,
+                                    shape,
+                                    world - centre,
+                                    halfExtent,
+                                    editShape)
+                                : fill;
+                        }
 
                         chunk[i] = voxel;
                     }
                 }
             }
+        }
+
+        private static BlockType AutoTerrainMaterial(
+            float storedDistance,
+            float shapeDistance,
+            Vector3 offset,
+            Vector3 extent,
+            EditShape shape)
+        {
+            const float gradientStep = 0.25f;
+            float dx = ShapeDistance(offset + Vector3.UnitX * gradientStep, extent, shape)
+                     - ShapeDistance(offset - Vector3.UnitX * gradientStep, extent, shape);
+            float dy = ShapeDistance(offset + Vector3.UnitY * gradientStep, extent, shape)
+                     - ShapeDistance(offset - Vector3.UnitY * gradientStep, extent, shape);
+            float dz = ShapeDistance(offset + Vector3.UnitZ * gradientStep, extent, shape)
+                     - ShapeDistance(offset - Vector3.UnitZ * gradientStep, extent, shape);
+
+            float horizontal = MathF.Sqrt(dx * dx + dz * dz);
+            float slope = MathF.Abs(dy) <= 1e-6f ? float.PositiveInfinity : horizontal / MathF.Abs(dy);
+            return ChunkGenerator.DensityToMaterial(storedDistance, shapeDistance, slope);
         }
 
         static float Partial(float existing, float full, Vector3 extent, EditMode mode, float strength)

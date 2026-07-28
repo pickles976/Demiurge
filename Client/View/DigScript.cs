@@ -6,7 +6,7 @@ using Stride.Input;
 namespace Demiurge
 {
     /// <summary>
-    /// Digging with your hands: outlines the voxel you are about to take out, and takes it out on
+    /// Digging with your hands: highlights the voxel sample you are about to edit, and edits it on
     /// left click.
     ///
     /// Nothing here is predicted. The outline is local, but the hole is not: the request goes to the
@@ -22,11 +22,6 @@ namespace Demiurge
         public required TerrainState Terrain { get; init; }
         public required NetworkManager Network { get; init; }
         public required ClientInputState InputState { get; init; }
-
-        /// <summary>Points around the brush ring. Enough that the curve reads as one at arm's
-        /// length, few enough that projecting each is free.</summary>
-        private readonly System.Numerics.Vector3[] ring = new System.Numerics.Vector3[24];
-        private readonly List<Vector3> ringWorld = new(24);
 
         /// <summary>Local rate limit, matching the server's TicksPerDig. Not a substitute for the
         /// server's gate — it just stops us spamming requests it would throw away.</summary>
@@ -55,10 +50,10 @@ namespace Demiurge
             // the same button.
             if (local.IsArmed) return;
 
-            if (FindTarget() is not var (hit, target)) return;
+            if (FindTarget() is not { } target) return;
             Target = target;
 
-            DrawBrush(hit.Point, target, hit.Normal);
+            WorldPreviewRenderer.VoxelSample(target, new Color(255, 255, 255, 230));
 
             // Edge-triggered: one dig per click, and holding the button repeats at the rate limit
             // rather than every frame.
@@ -86,7 +81,7 @@ namespace Demiurge
         /// and the character the first thing that ray met was on the far side of you, and it lit up
         /// and dug quite happily.
         /// </summary>
-        private (TerrainHit Hit, System.Numerics.Vector3 Target)? FindTarget()
+        private System.Numerics.Vector3? FindTarget()
         {
             if (Registry.LocalPlayer is not { } local) return null;
             if (Entity.Get<LocalPlayerController>()?.AimPoint is not { } aimPoint) return null;
@@ -103,46 +98,7 @@ namespace Demiurge
 
             // The same test the server will run, from the same origin — so anything highlighted here
             // is something the server will accept.
-            return Digging.InReach(local.Position, target) ? (hit, target) : null;
-        }
-
-        /// <summary>
-        /// The brush footprint: a ring the size of the bite, lying on the surface.
-        ///
-        /// Replaces outlining the affected triangles, which showed the wrong thing. Those edges are
-        /// the MESHER's tessellation — an implementation detail whose density and direction vary
-        /// with how that patch happened to triangulate — so the outline looked noisy and changed
-        /// shape as you swept across ground that was not changing. A ring is a statement about the
-        /// TOOL: this much comes out, from here.
-        /// </summary>
-        private void DrawBrush(System.Numerics.Vector3 hitPoint, System.Numerics.Vector3 target, System.Numerics.Vector3 normal)
-        {
-            int count = Digging.ProjectedRing(Terrain.Map, target, normal, ring);
-            if (count == 0) count = FallbackRing(hitPoint, normal, ring);
-
-            ringWorld.Clear();
-            for (int i = 0; i < count; i++) ringWorld.Add(ring[i].ToStride());
-
-            LineRenderer.DrawPolyline(ringWorld, new Color(255, 255, 255, 230), closed: true);
-        }
-
-        private static int FallbackRing(System.Numerics.Vector3 centre, System.Numerics.Vector3 normal, Span<System.Numerics.Vector3> into)
-        {
-            if (into.Length == 0) return 0;
-            if (normal.LengthSquared() < 1e-6f) return 0;
-            normal = System.Numerics.Vector3.Normalize(normal);
-
-            var reference = MathF.Abs(normal.Y) < 0.9f ? System.Numerics.Vector3.UnitY : System.Numerics.Vector3.UnitX;
-            var u = System.Numerics.Vector3.Normalize(System.Numerics.Vector3.Cross(normal, reference));
-            var v = System.Numerics.Vector3.Cross(normal, u);
-
-            for (int i = 0; i < into.Length; i++)
-            {
-                float angle = i * (MathF.PI * 2f / into.Length);
-                into[i] = centre + Digging.BiteRadius * (u * MathF.Cos(angle) + v * MathF.Sin(angle));
-            }
-
-            return into.Length;
+            return Digging.InReach(local.Position, target) ? target : null;
         }
     }
 }

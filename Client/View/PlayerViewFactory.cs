@@ -5,7 +5,7 @@ using Stride.Animations;
 using Stride.Engine;
 using Stride.Core.Mathematics;
 
-public class PlayerViewFactory
+public class PlayerViewFactory : IDisposable
 {
     private readonly Game game;
     private readonly Scene scene;
@@ -57,6 +57,14 @@ public class PlayerViewFactory
             playerEntity.Scene = null;
         }
 
+    }
+
+    public void Dispose()
+    {
+        registry.PlayerJoined -= CreatePlayerView;
+        registry.PlayerLeft -= DestroyPlayerView;
+        foreach (var entity in scene.Entities.Where(entity => entity.Name.StartsWith("Player_", StringComparison.Ordinal)).ToArray())
+            entity.Scene = null;
     }
 
 }

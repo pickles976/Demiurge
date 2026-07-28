@@ -19,7 +19,8 @@ namespace Demiurge.GameServer
     /// </summary>
     public sealed class ServerHost : IDisposable
     {
-        readonly GameServer server;
+        GameServer server;
+        ServerOptions options;
         readonly Stopwatch clock = new();
 
         double accumulator;
@@ -27,8 +28,14 @@ namespace Demiurge.GameServer
         bool bound;
 
         public ServerHost(bool allowCheats = false)
+            : this(new ServerOptions { AllowCheats = allowCheats })
         {
-            server = new GameServer(allowCheats);
+        }
+
+        public ServerHost(ServerOptions options)
+        {
+            this.options = options;
+            server = new GameServer(options);
         }
 
         /// <summary>
@@ -93,20 +100,49 @@ namespace Demiurge.GameServer
         public void Run(CancellationToken stop)
         {
             Start();
+            using var console = new DedicatedServerConsole();
+            console.Start();
+            Console.WriteLine("[Server] Console ready. Type 'help' for commands.");
 
-            while (!stop.IsCancellationRequested)
+            bool stopping = false;
+            while (!stop.IsCancellationRequested && !stopping)
             {
+                var action = console.Drain(server);
+                switch (action.Kind)
+                {
+                    case DedicatedConsoleActionKind.Stop:
+                        stopping = true;
+                        continue;
+                    case DedicatedConsoleActionKind.LoadMap:
+                        RotateMap(action.MapPath!);
+                        break;
+                }
                 Step();
                 Thread.Sleep(1);
             }
 
             server.Stop();
+            bound = false;
         }
 
         public void Dispose()
         {
             if (bound) server.Stop();
             bound = false;
+        }
+
+        private void RotateMap(string mapPath)
+        {
+            // Parse and validate before touching the active world.
+            _ = RuntimeMapSerializer.Load(mapPath);
+
+            server.Stop();
+            options = options with { MapPath = mapPath };
+            server = new GameServer(options);
+            server.Start();
+            accumulator = 0;
+            lastTime = clock.Elapsed.TotalSeconds;
+            Console.WriteLine($"[Server] Loaded map {mapPath}");
         }
     }
 }

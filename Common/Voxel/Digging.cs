@@ -82,60 +82,6 @@ namespace Demiurge
         public static Vector3 Eye(Vector3 feet) => feet + new Vector3(0f, EyeHeight, 0f);
 
         /// <summary>
-        /// The footprint a dig would leave on the surface, as a closed ring of world-space points.
-        /// Returns how many were written, or 0 if there is nothing to draw.
-        ///
-        /// This is the INTERSECTION of the bite sphere with the surface, not a flat disc laid on
-        /// top. The target sits some depth h below the surface, so a sphere of radius r cuts a
-        /// circle of radius sqrt(r^2 - h^2) — bite fully buried and there is no footprint at all,
-        /// which is the honest thing to show for a dig that opens nothing.
-        ///
-        /// Each point is then dropped onto the field by Newton steps along the gradient, so the ring
-        /// bends over a slope and curls into a hollow instead of hovering across it. That is what
-        /// makes it read as a brush touching the ground. Two steps is plenty: the field's distance
-        /// is gradient-corrected, so a single step lands exactly on a flat surface and the second
-        /// only pays for curvature.
-        /// </summary>
-        public static int ProjectedRing(ChunkMap map, Vector3 target, Vector3 normal, Span<Vector3> into)
-        {
-            if (into.Length == 0) return 0;
-            if (normal.LengthSquared() < 1e-6f) return 0;
-            normal = Vector3.Normalize(normal);
-
-            // How deep the target sits, measured through the field rather than assumed: on a slope
-            // the rounding in TargetVoxel can leave it anywhere in the voxel.
-            if (!TerrainCollision.TrySample(map, target, out var at)) return 0;
-
-            float depth = -at.Distance;
-            float radius = BiteRadius * BiteRadius - depth * depth;
-            if (radius <= 0f) return 0;                 // bite never breaks the surface
-            radius = MathF.Sqrt(radius);
-
-            // The point on the surface directly above the target is where the circle is centred.
-            var centre = target + normal * depth;
-
-            // Any two axes across the normal. Cross with whichever world axis it is least aligned
-            // to, so the pair never degenerates on a wall or a ceiling.
-            var reference = MathF.Abs(normal.Y) < 0.9f ? Vector3.UnitY : Vector3.UnitX;
-            var u = Vector3.Normalize(Vector3.Cross(normal, reference));
-            var v = Vector3.Cross(normal, u);
-
-            for (int i = 0; i < into.Length; i++)
-            {
-                float angle = i * (MathF.PI * 2f / into.Length);
-                var point = centre + radius * (u * MathF.Cos(angle) + v * MathF.Sin(angle));
-
-                for (int step = 0; step < 2; step++)
-                    if (TerrainCollision.TrySample(map, point, out var field))
-                        point -= field.Normal * field.Distance;
-
-                into[i] = point;
-            }
-
-            return into.Length;
-        }
-
-        /// <summary>
         /// Whether a dig at <paramref name="target"/> is close enough to a player standing at
         /// <paramref name="feet"/> to be legal. Measured from the EYE, the same point the client
         /// casts from, so the server accepts exactly the sphere the client offered — measuring from

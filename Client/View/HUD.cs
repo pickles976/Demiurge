@@ -1,5 +1,6 @@
 using System.IO;
 using Demiurge.GameClient;
+using Demiurge.Editor;
 using StbImageSharp;
 using Stride.Core;
 using Stride.Core.Mathematics;
@@ -20,7 +21,7 @@ namespace Demiurge
         public static Entity CreateTerminal(
             Game game,
             ClientInputState inputState,
-            NetworkManager network)
+            ITerminalCommandDispatcher dispatcher)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
@@ -67,7 +68,7 @@ namespace Demiurge
                 new DeveloperTerminalScript
                 {
                     InputState = inputState,
-                    Network = network,
+                    Dispatcher = dispatcher,
                     Panel = panel,
                     OutputText = outputText,
                     PromptText = promptText,
@@ -145,6 +146,38 @@ namespace Demiurge
             };
 
             return uiEntity;
+        }
+
+        public static Entity CreateEditorStatus(
+            Game game,
+            EditorToolSettings settings,
+            EditorSession session)
+        {
+            var text = new TextBlock
+            {
+                TextColor = Color.White,
+                Font = game.Content.Load<SpriteFont>("StrideDefaultFont"),
+                TextSize = 18,
+                Margin = new Thickness(8, 8, 8, 8),
+            };
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                BackgroundColor = new Color(0, 0, 0, 120),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(12, 12, 12, 12),
+            };
+            panel.Children.Add(text);
+            return new Entity("EditorStatus")
+            {
+                new UIComponent
+                {
+                    Page = new UIPage { RootElement = panel },
+                    RenderGroup = RenderGroup.Group31,
+                },
+                new EditorStatusScript { Text = text, Settings = settings, Session = session },
+            };
         }
 
         /// <summary>
@@ -306,6 +339,34 @@ namespace Demiurge
                         : local.IsReloading ? "RELOADING"
                         : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
                 }
+            }
+        }
+
+        public sealed class EditorStatusScript : SyncScript
+        {
+            public required TextBlock Text { get; init; }
+            public required EditorToolSettings Settings { get; init; }
+            public required EditorSession Session { get; init; }
+            private string previous = string.Empty;
+
+            public override void Update()
+            {
+                string detail = Settings.Mode switch
+                {
+                    EditorToolMode.Terrain =>
+                        $"{Settings.TerrainMode} {Settings.TerrainShape} {Settings.TerrainHalfExtent * 2f}",
+                    EditorToolMode.Block => BlockCatalog.Id(Settings.Block),
+                    EditorToolMode.Object => Settings.ObjectId ?? "No object selected",
+                    _ => string.Empty,
+                };
+                string value =
+                    "[1] Terrain   [2] Block   [3] Object\n" +
+                    $"MODE: {Settings.Mode.ToString().ToUpperInvariant()}" +
+                    (Session.Dirty ? "  *" : string.Empty) +
+                    $"\n{detail}";
+                if (value == previous) return;
+                previous = value;
+                Text.Text = value;
             }
         }
     }

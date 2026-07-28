@@ -1,8 +1,9 @@
 # DemiurgeSharp
 
 Code-only Stride 4.3.0.2507 multiplayer game. net10.0, Linux, Vulkan backend.
-There is no Game Studio project: the scene is assembled in code in `Client/Program.cs`,
-which is also the composition root for all wiring.
+There is no Game Studio project: `Client/Program.cs` starts `ClientApplication`, which owns the
+Stride process, persistent terminal, and `ClientSessionCoordinator`. Runtime and editor scene state
+live in separate disposable sessions.
 
 ## Build & run
 
@@ -10,6 +11,7 @@ which is also the composition root for all wiring.
 dotnet build DemiurgeSharp.slnx
 dotnet run --launch-profile singleplayer        # client + in-process server — USE THIS
 dotnet run                                      # client only; connects to a server you started
+dotnet run -- --editor trench-test              # in-engine map editor
 dotnet run --project Server/DemiurgeServer.csproj   # standalone server
 dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), headless
 dotnet test --filter "Category!=Benchmark"      # ~1s; skips the pipeline benchmarks, which
@@ -33,16 +35,19 @@ assembly attributes.
 If the build goes weird after dependency changes: `dotnet clean && dotnet restore --no-cache && dotnet build --no-incremental`.
 
 Projects: `DemiurgeSharp.csproj` (client), `Server/DemiurgeServer.csproj`,
-`Common/DemiurgeCommon.csproj`, `Common.Tests/DemiurgeCommon.Tests.csproj`,
+`Common/DemiurgeCommon.csproj`, `Editor.Core/DemiurgeEditor.Core.csproj`,
+`Common.Tests/DemiurgeCommon.Tests.csproj`, `Editor.Core.Tests/DemiurgeEditor.Core.Tests.csproj`,
 `Server.Tests/DemiurgeServer.Tests.csproj`, `tools/GltfAssetGenerator`.
 
 ## Developer terminal
 
-Backtick/tilde opens the terminal; `F3` toggles the free camera. World-changing commands are parsed
-into typed values in Common and executed authoritatively on the server. Single-player enables them;
-a standalone server requires `--allow-cheats`. Canonical item names live in `ItemCatalog` and are
-namespaced (`demiurge:ak47`), while `ItemType` remains the append-only numeric wire identity. See
-`docs/COMMANDS.md` for grammar, security boundaries, and extension points.
+Backtick/tilde opens the in-game terminal; `F3` toggles the runtime free camera. The terminal is
+process-owned and survives transitions among editor, local host, and remote runtime sessions.
+World-changing runtime commands are parsed into typed values in Common and executed authoritatively
+on the server. Single-player enables client-issued commands; a standalone server requires
+`--allow-cheats` for clients but its local stdin console is always trusted. Canonical item names live
+in `ItemCatalog` and are namespaced (`demiurge:ak47`), while `ItemType` remains the append-only
+numeric wire identity. See `docs/COMMANDS.md`.
 
 ## Architecture
 
@@ -56,13 +61,20 @@ steps that are easy to forget are exactly the ones that shipped bugs before.
 Wire rule worth repeating here: enum values and the `ComponentBundle` if-chain order
 ARE the protocol. Append, never reorder, never delete — clients desync silently.
 
-`Client/Program.cs` is the code-only composition root. Before `game.Run(...)` it creates
-long-lived pure services (`NetworkManager`, registries, `TerrainState`, optional `ServerHost`);
-`Start(Scene)` builds anything that needs Stride services or a live scene; `Update(Scene, GameTime)`
-steps singleplayer, pumps networking, drains terrain, then dispatches dirty sections to the mesher
-threads and uploads whatever they finished. Drain must run before RebuildDirty: Drain is the only
-writer of chunk voxels, and dispatch only hands out chunks Drain has finished. More
-detail in `stride_docs/code-only-runtime-and-assets.md`.
+`ClientApplication` is the process composition root. It owns Stride, global rendering and lighting,
+the persistent terminal, and `ClientSessionCoordinator`. `RuntimeClientSession` owns networking,
+registries, terrain streaming, views, gameplay scripts, and an optional in-process `ServerHost`.
+`EditorClientSession` owns the source document preview, editor camera, tools, and placement views.
+Both sessions must release entities, services, event handlers, sockets, and GPU terrain resources in
+`Dispose()`. In runtime updates, terrain `Drain()` must still run before `RebuildDirty()`: Drain is
+the only writer of chunk voxels, and dispatch only hands out chunks Drain has finished. More detail
+is in `stride_docs/code-only-runtime-and-assets.md` and root `EDITOR.md`.
+
+Runtime terrain has two separate load-bearing subscriptions:
+`NetworkManager.Welcomed -> ChunkTcpClient.Connect` opens the authenticated TCP stream, while
+`ChunkTcpClient.ChunkReceived -> TerrainState.Receive` actually queues each chunk for the main
+thread. A connected stream without the second subscription leaves the terrain map empty and causes
+continuous movement reconciliation because the client predicts against unloaded terrain.
 
 Design specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`,
 loose notes in `docs/scratchpad/`. `docs/networking/` explains the object replication,
@@ -159,9 +171,10 @@ spec for the coordinate transforms.
   heights, **padded one column on every side** so slope can be central-differenced at a chunk edge —
   index it through `ChunkTransforms.PaddedColumnIndexOf`, never by hand. Three noise fields (erosion,
   fbm detail, folded ridge) go through `TerrainShape`'s splines; see `docs/voxel/GENERATION.md`.
-- **Steep columns are bare stone.** `DensityToMaterial` takes a slope, and its 55-degree threshold
-  directly aliases `PlayerMovement.MaxSlopeDegrees`. Grass means ordinary movement can climb it;
-  stone means the contact is too steep to stand on. Keep those values coupled.
+- **Terrain material communicates slope.** `DensityToMaterial` takes a slope. Grass extends through
+  `PlayerMovement.MaxSlopeDegrees`; stone begins above the coupled 55-degree walkability threshold.
+  Additive editor terrain uses grass as an automatic fill and derives this classification from the
+  CSG shape gradient.
 - **The bottom voxel plane is permanently solid** (`ChunkConstants.BedrockThickness`), enforced at
   every write. Two reasons in one invariant: you can't dig out of the world, and the lowest grid
   point any section *owns* is `WorldMinY`, so carving it away leaves a sign change on an edge

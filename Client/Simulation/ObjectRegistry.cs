@@ -1,8 +1,9 @@
 using Demiurge;
 using Demiurge.GameClient;
 
-public class ObjectRegistry
+public class ObjectRegistry : IDisposable
 {
+    private readonly NetworkManager network;
     private readonly Dictionary<uint, NetObject> objects = new();
 
     // Updates that arrived before their spawn (reliable spawn racing unreliable/
@@ -21,9 +22,19 @@ public class ObjectRegistry
 
     public ObjectRegistry(NetworkManager network)
     {
+        this.network = network;
         network.ObjectSpawned += OnSpawn;
         network.ObjectDespawned += OnDespawn;
         network.ObjectStateReceived += OnState;
+    }
+
+    public void Dispose()
+    {
+        network.ObjectSpawned -= OnSpawn;
+        network.ObjectDespawned -= OnDespawn;
+        network.ObjectStateReceived -= OnState;
+        objects.Clear();
+        pendingUpdates.Clear();
     }
 
     private void OnSpawn(ObjectSpawnData data)

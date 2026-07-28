@@ -25,37 +25,74 @@ namespace Demiurge.GameServer
         /// <summary>Spawn column. Y comes off the terrain, never guessed.</summary>
         private const float SpawnX = 0f;
         private const float SpawnZ = 0f;
+        private readonly RuntimePlacement[] playerSpawns;
+        private int nextPlayerSpawn;
+        public string MapName { get; }
 
         /// <summary>
         /// The server's terrain, and the only authority on it. Clients receive it via
         /// <see cref="ChunkTcpServer"/> and never generate any themselves.
         /// </summary>
-        private readonly ChunkMap terrain = new();
+        private readonly ChunkMap terrain;
 
-        public GameWorld(Server server)
+        public GameWorld(Server server, RuntimeMap? runtimeMap = null)
         {
             this.server = server;
+            terrain = runtimeMap?.Terrain ?? new ChunkMap();
+            MapName = runtimeMap?.Name ?? "generated";
+
+            if (runtimeMap is null)
+                WorldGen.Generate(terrain);
+
+            playerSpawns = runtimeMap?.Placements
+                .Where(placement => placement.Kind == RuntimePlacementKind.PlayerSpawn)
+                .ToArray()
+                ?? [];
+
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
             mobs = new MobSystem(terrain);
             weapons = new WeaponSystem(server, objects, terrain);
             terrainEdits = new TerrainSystem(server, terrain);
 
-            // Before anything is placed: spawn positions are queried off the terrain.
-            WorldGen.Generate(terrain);
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
 
             // Trees are temporarily disabled. TreeSystem and its client views remain available.
             // new TreeSystem(objects, terrain).SpawnInitialTrees();
 
-            SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
-            SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
-            SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
-            SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
+            if (runtimeMap is null)
+            {
+                SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
+                SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
+                SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
+                SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
 
-            items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
-            items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
+                items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
+                items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
+            }
+            else
+            {
+                SpawnRuntimePlacements(runtimeMap.Placements);
+            }
+        }
+
+        private void SpawnRuntimePlacements(IReadOnlyList<RuntimePlacement> placements)
+        {
+            foreach (var placement in placements)
+            {
+                switch (placement.Kind)
+                {
+                    case RuntimePlacementKind.Pickup:
+                        items.SpawnPickup(placement.Item, placement.Position);
+                        break;
+                    case RuntimePlacementKind.Mob:
+                        var mob = SpawnMob(placement.Position);
+                        mob.Yaw = placement.Yaw;
+                        items.SpawnEquipped(mob, ItemType.Ak47);
+                        break;
+                }
+            }
         }
 
         /// <summary>Places a pickup on the ground at a world column, rather than at a guessed Y.</summary>
@@ -82,6 +119,12 @@ namespace Demiurge.GameServer
 
         public bool TryGetActor(ushort actorId, out ServerPlayer actor)
             => players.TryGetValue(actorId, out actor!);
+
+        public IReadOnlyList<(ushort Id, bool IsMob)> ActorSnapshot()
+            => players.Values
+                .Select(player => (player.Id, player.IsMob))
+                .OrderBy(actor => actor.Id)
+                .ToArray();
 
         public ServerObject Equip(ServerPlayer actor, ItemType type)
             => items.SpawnEquipped(actor, type, dropReplaced: false);
@@ -127,7 +170,7 @@ namespace Demiurge.GameServer
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
 
             var player = new ServerPlayer { Id = clientId };
-            player.Move = PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
+            player.Move = SpawnPlayerMove();
             player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
             obj =>
             {
@@ -242,7 +285,7 @@ namespace Demiurge.GameServer
             foreach (var player in players.Values)
             {
                 if (player.Status is not {} status || status.Health.Current > 0) continue;
-                player.Move = PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
+                player.Move = SpawnPlayerMove();
                 player.History.Clear();
                 status.Health.Current = status.Health.Max;
                 status.Dirty |= NetComponents.Health;
@@ -250,6 +293,17 @@ namespace Demiurge.GameServer
 
             objects.BroadcastDirtyStatess(_Tick);
             BroadcastPositions();
+        }
+
+        private MoveState SpawnPlayerMove()
+        {
+            if (playerSpawns.Length == 0)
+                return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
+
+            var spawn = playerSpawns[nextPlayerSpawn++ % playerSpawns.Length];
+            var move = PlayerMovement.SpawnAt(terrain, spawn.Position.X, spawn.Position.Z);
+            move.Position = spawn.Position;
+            return move;
         }
 
         private Message CreateSpawnMessage(ServerPlayer player)

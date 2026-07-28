@@ -55,7 +55,7 @@ never in plains.
    octave counts, or the fields correlate and mountains sit exactly where the detail peaks are.
    Erosion/detail/ridge use 100/200/300.
 
-## Slope, and steep faces as stone
+## Slope-driven surface material
 
 The surface gradient was already implied by the height field — `|∇h| = tan θ`, no new noise needed.
 It is central-differenced per column, which is the **only** reason
@@ -63,16 +63,25 @@ It is central-differenced per column, which is the **only** reason
 arrays through `ChunkTransforms.PaddedColumnIndexOf`; a padded-vs-unpadded mixup is exactly the bug
 class the "never compute a block's world position twice" rule exists to prevent.
 
-`DensityToMaterial` checks slope **before** the grass band, so a steep column is rock all the way
-down. Without it a cliff shows a one-voxel diagonal stripe of grass over dirt, because the surface
-cuts across columns and each column contributes exactly one grass voxel.
+`DensityToMaterial` has two surface regimes:
+
+- Through 55 degrees: grass.
+- Above 55 degrees: stone.
+
+Stone is checked before the surface-depth band, so an unwalkable column is rock all the way down.
+Without it a cliff shows a one-voxel diagonal stripe of soil over stone, because the surface cuts
+across columns and each column contributes exactly one surface voxel.
 
 ### The threshold is the movement limit
 
-`GrassLimitDegrees` aliases `PlayerMovement.MaxSlopeDegrees`, currently **55°**. Grass therefore means
-ordinary movement can stand on and climb the surface; exposed stone means the collision normal is
-past the walkability limit. `StoneSlopeThresholdMatchesTheWalkableSlopeLimit` pins that coupling, and
-the whole-world material regression requires generated terrain to retain both grass and stone.
+`GrassLimitDegrees` aliases `PlayerMovement.MaxSlopeDegrees`, currently **55°**. Grass means
+walkable, and exposed stone means the collision normal is past that limit. Tests pin the threshold
+and require generated terrain to retain grass and stone.
+
+Additive editor terrain defaults to grass as an **automatic terrain fill**. `TerrainEdits` measures
+the CSG primitive's local gradient and passes that slope through the same `DensityToMaterial` policy,
+so the top of an authored hill is grass and its wall is stone. Selecting another editor terrain
+material explicitly bypasses automatic classification.
 
 The limit is structural: **a smooth fbm heightmap cannot make cliffs.** Genuinely steep faces need
 terracing, a spline applied to slope itself, or a 3D density term.

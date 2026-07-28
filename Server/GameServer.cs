@@ -8,10 +8,13 @@ namespace Demiurge.GameServer
         private readonly GameWorld world;
         private readonly ServerCommandService commands;
 
-        public GameServer(bool allowCheats)
+        public GameServer(ServerOptions options)
         {
-            world = new GameWorld(server);
-            commands = new ServerCommandService(world, allowCheats);
+            RuntimeMap? map = options.MapPath is null
+                ? null
+                : RuntimeMapSerializer.Load(options.MapPath);
+            world = new GameWorld(server, map);
+            commands = new ServerCommandService(world, options.AllowCheats);
         }
 
         public void Start()
@@ -25,6 +28,20 @@ namespace Demiurge.GameServer
         public void PumpNetwork() => server.Update();
 
         public void Tick(float dt) => world.Tick(dt);
+
+        public CommandResultData ExecuteConsoleCommand(string command)
+            => commands.ExecuteConsole(command);
+
+        public string Status()
+            => $"map={world.MapName} actors={world.ActorSnapshot().Count}";
+
+        public string Players()
+        {
+            var actors = world.ActorSnapshot();
+            return actors.Count == 0
+                ? "No actors"
+                : string.Join(", ", actors.Select(actor => $"@{actor.Id} {(actor.IsMob ? "mob" : "player")}"));
+        }
 
         public void Stop()
         {

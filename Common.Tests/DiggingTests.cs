@@ -129,60 +129,6 @@ public class DiggingTests
     }
 
     [Fact]
-    public void BrushRingLandsOnTheSurface()
-    {
-        var map = SyntheticTerrain.Flat();          // ground at 12.5
-        var target = new Vector3(5f, 12f, 5f);      // topmost solid sample
-        Span<Vector3> ring = new Vector3[16];
-
-        int count = Digging.ProjectedRing(map, target, Vector3.UnitY, ring);
-        Assert.Equal(16, count);
-
-        foreach (var p in ring)
-        {
-            // Every point projected onto the isosurface, not left hovering above it.
-            Assert.True(TerrainCollision.TrySample(map, p, out var field));
-            Assert.Equal(0f, field.Distance, 0.05f);
-
-            // ...and inside the bite, since the footprint is the sphere's cross-section.
-            Assert.True(Vector3.Distance(p, target) <= Digging.BiteRadius + 0.05f,
-                $"{p} is {Vector3.Distance(p, target):F3} from the target, past the bite");
-        }
-    }
-
-    [Fact]
-    public void BrushRingIsEmptyWhenTheBiteCannotBreakTheSurface()
-    {
-        var map = SyntheticTerrain.Flat();
-        Span<Vector3> ring = new Vector3[16];
-
-        // Well below the surface: the sphere is entirely inside rock, so it opens nothing and there
-        // is no footprint to draw. Showing a ring here would promise an effect that will not happen.
-        Assert.Equal(0, Digging.ProjectedRing(map, new Vector3(5f, 6f, 5f), Vector3.UnitY, ring));
-    }
-
-    [Fact]
-    public void BrushRingFollowsASlope()
-    {
-        var map = SyntheticTerrain.Slope(40f);
-        float rise = MathF.Tan(40f * (MathF.PI / 180f));
-
-        // The surface climbs with x, so a ring on it cannot be level — its points must vary in Y.
-        var hit = new Vector3(4f, SyntheticTerrain.GroundHeight + rise * 4f, 4f);
-        var target = Digging.TargetVoxel(hit, Vector3.Normalize(new Vector3(-rise, 1f, 0f)));
-
-        Span<Vector3> ring = new Vector3[16];
-        int count = Digging.ProjectedRing(map, target, Vector3.Normalize(new Vector3(-rise, 1f, 0f)), ring);
-        Assert.True(count > 0);
-
-        float lowest = float.MaxValue, highest = float.MinValue;
-        foreach (var p in ring) { lowest = MathF.Min(lowest, p.Y); highest = MathF.Max(highest, p.Y); }
-
-        Assert.True(highest - lowest > 0.2f,
-            $"ring spans only {highest - lowest:F3} in Y on a 40-degree slope — it is not following the surface");
-    }
-
-    [Fact]
     public void ReachIsMeasuredFromTheEye()
     {
         var feet = new Vector3(0f, 12f, 0f);

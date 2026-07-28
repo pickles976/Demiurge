@@ -145,12 +145,25 @@ namespace Demiurge
             chunks[chunk.index] = chunk;
         }
 
+        /// <summary>
+        /// Stable snapshot for persistence and diagnostics. Callers receive chunk references, not a
+        /// live dictionary view; replacing entries after this call cannot change the membership or
+        /// ordering of the returned collection.
+        /// </summary>
+        public IReadOnlyList<TerrainChunk> Snapshot()
+            => chunks.Values
+                .OrderBy(chunk => chunk.index.x)
+                .ThenBy(chunk => chunk.index.z)
+                .ToArray();
+
+        public int Count => chunks.Count;
+
     }
 
     public class ChunkGenerator
     {
         /// <summary>
-        /// Where grass stops and bare rock starts, in degrees of surface slope.
+        /// Where soil stops and bare rock starts, in degrees of surface slope.
         ///
         /// This is deliberately the same number as <see cref="PlayerMovement.MaxSlopeDegrees"/>: grass
         /// means walkable soil, bare stone means the slope is too steep to climb by ordinary movement.
@@ -266,7 +279,7 @@ namespace Demiurge
         {
             if (storedDistance >= 0f) return BlockType.BlockType_Air;   // the invariant, in one place
 
-            // Too steep to hold soil. Before the grass band rather than inside it, so a cliff is rock all
+            // Too steep to hold soil. Before the surface band rather than inside it, so a cliff is rock all
             // the way down instead of a diagonal stripe of grass over dirt — which is what a heightmap
             // surface cutting across columns would otherwise produce on every mountainside.
             if (slope > GrassLimitSlope) return BlockType.BlockType_Stone;

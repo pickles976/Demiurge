@@ -13,8 +13,23 @@ namespace Demiurge.GameServer
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 
             // The loop itself lives in ServerHost so singleplayer runs exactly the same one.
+            var options = ParseOptions(args);
+            new ServerHost(options).Run(cancellation.Token);
+        }
+
+        private static ServerOptions ParseOptions(string[] args)
+        {
             bool allowCheats = args.Contains("--allow-cheats", StringComparer.OrdinalIgnoreCase);
-            new ServerHost(allowCheats).Run(cancellation.Token);
+            string? mapPath = null;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (!args[i].Equals("--map", StringComparison.OrdinalIgnoreCase)) continue;
+                if (++i >= args.Length) throw new ArgumentException("--map requires a runtime map path");
+                mapPath = Path.GetFullPath(args[i]);
+            }
+
+            return new ServerOptions { AllowCheats = allowCheats, MapPath = mapPath };
         }
     }
 }

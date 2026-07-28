@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Text;
-using Demiurge.GameClient;
 using Stride.Engine;
 using Stride.Input;
 using Stride.UI;
@@ -18,7 +17,7 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
     private const int VisibleLineCount = 10;
 
     public required ClientInputState InputState { get; init; }
-    public required NetworkManager Network { get; init; }
+    public required ITerminalCommandDispatcher Dispatcher { get; init; }
     public required UIElement Panel { get; init; }
     public required TextBlock OutputText { get; init; }
     public required TextBlock PromptText { get; init; }
@@ -26,27 +25,14 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
     private readonly StringBuilder input = new();
     private readonly List<string> output = new();
     private readonly List<string> history = new();
-    private readonly ConcurrentQueue<CommandResultData> pendingResults = new();
-    private Dictionary<string, Action<string>> localCommands = null!;
+    private readonly ConcurrentQueue<TerminalOutput> pendingResults = new();
     private int historyIndex;
     private bool toggleWasDown;
 
     public override void Start()
     {
         Panel.Visibility = Visibility.Collapsed;
-        localCommands = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["clear"] = _ => output.Clear(),
-            ["echo"] = arguments => output.Add(arguments),
-            ["help"] = _ =>
-            {
-                output.Add("spawn mob [x z]");
-                output.Add("spawn pickup <item> [x z]");
-                output.Add("equip <@s|@actor-id> <item>");
-                output.Add("Items: " + string.Join(", ", ItemCatalog.All.Select(item => item.Id)));
-            },
-        };
-        Network.CommandResultReceived += ReceiveResult;
+        Dispatcher.OutputReceived += ReceiveResult;
         Input.AddListener(this);
         Refresh();
     }
@@ -54,7 +40,7 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
     public override void Cancel()
     {
         Close();
-        Network.CommandResultReceived -= ReceiveResult;
+        Dispatcher.OutputReceived -= ReceiveResult;
         Input.RemoveListener(this);
     }
 
@@ -62,7 +48,7 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
     {
         while (pendingResults.TryDequeue(out var result))
         {
-            output.Add(result.Success ? result.Output : $"Error: {result.Output}");
+            output.Add(result.Success ? result.Text : $"Error: {result.Text}");
             TrimOutput();
             Refresh();
         }
@@ -175,16 +161,27 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
         string command = separator < 0 ? normalized : normalized[..separator];
         string arguments = separator < 0 ? string.Empty : normalized[(separator + 1)..].TrimStart();
 
-        if (localCommands.TryGetValue(command, out var executeLocal))
+        if (command.Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
-            executeLocal(arguments);
+            output.Clear();
+            return;
+        }
+        if (command.Equals("echo", StringComparison.OrdinalIgnoreCase))
+        {
+            output.Add(arguments);
+            return;
+        }
+        if (command.Equals("help", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (string line in Dispatcher.Help()) output.Add(line);
             return;
         }
 
-        Network.SendCommand(commandLine);
+        if (Dispatcher.Execute(commandLine) is { } result)
+            output.Add(result.Success ? result.Text : $"Error: {result.Text}");
     }
 
-    private void ReceiveResult(CommandResultData result) => pendingResults.Enqueue(result);
+    private void ReceiveResult(TerminalOutput result) => pendingResults.Enqueue(result);
 
     private void RecallHistory(int direction)
     {

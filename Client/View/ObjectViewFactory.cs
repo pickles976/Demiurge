@@ -5,7 +5,7 @@ using Stride.CommunityToolkit.Bepu;
 using Stride.CommunityToolkit.Rendering.ProceduralModels;
 using Stride.Engine;
 
-public class ObjectViewFactory
+public class ObjectViewFactory : IDisposable
 {
     private readonly Game game;
     private readonly Scene scene;
@@ -14,6 +14,7 @@ public class ObjectViewFactory
     private readonly Entity cameraEntity;
     private readonly LocalWeaponView weaponView;
     private readonly TreeViewFactory.Manager treeViews;
+    private readonly ObjectRegistry registry;
 
     // Scenery only. Items never appear here: their model comes from
     // ItemCosmetics and their behavior from the component mask.
@@ -23,6 +24,7 @@ public class ObjectViewFactory
                              PlayerRegistry players, Entity cameraEntity, LocalWeaponView weaponView,
                              ModelLocators modelLocators)
     {
+        this.registry = registry;
         this.game = game;
         this.scene = scene;
         this.mount = mount;
@@ -39,6 +41,14 @@ public class ObjectViewFactory
         };
         registry.ObjectSpawned += CreateView;
         registry.ObjectDespawned += DestroyView;
+    }
+
+    public void Dispose()
+    {
+        registry.ObjectSpawned -= CreateView;
+        registry.ObjectDespawned -= DestroyView;
+        foreach (var entity in scene.Entities.Where(entity => entity.Name.StartsWith("NetObject_", StringComparison.Ordinal)).ToArray())
+            entity.Scene = null;
     }
 
     private void CreateView(NetObject obj)

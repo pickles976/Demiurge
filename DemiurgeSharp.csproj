@@ -26,11 +26,14 @@
     <Compile Remove="Server.Tests/**/*.cs" />
     <Compile Remove="Common/**/*.cs" />
     <Compile Remove="Common.Tests/**/*.cs" />
+    <Compile Remove="Editor.Core/**/*.cs" />
+    <Compile Remove="Editor.Core.Tests/**/*.cs" />
     <Compile Remove="*.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="Common/DemiurgeCommon.csproj" />
+    <ProjectReference Include="Editor.Core/DemiurgeEditor.Core.csproj" />
     <!-- Singleplayer hosts a real server in-process; only ServerHost is public. -->
     <ProjectReference Include="Server/DemiurgeServer.csproj" /> 
     <GltfAsset Include="assets/**/*.gltf" />

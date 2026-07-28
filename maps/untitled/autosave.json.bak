@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "mapId": "3988f75f-458d-4583-8285-48b112d7210a",
+  "name": "untitled",
+  "baseTerrain": {
+    "generatorId": "demiurge:terrain-v1",
+    "seed": 100,
+    "minChunkX": -31,
+    "minChunkZ": -31,
+    "maxChunkX": 31,
+    "maxChunkZ": 31
+  },
+  "terrainStrokes": [],
+  "blocks": [
+    {
+      "id": "95a4b42b-039f-42ba-95d1-90d39cb67c04",
+      "sequence": 1,
+      "cell": {
+        "x": 5,
+        "y": 31,
+        "z": -4,
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "48a67e8e-e8f6-4433-9a27-162ddd2c9ef2",
+      "sequence": 2,
+      "cell": {
+        "x": 8,
+        "y": 31,
+        "z": -4,
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "e265d728-2863-48bf-9e23-daad939f2abc",
+      "sequence": 3,
+      "cell": {
+        "x": 7,
+        "y": 31,
+        "z": -4,
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "f7324f2f-44a4-4feb-9d76-de11895b73c7",
+      "sequence": 4,
+      "cell": {
+        "x": 6,
+        "y": 31,
+        "z": -3,
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "e6be9fd7-3abd-4cef-b4dc-8a7dde7209c7",
+      "sequence": 5,
+      "cell": {
+        "x": 6,
+        "y": 30,
+        "z": -2,
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    }
+  ],
+  "placements": [
+    {
+      "id": "27dea747-a109-415e-9176-8ec054d8afd9",
+      "kind": "playerSpawn",
+      "archetypeId": "demiurge:spawn/default",
+      "cell": {
+        "x": 0,
+        "y": 32,
+        "z": 0,
+        "centre": {}
+      },
+      "yaw": 0,
+      "groupId": null
+    }
+  ]
+}

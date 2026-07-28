@@ -4,7 +4,7 @@ using Stride.Core.Diagnostics;
 
 namespace Demiurge.GameClient
 {
-    public class NetworkManager
+    public class NetworkManager : IDisposable
     {
 
         private readonly PriorityQueue<Action, double> delayed = new();
@@ -14,6 +14,7 @@ namespace Demiurge.GameClient
 
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
         private readonly Client client = new();
+        private readonly string host;
 
         /// The id of this client that was assigned by the server during this session
         public ushort ClientId { get; private set; }
@@ -43,6 +44,11 @@ namespace Demiurge.GameClient
 
         private uint nextCommandRequestId;
 
+        public NetworkManager(string? host = null)
+        {
+            this.host = host ?? NetworkConfig.ServerHost;
+        }
+
         private void Dispatch(Action deliver)
         {
             // Call immediately
@@ -58,7 +64,14 @@ namespace Demiurge.GameClient
         {
             client.MessageReceived += OnMessageReceived;
             client.Connected += (_, _) => Log.Info("Connected to server");
-            client.Connect($"{NetworkConfig.ServerHost}:{NetworkConfig.Port}", useMessageHandlers: false);
+            client.Connect($"{host}:{NetworkConfig.Port}", useMessageHandlers: false);
+        }
+
+        public void Dispose()
+        {
+            client.Disconnect();
+            client.MessageReceived -= OnMessageReceived;
+            delayed.Clear();
         }
 
         /// <summary>Pump once per frame from Program.cs Update().</summary>

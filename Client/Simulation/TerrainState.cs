@@ -20,7 +20,7 @@ namespace Demiurge.GameClient
     /// the renderer reading it — a Dictionary insert against a concurrent lookup, which corrupts or
     /// throws rather than merely being late.
     /// </summary>
-    public class TerrainState
+    public class TerrainState : IClientTerrainSource
     {
         public ChunkMap Map { get; } = new();
 

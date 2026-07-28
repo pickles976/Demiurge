@@ -81,8 +81,17 @@ public static class GameCommandParser
         {
             "mob" => ParseSpawnMob(tokens),
             "pickup" => ParseSpawnPickup(tokens),
-            _ => CommandParseResult.Fail($"Unknown entity kind: {tokens[1]}"),
+            _ => UnknownSpawnKind(tokens[1]),
         };
+    }
+
+    private static CommandParseResult UnknownSpawnKind(string value)
+    {
+        if (ItemCatalog.TryResolve(value, out var item))
+            return CommandParseResult.Fail(
+                $"'{value}' is an item. Use 'spawn pickup {ItemCatalog.Id(item)} <x> <z>'");
+        return CommandParseResult.Fail(
+            $"Unknown entity kind: {value}. Use 'spawn mob ...' or 'spawn pickup <item> ...'");
     }
 
     private static CommandParseResult ParseSpawnMob(IReadOnlyList<string> tokens)

@@ -358,6 +358,28 @@ public class SubmeshTests
         Assert.Equal([BlockType.BlockType_Grass], mesh.Submeshes.Select(s => s.Material));
     }
 
+    [Fact]
+    public void GrassFillClassifiesAddedSphereTopAsGrassAndSideAsStone()
+    {
+        var chunk = new TerrainChunk(new ChunkIndex { x = 0, z = 0 });
+        for (int y = 0; y < ChunkConstants.ChunkHeight; y++)
+            chunk.FillSlab(y, Voxel.OutsideAbove);
+        var center = new Vector3(8, 64, 8);
+
+        TerrainEdits.ApplyBox(
+            chunk,
+            center,
+            new Vector3(4),
+            EditMode.Add,
+            BlockType.BlockType_Grass,
+            EditShape.Sphere);
+
+        int top = ChunkTransforms.WorldVoxelIndex(8, 67, 8);
+        int side = ChunkTransforms.WorldVoxelIndex(11, 64, 8);
+        Assert.Equal(BlockType.BlockType_Grass, chunk[top].Material);
+        Assert.Equal(BlockType.BlockType_Stone, chunk[side].Material);
+    }
+
     /// <summary>A stone wall must contribute its own submesh, which is what gets the stone texture.</summary>
     [Fact]
     public void StoneWallGetsItsOwnSubmesh()

@@ -20,7 +20,7 @@ namespace Demiurge
     {
         readonly Scene scene;
         readonly ChunkMeshFactory factory;
-        readonly GameClient.TerrainState terrain;
+        readonly GameClient.IClientTerrainSource terrain;
         readonly SectionMeshQueue meshers;
         /// <summary>Live geometry, with the shared buffers it borrows so they can be released.</summary>
         readonly Dictionary<LodSection, (Entity Entity, SectionBuffers Buffers)> entities = new();
@@ -75,10 +75,11 @@ namespace Demiurge
         readonly HashSet<LodSection> resolved = new();
 
         readonly DirtySectionSink dirtySections;
+        readonly Action<Vector3, Vector3> onRegionEdited;
 
         ChunkMap Map => terrain.Map;
 
-        public ClientTerrain(Scene scene, ChunkMeshFactory factory, GameClient.TerrainState terrain)
+        public ClientTerrain(Scene scene, ChunkMeshFactory factory, GameClient.IClientTerrainSource terrain)
         {
             this.scene = scene;
             this.factory = factory;
@@ -94,7 +95,7 @@ namespace Demiurge
             // Marking is separate from rebuilding on purpose, so several digs landing in one frame
             // collapse into one re-mesh of the section they share — which is the normal case, since
             // a player digs the same hole repeatedly.
-            terrain.RegionEdited += (min, max) =>
+            onRegionEdited = (min, max) =>
             {
                 markingUrgent = true;
                 MarkRegionDirty(
@@ -102,9 +103,21 @@ namespace Demiurge
                     (int)MathF.Ceiling(max.X), (int)MathF.Ceiling(max.Y), (int)MathF.Ceiling(max.Z));
                 markingUrgent = false;
             };
+            terrain.RegionEdited += onRegionEdited;
         }
 
-        public void Dispose() => meshers.Dispose();
+        public void Dispose()
+        {
+            terrain.ChunkCompleted -= MarkChunkDirty;
+            terrain.RegionEdited -= onRegionEdited;
+            meshers.Dispose();
+            foreach (var (_, value) in entities)
+            {
+                value.Buffers.Release();
+                value.Entity.Scene = null;
+            }
+            entities.Clear();
+        }
 
         /// <summary>Marks every section of one chunk, and anything reading into it.</summary>
         public void MarkChunkDirty(ChunkIndex index)
@@ -172,9 +185,9 @@ namespace Demiurge
         /// sit anywhere; if it drove level selection, flying out would coarsen the terrain under
         /// inspection and flying in would refine it, so it could never show what the player actually sees.
         /// </summary>
-        public int RebuildDirty(Vector3 playerPosition)
+        public int RebuildDirty(Vector3 lodFocus)
         {
-            RefreshLod(playerPosition);
+            RefreshLod(lodFocus);
             Dispatch();
             return Collect();
         }

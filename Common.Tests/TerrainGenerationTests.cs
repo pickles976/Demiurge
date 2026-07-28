@@ -271,7 +271,7 @@ public class TerrainGenerationTests
         // The topmost solid voxel, in stored terms — the band DensityToMaterial calls Grass.
         const float Surface = -0.5f;
 
-        float gentle = MathF.Tan((ChunkGenerator.GrassLimitDegrees - 15f) * (MathF.PI / 180f));
+        float gentle = MathF.Tan((ChunkGenerator.GrassLimitDegrees - 2.5f) * (MathF.PI / 180f));
         float steep = MathF.Tan((ChunkGenerator.GrassLimitDegrees + 15f) * (MathF.PI / 180f));
 
         Assert.Equal(BlockType.BlockType_Grass, ChunkGenerator.DensityToMaterial(Surface, Surface, gentle));

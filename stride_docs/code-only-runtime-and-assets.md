@@ -80,6 +80,12 @@ The client receives terrain:
 -> `ClientTerrain.MarkChunkDirty()` -> `ClientTerrain.RebuildDirty()`, which splits into
 `Dispatch()` -> `SectionMeshQueue` (worker threads) -> `Collect()` -> `ChunkMeshFactory.UploadBatch()`
 
+`RuntimeClientSession` must explicitly wire `ChunkTcpClient.ChunkReceived` to
+`TerrainState.Receive` and remove that handler during disposal. The Welcome handler only connects
+the TCP socket using its token; it does not forward payloads. Losing the payload subscription leaves
+the client connected with an empty terrain map (`dirty > 0`, `inFlight = 0`) and produces repeated
+movement reconciliation as the server collides against terrain the client has not received.
+
 ### Why terrain left Riptide
 
 Gameplay and bulk transfer want opposite things, and the old path had no flow control anywhere.
