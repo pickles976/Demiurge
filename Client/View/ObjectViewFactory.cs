@@ -2,6 +2,7 @@
 using Demiurge;
 using Demiurge.GameClient;
 using Stride.CommunityToolkit.Bepu;
+using Stride.CommunityToolkit.Engine;
 using Stride.CommunityToolkit.Rendering.ProceduralModels;
 using Stride.Engine;
 
@@ -38,6 +39,11 @@ public class ObjectViewFactory : IDisposable
                                           new() { IncludeCollider = false }),
             [ObjectType.TrainingDummy] = _ => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
+            [ObjectType.Grenade] = _ => CreateGrenadeSphere(),
+            [ObjectType.Flag] = obj => new Entity
+            {
+                new FlagViewScript { Object = obj },
+            },
         };
         registry.ObjectSpawned += CreateView;
         registry.ObjectDespawned += DestroyView;
@@ -62,7 +68,9 @@ public class ObjectViewFactory : IDisposable
 
         Entity entity;
         if (isItem)
-            entity = new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(obj.Item.Type))) };
+            entity = ItemCosmetics.UsesSpherePrimitive(obj.Item.Type)
+                ? CreateGrenadeSphere()
+                : new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(obj.Item.Type))) };
         else if (builders.TryGetValue(obj.Type, out var build))
             entity = build(obj);
         else return;   // no visual (PlayerStatus, unknown types): skip, don't crash
@@ -75,13 +83,23 @@ public class ObjectViewFactory : IDisposable
         // the attach presenter owns it instead.
         if (isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new PickupBobScript { Object = obj });
         if (isItem && obj.Has.HasFlag(NetComponents.Owner))
-            entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Priority = 15 });
+            entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Priority = 25 });
         if (!isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
 
         entity.Transform.Position = obj.Transform.Position.ToStride();
         entity.Scene = scene;
     }
+
+    private Entity CreateGrenadeSphere()
+        => Stride.CommunityToolkit.Games.GameExtensions.Create3DPrimitive(
+            game,
+            PrimitiveModelType.Sphere,
+            new Primitive3DEntityOptions
+            {
+                // Primitive3DEntityOptions interprets sphere Size as a radius.
+                Size = new System.Numerics.Vector3(GrenadeConfig.Radius),
+            });
 
     private void DestroyView(NetObject obj)
     {

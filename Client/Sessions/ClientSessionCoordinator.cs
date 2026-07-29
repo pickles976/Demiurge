@@ -63,7 +63,8 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     return ExecuteStructure(tokens, editor);
                 if (tokens.Length > 2
                     && tokens[1].Equals("object", StringComparison.OrdinalIgnoreCase)
-                    && tokens[2].ToLowerInvariant() is "list" or "select" or "equip")
+                    && (tokens[2].ToLowerInvariant() is "list" or "select" or "equip"
+                        || tokens[2].Equals("set-team", StringComparison.OrdinalIgnoreCase)))
                     return ExecuteEditorObject(tokens, editor);
                 var result = EditorCommandParser.Execute(normalized, editor.Settings, editor.Editor);
                 return TerminalOutputFor(result.Success, result.Output);
@@ -182,7 +183,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     "terrain" => ["operation", "shape", "size", "strength", "material"],
                     "block" => BlockCatalog.All.Select(definition => definition.Id)
                         .Concat(["size"]),
-                    "object" => ["pickup", "mob", "spawn", "clear", "list", "select", "equip"],
+                    "object" => ["pickup", "mob", "spawn", "flag", "team", "clear", "list", "select", "equip", "set-team"],
                     _ => [],
                 };
             if (tokenIndex == 3 && tokens.Length > 2)
@@ -198,6 +199,10 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                         .Select(placement => EditorPlacementIds.Display(placement.Id)),
                     "object equip" => editor.Editor.Document.Placements
                         .Where(placement => placement.Kind == EditorPlacementKind.Mob)
+                        .Select(placement => EditorPlacementIds.Display(placement.Id))
+                        .Prepend("selected"),
+                    "object set-team" => editor.Editor.Document.Placements
+                        .Where(placement => placement.Kind is EditorPlacementKind.Mob or EditorPlacementKind.PlayerSpawn)
                         .Select(placement => EditorPlacementIds.Display(placement.Id))
                         .Prepend("selected"),
                     _ => [],
@@ -247,7 +252,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  editor mode <terrain|block|object>",
                 "  editor terrain <operation|shape|size|strength|material> ...",
                 "  editor block <block-id|size> ...",
-                "  editor object <pickup|mob|spawn|clear|list|select|equip> ...",
+                "  editor object <pickup|mob|spawn|flag|team|clear|list|select|equip|set-team> ...",
                 "  editor undo | editor redo",
                 "Use 'help terrain', 'help block', or 'help object' for details.",
             ],
@@ -275,10 +280,13 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  editor object pickup <item-id>",
                 "  editor object mob",
                 "  editor object spawn [spawn-id]",
+                "  editor object flag",
+                "  editor object team <positive-integer>",
                 "  editor object clear",
                 "  editor object list",
                 "  editor object select <placement-id>",
                 "  editor object equip <placement-id|selected> <weapon-id>",
+                "  editor object set-team <placement-id|selected> <positive-integer>",
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
                 "Examples: editor object pickup demiurge:ak47 | editor object mob",
                 "Left click places the selected archetype and reports its stable placement ID.",
@@ -677,6 +685,26 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     true,
                     $"Equipped mob placement {EditorPlacementIds.Display(mob.Id)} with {weaponId}");
 
+            case "set-team":
+                if (tokens.Length != 5
+                    || !int.TryParse(tokens[4], out int team)
+                    || team <= 0)
+                    return TerminalOutputFor(
+                        false,
+                        "Usage: editor object set-team <placement-id|selected> <positive-integer>");
+                var actor = ResolveEditorPlacement(editor, tokens[3]);
+                if (actor.Kind is not (EditorPlacementKind.Mob or EditorPlacementKind.PlayerSpawn))
+                    return TerminalOutputFor(
+                        false,
+                        $"Placement {EditorPlacementIds.Display(actor.Id)} cannot have a playable team");
+                editor.Editor.Execute(new UpdatePlacementCommand(
+                    $"Set team for {EditorPlacementIds.Display(actor.Id)}",
+                    actor,
+                    actor with { Team = team }));
+                return TerminalOutputFor(
+                    true,
+                    $"Set placement {EditorPlacementIds.Display(actor.Id)} to team {team}");
+
             default:
                 return TerminalOutputFor(false, $"Unknown editor object command: {tokens[2]}");
         }
@@ -699,7 +727,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         string details = placement.Kind switch
         {
             EditorPlacementKind.Mob =>
-                $" weapon={placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47)}",
+                $" weapon={placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47)} team={placement.Team}",
+            EditorPlacementKind.PlayerSpawn => $" team={placement.Team}",
+            EditorPlacementKind.Flag => " neutral",
             _ => string.Empty,
         };
         return $"{EditorPlacementIds.Display(placement.Id)} " +

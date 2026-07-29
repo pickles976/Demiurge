@@ -35,8 +35,12 @@ namespace Demiurge.GameServer
             if (!IsFinite(dig.Target)) return;
             if (tick < player.NextDigTick) return;
 
-            // Hands only, for now. The equipped Hand slot being empty IS being unarmed.
-            if (player.Equipped.ContainsKey(EquipSlot.Hand)) return;
+            // Slot 2 is the placeholder shovel: it deliberately has no item object yet, but
+            // selecting it is what authorizes hand digging. Mobs retain the legacy hand rule.
+            if (player.IsMob
+                ? player.Equipped.ContainsKey(EquipSlot.Hand)
+                : player.Hotbar != HotbarSlot.Shovel)
+                return;
 
             // The one thing genuinely worth enforcing: you dig what you can reach. Everything else
             // about the request is the client's own aim, which the server has no better view of.

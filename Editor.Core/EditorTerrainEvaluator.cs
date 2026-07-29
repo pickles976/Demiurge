@@ -136,10 +136,16 @@ public sealed class EditorTerrainEvaluator
                     : throw new InvalidDataException($"Unknown item {placement.ArchetypeId}")),
             EditorPlacementKind.Mob => new RuntimePlacement(
                 RuntimePlacementKind.Mob, position, placement.Yaw,
-                Item: ResolveMobWeapon(placement)),
+                Item: ResolveMobWeapon(placement),
+                Team: placement.Team),
             EditorPlacementKind.PlayerSpawn => new RuntimePlacement(
                 RuntimePlacementKind.PlayerSpawn, position, placement.Yaw,
-                SpawnId: placement.ArchetypeId["demiurge:spawn/".Length..]),
+                SpawnId: placement.ArchetypeId["demiurge:spawn/".Length..],
+                Team: placement.Team),
+            EditorPlacementKind.Flag => new RuntimePlacement(
+                RuntimePlacementKind.Flag, position, placement.Yaw,
+                SpawnId: "flag",
+                Team: 0),
             _ => throw new InvalidDataException($"Unknown placement kind {placement.Kind}"),
         };
     }

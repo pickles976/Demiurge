@@ -4,13 +4,13 @@ using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
-// Shot feedback: tracer + positional audio, per weapon (ItemCosmetics).
+// Shot feedback: traveling projectile tracer + positional audio, per weapon.
 // Two inputs, one effects path:
 //  - local player: the sim's ShotFired event, instantly on the PREDICTED shot;
-//  - remote players: the server's PlayerFired broadcast (accepted shots only),
+//  - remote players: the server's projectile-spawn broadcast (accepted shots only),
 //    filtered to skip our own id so predicted shots never double-flash.
-// View-only — the server's raycast decides real hits; the tracer endpoint just
-// mirrors the same math (GunMath) over the replicated objects.
+// View-only — the server's projectile decides real hits. This simulation uses
+// replicated positions and exists only to put the tracer and impact in the right place.
 public class ShotEffectsScript : SyncScript
 {
     public required PlayerRegistry Registry { get; init; }
@@ -18,7 +18,21 @@ public class ShotEffectsScript : SyncScript
     public required NetworkManager Network { get; init; }
     public required TerrainState Terrain { get; init; }
 
-    private const float TracerLifetime = 0.1f;   // the old GunScript's tracer look
+    private sealed class VisualProjectile
+    {
+        public required System.Numerics.Vector3 Position { get; set; }
+        public required System.Numerics.Vector3 Velocity { get; set; }
+        public required float RemainingDistance { get; set; }
+        public required ushort ShooterId { get; init; }
+        public required Color Color { get; init; }
+    }
+
+    private readonly record struct VisualHit(
+        System.Numerics.Vector3 Point,
+        System.Numerics.Vector3? Normal,
+        bool Flesh);
+
+    private const float TracerLifetime = 0.055f;
     private const float MinTracerLength = 0.03f;
 
     /// <summary>Dust, not sparks: pale and a little transparent, so a burst of them reads as one
@@ -29,6 +43,7 @@ public class ShotEffectsScript : SyncScript
 
     private SoundManager sound = null!;
     private LocalPlayer? subscribed;
+    private readonly List<VisualProjectile> projectiles = new();
 
     public override void Start()
     {
@@ -47,20 +62,24 @@ public class ShotEffectsScript : SyncScript
             subscribed = Registry.LocalPlayer;
             if (subscribed != null) subscribed.ShotFired += OnLocalShot;
         }
+
+        UpdateProjectiles((float)Game.UpdateTime.Elapsed.TotalSeconds);
     }
 
     private void OnLocalShot(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction)
     {
         if (subscribed is not { IsArmed: true } local) return;   // ShotFired implies armed, but be safe
-        PlayEffects(origin, direction, local.Weapon!.Item.Type, local.Stats.MaxRange, Network.ClientId);
+        if (local.Weapon!.Item.Type == ItemType.Grenade) return; // replicated sphere is the visual
+        PlayEffects(origin, direction, local.Weapon!.Item.Type, Network.ClientId);
     }
 
     private void OnRemoteFired(PlayerFiredData data)
     {
         if (data.PlayerId == Network.ClientId) return;   // our shots already played predictively
-        // Off-the-wire type: soft-fail to a plausible range — a wrong tracer
-        // length is cosmetic, a crash is not.
-        PlayEffects(data.Origin, data.Direction, data.Weapon, WeaponConfig.Get(data.Weapon)?.MaxRange ?? 100f, data.PlayerId);
+        if (data.Weapon == ItemType.Grenade) return;
+        // Unknown off-the-wire weapon types cannot provide a meaningful projectile speed.
+        if (WeaponConfig.Get(data.Weapon) is null) return;
+        PlayEffects(data.Origin, data.Direction, data.Weapon, data.PlayerId);
     }
 
     private void OnHitConfirmed(HitConfirmData confirm)
@@ -73,60 +92,120 @@ public class ShotEffectsScript : SyncScript
         DamageTextManager.Spawn(position.ToStride(), confirm.Damage, DamageTextColor);
     }
 
-    private void PlayEffects(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction, ItemType weapon, float maxRange, ushort shooterId)
+    private void PlayEffects(
+        System.Numerics.Vector3 origin,
+        System.Numerics.Vector3 direction,
+        ItemType weapon,
+        ushort shooterId)
     {
-        if (!IsFinite(origin) || !IsFinite(direction) || direction.LengthSquared() < 1e-8f || maxRange <= 0f)
+        var ballistics = BallisticsConfig.Require(weapon);
+        if (!IsFinite(origin)
+            || !IsFinite(direction)
+            || direction.LengthSquared() < 1e-8f
+            || ballistics.ProjectileSpeed <= 0f)
             return;
         direction = System.Numerics.Vector3.Normalize(direction);
-
-        // End the tracer at the nearest replicated object the ray passes within
-        // HitRadius of — the same test the server runs — or at max range.
-        float distance = maxRange;
-        foreach (var obj in Objects.Objects)
-            if (obj.Has.HasFlag(NetComponents.Transform)   // equipped weapons have no world position
-                && GunMath.HitDistance(origin, direction, obj.Transform.Position, maxRange) is { } t
-                && t < distance)
-                distance = t;
-
-        System.Numerics.Vector3? bodyImpact = null;
-        foreach (var player in Registry.Players)
-        {
-            if (player.Id == shooterId) continue;
-            var center = player.Position + new System.Numerics.Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
-            if (GunMath.HitDistance(origin, direction, center, maxRange) is not { } t || t >= distance)
-                continue;
-
-            distance = t;
-            bodyImpact = origin + direction * t;
-        }
-
-        // Terrain stops the shot if it gets there first, matching what the server decides — it runs
-        // this same cast before awarding a hit, so a tracer that buries itself in a hillside is
-        // showing you a shot that really was stopped, not just a shortened line.
-        TerrainHit? ground = TerrainRaycast.Cast(Terrain.Map, origin, direction, distance);
-        if (ground is { } g)
-        {
-            distance = g.Distance;
-            bodyImpact = null;
-        }
 
         var fx = WeaponFx.Get(weapon);
         var start = origin.ToStride();
         sound.PlayOneShotSpatial(fx.ShotSoundPath, start);
-
-        // A barrel can be visibly buried in terrain, especially inside a trench. TerrainRaycast then
-        // returns a valid hit at distance zero. Play the shot and impact, but do not feed a zero-length
-        // tracer into the line renderer path.
-        if (distance >= MinTracerLength)
+        projectiles.Add(new VisualProjectile
         {
-            var end = (origin + direction * distance).ToStride();
-            TracerManager.Spawn(start, end, fx.TracerColor, TracerLifetime);
+            Position = origin,
+            Velocity = direction * ballistics.ProjectileSpeed,
+            RemainingDistance = ProjectileMotion.SafetyDistance,
+            ShooterId = shooterId,
+            Color = fx.TracerColor,
+        });
+    }
+
+    private void UpdateProjectiles(float dt)
+    {
+        if (!float.IsFinite(dt) || dt <= 0f) return;
+
+        for (int i = projectiles.Count - 1; i >= 0; i--)
+        {
+            var projectile = projectiles[i];
+            var step = ProjectileMotion.Advance(
+                projectile.Position,
+                projectile.Velocity,
+                dt,
+                projectile.RemainingDistance);
+
+            if (TryHit(step.Start, step.End, projectile.ShooterId, out var hit))
+            {
+                DrawSegment(step.Start, hit.Point, projectile.Color);
+                if (hit.Flesh)
+                    ImpactManager.Spawn(hit.Point.ToStride(), hit.Normal!.Value.ToStride(), FleshImpactColor);
+                else if (hit.Normal is { } normal)
+                    ImpactManager.Spawn(hit.Point.ToStride(), normal.ToStride(), ImpactColor);
+                projectiles.RemoveAt(i);
+                continue;
+            }
+
+            DrawSegment(step.Start, step.End, projectile.Color);
+            projectile.Position = step.End;
+            projectile.Velocity = step.Velocity;
+            projectile.RemainingDistance -= step.Distance;
+            if (step.Exhausted)
+                projectiles.RemoveAt(i);
+        }
+    }
+
+    private bool TryHit(
+        System.Numerics.Vector3 start,
+        System.Numerics.Vector3 end,
+        ushort shooterId,
+        out VisualHit hit)
+    {
+        hit = default;
+        var segment = end - start;
+        float length = segment.Length();
+        if (length < 1e-6f) return false;
+        var direction = segment / length;
+
+        float nearest = float.MaxValue;
+        if (TerrainRaycast.Cast(Terrain.Map, start, direction, length) is { } ground)
+        {
+            nearest = ground.Distance;
+            hit = new VisualHit(ground.Point, ground.Normal, Flesh: false);
         }
 
-        // Debris only where there is ground to kick up — a shot into the sky or into a player
-        // leaves nothing behind.
-        if (ground is { } hit) ImpactManager.Spawn(hit.Point.ToStride(), hit.Normal.ToStride(), ImpactColor);
-        else if (bodyImpact is { } body) ImpactManager.Spawn(body.ToStride(), (-direction).ToStride(), FleshImpactColor);
+        foreach (var obj in Objects.Objects)
+        {
+            if (!obj.Has.HasFlag(NetComponents.Transform)
+                || GunMath.HitDistance(start, direction, obj.Transform.Position, length) is not { } t
+                || t >= nearest)
+                continue;
+
+            nearest = t;
+            hit = new VisualHit(start + direction * t, Normal: null, Flesh: false);
+        }
+
+        foreach (var player in Registry.Players)
+        {
+            if (player.Id == shooterId) continue;
+            var center = player.Position
+                + new System.Numerics.Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+            if (GunMath.HitDistance(start, direction, center, length) is not { } t || t >= nearest)
+                continue;
+
+            nearest = t;
+            hit = new VisualHit(start + direction * t, -direction, Flesh: true);
+        }
+
+        return nearest < float.MaxValue;
+    }
+
+    private static void DrawSegment(
+        System.Numerics.Vector3 start,
+        System.Numerics.Vector3 end,
+        Color color)
+    {
+        if (System.Numerics.Vector3.DistanceSquared(start, end)
+            < MinTracerLength * MinTracerLength)
+            return;
+        TracerManager.Spawn(start.ToStride(), end.ToStride(), color, TracerLifetime);
     }
 
     private static bool IsFinite(System.Numerics.Vector3 v)

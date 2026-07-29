@@ -35,6 +35,7 @@ public sealed class RuntimeClientSession : IClientSession
     private ServerHost? localServer;
     private ClientTerrain? terrainView;
     private PlayerViewFactory? playerViews;
+    private RagdollViewFactory? ragdolls;
     private ObjectViewFactory? objectViews;
     private SoundManager? sound;
     private IPlayerStatus? playerStatus;
@@ -97,7 +98,11 @@ public sealed class RuntimeClientSession : IClientSession
 
         Add(HUD.CreateUI(game));
         Add(HUD.CreateDebugStats(game));
-        Add(new Entity("TracerSystem") { new TracerSystem() });
+        Add(new Entity("TracerSystem")
+        {
+            new TracerSystem(),
+            new GrenadeExplosionScript { Objects = objectRegistry },
+        });
 
         camera = embedding?.Camera ?? game.Add3DCamera();
         if (embedding is null) ownedEntities.Add(camera);
@@ -135,6 +140,7 @@ public sealed class RuntimeClientSession : IClientSession
         });
 
         playerViews = new PlayerViewFactory(game, scene, registry);
+        ragdolls = new RagdollViewFactory(game, scene, registry, objectRegistry, terrainState);
         objectViews = new ObjectViewFactory(
             game, scene, objectRegistry, weaponMount, registry, camera,
             localWeaponView, modelLocators);
@@ -165,6 +171,7 @@ public sealed class RuntimeClientSession : IClientSession
 
         chunkStream?.Dispose();
         objectViews?.Dispose();
+        ragdolls?.Dispose();
         playerViews?.Dispose();
         if (embedding is null) terrainView?.Dispose();
         objectRegistry.Dispose();
@@ -233,7 +240,9 @@ public sealed class RuntimeClientSession : IClientSession
         if (!obj.Has.HasFlag(NetComponents.Owner) || obj.Owner.PlayerId != network.ClientId) return;
         if (obj.Has.HasFlag(NetComponents.Weapon)
             && obj.Has.HasFlag(NetComponents.Attachment)
-            && obj.Attachment.Slot == EquipSlot.Hand) local.Equip(obj);
+            && (obj.Attachment.Slot == EquipSlot.Hand
+                || HotbarConfig.TryFromStorageSlot(obj.Attachment.Slot, out _)))
+            local.Equip(obj);
         if (obj.Type == ObjectType.PlayerStatus) local.Status = obj;
     }
 }

@@ -14,6 +14,7 @@ public static class ItemCatalog
         new(ItemType.AWP, "demiurge:awp", ["awp"]),
         new(ItemType.Glock, "demiurge:glock", ["glock"]),
         new(ItemType.BodyArmor, "demiurge:body_armor", ["body_armor", "body-armor", "bodyarmor"]),
+        new(ItemType.Grenade, "demiurge:grenade", ["grenade"]),
     ];
 
     private static readonly Dictionary<string, ItemType> byName = BuildLookup();

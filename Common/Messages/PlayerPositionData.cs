@@ -26,6 +26,9 @@ namespace Demiurge
         /// remote player's head and gun aim with it. APPENDED — never inserted.</summary>
         public float Pitch;
 
+        /// <summary>Selected hotbar position, used to show the correct remote held item. APPENDED.</summary>
+        public HotbarSlot Hotbar;
+
         public void Serialize(Message message)
         {
             message.AddUShort(PlayerId);
@@ -37,6 +40,7 @@ namespace Demiurge
             message.AddVector3(Velocity);
             message.AddBool(Grounded);
             message.AddFloat(Pitch);
+            message.AddByte((byte)Hotbar);
         }
 
         public void Deserialize(Message message)
@@ -50,6 +54,7 @@ namespace Demiurge
             Velocity = message.GetVector3();
             Grounded = message.GetBool();
             Pitch = message.GetFloat();
+            Hotbar = (HotbarSlot)message.GetByte();
         }
 
         /// <summary>The movement half of this message, as the shared step wants it.</summary>

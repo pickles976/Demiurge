@@ -254,6 +254,7 @@ public sealed class EditorControllerScript : SyncScript
             EditorObjectChoiceKind.Pickup => EditorPlacementKind.Pickup,
             EditorObjectChoiceKind.Mob => EditorPlacementKind.Mob,
             EditorObjectChoiceKind.Spawn => EditorPlacementKind.PlayerSpawn,
+            EditorObjectChoiceKind.Flag => EditorPlacementKind.Flag,
             _ => throw new InvalidOperationException(),
         };
         var placement = new EditorPlacement
@@ -266,6 +267,7 @@ public sealed class EditorControllerScript : SyncScript
             WeaponId = kind == EditorPlacementKind.Mob
                 ? ItemCatalog.Id(ItemType.Ak47)
                 : null,
+            Team = kind == EditorPlacementKind.Flag ? 0 : Settings.ObjectTeam,
         };
         Session.Execute(new AddPlacementCommand(placement));
         FeedbackRequested?.Invoke(
@@ -485,7 +487,22 @@ public sealed class EditorControllerScript : SyncScript
         if (selectedPlacement is { } id && Session.Placement(id) is { } selected)
             WorldPreviewRenderer.Cell(selected.Cell, new Color(80, 220, 255, 240));
         foreach (var placement in Session.Document.Placements.Where(p => p.Kind == EditorPlacementKind.PlayerSpawn))
-            WorldPreviewRenderer.Cell(placement.Cell, new Color(80, 255, 120, 220));
+            WorldPreviewRenderer.Cell(
+                placement.Cell,
+                TeamColor(placement.Team, alpha: 220));
+        foreach (var placement in Session.Document.Placements.Where(p => p.Kind == EditorPlacementKind.Flag))
+            WorldPreviewRenderer.Cell(placement.Cell, new Color(220, 220, 220, 220));
+    }
+
+    private static Color TeamColor(int team, byte alpha)
+    {
+        if (team <= 0) return new Color(220, 220, 220, alpha);
+        uint hash = unchecked((uint)team * 2654435761u);
+        return new Color(
+            (byte)(80 + (hash & 0x7f)),
+            (byte)(80 + ((hash >> 8) & 0x7f)),
+            (byte)(80 + ((hash >> 16) & 0x7f)),
+            alpha);
     }
 
     private bool IsTargetValid(

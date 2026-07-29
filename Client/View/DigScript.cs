@@ -46,9 +46,9 @@ namespace Demiurge
             if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
             if (Registry.LocalPlayer is not { } local) return;
 
-            // Hands only. Holding a gun means left click shoots, and the two must not both fire off
-            // the same button.
-            if (local.IsArmed) return;
+            // Slot 2 is the placeholder shovel/empty hand. Empty slot 1 is deliberately not a
+            // digging tool, so the number keys always have stable meaning.
+            if (local.Hotbar != HotbarSlot.Shovel) return;
 
             if (FindTarget() is not { } target) return;
             Target = target;
@@ -63,7 +63,7 @@ namespace Demiurge
 
             if ((pressed || down) && sinceDig >= MinDigInterval)
             {
-                Network.SendDig(new PlayerDigData { Target = target });
+                Network.SendDig(new PlayerDigData { Target = target, Hotbar = local.Hotbar });
                 sinceDig = 0f;
             }
         }

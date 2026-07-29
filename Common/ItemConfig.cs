@@ -20,6 +20,8 @@ namespace Demiurge
         Chest,
         Head,
         Back,
+        HotbarPrimary,
+        HotbarGrenade,
     }
 
     /// <summary>Identity-level facts every item has. Trait stats live in the
@@ -38,6 +40,7 @@ namespace Demiurge
             ItemType.AWP => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.Glock => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.BodyArmor => new(ItemCategory.Equippable, EquipSlot.Chest),
+            ItemType.Grenade => new(ItemCategory.Equippable, EquipSlot.Hand),
 
             // Unknown type off the wire: a bare hand equippable rather than a crash.
             _ => new(ItemCategory.Equippable, EquipSlot.Hand),

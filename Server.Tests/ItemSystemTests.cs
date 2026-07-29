@@ -39,4 +39,18 @@ public class ItemSystemTests
         Assert.Equal(ItemType.BodyArmor, pickup.Item.Type);
         Assert.Equal(new Vector3(1, 2, 3), pickup.Transform.Position);
     }
+
+    [Fact]
+    public void HotbarGrenadeStackStartsWithFour()
+    {
+        var objects = new ObjectReplication(new Server());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 7 };
+        var grenade = items.SpawnHotbar(actor, ItemType.Grenade, HotbarSlot.Grenade);
+
+        Assert.True(grenade.Has.HasFlag(NetComponents.Weapon));
+        Assert.Equal(4, grenade.Weapon.CurrentAmmo);
+        Assert.Equal(EquipSlot.HotbarGrenade, grenade.Attachment.Slot);
+        Assert.Equal(grenade.NetworkId, actor.Equipped[EquipSlot.HotbarGrenade]);
+    }
 }

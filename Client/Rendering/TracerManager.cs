@@ -74,6 +74,7 @@ namespace Demiurge
             float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
             TracerManager.Update(dt);
             ImpactManager.Update(dt);
+            ExplosionManager.Update(dt);
             DamageTextManager.Update(dt);
         }
     }

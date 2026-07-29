@@ -6,6 +6,7 @@ namespace Demiurge.GameServer
     {
         public ushort Id { get; init; }
         public bool IsMob { get; init; }
+        public int Team { get; set; } = 1;
 
         /// <summary>
         /// Authoritative movement state, stepped by <see cref="PlayerMovement.Step"/>. A field rather
@@ -25,6 +26,7 @@ namespace Demiurge.GameServer
         public Vector3 PendingIntent { get; set; }
         public float Yaw {get; set;}
         public float Pitch {get; set;}
+        public HotbarSlot Hotbar { get; set; } = HotbarSlot.Primary;
 
         public ServerObject? Status {get; set;}
 
@@ -36,6 +38,14 @@ namespace Demiurge.GameServer
         public uint NextDigTick { get; set; }      // earliest tick the next dig is legal
         public uint NextFireTick { get; set; }     // earliest tick the next shot is legal
         public uint ReloadDoneTick { get; set; }   // firing is blocked until this tick
+        public uint NextGrenadeThrowTick { get; set; }
+        public WeaponSpreadState Spread;
+
+        /// <summary>
+        /// Zero while alive. Death is held for one complete replicated tick before respawn so
+        /// clients observe the reliable zero-health transition and can create cosmetic death FX.
+        /// </summary>
+        public uint RespawnTick { get; set; }
 
         // Inputs arrive about once per-frame (unreliably) and are consumed once per tick, so they are queued.
         public Queue<PlayerInputData> PendingMoves {get; } = new();

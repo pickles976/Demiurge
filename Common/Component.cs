@@ -12,7 +12,9 @@ namespace Demiurge
         TrainingDummy,
         PlayerStatus,
         Item,
-        Tree
+        Tree,
+        Grenade,
+        Flag,
     }
 
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon
@@ -24,6 +26,7 @@ namespace Demiurge
         AWP = 2,
         Glock = 3,
         BodyArmor = 4,
+        Grenade = 5,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"
@@ -39,7 +42,8 @@ namespace Demiurge
         Owner = 1 << 3,
         Armor = 1 << 4,
         Item = 1 << 5,
-        Attachment = 1 << 6
+        Attachment = 1 << 6,
+        Team = 1 << 7,
     }
 
     public struct TransformState : IMessageSerializable
@@ -109,6 +113,31 @@ namespace Demiurge
         public void Deserialize(Message m) => Slot = (EquipSlot)m.GetByte();
     }
 
+    /// <summary>
+    /// Zero is neutral; positive values identify playable teams. Flag objects additionally use
+    /// CapturingTeam and normalized Progress for their timed capture state.
+    /// </summary>
+    public struct TeamState : IMessageSerializable
+    {
+        public int Value;
+        public int CapturingTeam;
+        public float Progress;
+
+        public void Serialize(Message m)
+        {
+            m.AddInt(Value);
+            m.AddInt(CapturingTeam);
+            m.AddFloat(Progress);
+        }
+
+        public void Deserialize(Message m)
+        {
+            Value = m.GetInt();
+            CapturingTeam = m.GetInt();
+            Progress = m.GetFloat();
+        }
+    }
+
     /// <summary>Some subset of an object's components, mask-prefixed. The if-chain
     /// order is the wire format; new components go at the end of both methods.</summary>
     public struct ComponentBundle : IMessageSerializable
@@ -121,6 +150,7 @@ namespace Demiurge
         public ArmorState Armor;
         public ItemState Item;
         public AttachmentState Attachment;
+        public TeamState Team;
 
         public void Serialize(Message m)
         {
@@ -132,6 +162,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Armor)) m.AddSerializable(Armor);
             if (Mask.HasFlag(NetComponents.Item)) m.AddSerializable(Item);
             if (Mask.HasFlag(NetComponents.Attachment)) m.AddSerializable(Attachment);
+            if (Mask.HasFlag(NetComponents.Team)) m.AddSerializable(Team);
         }
 
         public void Deserialize(Message m)
@@ -144,6 +175,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Armor)) Armor = m.GetSerializable<ArmorState>();
             if (Mask.HasFlag(NetComponents.Item)) Item = m.GetSerializable<ItemState>();
             if (Mask.HasFlag(NetComponents.Attachment)) Attachment = m.GetSerializable<AttachmentState>();
+            if (Mask.HasFlag(NetComponents.Team)) Team = m.GetSerializable<TeamState>();
         }
     }
 }

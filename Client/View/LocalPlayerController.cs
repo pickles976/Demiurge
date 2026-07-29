@@ -13,6 +13,9 @@ public class LocalPlayerController : SyncScript
 	public required LocalWeaponView WeaponView { get; init; }
 	public required ClientInputState InputState { get; init; }
 
+	private bool primaryWasDown;
+	private uint? primedGrenadeId;
+
 	/// <summary>How far down the line of sight to look for something to aim at.</summary>
 	public float MaxAimDistance { get; set; } = 200f;
 
@@ -50,6 +53,8 @@ public class LocalPlayerController : SyncScript
 		// frozen mid-sprint would keep running server-side while the client stopped predicting.
 		if (InputState.TerminalOpen || CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
 		{
+			primaryWasDown = false;
+			primedGrenadeId = null;
 			local.State = local.State
 				.With(PlayerStateFlags.Moving, false)
 				.With(PlayerStateFlags.Sprinting, false)
@@ -65,9 +70,11 @@ public class LocalPlayerController : SyncScript
 
 		// Position
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
+		HandleHotbarInput(local);
 
 		// State
 		bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
+		bool primaryDown = Input.IsMouseButtonDown(MouseButton.Left);
 
 		local.State = local.State
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
@@ -78,7 +85,7 @@ public class LocalPlayerController : SyncScript
 			// holding Space jumps again the moment you land. It also sidesteps IsKeyPressed, which
 			// re-fires on OS auto-repeat and is not a reliable one-shot for a held key.
 			.With(PlayerStateFlags.Jumping, Input.IsKeyDown(Keys.Space))
-			.With(PlayerStateFlags.Shooting, aiming && Input.IsMouseButtonDown(MouseButton.Left))
+			.With(PlayerStateFlags.Shooting, local.IsArmed && primaryDown)
 			.With(PlayerStateFlags.Reloading, local.IsReloading);
 
 		// Rotation. The active look camera owns facing — you look where the camera looks. Turning
@@ -103,21 +110,40 @@ public class LocalPlayerController : SyncScript
 
 		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
 
-		// Where the line of sight lands, resolved AFTER the rotation block so it uses this frame's
-		// camera rather than last frame's. The reticle reads it back off this script.
+		// Where the line of sight lands, resolved AFTER the rotation block so hip fire and ADS
+		// both use this frame's camera rather than last frame's.
 		var cameraTransform = CameraEntity.Transform;
 		AimPoint = ComputeAimPoint(
 			cameraTransform.Position,
 			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
 
-		// Holding LMB is level-triggered input, but TryFire's cooldown gate turns it into one
-		// edge-triggered PlayerFire per shot — that's where "hold to fire at 10/s" comes from.
+		// Guns remain level-triggered and let TryFire's cooldown produce their cadence. A grenade is
+		// primed while LMB is held (the view uses Shooting for its pullback) and is thrown exactly
+		// once on release, provided the same grenade is still equipped.
 		//
 		// A POINT, not a direction. The muzzle is not the camera, so a direction copied from the
 		// camera would send the bullet parallel to the line of sight and never onto the reticle —
-		// see TryFire. Aiming-only, so the aim point is always the one the reticle is showing.
-		if (local.IsArmed && aiming && Input.IsMouseButtonDown(MouseButton.Left) && AimPoint is { } target)
-			local.TryFire(target, Registry.RenderTick, FireOrigin(local));
+		// see TryFire. Hip fire uses this same centre point; its lower accuracy comes from spread.
+		bool grenadeEquipped = local.Weapon?.Item.Type == ItemType.Grenade;
+		if (grenadeEquipped)
+		{
+			if (primaryDown)
+				primedGrenadeId ??= local.Weapon!.NetworkId;
+			else if (primaryWasDown
+			         && primedGrenadeId == local.Weapon!.NetworkId
+			         && AimPoint is { } grenadeTarget)
+				local.TryFire(grenadeTarget, Registry.RenderTick, FireOrigin(local));
+		}
+		else if (primedGrenadeId == null
+		         && local.IsArmed
+		         && primaryDown
+		         && AimPoint is { } weaponTarget)
+		{
+			local.TryFire(weaponTarget, Registry.RenderTick, FireOrigin(local));
+		}
+
+		if (!primaryDown) primedGrenadeId = null;
+		primaryWasDown = primaryDown;
 
 		if (Input.IsKeyPressed(Keys.R))
 			local.TryReload();
@@ -127,15 +153,33 @@ public class LocalPlayerController : SyncScript
 
 	}
 
+	private void HandleHotbarInput(LocalPlayer local)
+	{
+		if (Input.IsKeyPressed(Keys.D1) || Input.IsKeyPressed(Keys.NumPad1))
+			local.SelectHotbar(HotbarSlot.Primary);
+		else if (Input.IsKeyPressed(Keys.D2) || Input.IsKeyPressed(Keys.NumPad2))
+			local.SelectHotbar(HotbarSlot.Shovel);
+		else if (Input.IsKeyPressed(Keys.D3) || Input.IsKeyPressed(Keys.NumPad3))
+			local.SelectHotbar(HotbarSlot.Grenade);
+
+		float wheel = Input.MouseWheelDelta;
+		if (wheel > 0f)
+			local.SelectHotbar(HotbarConfig.Scroll(local.Hotbar, -1));
+		else if (wheel < 0f)
+			local.SelectHotbar(HotbarConfig.Scroll(local.Hotbar, 1));
+	}
+
 	private Vector3 FireOrigin(LocalPlayer local)
 	{
 		if (WeaponView.MuzzleWorld is { } muzzle && WeaponView.NetworkId == local.Weapon?.NetworkId)
 			return muzzle;
 
 		var cameraTransform = CameraEntity.Transform;
-		var grip = local.State.HasFlag(PlayerStateFlags.Aiming)
-			? WeaponMount.AimGripOffset
-			: WeaponMount.HipGripOffset;
+		var grip = local.Weapon!.Item.Type == ItemType.Grenade
+			? WeaponMount.GrenadePullbackGripOffset
+			: WeaponMount.FirstPersonGripOffset(
+				local.Weapon.Item.Type,
+				local.State.HasFlag(PlayerStateFlags.Aiming));
 		var offset = Mount.FirstPersonMuzzleOffset(local.Weapon!.Item.Type, grip).ToStride();
 
 		return (Vector3)(cameraTransform.Position

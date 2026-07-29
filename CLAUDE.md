@@ -53,6 +53,46 @@ the editor source map. Editor placements use stable GUIDs displayed as unique ei
 prefixes; `editor object equip` persists a mob weapon in that source placement. See
 `docs/COMMANDS.md`.
 
+## Performance targets
+
+**60 FPS client, 30 TPS server, in singleplayer, on a Beelink SER5.** These are requirements, not
+aspirations — a design that only holds on a good machine does not hold.
+
+The SER5 is the reference machine and its shape matters more than its speed: a Ryzen 5 5500U/5560U
+class part, **6 cores / 12 threads**, a **Radeon Vega 6–7 iGPU**, and dual-channel DDR4 whose
+bandwidth the CPU and GPU **share**, at 15–25 W sustained. Three consequences:
+
+- **The iGPU is the client bottleneck, not the CPU.** Frame cost is dominated by terrain rendering,
+  so the cheapest wins are usually fewer draw calls and less overdraw, not tighter C#.
+- **There are cores to spare.** Pushing work onto a worker is the preferred fix over micro-optimizing
+  it on the main thread — but only *computation* moves. Anything that creates a Riptide `Message` or
+  mutates world state stays on the main thread and hands results back through a queue, exactly as
+  `TerrainState` does. See the Riptide pooling note under Netcode; that constraint is not negotiable.
+- **Cache-hostile access costs twice**, because scattered reads compete with the iGPU for the same
+  DDR4. This is why the `TerrainCollision` fetch pattern below matters more here than it would on a
+  discrete-GPU box.
+
+The binding case is **singleplayer**, where `ServerHost` is stepped from the client's `Update()`
+(see the Riptide pooling note under Netcode for why it cannot have its own thread). The server tick
+therefore shares the client's 16.6 ms frame budget rather than having 33 ms to itself. Design
+against that number; a dedicated server having the whole machine is the easy case and never the one
+that breaks.
+
+The consequence that actually shapes code: **nothing expensive runs every tick for every entity.**
+Per-entity per-tick work is scheduled, amortized across ticks, shared between entities, or made
+event-driven. This is the rule behind AI think-rate LOD, the terrain meshing queue, and the LOS ray
+budget — it is not an AI-specific concern.
+
+One measured hot path worth knowing before you profile: `ChunkMap.TryGetVoxel` does a `ChunkAt` plus
+a `ConcurrentDictionary` lookup **per voxel**, and `TerrainCollision.TrySample` calls it 56 times
+(8 corners for the cell, 48 more for the smoothed gradient stencil). `TryDeepestContact` triples
+that. Every sample point inside one `TrySample` lies within ±0.5, so the whole thing fits in one
+3×3×3 block fetched once — an unclaimed order of magnitude, bit-identical, benefiting players and
+AI equally. `AI_IMPLEMENTATION.md` carries the full analysis.
+
+Measure before optimizing, and measure again after. Per-system tick timing belongs in the developer
+terminal, not in a one-off harness.
+
 ## Architecture
 
 **Read `RECIPES.md` before changing gameplay code.** It is the map, not a tutorial:

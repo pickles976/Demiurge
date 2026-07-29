@@ -25,10 +25,17 @@ public static class ItemCosmetics
         ItemType.AWP => "assets/models/sniper_rifle.gltf",
         ItemType.Glock => "assets/models/glock.gltf",
         ItemType.BodyArmor => "assets/models/body_armor.gltf",
+        // Identity used by locator lookups only; the view builds this item as a primitive sphere.
+        ItemType.Grenade => "assets/models/grenade_placeholder.gltf",
 
         // Unknown type off the wire: AK stand-in rather than a crash.
         _ => "assets/models/ak47.gltf",
     };
+
+    public static bool UsesSpherePrimitive(ItemType type) => type == ItemType.Grenade;
+
+    public static float FirstPersonScale(ItemType type)
+        => type == ItemType.Grenade ? 1f : WeaponMount.FirstPersonScale;
 
     // A new EquipSlot needs a row here — that's the whole client cost of a slot.
     // Seats are the FALLBACK for models with no grip locator; a Hand item's real seat
@@ -41,6 +48,8 @@ public static class ItemCosmetics
         [EquipSlot.Chest] = new("torso", Vector3.Zero, Quaternion.Identity),
         [EquipSlot.Head] = new("head", Vector3.Zero, Quaternion.Identity),
         [EquipSlot.Back] = new("torso", new Vector3(0f, 0f, -0.2f), Quaternion.Identity),
+        [EquipSlot.HotbarPrimary] = new("right_hand", Vector3.Zero, WeaponMount.HandRotation.ToStride()),
+        [EquipSlot.HotbarGrenade] = new("right_hand", Vector3.Zero, WeaponMount.HandRotation.ToStride()),
     };
 
     // Unknown slot off the wire: ride the player root rather than crash.
@@ -49,7 +58,7 @@ public static class ItemCosmetics
         if (!SlotSockets.TryGetValue(slot, out var socket))
             return new Socket(null, Vector3.Zero, Quaternion.Identity);
 
-        return slot == EquipSlot.Hand
+        return slot == EquipSlot.Hand || HotbarConfig.TryFromStorageSlot(slot, out _)
             ? socket with { Seat = mount.Seat(type).ToStride() }
             : socket;
     }

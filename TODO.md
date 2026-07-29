@@ -1,5 +1,29 @@
-# PVP Mechanics
+# Art Rules
+use 32x32 textures in Blockbench
+use 16x16 textures for the ground
+For weapons, need to model sights and add anchors for camera to figure out where to position weapon for ADS
 
+# AI 
+
+- [ ] AI "teams"
+- [ ] AI should have different behaviors based on weapon
+  - [ ] SMG -- close the gap by moving from cover to cover, once close start suppressing and using grenades. Ideal engagement range is <30m
+  - [ ] automatic rifle -- fire and advance. Seek cover before firing, coordinate with nearby units for fire and advance. Ideal engagement range is 100-200m
+  - [ ] sniper rifle, 200m+. Seek cover and take shots when you can. Fall back as units get closer to better vantage points. Look for cover and high spots with far LOS.
+- [ ] how do AI find "cover"?
+  - [ ] seek out parts of a chunk with steep gradients, perform LOS-checks to known enemies in the AI's blackboard to evaluate the quality of cover
+  - [ ] concealment-- use cover when engaging in combat, use concealment to move stealthily or perform ambushes.
+- [ ] AI not omniscient, need full LOS to see enemies. Can remember where it last saw enemies with memory fade.
+- [ ] when no good cover is available, AI can dig their own foxholes. If AI get stuck it should staircase out of a hole or a tunnel. 
+- [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches.
+- [ ] units can share knowledge of enemy positions with one another
+- [ ] squad tactics, riflemen use "fire and advance", snipers provide suppression and overwatch, assault troops close the distance and go in for the kill
+
+- [ ] commander-level AI, sets theater-scale objectives (take objective, build fortifications, move MG or mortar to location)
+- [ ] squad-level AI - how to achieve theater goals locally, delegate mortar lugging job to least useful unit in the group, when to attack, when to defend, who should hold a defensive post and who should work on digging, etc.
+- [ ] unit-level AI -- goals like "stand on cap point" or "bring MG to this area". Intermediate behaviors like engaging, flanking, digging into cover, seeking cover, etc.
+
+# PVP Mechanics
 - [ ] brick wall texture and block type
 
 - [ ] animation clean-up
@@ -9,23 +33,24 @@
     - [ ] fix body armor positioning
 
 - [ ] PVP
-    - [ ] grenade pickup
-        - [ ] throwing arc
-        - [ ] server-side splash damage 
-        - [ ] deform the terrain
-    - [ ] mortars
-
     - [ ] shovel
       - [ ] add helmet
     - [ ] add mosin-nagant
     - [ ] add SKS
     - [ ] add ppsh
-    - [ ] heavy MG
     - [ ] flag 3D model
     - [ ] add black cats
 
-    - [ ] health regeneration
-    - [ ] switch to projectile-based weapons
+    - [ ] grenade pickup
+        - [ ] throwing arc
+        - [ ] server-side splash damage 
+        - [ ] deform the terrain
+        - [ ] camera shake
+        - [ ] particles
+    - [ ] crate
+    - [ ] mortar
+    - [ ] heavy MG
+      - [ ] takes time to assemble and disassemble, player has to lug crate around and is vulnerable
 
 - [ ] add trees
 - [ ] tree destruction
@@ -33,23 +58,29 @@
       - [ ] trees have health and take damage and change models to a broken version
       - [ ] trees delete if the terrain beneath them goes away
 
-- [ ] create map
-
+- [ ] health regeneration
 
 - [ ] clean up UI and stuff
 
-# Inventory And PVP Demo
+# AI Battle
 
-- [ ] create a simple map
-- [ ] Add an inventory UI
-- [ ] Create a simple free-for-all demo
-  - [ ] Load a map from a PNG
-  - [ ] Add random spawn selection
-  - [ ] Add fixed health-kit locations
+- [ ] create map
+  - [ ] add trees back in
+  - [ ] reusable structure editor
+  - [ ] Add team-specific spawn points
+  - [ ] add flag zones
+  - [ ] add heavy MG and mortar items
+- [ ] set up AI team battle
+  - [ ] frontlines. Capture flags to secure spawn points. Goal is to capture all flags on the map. 20s respawn timer for "wave" spawning.
+  - [ ] Give player "commander" abilities to direct friendly units
+
+# PVP Demo
+
+- [ ] extend AI battle demo with human players
 - [ ] Host a server and run external multiplayer playtests
   - [ ] Provision a DigitalOcean host
   - [ ] Configure the scrungy.com domain
-- [ ] Track and fix issues found by the FFA demo
+- [ ] Track and fix issues found by the Demo
 
 # Map Editor And Content
 
@@ -57,17 +88,9 @@
 - [x] Save and load source maps
 - [x] Edit terrain, blocks, objects, and spawn points in 3D
 - [x] Capture, save, load, transform, and place structures
-- [ ] Add team-specific spawn points
 - [ ] Add a dedicated editor object browser and properties UI
 - [ ] Add cancellable background baking with progress
 - [ ] Profile long editing sessions and add compaction only if justified
-
-# Structures And Game Modes
-
-- [ ] Create reusable castle structures
-- [ ] Create mortar emplacements
-- [ ] Add a one-sided assault game mode
-- [ ] Add a scripting system
 
 # Open World
 

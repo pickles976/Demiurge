@@ -15,8 +15,18 @@ namespace Demiurge
     public struct PlayerDigData : IMessageSerializable
     {
         public Vector3 Target;
+        public HotbarSlot Hotbar;
 
-        public void Serialize(Message message) => message.AddVector3(Target);
-        public void Deserialize(Message message) => Target = message.GetVector3();
+        public void Serialize(Message message)
+        {
+            message.AddVector3(Target);
+            message.AddByte((byte)Hotbar);
+        }
+
+        public void Deserialize(Message message)
+        {
+            Target = message.GetVector3();
+            Hotbar = (HotbarSlot)message.GetByte();
+        }
     }
 }

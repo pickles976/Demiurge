@@ -118,7 +118,8 @@ namespace Demiurge.GameServer
             Owner = obj.Owner,
             Armor = obj.Armor,
             Item = obj.Item,
-            Attachment = obj.Attachment
+            Attachment = obj.Attachment,
+            Team = obj.Team,
         };
 
     }

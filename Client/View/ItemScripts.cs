@@ -42,6 +42,8 @@ public class PickupBobScript : SyncScript
 // ObjectViewFactory.DestroyView's find-by-name working.
 public class ItemAttachScript : SyncScript
 {
+    private readonly record struct RecoilKick(float Back, float Lift, float PitchRadians);
+
     public required NetObject Object { get; init; }
     public required WeaponMount Mount { get; init; }
     public required PlayerRegistry Registry { get; init; }
@@ -49,16 +51,37 @@ public class ItemAttachScript : SyncScript
     public required LocalWeaponView WeaponView { get; init; }
 
     private const float ViewModelSharpness = 18f;
+    private const float RecoilReturnSharpness = 12f;
+    private const float MaxRecoilBack = 0.16f;
+    private const float MaxRecoilLift = 0.045f;
+    private static readonly float MaxRecoilPitch = MathUtil.DegreesToRadians(10f);
 
     private Entity? owner;
     private bool boneLinked;
     private Vector3 viewGripOffset = WeaponMount.HipGripOffset;
     private bool firstViewFrame = true;
+    private int? observedAmmo;
+    private float recoilBack;
+    private float recoilLift;
+    private float recoilPitch;
+
+    public override void Start()
+    {
+        if (Object.Has.HasFlag(NetComponents.Weapon))
+            observedAmmo = Object.Weapon.CurrentAmmo;
+    }
 
     public override void Update()
     {
         owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
         if (owner == null) return;
+
+        if (!IsSelected())
+        {
+            Entity.Get<ModelComponent>()!.Enabled = false;
+            if (WeaponView.NetworkId == Object.NetworkId) WeaponView.Clear();
+            return;
+        }
 
         if (IsLocalHandWeapon())
         {
@@ -94,8 +117,16 @@ public class ItemAttachScript : SyncScript
     private bool IsLocalHandWeapon()
         => Registry.LocalPlayer is { } local
            && Object.Owner.PlayerId == local.Id
-           && Object.Attachment.Slot == EquipSlot.Hand
+           && (Object.Attachment.Slot == EquipSlot.Hand
+               || HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out _))
            && Object.Has.HasFlag(NetComponents.Weapon);
+
+    private bool IsSelected()
+    {
+        if (!HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var slot))
+            return true;
+        return Registry.TryGet(Object.Owner.PlayerId, out var player) && player.Hotbar == slot;
+    }
 
     private void UpdateFirstPersonWeapon()
     {
@@ -116,8 +147,21 @@ public class ItemAttachScript : SyncScript
             boneLinked = false;
         }
 
-        bool aiming = Registry.LocalPlayer?.State.HasFlag(PlayerStateFlags.Aiming) == true;
-        var targetGripOffset = aiming ? WeaponMount.AimGripOffset : WeaponMount.HipGripOffset;
+        var local = Registry.LocalPlayer!;
+        if (Object.Item.Type == ItemType.Grenade && (local.Ammo == 0 || local.IsReloading))
+        {
+            model.Enabled = false;
+            WeaponView.Clear();
+            return;
+        }
+
+        bool aiming = local.State.HasFlag(PlayerStateFlags.Aiming);
+        bool pullingGrenade = Object.Item.Type == ItemType.Grenade
+            && local.State.HasFlag(PlayerStateFlags.Shooting);
+        var targetGripOffset = pullingGrenade
+            ? WeaponMount.GrenadePullbackGripOffset
+            : WeaponMount.FirstPersonGripOffset(Object.Item.Type, aiming);
+        float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
 
         if (firstViewFrame)
         {
@@ -126,22 +170,59 @@ public class ItemAttachScript : SyncScript
         }
         else
         {
-            float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
             viewGripOffset = Vector3.Lerp(viewGripOffset, targetGripOffset,
                 1f - MathF.Exp(-ViewModelSharpness * dt));
         }
 
+        UpdateRecoil(local, dt);
+
         var cameraRotation = CameraEntity.Transform.Rotation;
         var weaponRotation = WeaponMount.FirstPersonRotation;
-        var modelOffset = Mount.FirstPersonModelOffset(Object.Item.Type, viewGripOffset).ToStride();
-        var muzzleOffset = Mount.FirstPersonMuzzleOffset(Object.Item.Type, viewGripOffset).ToStride();
+        float modelScale = ItemCosmetics.FirstPersonScale(Object.Item.Type);
+        var modelOffset = Mount.FirstPersonModelOffset(Object.Item.Type, viewGripOffset, modelScale).ToStride();
+        var muzzleOffset = Mount.FirstPersonMuzzleOffset(Object.Item.Type, viewGripOffset, modelScale).ToStride();
+        var recoilOffset = new Vector3(0f, recoilLift, recoilBack);
+        var recoilRotation = Quaternion.RotationX(recoilPitch);
+        var recoiledModelOffset = modelOffset + recoilOffset;
+        var recoiledMuzzleOffset = recoiledModelOffset
+            + Vector3.Transform(muzzleOffset - modelOffset, recoilRotation);
 
-        Entity.Transform.Scale = new Vector3(WeaponMount.FirstPersonScale);
-        Entity.Transform.Position = CameraEntity.Transform.Position + Vector3.Transform(modelOffset, cameraRotation);
-        Entity.Transform.Rotation = weaponRotation.ToStride() * cameraRotation;
+        Entity.Transform.Scale = new Vector3(modelScale);
+        Entity.Transform.Position = CameraEntity.Transform.Position
+            + Vector3.Transform(recoiledModelOffset, cameraRotation);
+        Entity.Transform.Rotation = weaponRotation.ToStride() * recoilRotation * cameraRotation;
 
-        WeaponView.MuzzleWorld = (System.Numerics.Vector3)(CameraEntity.Transform.Position + Vector3.Transform(muzzleOffset, cameraRotation));
+        WeaponView.MuzzleWorld = (System.Numerics.Vector3)(
+            CameraEntity.Transform.Position
+            + Vector3.Transform(recoiledMuzzleOffset, cameraRotation));
         WeaponView.Weapon = Object.Item.Type;
         WeaponView.NetworkId = Object.NetworkId;
     }
+
+    private void UpdateRecoil(LocalPlayer local, float dt)
+    {
+        if (Object.Item.Type == ItemType.Grenade) return;
+
+        float recovery = MathF.Exp(-RecoilReturnSharpness * dt);
+        recoilBack *= recovery;
+        recoilLift *= recovery;
+        recoilPitch *= recovery;
+
+        int previousAmmo = observedAmmo ?? local.Ammo;
+        int shots = Math.Max(0, previousAmmo - local.Ammo);
+        observedAmmo = local.Ammo;
+        if (shots == 0) return;
+
+        var kick = RecoilFor(Object.Item.Type);
+        recoilBack = MathF.Min(MaxRecoilBack, recoilBack + kick.Back * shots);
+        recoilLift = MathF.Min(MaxRecoilLift, recoilLift + kick.Lift * shots);
+        recoilPitch = MathF.Min(MaxRecoilPitch, recoilPitch + kick.PitchRadians * shots);
+    }
+
+    private static RecoilKick RecoilFor(ItemType type) => type switch
+    {
+        ItemType.AWP => new RecoilKick(0.10f, 0.020f, MathUtil.DegreesToRadians(6f)),
+        ItemType.Glock => new RecoilKick(0.040f, 0.008f, MathUtil.DegreesToRadians(3.5f)),
+        _ => new RecoilKick(0.050f, 0.010f, MathUtil.DegreesToRadians(2.5f)),
+    };
 }

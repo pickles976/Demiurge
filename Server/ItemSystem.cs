@@ -35,12 +35,29 @@ namespace Demiurge.GameServer
         }
 
         public ServerObject SpawnEquipped(ServerPlayer player, ItemType type, bool dropReplaced = true)
+            => SpawnOwned(player, type, ItemConfig.Get(type).Slot, null, dropReplaced);
+
+        /// <summary>Creates one persistent hotbar stack. Only the selected slot is usable/rendered.</summary>
+        public ServerObject SpawnHotbar(
+            ServerPlayer player,
+            ItemType type,
+            HotbarSlot hotbar,
+            int? ammo = null,
+            bool dropReplaced = false)
+            => SpawnOwned(player, type, HotbarConfig.StorageSlot(hotbar), ammo, dropReplaced);
+
+        private ServerObject SpawnOwned(
+            ServerPlayer player,
+            ItemType type,
+            EquipSlot slot,
+            int? ammo,
+            bool dropReplaced)
         {
             var stats = ItemConfig.Get(type);
             if (stats.Category != ItemCategory.Equippable)
                 throw new InvalidOperationException($"{type} cannot be equipped");
 
-            if (player.Equipped.Remove(stats.Slot, out uint currentId) && objects.TryGet(currentId, out var current))
+            if (player.Equipped.Remove(slot, out uint currentId) && objects.TryGet(currentId, out var current))
             {
                 if (dropReplaced)
                     Drop(current, player.Position);
@@ -58,11 +75,15 @@ namespace Demiurge.GameServer
             {
                 obj.Item = new ItemState { Type = type };
                 obj.Owner = new OwnerState { PlayerId = player.Id };
-                obj.Attachment = new AttachmentState { Slot = stats.Slot };
-                if (weapon is { } w) obj.Weapon = new WeaponState { CurrentAmmo = w.MagazineCapacity };
+                obj.Attachment = new AttachmentState { Slot = slot };
+                if (weapon is { } w)
+                    obj.Weapon = new WeaponState
+                    {
+                        CurrentAmmo = Math.Clamp(ammo ?? w.MagazineCapacity, 0, w.MagazineCapacity),
+                    };
                 if (armor is { } a) obj.Armor = new ArmorState { MaxValue = a.Max, Current = a.Max };
             });
-            player.Equipped[stats.Slot] = equipped.NetworkId;
+            player.Equipped[slot] = equipped.NetworkId;
             return equipped;
         }
 
@@ -88,7 +109,10 @@ namespace Demiurge.GameServer
             var stats = ItemConfig.Get(pickup.Item.Type);
             if (stats.Category != ItemCategory.Equippable) return;   // walk-over inventory items: future
 
-            Equip(player, pickup, stats.Slot);
+            var slot = !player.IsMob && pickup.Has.HasFlag(NetComponents.Weapon)
+                ? HotbarConfig.StorageSlot(HotbarConfig.SlotFor(pickup.Item.Type))
+                : stats.Slot;
+            Equip(player, pickup, slot);
         }
 
         private void Equip(ServerPlayer player, ServerObject pickup, EquipSlot slot)
@@ -122,6 +146,24 @@ namespace Demiurge.GameServer
 
             objects.Spawn(ObjectType.Item, mask, position,
                 obj => ServerObject.CopyComponents(equipped, obj, equipped.Has & mask));
+        }
+
+        /// <summary>
+        /// Removes a one-use equipped item without dropping it. The expected network ID prevents a
+        /// delayed use request from consuming whatever was subsequently swapped into the slot.
+        /// </summary>
+        public bool ConsumeEquipped(
+            ServerPlayer player,
+            EquipSlot slot,
+            uint expectedNetworkId)
+        {
+            if (!player.Equipped.TryGetValue(slot, out uint equippedId)
+                || equippedId != expectedNetworkId)
+                return false;
+
+            player.Equipped.Remove(slot);
+            objects.Despawn(equippedId);
+            return true;
         }
 
         /// <summary>Everything worn leaves with its owner. Call from RemovePlayer.

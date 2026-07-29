@@ -120,7 +120,7 @@ namespace Demiurge
             ammoPanel.Children.Add(bulletImage);
             ammoPanel.Children.Add(ammoText);
 
-            var canvas = new Canvas
+            var statusCanvas = new Canvas
             {
                 Width = 100,
                 Height = 100,
@@ -128,7 +128,71 @@ namespace Demiurge
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
             };
-            canvas.Children.Add(ammoPanel);
+            statusCanvas.Children.Add(ammoPanel);
+
+            var missingThumbnail = new SpriteFromTexture
+            {
+                Texture = CreateMissingThumbnail(game),
+            };
+            var thumbnails = ItemCatalog.All.ToDictionary(
+                definition => definition.Type,
+                definition => LoadThumbnail(game, definition.Id, missingThumbnail));
+
+            var hotbarBorders = new Border[HotbarConfig.SlotCount];
+            var hotbarImages = new ImageElement[HotbarConfig.SlotCount];
+            var hotbarLabels = new TextBlock[HotbarConfig.SlotCount];
+            var hotbarPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 18),
+            };
+            for (int i = 0; i < HotbarConfig.SlotCount; i++)
+            {
+                var image = new ImageElement
+                {
+                    Source = missingThumbnail,
+                    Width = 48,
+                    Height = 38,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                var label = new TextBlock
+                {
+                    Text = $"{i + 1}",
+                    TextColor = Color.White,
+                    Font = font,
+                    TextSize = 15,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                var content = new StackPanel
+                {
+                    Orientation = Orientation.Vertical,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                content.Children.Add(image);
+                content.Children.Add(label);
+
+                var border = new Border
+                {
+                    Width = 86,
+                    Height = 66,
+                    Margin = new Thickness(2, 2, 2, 2),
+                    BorderThickness = new Thickness(2, 2, 2, 2),
+                    BorderColor = new Color(125, 125, 125, 230),
+                    BackgroundColor = new Color(10, 10, 12, 190),
+                    Content = content,
+                };
+                hotbarBorders[i] = border;
+                hotbarImages[i] = image;
+                hotbarLabels[i] = label;
+                hotbarPanel.Children.Add(border);
+            }
+
+            var root = new Grid();
+            root.Children.Add(statusCanvas);
+            root.Children.Add(hotbarPanel);
 
             // Put the driving script on the same entity as the UI and hand it the text
             // block to write into.
@@ -136,13 +200,19 @@ namespace Demiurge
             {
                 new UIComponent
                 {
-                    Page = new UIPage { RootElement = canvas },
+                    Page = new UIPage { RootElement = root },
                     RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
                 },
                 new HudScript {
-                    canvas = canvas,
+                    Root = root,
                     AmmoText = ammoText,
-                    HealthText = healthText },
+                    HealthText = healthText,
+                    HotbarBorders = hotbarBorders,
+                    HotbarImages = hotbarImages,
+                    HotbarLabels = hotbarLabels,
+                    MissingThumbnail = missingThumbnail,
+                    Thumbnails = thumbnails,
+                },
             };
 
             return uiEntity;
@@ -249,6 +319,42 @@ namespace Demiurge
                 PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
         }
 
+        private static SpriteFromTexture LoadThumbnail(
+            Game game,
+            string itemId,
+            SpriteFromTexture missing)
+        {
+            string name = itemId[(itemId.IndexOf(':') + 1)..];
+            string path = Path.Combine("assets", "images", "thumbnails", $"{name}.png");
+            return File.Exists(path)
+                ? new SpriteFromTexture { Texture = LoadTexture(game, path) }
+                : missing;
+        }
+
+        private static Texture CreateMissingThumbnail(Game game)
+        {
+            const int size = 32;
+            var pixels = new byte[size * size * 4];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    bool purple = ((x / 8) + (y / 8)) % 2 == 0;
+                    int offset = (y * size + x) * 4;
+                    pixels[offset] = purple ? (byte)210 : (byte)8;
+                    pixels[offset + 1] = purple ? (byte)20 : (byte)8;
+                    pixels[offset + 2] = purple ? (byte)230 : (byte)8;
+                    pixels[offset + 3] = 255;
+                }
+            }
+            return Texture.New2D(
+                game.GraphicsDevice,
+                size,
+                size,
+                PixelFormat.R8G8B8A8_UNorm_SRgb,
+                pixels);
+        }
+
         /// <summary>
         /// Rebuilds the stats string only when a value changes, so steady-state
         /// frames allocate nothing.
@@ -305,7 +411,13 @@ namespace Demiurge
         {
             public TextBlock AmmoText { get; set; } = null!;
             public TextBlock HealthText { get; set; } = null!;
-            public Canvas canvas {get; set; } = null!;
+            public UIElement Root { get; set; } = null!;
+            public Border[] HotbarBorders { get; set; } = [];
+            public ImageElement[] HotbarImages { get; set; } = [];
+            public TextBlock[] HotbarLabels { get; set; } = [];
+            public SpriteFromTexture MissingThumbnail { get; set; } = null!;
+            public IReadOnlyDictionary<ItemType, SpriteFromTexture> Thumbnails { get; set; }
+                = new Dictionary<ItemType, SpriteFromTexture>();
 
             private PlayerRegistry _registry = null!;
 
@@ -313,11 +425,15 @@ namespace Demiurge
             private bool _lastReloading;
             private int _lastHealth = int.MinValue;
             private bool _lastVisible;
+            private HotbarSlot _lastHotbar;
+            private uint _lastPrimaryId = uint.MaxValue;
+            private uint _lastGrenadeId = uint.MaxValue;
+            private int _lastGrenades = int.MinValue;
 
             public override void Start()
             {
                 _registry = Services.GetSafeServiceAs<PlayerRegistry>();
-                canvas.Visibility = Visibility.Collapsed;   // until spawn
+                Root.Visibility = Visibility.Collapsed;   // until spawn
             }
 
             public override void Update()
@@ -328,7 +444,7 @@ namespace Demiurge
                 if (visible != _lastVisible)
                 {
                     _lastVisible = visible;
-                    canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                    Root.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
                 }
                 if (local == null) return;
 
@@ -348,7 +464,67 @@ namespace Demiurge
                         : local.IsReloading ? "RELOADING"
                         : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
                 }
+
+                RefreshHotbar(local);
             }
+
+            private void RefreshHotbar(LocalPlayer local)
+            {
+                var primary = local.ItemIn(HotbarSlot.Primary);
+                var grenade = local.ItemIn(HotbarSlot.Grenade);
+                int grenades = local.AmmoIn(HotbarSlot.Grenade);
+                uint primaryId = primary?.NetworkId ?? 0;
+                uint grenadeId = grenade?.NetworkId ?? 0;
+                if (local.Hotbar == _lastHotbar
+                    && primaryId == _lastPrimaryId
+                    && grenadeId == _lastGrenadeId
+                    && grenades == _lastGrenades)
+                    return;
+
+                _lastHotbar = local.Hotbar;
+                _lastPrimaryId = primaryId;
+                _lastGrenadeId = grenadeId;
+                _lastGrenades = grenades;
+
+                for (int i = 0; i < HotbarBorders.Length; i++)
+                {
+                    bool selected = i == (int)local.Hotbar - 1;
+                    HotbarBorders[i].BorderColor = selected
+                        ? new Color(255, 225, 105, 255)
+                        : new Color(125, 125, 125, 230);
+                    HotbarBorders[i].BackgroundColor = selected
+                        ? new Color(55, 50, 28, 220)
+                        : new Color(10, 10, 12, 190);
+                }
+
+                SetSlot(0, primary, primary == null ? "1  EMPTY" : $"1  {DisplayName(primary.Item.Type)}");
+                SetSlot(1, null, "2  SHOVEL", forceMissing: true);
+                SetSlot(2, grenade, grenade == null ? "3  EMPTY" : $"3  x{grenades}");
+            }
+
+            private void SetSlot(
+                int index,
+                NetObject? item,
+                string label,
+                bool forceMissing = false)
+            {
+                HotbarLabels[index].Text = label;
+                if (forceMissing)
+                {
+                    HotbarImages[index].Source = MissingThumbnail;
+                    HotbarImages[index].Visibility = Visibility.Visible;
+                    return;
+                }
+
+                HotbarImages[index].Visibility =
+                    item == null ? Visibility.Collapsed : Visibility.Visible;
+                if (item != null)
+                    HotbarImages[index].Source =
+                        Thumbnails.GetValueOrDefault(item.Item.Type, MissingThumbnail);
+            }
+
+            private static string DisplayName(ItemType type)
+                => ItemCatalog.Id(type).Split(':')[1].Replace('_', ' ').ToUpperInvariant();
         }
 
         public sealed class EditorStatusScript : SyncScript
@@ -381,7 +557,7 @@ namespace Demiurge
                         $"{Settings.BlockSize.X}x{Settings.BlockSize.Y}x{Settings.BlockSize.Z}",
                     EditorToolMode.Object => Controller.SelectedPlacementId is { } selected
                         ? $"Selected {EditorPlacementIds.Display(selected)}"
-                        : Settings.ObjectId ?? "No object selected",
+                        : $"{Settings.ObjectId ?? "No object selected"} team={Settings.ObjectTeam}",
                     _ => string.Empty,
                 };
                 string value =

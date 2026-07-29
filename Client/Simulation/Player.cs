@@ -9,6 +9,8 @@ public abstract class Player
     public virtual Vector3 Position { get; set; }
     public PlayerStateFlags State { get; set; }
     public float Yaw { get; set; }
+    public HotbarSlot Hotbar { get; set; } = HotbarSlot.Primary;
+    public int Team { get; set; } = 1;
 
     /// <summary>Look angle above the horizon, radians, positive is up. Drives the head and gun aim,
     /// and the direction a shot travels; the BODY still only yaws.</summary>
@@ -19,7 +21,7 @@ public abstract class Player
 public class RemotePlayer : Player
 {
     public SnapshotBuffer Snapshots { get; } = new();
-
+    public Vector3 Velocity { get; set; }
 }
 
     public class LocalPlayer : Player
@@ -52,18 +54,32 @@ public class RemotePlayer : Player
     public NetObject? Status {get; set;}
 
 
-    // Weapon. Null until the server spawns a Weapon-masked item object owned by
-    // us — the composition root bridges ObjectRegistry spawns to Equip/Unequip. Ammo and
-    // timers are PREDICTED with the same ItemConfig numbers the server enforces;
-    // the replicated object stays the server's truth and re-seeds us on equip.
-    public NetObject? Weapon { get; private set; }
-    public WeaponStats Stats { get; private set; }
+    private sealed class PredictedWeapon
+    {
+        public required NetObject Object { get; init; }
+        public required WeaponStats Stats { get; init; }
+        public int Ammo;
+        public int CooldownTicks;
+        public int ReloadTicksLeft;
+        public WeaponSpreadState Spread;
+    }
+
+    // Every stored weapon keeps its own predicted ammo/timers while the player scrolls away.
+    private readonly Dictionary<HotbarSlot, PredictedWeapon> hotbarWeapons = [];
+    private PredictedWeapon? ActiveWeapon
+        => hotbarWeapons.GetValueOrDefault(Hotbar);
+
+    public NetObject? Weapon => ActiveWeapon?.Object;
+    public WeaponStats Stats => ActiveWeapon?.Stats ?? default;
     public bool IsArmed => Weapon != null;
 
-    public int Ammo { get; private set; }
-    public bool IsReloading => reloadTicksLeft > 0;
-    private int cooldownTicks;
-    private int reloadTicksLeft;
+    public int Ammo => ActiveWeapon?.Ammo ?? 0;
+    public bool IsReloading => ActiveWeapon?.ReloadTicksLeft > 0;
+    public float CurrentSpreadMoa => IsArmed
+        ? Weapon!.Item.Type == ItemType.Grenade
+            ? 0f
+            : ActiveWeapon!.Spread.TotalMoa(State, BallisticsConfig.Require(Weapon.Item.Type))
+        : 0f;
 
     // Sim -> view: raised once per accepted (predicted) shot, the same boundary
     // pattern as the registries' events. Carries the shot's origin and direction.
@@ -71,19 +87,39 @@ public class RemotePlayer : Player
 
     public void Equip(NetObject weapon)
     {
-        Weapon = weapon;
-        Stats = WeaponConfig.Require(weapon.Item.Type);
-        Ammo = weapon.Weapon.CurrentAmmo;   // seed prediction from replicated truth
-        cooldownTicks = 0;
-        reloadTicksLeft = 0;
+        HotbarSlot slot = HotbarConfig.TryFromStorageSlot(weapon.Attachment.Slot, out var stored)
+            ? stored
+            : HotbarSlot.Primary; // legacy Hand/admin equips are slot 1
+        hotbarWeapons[slot] = new PredictedWeapon
+        {
+            Object = weapon,
+            Stats = WeaponConfig.Require(weapon.Item.Type),
+            Ammo = weapon.Weapon.CurrentAmmo,
+        };
     }
 
     public void Unequip(NetObject weapon)
     {
-        if (!ReferenceEquals(Weapon, weapon)) return;   // despawn of some older weapon
-        Weapon = null;
-        Ammo = 0;
+        HotbarSlot? removed = null;
+        foreach (var pair in hotbarWeapons)
+        {
+            if (!ReferenceEquals(pair.Value.Object, weapon)) continue;
+            removed = pair.Key;
+            break;
+        }
+        if (removed is { } slot) hotbarWeapons.Remove(slot);
     }
+
+    public void SelectHotbar(HotbarSlot slot)
+    {
+        if (HotbarConfig.IsValid(slot)) Hotbar = slot;
+    }
+
+    public NetObject? ItemIn(HotbarSlot slot)
+        => hotbarWeapons.GetValueOrDefault(slot)?.Object;
+
+    public int AmmoIn(HotbarSlot slot)
+        => hotbarWeapons.GetValueOrDefault(slot)?.Ammo ?? 0;
 
     /// <summary>
     /// Fires at a point in the world rather than along a direction, and that distinction is the
@@ -100,30 +136,55 @@ public class RemotePlayer : Player
     /// </summary>
     public void TryFire(Vector3 aimPoint, double renderTick, Vector3 origin)
     {
-        if (!IsArmed || cooldownTicks > 0 || IsReloading || Ammo == 0) return;
+        var predicted = ActiveWeapon;
+        if (predicted == null
+            || predicted.CooldownTicks > 0
+            || predicted.ReloadTicksLeft > 0
+            || predicted.Ammo == 0)
+            return;
 
         // Degenerate only if the aim point is inside the muzzle; spend no ammo on it.
         var toTarget = aimPoint - origin;
         if (toTarget.LengthSquared() < 1e-6f) return;
-        var direction = Vector3.Normalize(toTarget);
+        var aimDirection = Vector3.Normalize(toTarget);
+        bool throwingGrenade = Weapon!.Item.Type == ItemType.Grenade;
+        var ballistics = BallisticsConfig.Require(Weapon.Item.Type);
+        var direction = throwingGrenade
+            ? aimDirection
+            : Spread.SampleDirection(
+                aimDirection,
+                Spread.SigmaRadians(predicted.Spread.TotalMoa(State, ballistics)),
+                Spread.ShotSeed(Id, sequence));
+        if (direction == Vector3.Zero) return;
 
-        cooldownTicks = Stats.TicksPerShot;
-        Ammo--;
+        predicted.CooldownTicks = predicted.Stats.TicksPerShot;
+        predicted.Ammo--;
+        if (throwingGrenade && predicted.Ammo > 0)
+            predicted.ReloadTicksLeft = predicted.Stats.ReloadTicks;
+        else if (!throwingGrenade)
+            predicted.Spread.AddRecoil(ballistics);
 
         network.SendFire(new PlayerFireData
         {
             Sequence = sequence,
             Origin = origin,
-            Direction = direction,
-            RenderTick = (float)renderTick
+            // Guns carry the centre of the cone for authoritative server sampling. Grenades have
+            // no spread, so their already-lobbed launch direction goes through directly.
+            Direction = throwingGrenade ? direction : aimDirection,
+            RenderTick = (float)renderTick,
+            Hotbar = Hotbar,
         });
         ShotFired?.Invoke(origin, direction);
     }
 
     public void TryReload()
     {
-        if (!IsArmed || IsReloading || Ammo == Stats.MagazineCapacity) return;
-        reloadTicksLeft = Stats.ReloadTicks;   // Ammo refills when this reaches 0, in Update
+        if (!IsArmed
+            || Weapon!.Item.Type == ItemType.Grenade
+            || IsReloading
+            || Ammo == Stats.MagazineCapacity)
+            return;
+        ActiveWeapon!.ReloadTicksLeft = Stats.ReloadTicks;
         network.SendReload();
     }
 
@@ -150,10 +211,28 @@ public class RemotePlayer : Player
             // Weapon timers count fixed TICKS, inside this loop on purpose: the
             // server gates by tick, so a frame-counted cooldown would let a 60fps
             // client predict shots the server then silently rejects.
-            if (cooldownTicks > 0) cooldownTicks--;
-            if (reloadTicksLeft > 0 && --reloadTicksLeft == 0)
-                Ammo = Stats.MagazineCapacity;     // reload complete
-            var move = new PlayerInputData { Sequence = sequence++, Intent = intent, State = State, Yaw = Yaw, Pitch = Pitch };
+            foreach (var predicted in hotbarWeapons.Values)
+            {
+                if (predicted.CooldownTicks > 0) predicted.CooldownTicks--;
+                if (predicted.ReloadTicksLeft > 0
+                    && --predicted.ReloadTicksLeft == 0
+                    && predicted.Object.Item.Type != ItemType.Grenade)
+                    predicted.Ammo = predicted.Stats.MagazineCapacity;
+            }
+            if (IsArmed && Weapon!.Item.Type != ItemType.Grenade)
+                ActiveWeapon!.Spread.Advance(
+                    State,
+                    BallisticsConfig.Require(Weapon!.Item.Type),
+                    NetworkConfig.FixedDt);
+            var move = new PlayerInputData
+            {
+                Sequence = sequence++,
+                Intent = intent,
+                State = State,
+                Yaw = Yaw,
+                Pitch = Pitch,
+                Hotbar = Hotbar,
+            };
             network.SendInput(move);
 
             // Prediction needs the same terrain the server is stepping against. Until ours has

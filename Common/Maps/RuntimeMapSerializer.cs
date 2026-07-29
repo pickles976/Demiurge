@@ -119,6 +119,7 @@ public static class RuntimeMapSerializer
             writer.Write(placement.Yaw);
             writer.Write((ushort)placement.Item);
             WriteString(writer, placement.SpawnId ?? string.Empty, 256);
+            writer.Write(placement.Team);
         }
     }
 
@@ -126,7 +127,7 @@ public static class RuntimeMapSerializer
     {
         if (reader.ReadUInt32() != Magic) throw new InvalidDataException("Not a Demiurge runtime map");
         int version = reader.ReadInt32();
-        if (version != RuntimeMap.CurrentFormatVersion)
+        if (version is < 1 or > RuntimeMap.CurrentFormatVersion)
             throw new InvalidDataException($"Unsupported runtime map version {version}");
 
         var mapId = new Guid(ReadExact(reader, 16));
@@ -180,7 +181,8 @@ public static class RuntimeMapSerializer
             float yaw = reader.ReadSingle();
             var item = (ItemType)reader.ReadUInt16();
             string spawnId = ReadString(reader, 256);
-            placements[i] = new RuntimePlacement(kind, position, yaw, item, spawnId);
+            int team = version >= 2 ? reader.ReadInt32() : 1;
+            placements[i] = new RuntimePlacement(kind, position, yaw, item, spawnId, team);
         }
 
         return new RuntimeMap

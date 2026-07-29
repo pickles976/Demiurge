@@ -25,7 +25,7 @@ namespace Demiurge
 
         public const PlayerStateFlags SlowingStates =
             PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
-            PlayerStateFlags.Shooting  | PlayerStateFlags.Reloading;
+            PlayerStateFlags.Reloading;
 
         // ---- Vertical motion ----
 

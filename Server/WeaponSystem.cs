@@ -9,9 +9,19 @@ namespace Demiurge.GameServer
     /// GameWorld resolves clientId -> ServerPlayer and delegates.</summary>
     public class WeaponSystem
     {
+        private sealed class Projectile
+        {
+            public required ServerPlayer Shooter { get; init; }
+            public required Vector3 Position { get; set; }
+            public required Vector3 Velocity { get; set; }
+            public required float RemainingDistance { get; set; }
+            public required ushort Damage { get; init; }
+        }
+
         private readonly Server server;
         private readonly ObjectReplication objects;
         private readonly ChunkMap terrain;
+        private readonly List<Projectile> projectiles = new();
 
         public WeaponSystem(Server server, ObjectReplication objects, ChunkMap terrain)
         {
@@ -20,20 +30,18 @@ namespace Demiurge.GameServer
             this.terrain = terrain;
         }
 
-        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick, IEnumerable<ServerPlayer> players)
+        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick)
         {
             if (!IsFinite(fire.Origin) || !IsFinite(fire.Direction) || !float.IsFinite(fire.RenderTick)) return;
 
             // Reject views from the future or older than max history
             if (fire.RenderTick > tick || fire.RenderTick < (double)tick - NetworkConfig.MaxRewindTicks) return;
-            if (fire.Direction == Vector3.Zero) return;
+            if (fire.Direction.LengthSquared() < 1e-8f) return;
 
             // Unarmed players can't fire. The equipped Hand item is the source
             // of truth for ammo — IF it's a gun (Weapon bit); a future non-gun
             // hand item simply can't fire.
-            if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
-                || !objects.TryGet(weaponId, out var weapon)
-                || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
+            if (!TryGetActiveWeapon(player, out var weapon)) return;
             var stats = WeaponConfig.Require(weapon.Item.Type);
 
             // Enforce the same ItemConfig numbers the client predicted with.
@@ -51,23 +59,22 @@ namespace Demiurge.GameServer
             weapon.Weapon.CurrentAmmo--;
             weapon.Dirty |= NetComponents.Weapon;       // ammo replicates like any component
 
-            var direction = Vector3.Normalize(fire.Direction);
+            var ballistics = BallisticsConfig.Require(weapon.Item.Type);
+            float moa = player.Spread.TotalMoa(player.State, ballistics);
+            var direction = Spread.SampleDirection(
+                fire.Direction,
+                Spread.SigmaRadians(moa),
+                Spread.ShotSeed(player.Id, fire.Sequence));
 
-            // A healthless object (a pickup) still blocks the shot; it just takes no damage.
-            if (Raycast(fire.Origin, direction, stats.MaxRange, player, players, fire.RenderTick) is { } hit
-                && hit.Has.HasFlag(NetComponents.Health))
+            player.Spread.AddRecoil(ballistics);
+            projectiles.Add(new Projectile
             {
-                hit.Health.Current = hit.Health.Current > stats.Damage
-                    ? (ushort)(hit.Health.Current - stats.Damage)
-                    : (ushort)0;
-                hit.Dirty |= NetComponents.Health;   // the object pipeline replicates the rest
-
-                // Tell the shooter it landed. Unreliable + shooter-only: cosmetic feedback,
-                // the victim's replicated Health remains the truth.
-                Message confirm = Message.Create(MessageSendMode.Unreliable, ServerToClientId.HitConfirm);
-                confirm.AddSerializable(new HitConfirmData { TargetNetworkId = hit.NetworkId, Damage = stats.Damage });
-                server.Send(confirm, player.Id);
-            }
+                Shooter = player,
+                Position = fire.Origin,
+                Velocity = direction * ballistics.ProjectileSpeed,
+                RemainingDistance = ProjectileMotion.SafetyDistance,
+                Damage = stats.Damage,
+            });
 
             // Cosmetic rebroadcast for remote tracers/audio. Unreliable: a lost
             // tracer is nothing. Only ACCEPTED shots get here, so rejected fire
@@ -83,11 +90,52 @@ namespace Demiurge.GameServer
             server.SendToAll(fired);
         }
 
+        /// <summary>
+        /// Advances shooter dispersion and every live projectile once. Collision is swept over
+        /// the whole tick segment, so a fast rifle bullet cannot tunnel through a target between
+        /// two 30 Hz updates.
+        /// </summary>
+        public void Tick(float dt, IEnumerable<ServerPlayer> players)
+        {
+            foreach (var player in players)
+            {
+                if (!TryGetActiveWeapon(player, out var weapon))
+                    continue;
+
+                player.Spread.Advance(
+                    player.State,
+                    BallisticsConfig.Require(weapon.Item.Type),
+                    dt);
+            }
+
+            for (int i = projectiles.Count - 1; i >= 0; i--)
+            {
+                var projectile = projectiles[i];
+                var step = ProjectileMotion.Advance(
+                    projectile.Position,
+                    projectile.Velocity,
+                    dt,
+                    projectile.RemainingDistance);
+
+                if (TryHit(step.Start, step.End, projectile.Shooter, players, out var hit))
+                {
+                    if (hit is { } target && target.Has.HasFlag(NetComponents.Health))
+                        ApplyDamage(projectile.Shooter, target, projectile.Damage);
+                    projectiles.RemoveAt(i);
+                    continue;
+                }
+
+                projectile.Position = step.End;
+                projectile.Velocity = step.Velocity;
+                projectile.RemainingDistance -= step.Distance;
+                if (step.Exhausted)
+                    projectiles.RemoveAt(i);
+            }
+        }
+
         public void ApplyReload(ServerPlayer player, uint tick)
         {
-            if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
-                || !objects.TryGet(weaponId, out var weapon)
-                || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
+            if (!TryGetActiveWeapon(player, out var weapon)) return;
 
             var stats = WeaponConfig.Require(weapon.Item.Type);
             if (tick < player.ReloadDoneTick) return;   // already reloading
@@ -101,49 +149,89 @@ namespace Demiurge.GameServer
             player.ReloadDoneTick = tick + (uint)stats.ReloadTicks;
         }
 
-        private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange, ServerPlayer shooter, IEnumerable<ServerPlayer> players, double renderTick)
+        private bool TryHit(
+            Vector3 start,
+            Vector3 end,
+            ServerPlayer shooter,
+            IEnumerable<ServerPlayer> players,
+            out ServerObject? hit)
         {
-            ServerObject? nearest = null;
+            hit = null;
+            var segment = end - start;
+            float length = segment.Length();
+            if (length < 1e-6f) return false;
+            var direction = segment / length;
 
-            // Terrain first, as a ceiling on how far anything else can be hit from. Cover has to be
-            // decided HERE and not just drawn on the client: the client already stops its tracer at
-            // the ground, so without this a shot into a hillside still takes the health off whoever
-            // is behind it, and the disagreement surfaces as phantom damage rather than as a bug in
-            // this function.
-            float nearestT = TerrainRaycast.Cast(terrain, origin, direction, maxRange) is { } ground
+            // Terrain is a distance ceiling. A healthless object still blocks the projectile;
+            // it simply produces no damage when selected as the nearest collision.
+            float nearestT = TerrainRaycast.Cast(terrain, start, direction, length) is { } ground
                 ? ground.Distance
                 : float.MaxValue;
 
             foreach (var obj in objects.All)
             {
-                // No Transform component = not in the world (equipped weapons keep a
-                // stale spawn position) — never hittable.
                 if (!obj.Has.HasFlag(NetComponents.Transform)) continue;
-                if (GunMath.HitDistance(origin, direction, obj.Transform.Position, maxRange) is not { } t) continue;
+                if (GunMath.HitDistance(start, direction, obj.Transform.Position, length) is not { } t) continue;
                 if (t >= nearestT) continue;
-                nearest = obj;
+                hit = obj;
                 nearestT = t;
             }
 
             foreach (var player in players)
             {
                 if (player == shooter || player.Status == null) continue;
-
-                // It's rewind time
-                var seen = player.History.GetInterpolated(renderTick, player.Position);
-                var center = seen + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
-
-                if (GunMath.HitDistance(origin, direction, center, maxRange) is not {} t) continue;
+                var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                if (GunMath.HitDistance(start, direction, center, length) is not { } t) continue;
                 if (t >= nearestT) continue;
 
-                nearest = player.Status;
+                hit = player.Status;
                 nearestT = t;
             }
 
-            return nearest;
+            return nearestT < float.MaxValue;
+        }
+
+        private void ApplyDamage(ServerPlayer shooter, ServerObject hit, ushort damage)
+        {
+            hit.Health.Current = hit.Health.Current > damage
+                ? (ushort)(hit.Health.Current - damage)
+                : (ushort)0;
+            hit.Dirty |= NetComponents.Health;
+
+            Message confirm = Message.Create(MessageSendMode.Unreliable, ServerToClientId.HitConfirm);
+            confirm.AddSerializable(new HitConfirmData
+            {
+                TargetNetworkId = hit.NetworkId,
+                Damage = damage,
+            });
+            server.Send(confirm, shooter.Id);
         }
 
         private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+        private bool TryGetActiveWeapon(ServerPlayer player, out ServerObject weapon)
+        {
+            weapon = null!;
+            EquipSlot slot;
+            if (player.IsMob)
+            {
+                slot = EquipSlot.Hand;
+            }
+            else if (player.Hotbar == HotbarSlot.Shovel)
+                return false;
+            else
+            {
+                slot = HotbarConfig.StorageSlot(player.Hotbar);
+                // Administrative equips predate the hotbar and remain usable as slot 1.
+                if (player.Hotbar == HotbarSlot.Primary && !player.Equipped.ContainsKey(slot))
+                    slot = EquipSlot.Hand;
+            }
+
+            return player.Equipped.TryGetValue(slot, out uint weaponId)
+                && objects.TryGet(weaponId, out weapon!)
+                && weapon.Has.HasFlag(NetComponents.Weapon)
+                && weapon.Item.Type != ItemType.Grenade;
+        }
 
     }
 }

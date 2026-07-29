@@ -58,6 +58,14 @@ public sealed class EditorCoreTests
         Assert.Equal(new Int3(5, 2, 1), settings.BlockSize);
         Assert.False(EditorCommandParser.Execute(
             "editor block rotate 90", settings, session).Success);
+
+        Assert.True(EditorCommandParser.Execute(
+            "editor object team 3", settings, session).Success);
+        Assert.True(EditorCommandParser.Execute(
+            "editor object flag", settings, session).Success);
+        Assert.Equal(3, settings.ObjectTeam);
+        Assert.Equal(EditorObjectChoiceKind.Flag, settings.ObjectKind);
+        Assert.Equal("demiurge:flag", settings.ObjectId);
     }
 
     [Fact]
@@ -71,6 +79,7 @@ public sealed class EditorCoreTests
             ArchetypeId = "demiurge:mob",
             Cell = new Int3(2, 80, 2),
             WeaponId = "demiurge:glock",
+            Team = 2,
         };
         document.Placements.Add(mob);
 
@@ -104,6 +113,7 @@ public sealed class EditorCoreTests
             ArchetypeId = "demiurge:mob",
             Cell = new Int3(2, 50, 2),
             WeaponId = "demiurge:glock",
+            Team = 2,
         });
 
         string directory = Path.Combine(Path.GetTempPath(), "demiurge-editor-tests", Guid.NewGuid().ToString("N"));
@@ -118,6 +128,10 @@ public sealed class EditorCoreTests
                 "demiurge:glock",
                 Assert.Single(loaded.Placements, placement =>
                     placement.Kind == EditorPlacementKind.Mob).WeaponId);
+            Assert.Equal(
+                2,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == EditorPlacementKind.Mob).Team);
         }
         finally
         {
@@ -216,6 +230,15 @@ public sealed class EditorCoreTests
             ArchetypeId = "demiurge:mob",
             Cell = document.Placements[0].Cell with { X = 2 },
             WeaponId = "demiurge:glock",
+            Team = 2,
+        });
+        document.Placements.Add(new EditorPlacement
+        {
+            Id = Guid.NewGuid(),
+            Kind = EditorPlacementKind.Flag,
+            ArchetypeId = "demiurge:flag",
+            Cell = document.Placements[0].Cell with { X = 4 },
+            Team = 0,
         });
         var runtime = EditorTerrainEvaluator.Bake(document);
         string directory = Path.Combine(
@@ -235,6 +258,14 @@ public sealed class EditorCoreTests
                 ItemType.Glock,
                 Assert.Single(loaded.Placements, placement =>
                     placement.Kind == RuntimePlacementKind.Mob).Item);
+            Assert.Equal(
+                2,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == RuntimePlacementKind.Mob).Team);
+            Assert.Equal(
+                0,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == RuntimePlacementKind.Flag).Team);
 
             foreach (var expected in runtime.Terrain.Snapshot())
             {

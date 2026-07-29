@@ -28,10 +28,10 @@ namespace Demiurge.GameClient
         /// has to pivot about it too.</summary>
         public const string AimBone = "upper_chest";
 
-        /// <summary>The pose the muzzle is measured in. Firing is aiming-only
-        /// (LocalPlayerController gates TryFire on it), and this clip holds the arm still
-        /// — its hand transform is constant to four decimals across the whole clip — so
-        /// one baked pose is exact here rather than an average of a moving arm.</summary>
+        /// <summary>The stable pose used to measure the body-attached muzzle. This clip holds
+        /// the arm still — its hand transform is constant to four decimals across the whole
+        /// clip — so one baked pose is exact here rather than an average of a moving arm.
+        /// First-person hip fire uses the camera-relative view-model muzzle instead.</summary>
         private const string FiringPose = "Aiming";
 
         /// <summary>Which way a gun points once it is in the hand. Hand-tuned, and it has
@@ -57,7 +57,18 @@ namespace Demiurge.GameClient
 
         public const float FirstPersonScale = 1.5f;
         public static readonly Vector3 HipGripOffset = new(0.30f, -0.34f, -0.38f);
-        public static readonly Vector3 AimGripOffset = new(0.08f, -0.22f, -0.30f);
+        public static readonly Vector3 AimGripOffset = new(0f, -0.22f, -0.30f);
+        public static readonly Vector3 GlockAimGripOffset = new(0f, -0.22f, -0.55f);
+        public static readonly Vector3 GrenadePullbackGripOffset = new(0.42f, -0.30f, -0.10f);
+
+        /// <summary>
+        /// Camera-relative grip position. The compact Glock needs extra eye relief in ADS;
+        /// using this one entry point keeps its rendered model and muzzle origin together.
+        /// </summary>
+        public static Vector3 FirstPersonGripOffset(ItemType type, bool aiming)
+            => aiming
+                ? type == ItemType.Glock ? GlockAimGripOffset : AimGripOffset
+                : HipGripOffset;
 
         private readonly ModelLocators locators;
         private readonly Func<ItemType, string> modelOf;

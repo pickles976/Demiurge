@@ -12,6 +12,8 @@ namespace Demiurge.GameServer
         private readonly ItemSystem items;
         private readonly MobSystem mobs;
         private readonly WeaponSystem weapons;
+        private readonly GrenadeSystem grenades;
+        private readonly FlagSystem flags;
         private readonly TerrainSystem terrainEdits;
         private readonly ChunkTcpServer chunks;
 
@@ -26,8 +28,9 @@ namespace Demiurge.GameServer
         private const float SpawnX = 0f;
         private const float SpawnZ = 0f;
         private readonly RuntimePlacement[] playerSpawns;
+        private readonly int[] playableTeams;
         private readonly Vector3? spawnOverride;
-        private int nextPlayerSpawn;
+        private readonly Dictionary<int, int> nextPlayerSpawnByTeam = [];
         public string MapName { get; }
 
         /// <summary>
@@ -50,12 +53,21 @@ namespace Demiurge.GameServer
                 .Where(placement => placement.Kind == RuntimePlacementKind.PlayerSpawn)
                 .ToArray()
                 ?? [];
+            playableTeams = playerSpawns
+                .Select(placement => placement.Team)
+                .Where(team => team > 0)
+                .Distinct()
+                .Order()
+                .DefaultIfEmpty(1)
+                .ToArray();
 
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
             mobs = new MobSystem(terrain);
             weapons = new WeaponSystem(server, objects, terrain);
             terrainEdits = new TerrainSystem(server, terrain);
+            grenades = new GrenadeSystem(objects, items, terrainEdits, terrain);
+            flags = new FlagSystem(objects);
 
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
@@ -69,6 +81,7 @@ namespace Demiurge.GameServer
                 SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
                 SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
                 SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
+                SpawnPickupOnSurface(ItemType.Grenade, 1.5f, 1.5f);
 
                 items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
                 items.SpawnEquipped(SpawnMob(), ItemType.Ak47);
@@ -89,11 +102,14 @@ namespace Demiurge.GameServer
                         items.SpawnPickup(placement.Item, placement.Position);
                         break;
                     case RuntimePlacementKind.Mob:
-                        var mob = SpawnMob(placement.Position);
+                        var mob = SpawnMob(placement.Position, placement.Team);
                         mob.Yaw = placement.Yaw;
                         items.SpawnEquipped(
                             mob,
                             placement.Item == default ? ItemType.Ak47 : placement.Item);
+                        break;
+                    case RuntimePlacementKind.Flag:
+                        flags.Spawn(placement.Position);
                         break;
                 }
             }
@@ -104,9 +120,13 @@ namespace Demiurge.GameServer
             => items.SpawnPickup(type, SurfaceQuery.SurfacePosition(terrain, worldX, worldZ));
 
         public ServerPlayer SpawnMob(Vector3? requestedPosition = null)
+            => SpawnMob(requestedPosition, team: 1);
+
+        private ServerPlayer SpawnMob(Vector3? requestedPosition, int team)
         {
             var position = requestedPosition ?? mobs.RandomSpawnPoint();
             var mob = mobs.CreateMob(AllocateMobId(), position);
+            mob.Team = team > 0 ? team : 1;
             mob.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, mob.Position,
             obj =>
             {
@@ -173,8 +193,9 @@ namespace Demiurge.GameServer
 
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
 
-            var player = new ServerPlayer { Id = clientId };
-            player.Move = SpawnPlayerMove();
+            int team = AssignPlayerTeam();
+            var player = new ServerPlayer { Id = clientId, Team = team };
+            player.Move = SpawnPlayerMove(team, useOverride: true);
             player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
             obj =>
             {
@@ -183,6 +204,11 @@ namespace Demiurge.GameServer
             });
             players[clientId] = player;
             server.SendToAll(CreateSpawnMessage(player));      // announce the newcomer
+            items.SpawnHotbar(
+                player,
+                ItemType.Grenade,
+                HotbarSlot.Grenade,
+                ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
 
             chunks.QueueWorldFor(clientId);                    // terrain follows over the next few ticks
         }
@@ -212,8 +238,16 @@ namespace Demiurge.GameServer
 
         public void ApplyFire(ushort clientId, PlayerFireData fire)
         {
-            if (players.TryGetValue(clientId, out var player))
-                weapons.ApplyFire(player, fire, _Tick, players.Values);
+            if (players.TryGetValue(clientId, out var player)
+                && player.Status is { Health.Current: > 0 })
+            {
+                if (!HotbarConfig.IsValid(fire.Hotbar)) return;
+                player.Hotbar = fire.Hotbar;
+                if (grenades.IsGrenadeEquipped(player))
+                    grenades.ApplyThrow(player, fire, _Tick);
+                else
+                    weapons.ApplyFire(player, fire, _Tick);
+            }
         }
 
         public void ApplyReload(ushort clientId)
@@ -224,8 +258,12 @@ namespace Demiurge.GameServer
 
         public void ApplyDig(ushort clientId, PlayerDigData dig)
         {
-            if (players.TryGetValue(clientId, out var player))
+            if (players.TryGetValue(clientId, out var player)
+                && HotbarConfig.IsValid(dig.Hotbar))
+            {
+                player.Hotbar = dig.Hotbar;
                 terrainEdits.ApplyDig(player, dig, _Tick);
+            }
         }
 
         public void ApplyInteract(ushort clientId)
@@ -240,8 +278,10 @@ namespace Demiurge.GameServer
             if (input.Sequence <= player.LastReceivedSequence) return; // dupe or out of order
 
             if (!IsFinite(input.Intent) || !float.IsFinite(input.Yaw) || !float.IsFinite(input.Pitch)) return;
+            if (!HotbarConfig.IsValid(input.Hotbar)) return;
 
             player.LastReceivedSequence = input.Sequence;
+            player.Hotbar = input.Hotbar;
             player.PendingMoves.Enqueue(input);
         }
 
@@ -253,6 +293,12 @@ namespace Demiurge.GameServer
 
             foreach (var player in players.Values)
             {
+                // Leave a dead actor in place for one replicated tick. Besides preventing input
+                // during the tiny death window, this makes zero health an observable event instead
+                // of being overwritten by the respawn later in the same server tick.
+                if (player.Status is { Health.Current: 0 })
+                    continue;
+
                 if (player.IsMob)
                 {
                     mobs.Step(player, dt);
@@ -279,38 +325,70 @@ namespace Demiurge.GameServer
                     PlayerMovement.Step(terrain, ref player.Move, player.LastIntent, player.State, dt);
             }
 
+            flags.Tick(dt, players.Values);
+
             // Save history
             foreach (var player in players.Values)
             {
                 player.History.Store(_Tick, player.Position);
             }
 
+            weapons.Tick(dt, players.Values);
+            grenades.Tick(dt, _Tick, players.Values);
+
             // Death and respawn
             foreach (var player in players.Values)
             {
                 if (player.Status is not {} status || status.Health.Current > 0) continue;
-                player.Move = SpawnPlayerMove();
+
+                if (player.RespawnTick == 0)
+                {
+                    player.RespawnTick = _Tick + 1;
+                    continue;
+                }
+                if (_Tick < player.RespawnTick) continue;
+
+                player.Move = SpawnPlayerMove(player.Team, useOverride: false);
                 player.History.Clear();
                 status.Health.Current = status.Health.Max;
                 status.Dirty |= NetComponents.Health;
+                items.SpawnHotbar(
+                    player,
+                    ItemType.Grenade,
+                    HotbarSlot.Grenade,
+                    ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
+                player.RespawnTick = 0;
             }
 
             objects.BroadcastDirtyStatess(_Tick);
             BroadcastPositions();
         }
 
-        private MoveState SpawnPlayerMove()
+        private int AssignPlayerTeam()
+            => playableTeams
+                .OrderBy(team => players.Values.Count(player => !player.IsMob && player.Team == team))
+                .ThenBy(team => team)
+                .First();
+
+        private MoveState SpawnPlayerMove(int team, bool useOverride)
         {
             // The editor playtest hands us the fly camera's exact position and it outranks the
             // map, so you drop in where you were looking. Not grounded: the point is wherever the
             // camera was, in the air as often as not, and gravity takes it from there.
-            if (spawnOverride is { } forced)
+            if (useOverride && spawnOverride is { } forced)
                 return new MoveState { Position = forced, Velocity = Vector3.Zero, Grounded = false };
+
+            if (flags.TrySpawnPosition(team, out var flag))
+                return PlayerMovement.SpawnAt(terrain, flag.X, flag.Z);
 
             if (playerSpawns.Length == 0)
                 return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
 
-            var spawn = playerSpawns[nextPlayerSpawn++ % playerSpawns.Length];
+            var teamSpawns = playerSpawns.Where(spawn => spawn.Team == team).ToArray();
+            if (teamSpawns.Length == 0) teamSpawns = playerSpawns;
+            int next = nextPlayerSpawnByTeam.GetValueOrDefault(team);
+            nextPlayerSpawnByTeam[team] = (next + 1) % teamSpawns.Length;
+            var spawn = teamSpawns[next % teamSpawns.Length];
             var move = PlayerMovement.SpawnAt(terrain, spawn.Position.X, spawn.Position.Z);
             move.Position = spawn.Position;
             return move;
@@ -319,7 +397,12 @@ namespace Demiurge.GameServer
         private Message CreateSpawnMessage(ServerPlayer player)
         {
             Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.PlayerSpawn);
-            message.AddSerializable(new PlayerSpawnData { PlayerId = player.Id, Position = player.Position });
+            message.AddSerializable(new PlayerSpawnData
+            {
+                PlayerId = player.Id,
+                Position = player.Position,
+                Team = player.Team,
+            });
             return message;
         }
 
@@ -339,7 +422,8 @@ namespace Demiurge.GameServer
                         State = player.State,
                         LastProcessedSequence = player.LastProcessedSequence,
                         Velocity = player.Move.Velocity,
-                        Grounded = player.Move.Grounded
+                        Grounded = player.Move.Grounded,
+                        Hotbar = player.Hotbar,
                     });
                 server.SendToAll(message);
             }

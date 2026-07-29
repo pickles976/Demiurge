@@ -38,8 +38,9 @@ public class PlayerRegistry : IDisposable
     private void OnPlayerSpawned(PlayerSpawnData data)
     {
         Player player = data.PlayerId == network.ClientId
-            ? LocalPlayer = new LocalPlayer(network, terrain, mount) { Id = data.PlayerId, Position = data.Position }
-            : new RemotePlayer {Id = data.PlayerId, Position = data.Position};
+            ? LocalPlayer = new LocalPlayer(network, terrain, mount)
+                { Id = data.PlayerId, Position = data.Position, Team = data.Team }
+            : new RemotePlayer {Id = data.PlayerId, Position = data.Position, Team = data.Team};
 
         players[data.PlayerId] = player;
         PlayerJoined?.Invoke(player);
@@ -84,7 +85,9 @@ public class PlayerRegistry : IDisposable
                 remote.Position = data.Position;
                 remote.Yaw = data.Yaw;
                 remote.Pitch = data.Pitch;
+                remote.Hotbar = data.Hotbar;
                 remote.State = data.State;
+                remote.Velocity = data.Velocity;
                 break;
         }
 
