@@ -58,6 +58,10 @@ public class CommandParserTests
         Assert.Equal(ItemType.BodyArmor, mob.Item);
     }
 
+    [Fact]
+    public void ParsesAiStats()
+        => Assert.IsType<AiStatsCommand>(GameCommandParser.Parse("/ai stats").Command);
+
     [Theory]
     [InlineData("spawn")]
     [InlineData("spawn mob 1")]

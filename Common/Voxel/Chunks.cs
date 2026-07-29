@@ -94,6 +94,14 @@ namespace Demiurge
 
     public class ChunkMap
     {
+        private long editVersion;
+
+        /// <summary>
+        /// Monotonically increasing generation for gameplay terrain edits. Background consumers
+        /// may read the mutable voxel field optimistically, then reject their result if this changed.
+        /// </summary>
+        public long EditVersion => Interlocked.Read(ref editVersion);
+
         /// <summary>
         /// Concurrent because MESHING READS THIS FROM WORKER THREADS while the main thread inserts
         /// arriving chunks. A plain Dictionary insert racing a lookup corrupts the buckets or throws,
@@ -110,7 +118,13 @@ namespace Demiurge
         /// </summary>
         readonly ConcurrentDictionary<ChunkIndex, TerrainChunk> chunks = new();
 
-        public void Reset() { this.chunks.Clear(); }
+        public void Reset()
+        {
+            this.chunks.Clear();
+            MarkEdited();
+        }
+
+        internal void MarkEdited() => Interlocked.Increment(ref editVersion);
 
         public bool Has(ChunkIndex index)
         {

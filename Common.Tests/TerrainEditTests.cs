@@ -199,6 +199,51 @@ public class TerrainEditTests
         Assert.Equal(BlockType.BlockType_Air, chunk[i].Material);
     }
 
+    [Fact]
+    public void SoilSubtractCarvesDirtButLeavesStoneBitIdentical()
+    {
+        var map = new ChunkMap();
+        var chunk = new TerrainChunk(new ChunkIndex { x = 0, z = 0 });
+        for (int y = 0; y < ChunkConstants.ChunkHeight; y++)
+            chunk.FillSlab(y, Voxel.OutsideAbove);
+        map.Insert(chunk);
+
+        const int sampleY = 64;
+        int dirtIndex = ChunkTransforms.WorldVoxelIndex(4, sampleY, 4);
+        int stoneIndex = ChunkTransforms.WorldVoxelIndex(10, sampleY, 4);
+        chunk[dirtIndex] = new Voxel
+        {
+            Distance = -0.1f,
+            Material = BlockType.BlockType_Dirt,
+        };
+        chunk[stoneIndex] = new Voxel
+        {
+            Distance = -0.1f,
+            Material = BlockType.BlockType_Stone,
+        };
+        var originalStone = chunk[stoneIndex];
+
+        TerrainEdits.ApplyBox(
+            map,
+            new Vector3(4f, sampleY, 4f),
+            Digging.Bite,
+            EditMode.SubtractSoil,
+            BlockType.BlockType_Air,
+            EditShape.Sphere);
+        TerrainEdits.ApplyBox(
+            map,
+            new Vector3(10f, sampleY, 4f),
+            Digging.Bite,
+            EditMode.SubtractSoil,
+            BlockType.BlockType_Air,
+            EditShape.Sphere);
+
+        Assert.True(chunk[dirtIndex].Distance > 0f);
+        Assert.Equal(BlockType.BlockType_Air, chunk[dirtIndex].Material);
+        Assert.Equal(originalStone.Density, chunk[stoneIndex].Density);
+        Assert.Equal(originalStone.Material, chunk[stoneIndex].Material);
+    }
+
     /// <summary>
     /// The reason the operator has to be applied past the shape's bounds. A voxel just outside the
     /// trench must be rewritten to its distance from the new trench wall, not left holding its
@@ -272,6 +317,22 @@ public class SdfCleanupTests
     {
         Assert.True(map.TryGetVoxel(worldX, worldY, worldZ, out var voxel));
         return voxel;
+    }
+
+    [Fact]
+    public void MapEditVersionAdvancesOncePerGameplayEdit()
+    {
+        var map = Air();
+        long before = map.EditVersion;
+
+        TerrainEdits.ApplyBox(
+            map,
+            new Vector3(0, SampleY, 0),
+            Vector3.One,
+            EditMode.Subtract,
+            BlockType.BlockType_Air);
+
+        Assert.Equal(before + 1, map.EditVersion);
     }
 
     [Fact]

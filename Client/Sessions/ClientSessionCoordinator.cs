@@ -108,6 +108,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 lines.Add("spawn mob [x z]");
                 lines.Add("spawn pickup <item> [x z]");
                 lines.Add("equip <@s|@actor-id> <item>");
+                lines.Add("ai stats");
             }
             else
             {
@@ -119,6 +120,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             lines.Add("spawn mob [x z]");
             lines.Add("spawn pickup <item> [x z]");
             lines.Add("equip <@s|@actor-id> <item>");
+            lines.Add("ai stats");
         }
         lines.Add("Type 'help <command>' for details. Press Tab to complete names and IDs.");
         return lines;
@@ -165,9 +167,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         if (tokenIndex == 0)
             return current is EditorClientSession activeEditor
                 ? activeEditor.IsPlaytesting
-                    ? ["spawn", "equip", "map", "session", "clear", "help"]
+                    ? ["spawn", "equip", "ai", "map", "session", "clear", "help"]
                     : ["editor", "map", "session", "clear", "help"]
-                : ["spawn", "equip", "map", "session", "clear", "help"];
+                : ["spawn", "equip", "ai", "map", "session", "clear", "help"];
 
         if (tokens.Length == 0) return [];
         string root = tokens[0].ToLowerInvariant();
@@ -225,12 +227,14 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
         if (root == "equip" && tokenIndex == 2)
             return ItemCatalog.All.Select(definition => definition.Id);
+        if (root == "ai" && tokenIndex == 1)
+            return ["stats"];
         if (root == "session" && tokenIndex == 1)
             return ["status", "editor", "host", "join", "playtest", "playtest-networked"];
         if (root == "help")
         {
             if (tokenIndex == 1)
-                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip"];
+                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "ai"];
             if (tokenIndex == 2 && tokens.Length > 1
                 && tokens[1].Equals("editor", StringComparison.OrdinalIgnoreCase))
                 return ["terrain", "block", "object"];
@@ -322,6 +326,12 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  equip <@s|@actor-id> <item-id>",
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
                 "Runtime equipment changes last for the current session only; map save does not record them.",
+            ],
+            "ai" =>
+            [
+                "AI diagnostics:",
+                "  ai stats",
+                "Shows the latest 1-second average for mob movement and off-thread path searches.",
             ],
             _ => [$"No help topic named '{topics[0]}'. Type 'help' to list commands."],
         };
@@ -766,8 +776,11 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     new ServerOptions
                     {
                         AllowCheats = true,
-                        MapPath = request.RuntimeMapPath,
+                        MapPath = request.RuntimeMapPath
+                            ?? PrepareRuntimeFromSource(request.MapName!),
                         SpawnOverride = request.SpawnOverride,
+                        InitialPlayerTeam = request.InitialPlayerTeam,
+                        InitialNpcsPerTeam = request.InitialNpcsPerTeam,
                     }),
                 SessionRequestKind.GeneratedHost => new RuntimeClientSession(
                     game, inputState, NetworkConfig.ServerHost,
@@ -899,6 +912,20 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         return runtime.ContentHash;
     }
 
+    private string PrepareRuntimeFromSource(string name)
+    {
+        if (!maps.HasSource(name))
+            throw new FileNotFoundException($"Map {name} has no saved source");
+
+        var source = maps.Load(name);
+        if (!maps.HasRuntime(name) || !maps.RuntimeIsCurrent(source))
+            SaveRuntime(source);
+
+        string path = maps.Paths.RuntimePath(name);
+        _ = RuntimeMapSerializer.Load(path);
+        return path;
+    }
+
     private void EnsureCurrentRuntimeBake(string name)
     {
         if (!maps.HasRuntime(name)) throw new FileNotFoundException($"Map {name} has no runtime bake");
@@ -948,7 +975,9 @@ public sealed record SessionRequest(
     EditorSession? EditorSession = null,
     EditorToolSettings? EditorSettings = null,
     EditorStructureState? EditorStructures = null,
-    System.Numerics.Vector3? SpawnOverride = null)
+    System.Numerics.Vector3? SpawnOverride = null,
+    int? InitialPlayerTeam = null,
+    int InitialNpcsPerTeam = 0)
 {
     public static SessionRequest EditorMap(string name) => new(SessionRequestKind.Editor, MapName: name);
     public static SessionRequest EditorDocument(EditorDocument document) => new(SessionRequestKind.Editor, Document: document);
@@ -964,6 +993,15 @@ public sealed record SessionRequest(
     public static SessionRequest HostMap(
         string name, string path, System.Numerics.Vector3? spawnOverride = null)
         => new(SessionRequestKind.Host, name, path, SpawnOverride: spawnOverride);
+    public static SessionRequest SourceHost(
+        string name,
+        int? initialPlayerTeam = null,
+        int initialNpcsPerTeam = 0)
+        => new(
+            SessionRequestKind.Host,
+            MapName: name,
+            InitialPlayerTeam: initialPlayerTeam,
+            InitialNpcsPerTeam: initialNpcsPerTeam);
     public static SessionRequest GeneratedHost() => new(SessionRequestKind.GeneratedHost);
     public static SessionRequest Join(string host) => new(SessionRequestKind.Join, Host: host);
 }

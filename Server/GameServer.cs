@@ -12,10 +12,23 @@ namespace Demiurge.GameServer
         {
             if (options.RuntimeMap is not null && options.MapPath is not null)
                 throw new ArgumentException("Specify either an in-memory runtime map or a map path, not both");
+            if (options.InitialPlayerTeam is <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(options.InitialPlayerTeam),
+                    "Initial player team must be positive");
+            if (options.InitialNpcsPerTeam < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(options.InitialNpcsPerTeam),
+                    "Initial NPC count cannot be negative");
 
             RuntimeMap? map = options.RuntimeMap
                 ?? (options.MapPath is null ? null : RuntimeMapSerializer.Load(options.MapPath));
-            world = new GameWorld(server, map, options.SpawnOverride);
+            world = new GameWorld(
+                server,
+                map,
+                options.SpawnOverride,
+                options.InitialPlayerTeam,
+                options.InitialNpcsPerTeam);
             commands = new ServerCommandService(world, options.AllowCheats);
         }
 

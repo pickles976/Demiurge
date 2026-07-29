@@ -46,6 +46,21 @@ namespace Demiurge.GameServer
             bool dropReplaced = false)
             => SpawnOwned(player, type, HotbarConfig.StorageSlot(hotbar), ammo, dropReplaced);
 
+        /// <summary>
+        /// Standard infantry inventory shared by every NPC. Slot 2 is the placeholder shovel and
+        /// deliberately has no item object; selecting that slot authorizes digging.
+        /// </summary>
+        internal void SpawnInfantryLoadout(ServerPlayer actor)
+        {
+            SpawnHotbar(actor, ItemType.Ak47, HotbarSlot.Primary);
+            SpawnHotbar(
+                actor,
+                ItemType.Grenade,
+                HotbarSlot.Grenade,
+                ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
+            actor.Hotbar = HotbarSlot.Primary;
+        }
+
         private ServerObject SpawnOwned(
             ServerPlayer player,
             ItemType type,
@@ -109,7 +124,7 @@ namespace Demiurge.GameServer
             var stats = ItemConfig.Get(pickup.Item.Type);
             if (stats.Category != ItemCategory.Equippable) return;   // walk-over inventory items: future
 
-            var slot = !player.IsMob && pickup.Has.HasFlag(NetComponents.Weapon)
+            var slot = pickup.Has.HasFlag(NetComponents.Weapon)
                 ? HotbarConfig.StorageSlot(HotbarConfig.SlotFor(pickup.Item.Type))
                 : stats.Slot;
             Equip(player, pickup, slot);

@@ -53,4 +53,30 @@ public class ItemSystemTests
         Assert.Equal(EquipSlot.HotbarGrenade, grenade.Attachment.Slot);
         Assert.Equal(grenade.NetworkId, actor.Equipped[EquipSlot.HotbarGrenade]);
     }
+
+    [Fact]
+    public void InfantryLoadoutStartsWithAkFourGrenadesAndPlaceholderShovel()
+    {
+        var objects = new ObjectReplication(new Server());
+        var items = new ItemSystem(objects);
+        var npc = new ServerPlayer { Id = 60000, IsMob = true };
+
+        items.SpawnInfantryLoadout(npc);
+
+        Assert.Equal(HotbarSlot.Primary, npc.Hotbar);
+        Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarPrimary], out var primary));
+        Assert.Equal(ItemType.Ak47, primary.Item.Type);
+        Assert.Equal(
+            WeaponConfig.Require(ItemType.Ak47).MagazineCapacity,
+            primary.Weapon.CurrentAmmo);
+
+        Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarGrenade], out var grenades));
+        Assert.Equal(ItemType.Grenade, grenades.Item.Type);
+        Assert.Equal(4, grenades.Weapon.CurrentAmmo);
+
+        // The shovel is intentionally an empty hotbar slot, available by selection rather than
+        // represented by a replicated item object.
+        Assert.False(npc.Equipped.ContainsKey(EquipSlot.Hand));
+        Assert.True(HotbarConfig.IsValid(HotbarSlot.Shovel));
+    }
 }

@@ -56,6 +56,7 @@ internal sealed class ServerCommandService
                 SpawnMobCommand command => SpawnMob(requestId, source, command),
                 SpawnPickupCommand command => SpawnPickup(requestId, source, command),
                 EquipCommand command => Equip(requestId, source, command),
+                AiStatsCommand => Result(requestId, true, world.AiStats()),
                 _ => Result(requestId, false, "Unsupported command"),
             };
         }

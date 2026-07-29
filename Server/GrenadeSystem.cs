@@ -46,15 +46,17 @@ public sealed class GrenadeSystem
         out ServerObject item)
     {
         item = null!;
-        slot = player.IsMob ? EquipSlot.Hand : EquipSlot.HotbarGrenade;
-        if (!player.IsMob && player.Hotbar != HotbarSlot.Grenade)
-            return false;
+        slot = EquipSlot.HotbarGrenade;
+        if (player.Hotbar == HotbarSlot.Grenade)
+            return player.Equipped.TryGetValue(slot, out uint grenadeId)
+               && objects.TryGet(grenadeId, out item)
+               && item.Has.HasFlag(NetComponents.Item | NetComponents.Weapon)
+               && item.Item.Type == ItemType.Grenade;
 
         // Legacy tests/admin equips place their grenade directly in Hand.
-        if (!player.Equipped.ContainsKey(slot) && player.Hotbar == HotbarSlot.Primary)
-            slot = EquipSlot.Hand;
-
-        return player.Equipped.TryGetValue(slot, out uint itemId)
+        slot = EquipSlot.Hand;
+        return player.Hotbar == HotbarSlot.Primary
+           && player.Equipped.TryGetValue(slot, out uint itemId)
            && objects.TryGet(itemId, out item)
            && item.Has.HasFlag(NetComponents.Item | NetComponents.Weapon)
            && item.Item.Type == ItemType.Grenade;
@@ -235,7 +237,7 @@ public sealed class GrenadeSystem
                     {
                         Centre = new Vector3(firstX + x, target.Y, firstZ + z),
                         HalfExtent = Digging.Bite,
-                        Mode = EditMode.Subtract,
+                        Mode = EditMode.SubtractSoil,
                         Fill = BlockType.BlockType_Air,
                         Shape = EditShape.Sphere,
                         Strength =

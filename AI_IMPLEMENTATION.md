@@ -3,6 +3,29 @@
 **Goal:** Server-authoritative tactical AI for infantry combat on deformable voxel terrain —
 navigation, perception, engagement, cover, squad coordination, digging, and a commander tier.
 
+## Implementation status
+
+- **Step 1 foundation is implemented:** packed multi-level navigation cells, collision-derived
+  standability and slope checks, deterministic bounded A*, goals, partial paths, and headless
+  coverage. Jump edges are validated by simulating the authoritative capsule and fixed-timestep
+  jump solver. Deliberate fall and dig edges remain later navigation extensions.
+- **Step 2 walking integration is implemented:** one replacement-aware navigation worker,
+  request-generation and terrain-edit invalidation, waypoint following, one-second stall replans,
+  and the existing `PlayerMovement.Step` as the sole movement authority.
+- Run `ai stats` in the developer terminal or dedicated console for the latest one-second window:
+  average live agents, mob movement time on the server tick, off-thread path-search time, and path
+  request/completion counts.
+- **Step 3 perception is implemented:** each NPC performs at most one enemy-only FOV/terrain-LOS
+  ray per tick and writes sightings into a five-second confidence-decaying `ContactMemory`.
+- Shared ballistics, recoil/spread, and hit-probability math from **Step 4** already exists from the
+  projectile weapon work.
+- **Step 5 engagement is implemented:** NPCs hold while engaged, acquire with a reaction delay,
+  settle aim at a bounded turn rate, compensate projectile drop, choose controlled or suppressive
+  AK fire from hit probability, suppress actors on near misses, and use the authoritative ammo,
+  cadence, projectile, friendly-fire, damage, and reload paths.
+- The next slice is **Step 6 cover**. NPCs fight now, but they do not yet seek fighting positions
+  or move tactically under fire.
+
 **Architecture:** AI produces *intent* and nothing else. The same `Vector3` direction and
 `PlayerStateFlags` a client input packet carries goes into `PlayerMovement.Step`, and the same
 `PlayerFireData` shape goes into `WeaponSystem.ApplyFire`. Every layer below stays untouched, so

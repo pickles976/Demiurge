@@ -36,10 +36,8 @@ namespace Demiurge.GameServer
             if (tick < player.NextDigTick) return;
 
             // Slot 2 is the placeholder shovel: it deliberately has no item object yet, but
-            // selecting it is what authorizes hand digging. Mobs retain the legacy hand rule.
-            if (player.IsMob
-                ? player.Equipped.ContainsKey(EquipSlot.Hand)
-                : player.Hotbar != HotbarSlot.Shovel)
+            // selecting it authorizes digging for players and NPCs through the same path.
+            if (player.Hotbar != HotbarSlot.Shovel)
                 return;
 
             // The one thing genuinely worth enforcing: you dig what you can reach. Everything else
@@ -62,7 +60,7 @@ namespace Demiurge.GameServer
             {
                 Centre = target,
                 HalfExtent = Digging.Bite,
-                Mode = EditMode.Subtract,
+                Mode = EditMode.SubtractSoil,
                 Fill = BlockType.BlockType_Air,
                 Shape = EditShape.Sphere,
                 Strength = Digging.BiteStrength,

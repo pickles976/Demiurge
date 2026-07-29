@@ -114,10 +114,24 @@ public class ServerCommandServiceTests
         string items = DedicatedServerConsole.HelpText(["items"]);
 
         Assert.Contains("spawn pickup <item> <x> <z>", root);
+        Assert.Contains("ai stats", root);
         Assert.Contains("spawn mob 10 -15", spawn);
         Assert.Contains("spawn pickup ak47 0 0", pickup);
         Assert.Contains("demiurge:ak47", items);
         Assert.Contains("aliases: ak47", items);
+    }
+
+    [Fact]
+    public void AiStatsUsesExistingCommandResultChannel()
+    {
+        var world = new FakeCommandWorld();
+        world.AddActor(1, Vector3.Zero);
+        var service = new ServerCommandService(world, allowCheats: true);
+
+        var result = Execute(service, 1, "ai stats");
+
+        Assert.True(result.Success);
+        Assert.Equal("test AI stats", result.Output);
     }
 
     private static CommandResultData Execute(
@@ -180,5 +194,7 @@ public class ServerCommandServiceTests
 
         public Vector3 SurfacePosition(float worldX, float worldZ)
             => new(worldX, 42, worldZ);
+
+        public string AiStats() => "test AI stats";
     }
 }

@@ -10,4 +10,5 @@ internal interface ICommandWorld
     ServerObject Equip(ServerPlayer actor, ItemType type);
     bool IsSpawnableColumn(float worldX, float worldZ);
     Vector3 SurfacePosition(float worldX, float worldZ);
+    string AiStats();
 }

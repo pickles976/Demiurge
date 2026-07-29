@@ -14,4 +14,16 @@ public sealed record ServerOptions
     /// server leaves it null and the map's spawns apply.
     /// </summary>
     public Vector3? SpawnOverride { get; init; }
+
+    /// <summary>
+    /// Optional team for the first connecting player. Used by focused single-player scenarios;
+    /// subsequent connections still use normal team balancing.
+    /// </summary>
+    public int? InitialPlayerTeam { get; init; }
+
+    /// <summary>
+    /// Optional scenario population built from the map's team player-spawn locations. Zero leaves
+    /// authored mob placements entirely in control. The singleplayer NPC demo requests four.
+    /// </summary>
+    public int InitialNpcsPerTeam { get; init; }
 }

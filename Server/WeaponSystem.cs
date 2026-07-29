@@ -38,39 +38,61 @@ namespace Demiurge.GameServer
             if (fire.RenderTick > tick || fire.RenderTick < (double)tick - NetworkConfig.MaxRewindTicks) return;
             if (fire.Direction.LengthSquared() < 1e-8f) return;
 
-            // Unarmed players can't fire. The equipped Hand item is the source
-            // of truth for ammo — IF it's a gun (Weapon bit); a future non-gun
-            // hand item simply can't fire.
-            if (!TryGetActiveWeapon(player, out var weapon)) return;
-            var stats = WeaponConfig.Require(weapon.Item.Type);
-
-            // Enforce the same ItemConfig numbers the client predicted with.
-            if (tick < player.NextFireTick) return;    // faster than the gun can cycle
-            if (tick < player.ReloadDoneTick) return;  // mid-reload
-            if (weapon.Weapon.CurrentAmmo <= 0) return;
-
             // The client supplies the aim, but the shot must leave from roughly where
             // the server has the player. See GunConfig.MaxFireOriginDistance for what the
             // tolerance has to cover — a barrel swung to full pitch reaches further than it looks.
             if (Vector3.DistanceSquared(fire.Origin, player.Position)
                 > GunConfig.MaxFireOriginDistance * GunConfig.MaxFireOriginDistance) return;
 
+            TryFireCore(player, fire.Origin, fire.Direction, tick, fire.Sequence, additionalMoa: 0f);
+        }
+
+        internal bool TryFireAi(
+            ServerPlayer player,
+            Vector3 origin,
+            Vector3 direction,
+            uint tick,
+            uint sequence,
+            float additionalMoa)
+        {
+            if (!IsFinite(origin) || !IsFinite(direction) || direction.LengthSquared() < 1e-8f)
+                return false;
+            return TryFireCore(player, origin, direction, tick, sequence, additionalMoa);
+        }
+
+        private bool TryFireCore(
+            ServerPlayer player,
+            Vector3 origin,
+            Vector3 requestedDirection,
+            uint tick,
+            uint sequence,
+            float additionalMoa)
+        {
+            if (!TryGetActiveWeapon(player, out var weapon)) return false;
+            var stats = WeaponConfig.Require(weapon.Item.Type);
+            if (tick < player.NextFireTick
+                || tick < player.ReloadDoneTick
+                || weapon.Weapon.CurrentAmmo <= 0)
+                return false;
+
             player.NextFireTick = tick + (uint)stats.TicksPerShot;
             weapon.Weapon.CurrentAmmo--;
             weapon.Dirty |= NetComponents.Weapon;       // ammo replicates like any component
 
             var ballistics = BallisticsConfig.Require(weapon.Item.Type);
-            float moa = player.Spread.TotalMoa(player.State, ballistics);
+            float moa = Spread.Combine(
+                player.Spread.TotalMoa(player.State, ballistics),
+                MathF.Max(0f, additionalMoa));
             var direction = Spread.SampleDirection(
-                fire.Direction,
+                requestedDirection,
                 Spread.SigmaRadians(moa),
-                Spread.ShotSeed(player.Id, fire.Sequence));
+                Spread.ShotSeed(player.Id, sequence));
 
             player.Spread.AddRecoil(ballistics);
             projectiles.Add(new Projectile
             {
                 Shooter = player,
-                Position = fire.Origin,
+                Position = origin,
                 Velocity = direction * ballistics.ProjectileSpeed,
                 RemainingDistance = ProjectileMotion.SafetyDistance,
                 Damage = stats.Damage,
@@ -84,10 +106,11 @@ namespace Demiurge.GameServer
             {
                 PlayerId = player.Id,
                 Weapon = weapon.Item.Type,
-                Origin = fire.Origin,
+                Origin = origin,
                 Direction = direction,
             });
             server.SendToAll(fired);
+            return true;
         }
 
         /// <summary>
@@ -181,6 +204,10 @@ namespace Demiurge.GameServer
             {
                 if (player == shooter || player.Status == null) continue;
                 var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                float along = Math.Clamp(Vector3.Dot(center - start, direction), 0f, length);
+                if (along < nearestT
+                    && Vector3.DistanceSquared(start + direction * along, center) <= 4f)
+                    player.Spread.Suppress();
                 if (GunMath.HitDistance(start, direction, center, length) is not { } t) continue;
                 if (t >= nearestT) continue;
 
@@ -204,28 +231,22 @@ namespace Demiurge.GameServer
                 TargetNetworkId = hit.NetworkId,
                 Damage = damage,
             });
-            server.Send(confirm, shooter.Id);
+            if (!shooter.IsMob)
+                server.Send(confirm, shooter.Id);
         }
 
         private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
-        private bool TryGetActiveWeapon(ServerPlayer player, out ServerObject weapon)
+        internal bool TryGetActiveWeapon(ServerPlayer player, out ServerObject weapon)
         {
             weapon = null!;
-            EquipSlot slot;
-            if (player.IsMob)
-            {
-                slot = EquipSlot.Hand;
-            }
-            else if (player.Hotbar == HotbarSlot.Shovel)
+            if (player.Hotbar == HotbarSlot.Shovel)
                 return false;
-            else
-            {
-                slot = HotbarConfig.StorageSlot(player.Hotbar);
-                // Administrative equips predate the hotbar and remain usable as slot 1.
-                if (player.Hotbar == HotbarSlot.Primary && !player.Equipped.ContainsKey(slot))
-                    slot = EquipSlot.Hand;
-            }
+
+            var slot = HotbarConfig.StorageSlot(player.Hotbar);
+            // Administrative equips predate the hotbar and remain usable as slot 1.
+            if (player.Hotbar == HotbarSlot.Primary && !player.Equipped.ContainsKey(slot))
+                slot = EquipSlot.Hand;
 
             return player.Equipped.TryGetValue(slot, out uint weaponId)
                 && objects.TryGet(weaponId, out weapon!)

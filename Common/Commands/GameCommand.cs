@@ -10,6 +10,8 @@ public sealed record SpawnPickupCommand(ItemType Item, CommandPosition? Position
 
 public sealed record EquipCommand(ActorSelector Target, ItemType Item) : GameCommand;
 
+public sealed record AiStatsCommand : GameCommand;
+
 /// <summary>An absolute coordinate, or an offset from the command source when prefixed by '~'.</summary>
 public readonly record struct CommandCoordinate(float Value, bool Relative)
 {
@@ -68,9 +70,16 @@ public static class GameCommandParser
         {
             "spawn" => ParseSpawn(tokens),
             "equip" => ParseEquip(tokens),
+            "ai" => ParseAi(tokens),
             _ => CommandParseResult.Fail($"Unknown command: {tokens[0]}"),
         };
     }
+
+    private static CommandParseResult ParseAi(IReadOnlyList<string> tokens)
+        => tokens.Count == 2
+           && tokens[1].Equals("stats", StringComparison.OrdinalIgnoreCase)
+            ? CommandParseResult.Ok(new AiStatsCommand())
+            : CommandParseResult.Fail("Usage: ai stats");
 
     private static CommandParseResult ParseSpawn(IReadOnlyList<string> tokens)
     {

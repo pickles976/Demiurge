@@ -5,6 +5,10 @@ namespace Demiurge.CommonTests;
 public class BallisticsTests
 {
     [Fact]
+    public void Ak47DealsThirtyDamagePerProjectile()
+        => Assert.Equal((ushort)30, WeaponConfig.Require(ItemType.Ak47).Damage);
+
+    [Fact]
     public void MoaConversionUsesGroupDiameterAtNinetyFivePercent()
     {
         float sigma = Spread.SigmaRadians(60f);

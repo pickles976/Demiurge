@@ -103,6 +103,7 @@ internal sealed class DedicatedServerConsole : IDisposable
                   spawn mob <x> <z>
                   spawn pickup <item> <x> <z>
                   equip <@actor-id> <item>
+                  ai stats
                   map status
                   map load <map-name>
                   stop
@@ -141,6 +142,10 @@ internal sealed class DedicatedServerConsole : IDisposable
                   Example: equip @60000 ak47
                   The dedicated console cannot use @s.
                   Equipment changes are session-only and are not written into map files.
+                """,
+            "ai" => """
+                ai stats
+                  Shows the latest 1-second average for mob movement and off-thread path searches.
                 """,
             "map" => """
                 Map commands:

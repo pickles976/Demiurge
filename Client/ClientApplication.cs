@@ -13,6 +13,8 @@ namespace Demiurge;
 
 public sealed class ClientApplication : IDisposable
 {
+    private const string DefaultSingleplayerMap = "npc-test";
+
     private readonly Game game = new();
     private readonly ClientInputState inputState = new();
     private ClientSessionCoordinator coordinator = null!;
@@ -57,7 +59,10 @@ public sealed class ClientApplication : IDisposable
             }
 
         if (args.Contains("--singleplayer", StringComparer.OrdinalIgnoreCase))
-            return SessionRequest.GeneratedHost();
+            return SessionRequest.SourceHost(
+                DefaultSingleplayerMap,
+                initialPlayerTeam: 1,
+                initialNpcsPerTeam: 4);
         return SessionRequest.Join(NetworkConfig.ServerHost);
     }
 

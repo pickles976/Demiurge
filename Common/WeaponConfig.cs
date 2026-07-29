@@ -18,7 +18,7 @@ namespace Demiurge
     {
         public static WeaponStats? Get(ItemType type) => type switch
         {
-            ItemType.Ak47 => new WeaponStats(MagazineCapacity: 30, TicksPerShot: 3, ReloadTicks: 45, Damage: 10, BallisticsProfile: WeaponBallisticsProfile.Carbine),
+            ItemType.Ak47 => new WeaponStats(MagazineCapacity: 30, TicksPerShot: 3, ReloadTicks: 45, Damage: 30, BallisticsProfile: WeaponBallisticsProfile.Carbine),
             ItemType.AWP => new WeaponStats(MagazineCapacity: 5, TicksPerShot: 60, ReloadTicks: 45, Damage: 75, BallisticsProfile: WeaponBallisticsProfile.SniperRifle),
             ItemType.Glock => new WeaponStats(MagazineCapacity: 15, TicksPerShot: 7, ReloadTicks: 20, Damage: 5, BallisticsProfile: WeaponBallisticsProfile.Pistol),
             // A grenade stack uses ammo as its remaining count. Each throw automatically cycles
