@@ -46,6 +46,15 @@ public class LocalPlayerController : SyncScript
 	{
 		var local = Registry.LocalPlayer;
 		if (local == null) return;   // not spawned yet
+		if (local.IsDead)
+		{
+			primaryWasDown = false;
+			primedGrenadeId = null;
+			AimPoint = null;
+			local.EnterDeath();
+			return;
+		}
+		local.LeaveDeath();
 
 		// The debug fly camera has the input; stand the player down. Note this keeps SENDING a
 		// zero-intent move every tick rather than going silent: when the server's move queue

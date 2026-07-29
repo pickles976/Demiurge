@@ -47,4 +47,19 @@ public class ContactMemoryTests
         Assert.True(memory.TryNearest(Vector3.Zero, 5, out var nearest));
         Assert.Equal((ushort)4, nearest.ActorId);
     }
+
+    [Fact]
+    public void OlderSharedReportCannotOverwriteNewerDirectSighting()
+    {
+        var local = new ContactMemory();
+        var shared = new ContactMemory();
+        local.Observe(4, new Vector3(10, 0, 0), tick: 20);
+        shared.Observe(4, new Vector3(2, 0, 0), tick: 10);
+
+        shared.MergeInto(local, tick: 20);
+
+        Assert.True(local.TryGet(4, 20, out var contact));
+        Assert.Equal(new Vector3(10, 0, 0), contact.Position);
+        Assert.Equal((uint)20, contact.LastSeenTick);
+    }
 }

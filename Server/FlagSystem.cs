@@ -139,6 +139,59 @@ public sealed class FlagSystem
             0,
             FlagConfig.ProgressReplicationBuckets);
 
+    /// <summary>
+    /// Finds the closest flag this team can make useful progress on. Fully secured friendly flags
+    /// are skipped; a friendly flag whose ownership is being drained remains a valid defensive
+    /// objective until its progress is restored.
+    /// </summary>
+    internal bool TryGetSquadObjective(
+        int team,
+        Vector3 squadHome,
+        uint currentFlagId,
+        out SquadObjective objective)
+    {
+        // A squad that took a flag owns its local defence until explicitly reassigned by a later
+        // objective layer. Keeping the same objective also makes it immediately retake the point
+        // if an enemy neutralizes it.
+        if (currentFlagId != 0)
+        {
+            foreach (var flag in flags)
+            {
+                if (flag.Object.NetworkId != currentFlagId) continue;
+                objective = new SquadObjective(flag.Object.NetworkId, flag.Position);
+                return true;
+            }
+        }
+
+        Flag? nearest = null;
+        float nearestDistance = float.PositiveInfinity;
+        foreach (var flag in flags)
+        {
+            ref var state = ref flag.Object.Team;
+            if (state.Value == team && state.Progress >= 1f)
+                continue;
+
+            float distance = Vector3.DistanceSquared(squadHome, flag.Position);
+            if (distance > nearestDistance
+                || (distance == nearestDistance
+                    && nearest is not null
+                    && flag.Object.NetworkId > nearest.Object.NetworkId))
+                continue;
+
+            nearest = flag;
+            nearestDistance = distance;
+        }
+
+        if (nearest is null)
+        {
+            objective = default;
+            return false;
+        }
+
+        objective = new SquadObjective(nearest.Object.NetworkId, nearest.Position);
+        return true;
+    }
+
     public bool TrySpawnPosition(int team, out Vector3 position)
     {
         var controlled = flags

@@ -110,6 +110,47 @@ public class FlagSystemTests
         Assert.Equal(1f, flag.Team.Progress);
     }
 
+    [Fact]
+    public void SquadObjectiveChoosesNearestFlagThatIsNotSecurelyFriendly()
+    {
+        var objects = new ObjectReplication(new Server());
+        var flags = new FlagSystem(objects);
+        var nearPosition = new Vector3(5f, 0f, 0f);
+        var farPosition = new Vector3(25f, 0f, 0f);
+        var near = flags.Spawn(nearPosition);
+        var far = flags.Spawn(farPosition);
+
+        Assert.True(flags.TryGetSquadObjective(
+            1,
+            Vector3.Zero,
+            currentFlagId: 0,
+            out var neutral));
+        Assert.Equal(near.NetworkId, neutral.FlagId);
+
+        flags.Tick(
+            FlagConfig.CaptureSeconds,
+            [PlayerAt(1, team: 1, nearPosition)]);
+
+        Assert.True(flags.TryGetSquadObjective(
+            1,
+            Vector3.Zero,
+            currentFlagId: 0,
+            out var teamOne));
+        Assert.Equal(far.NetworkId, teamOne.FlagId);
+        Assert.True(flags.TryGetSquadObjective(
+            1,
+            Vector3.Zero,
+            currentFlagId: near.NetworkId,
+            out var defendingTeamOne));
+        Assert.Equal(near.NetworkId, defendingTeamOne.FlagId);
+        Assert.True(flags.TryGetSquadObjective(
+            2,
+            Vector3.Zero,
+            currentFlagId: 0,
+            out var teamTwo));
+        Assert.Equal(near.NetworkId, teamTwo.FlagId);
+    }
+
     private static ServerPlayer PlayerAt(ushort id, int team, Vector3 position)
         => new()
         {

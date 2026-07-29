@@ -80,10 +80,10 @@ namespace Demiurge.GameServer
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
             weapons = new WeaponSystem(server, objects, terrain);
-            mobs = new MobSystem(terrain, weapons);
+            flags = new FlagSystem(objects);
             terrainEdits = new TerrainSystem(server, terrain);
             grenades = new GrenadeSystem(objects, items, terrainEdits, terrain);
-            flags = new FlagSystem(objects);
+            mobs = new MobSystem(terrain, weapons, flags, grenades);
 
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
@@ -148,8 +148,7 @@ namespace Demiurge.GameServer
         private ServerPlayer SpawnMob(Vector3? requestedPosition, int team)
         {
             var position = requestedPosition ?? mobs.RandomSpawnPoint();
-            var mob = mobs.CreateMob(AllocateMobId(), position);
-            mob.Team = team > 0 ? team : 1;
+            var mob = mobs.CreateMob(AllocateMobId(), position, team);
             mob.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, mob.Position,
             obj =>
             {
@@ -284,13 +283,15 @@ namespace Demiurge.GameServer
 
         public void ApplyReload(ushort clientId)
         {
-            if (players.TryGetValue(clientId, out var player))
+            if (players.TryGetValue(clientId, out var player)
+                && player.Status is { Health.Current: > 0 })
                 weapons.ApplyReload(player, _Tick);
         }
 
         public void ApplyDig(ushort clientId, PlayerDigData dig)
         {
             if (players.TryGetValue(clientId, out var player)
+                && player.Status is { Health.Current: > 0 }
                 && HotbarConfig.IsValid(dig.Hotbar))
             {
                 player.Hotbar = dig.Hotbar;
@@ -300,7 +301,8 @@ namespace Demiurge.GameServer
 
         public void ApplyInteract(ushort clientId)
         {
-            if (players.TryGetValue(clientId, out var player))
+            if (players.TryGetValue(clientId, out var player)
+                && player.Status is { Health.Current: > 0 })
                 items.ApplyInteract(player);
         }
 
@@ -313,6 +315,13 @@ namespace Demiurge.GameServer
             if (!HotbarConfig.IsValid(input.Hotbar)) return;
 
             player.LastReceivedSequence = input.Sequence;
+            if (player.Status is not { Health.Current: > 0 })
+            {
+                // A packet already in flight when death was replicated must never become movement
+                // waiting to fire on the respawn wave. Acknowledge it without simulating it.
+                player.LastProcessedSequence = input.Sequence;
+                return;
+            }
             player.Hotbar = input.Hotbar;
             player.PendingMoves.Enqueue(input);
         }
@@ -328,16 +337,16 @@ namespace Demiurge.GameServer
 
             foreach (var player in players.Values)
             {
-                // Leave a dead actor in place for one replicated tick. Besides preventing input
-                // during the tiny death window, this makes zero health an observable event instead
-                // of being overwritten by the respawn later in the same server tick.
+                // Dead actors remain at the death position until the next shared respawn wave.
+                // Their zero-health status and stationary position continue replicating so clients
+                // can keep the body camera and cosmetic ragdoll anchored to the right location.
                 if (player.Status is { Health.Current: 0 })
                     continue;
 
                 if (player.IsMob)
                 {
                     long started = Stopwatch.GetTimestamp();
-                    mobs.Step(player, dt, _Tick);
+                    mobs.Step(player, dt, _Tick, players.Values);
                     mobMovementTicks += Stopwatch.GetTimestamp() - started;
                     mobCount++;
                     continue;
@@ -382,20 +391,27 @@ namespace Demiurge.GameServer
 
                 if (player.RespawnTick == 0)
                 {
-                    player.RespawnTick = _Tick + 1;
+                    player.RespawnTick = RespawnConfig.NextWaveTick(_Tick);
+                    player.PendingMoves.Clear();
+                    player.LastIntent = Vector3.Zero;
+                    player.State = 0;
                     continue;
                 }
                 if (_Tick < player.RespawnTick) continue;
 
                 player.Move = SpawnPlayerMove(player.Team, useOverride: false);
                 player.History.Clear();
+                player.PendingMoves.Clear();
+                player.LastIntent = Vector3.Zero;
+                player.State = 0;
+                player.Hotbar = HotbarSlot.Primary;
+                player.NextFireTick = 0;
+                player.ReloadDoneTick = 0;
+                player.NextGrenadeThrowTick = 0;
+                player.Spread = default;
                 status.Health.Current = status.Health.Max;
                 status.Dirty |= NetComponents.Health;
-                items.SpawnHotbar(
-                    player,
-                    ItemType.Grenade,
-                    HotbarSlot.Grenade,
-                    ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
+                items.RefillRespawnLoadout(player);
                 player.RespawnTick = 0;
             }
 
@@ -443,7 +459,10 @@ namespace Demiurge.GameServer
                 return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
 
             var teamSpawns = playerSpawns.Where(spawn => spawn.Team == team).ToArray();
-            if (teamSpawns.Length == 0) teamSpawns = playerSpawns;
+            // Never silently place an actor at an enemy base. A malformed map can fall back to the
+            // neutral generated column, but a valid team always uses its own placements.
+            if (teamSpawns.Length == 0)
+                return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);
             int next = nextPlayerSpawnByTeam.GetValueOrDefault(team);
             nextPlayerSpawnByTeam[team] = (next + 1) % teamSpawns.Length;
             var spawn = teamSpawns[next % teamSpawns.Length];
@@ -487,6 +506,7 @@ namespace Demiurge.GameServer
                         Velocity = player.Move.Velocity,
                         Grounded = player.Move.Grounded,
                         Hotbar = player.Hotbar,
+                        RespawnTick = player.RespawnTick,
                     });
                 server.SendToAll(message);
             }

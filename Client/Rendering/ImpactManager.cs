@@ -103,7 +103,10 @@ namespace Demiurge
                     impact.Normal + Spread * (right * MathF.Cos(angle) + up * MathF.Sin(angle)));
 
                 var start = impact.Point + direction * (travel * 0.35f);
-                LineRenderer.DrawLine(start, impact.Point + direction * travel * length, color);
+                LineRenderer.DrawDepthTestedLine(
+                    start,
+                    impact.Point + direction * travel * length,
+                    color);
             }
         }
 

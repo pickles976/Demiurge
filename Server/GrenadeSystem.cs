@@ -40,6 +40,11 @@ public sealed class GrenadeSystem
     public bool IsGrenadeEquipped(ServerPlayer player)
         => TryGetGrenade(player, out _, out _);
 
+    public bool CanThrow(ServerPlayer player, uint tick)
+        => TryGetGrenade(player, out _, out var item)
+           && item.Weapon.CurrentAmmo > 0
+           && tick >= player.NextGrenadeThrowTick;
+
     private bool TryGetGrenade(
         ServerPlayer player,
         out EquipSlot slot,
@@ -62,7 +67,7 @@ public sealed class GrenadeSystem
            && item.Item.Type == ItemType.Grenade;
     }
 
-    public void ApplyThrow(ServerPlayer player, PlayerFireData fire, uint tick)
+    public bool ApplyThrow(ServerPlayer player, PlayerFireData fire, uint tick)
     {
         if (!IsFinite(fire.Origin)
             || !IsFinite(fire.Direction)
@@ -70,21 +75,21 @@ public sealed class GrenadeSystem
             || fire.RenderTick > tick
             || fire.RenderTick < (double)tick - NetworkConfig.MaxRewindTicks
             || fire.Direction.LengthSquared() < 1e-8f)
-            return;
+            return false;
 
         if (!TryGetGrenade(player, out var slot, out var item)
             || item.Weapon.CurrentAmmo <= 0
             || tick < player.NextGrenadeThrowTick)
-            return;
+            return false;
 
         if (Vector3.DistanceSquared(fire.Origin, player.Position)
             > GunConfig.MaxFireOriginDistance * GunConfig.MaxFireOriginDistance)
-            return;
+            return false;
 
         item.Weapon.CurrentAmmo--;
         if (item.Weapon.CurrentAmmo == 0)
         {
-            if (!items.ConsumeEquipped(player, slot, item.NetworkId)) return;
+            if (!items.ConsumeEquipped(player, slot, item.NetworkId)) return false;
         }
         else
         {
@@ -106,6 +111,7 @@ public sealed class GrenadeSystem
             SpawnTick = tick,
             DetonateTick = tick + GrenadeConfig.FuseTicks,
         });
+        return true;
     }
 
     public void Tick(float dt, uint tick, IEnumerable<ServerPlayer> players)

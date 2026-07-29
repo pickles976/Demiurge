@@ -123,9 +123,11 @@ public class ItemAttachScript : SyncScript
 
     private bool IsSelected()
     {
+        if (!Registry.TryGet(Object.Owner.PlayerId, out var player) || player.IsDead)
+            return false;
         if (!HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var slot))
             return true;
-        return Registry.TryGet(Object.Owner.PlayerId, out var player) && player.Hotbar == slot;
+        return player.Hotbar == slot;
     }
 
     private void UpdateFirstPersonWeapon()
@@ -148,6 +150,12 @@ public class ItemAttachScript : SyncScript
         }
 
         var local = Registry.LocalPlayer!;
+        if (local.IsDead)
+        {
+            model.Enabled = false;
+            WeaponView.Clear();
+            return;
+        }
         if (Object.Item.Type == ItemType.Grenade && (local.Ammo == 0 || local.IsReloading))
         {
             model.Enabled = false;

@@ -79,4 +79,30 @@ public class ItemSystemTests
         Assert.False(npc.Equipped.ContainsKey(EquipSlot.Hand));
         Assert.True(HotbarConfig.IsValid(HotbarSlot.Shovel));
     }
+
+    [Fact]
+    public void RespawnRefillsEquippedPrimaryAndRecreatesConsumedGrenades()
+    {
+        var objects = new ObjectReplication(new Server());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 7 };
+        items.SpawnInfantryLoadout(actor);
+
+        Assert.True(objects.TryGet(actor.Equipped[EquipSlot.HotbarPrimary], out var primary));
+        primary.Weapon.CurrentAmmo = 1;
+        uint grenadeId = actor.Equipped[EquipSlot.HotbarGrenade];
+        Assert.True(items.ConsumeEquipped(actor, EquipSlot.HotbarGrenade, grenadeId));
+
+        items.RefillRespawnLoadout(actor);
+
+        Assert.Equal(
+            WeaponConfig.Require(primary.Item.Type).MagazineCapacity,
+            primary.Weapon.CurrentAmmo);
+        Assert.True(primary.Dirty.HasFlag(NetComponents.Weapon));
+        Assert.True(objects.TryGet(actor.Equipped[EquipSlot.HotbarGrenade], out var grenades));
+        Assert.Equal(
+            WeaponConfig.Require(ItemType.Grenade).MagazineCapacity,
+            grenades.Weapon.CurrentAmmo);
+        Assert.Equal(HotbarSlot.Primary, actor.Hotbar);
+    }
 }

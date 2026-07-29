@@ -11,10 +11,13 @@ public abstract class Player
     public float Yaw { get; set; }
     public HotbarSlot Hotbar { get; set; } = HotbarSlot.Primary;
     public int Team { get; set; } = 1;
+    public uint RespawnTick { get; set; }
 
     /// <summary>Look angle above the horizon, radians, positive is up. Drives the head and gun aim,
     /// and the direction a shot travels; the BODY still only yaws.</summary>
     public float Pitch { get; set; }
+
+    public virtual bool IsDead => RespawnTick != 0;
 }
 
 // netcode writes, view reads
@@ -31,6 +34,7 @@ public class RemotePlayer : Player
         private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
     private uint sequence;
     private float accumulator;
+    private bool deathState;
 
     /// <summary>
     /// Predicted movement state, stepped by the same <see cref="PlayerMovement.Step"/> the server runs
@@ -52,6 +56,7 @@ public class RemotePlayer : Player
     private const float ReconcileWarnDistance = 0.01f;
 
     public NetObject? Status {get; set;}
+    public override bool IsDead => Status is { Health.Current: 0 } || base.IsDead;
 
 
     private sealed class PredictedWeapon
@@ -251,11 +256,46 @@ public class RemotePlayer : Player
         }
     }
 
+    /// <summary>
+    /// Stops local prediction while authority holds the actor at its corpse. Clearing unacknowledged
+    /// moves is essential: replaying them on every dead-position snapshot would make the killcam
+    /// anchor and the cosmetic body drift away from the server's death location.
+    /// </summary>
+    public void EnterDeath()
+    {
+        if (deathState) return;
+        deathState = true;
+        pendingMoves.Clear();
+        accumulator = 0f;
+        Move.Velocity = Vector3.Zero;
+        State = 0;
+    }
+
+    public void LeaveDeath()
+    {
+        if (!deathState) return;
+        deathState = false;
+        foreach (var predicted in hotbarWeapons.Values)
+        {
+            predicted.Ammo = predicted.Stats.MagazineCapacity;
+            predicted.CooldownTicks = 0;
+            predicted.ReloadTicksLeft = 0;
+            predicted.Spread = default;
+        }
+    }
+
     public void Reconcile(MoveState authoritative, uint lastProcessedSequence)
     {
         // Discard all pending moves the server has already simulated
         while (pendingMoves.Count > 0 && pendingMoves.Peek().Sequence <= lastProcessedSequence)
             pendingMoves.Dequeue();
+
+        if (deathState)
+        {
+            pendingMoves.Clear();
+            Move = authoritative;
+            return;
+        }
 
         var predicted = Move.Position;
 

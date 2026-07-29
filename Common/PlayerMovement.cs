@@ -22,10 +22,10 @@ namespace Demiurge
         public const float WalkSpeed = 4f;
         public const float SprintSpeed = 6f;
         public const float SlowSpeed = 2f;
+        public const float CrouchEyeDrop = 0.45f;
 
         public const PlayerStateFlags SlowingStates =
-            PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
-            PlayerStateFlags.Reloading;
+            PlayerStateFlags.Crouching | PlayerStateFlags.Aiming;
 
         // ---- Vertical motion ----
 

@@ -61,6 +61,40 @@ namespace Demiurge.GameServer
             actor.Hotbar = HotbarSlot.Primary;
         }
 
+        /// <summary>
+        /// Restores every equipped weapon to a full magazine after a death. Consumed default slots
+        /// (currently the grenade stack) are recreated, while a picked-up primary is retained and
+        /// refilled rather than silently replaced with an AK.
+        /// </summary>
+        internal void RefillRespawnLoadout(ServerPlayer actor)
+        {
+            bool hasPrimary = false;
+            bool hasGrenades = false;
+            foreach (var pair in actor.Equipped)
+            {
+                if (!objects.TryGet(pair.Value, out var item)
+                    || !item.Has.HasFlag(NetComponents.Item | NetComponents.Weapon)
+                    || WeaponConfig.Get(item.Item.Type) is not { } weapon)
+                    continue;
+
+                item.Weapon.CurrentAmmo = weapon.MagazineCapacity;
+                item.Dirty |= NetComponents.Weapon;
+                hasPrimary |= pair.Key is EquipSlot.HotbarPrimary or EquipSlot.Hand;
+                hasGrenades |= pair.Key == EquipSlot.HotbarGrenade
+                    && item.Item.Type == ItemType.Grenade;
+            }
+
+            if (!hasPrimary)
+                SpawnHotbar(actor, ItemType.Ak47, HotbarSlot.Primary);
+            if (!hasGrenades)
+                SpawnHotbar(
+                    actor,
+                    ItemType.Grenade,
+                    HotbarSlot.Grenade,
+                    ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
+            actor.Hotbar = HotbarSlot.Primary;
+        }
+
         private ServerObject SpawnOwned(
             ServerPlayer player,
             ItemType type,

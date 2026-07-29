@@ -45,6 +45,11 @@ namespace Demiurge
             }
             if (Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
             if (Registry.LocalPlayer is not { } local) return;
+            if (local.IsDead)
+            {
+                wasDown = false;
+                return;
+            }
 
             // Slot 2 is the placeholder shovel/empty hand. Empty slot 1 is deliberately not a
             // digging tool, so the number keys always have stable meaning.

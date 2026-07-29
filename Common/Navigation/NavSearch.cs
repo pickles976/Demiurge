@@ -6,7 +6,8 @@ public readonly record struct NavSearchOptions(
     TimeSpan PrimaryBudget,
     TimeSpan FailureBudget,
     int MaximumExpandedNodes,
-    float MinimumPartialDistance)
+    float MinimumPartialDistance,
+    bool AllowJump = true)
 {
     public static NavSearchOptions Default => new(
         TimeSpan.FromMilliseconds(25),
@@ -100,7 +101,15 @@ public static class NavSearch
             }
 
             foreach (var direction in Directions)
-                VisitNeighbour(map, goal, current, direction.X, direction.Z, nodes, open);
+                VisitNeighbour(
+                    map,
+                    goal,
+                    current,
+                    direction.X,
+                    direction.Z,
+                    options.AllowJump,
+                    nodes,
+                    open);
         }
 
         return best.Cell == start
@@ -114,6 +123,7 @@ public static class NavSearch
         Node current,
         int dx,
         int dz,
+        bool allowJump,
         Dictionary<long, Node> nodes,
         NavHeap open)
     {
@@ -137,11 +147,36 @@ public static class NavSearch
                 && (!CardinalClear(map, current.Cell, dx, 0)
                     || !CardinalClear(map, current.Cell, 0, dz)))
                 return;
+
+            if (NavTraversal.NeedsWalkValidation(map, current.Cell, next)
+                && !NavTraversal.CanWalkAscent(map, current.Cell, next))
+            {
+                if (allowJump
+                    && (dx == 0 || dz == 0)
+                    && NavTraversal.TryJump(
+                        map,
+                        current.Cell,
+                        dx,
+                        dz,
+                        out var landing,
+                        out float jumpCost))
+                    Relax(
+                        goal,
+                        current,
+                        landing,
+                        jumpCost,
+                        NavAction.Jump,
+                        nodes,
+                        open);
+                return;
+            }
+
             Relax(goal, current, next, edgeCost, NavAction.Walk, nodes, open);
             return;
         }
 
-        if (dx != 0 && dz != 0
+        if (!allowJump
+            || dx != 0 && dz != 0
             || !NavTraversal.TryJump(
                 map,
                 current.Cell,

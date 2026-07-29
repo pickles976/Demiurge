@@ -61,7 +61,7 @@ public static class ExplosionManager
             for (int segment = 0; segment < RingSegments; segment++)
             {
                 var point = PointOnRing(explosion.Centre, radius, axis, segment);
-                LineRenderer.DrawLine(previous, point, shell);
+                LineRenderer.DrawDepthTestedLine(previous, point, shell);
                 previous = point;
             }
         }
@@ -80,7 +80,7 @@ public static class ExplosionManager
                 y,
                 MathF.Sin(angle) * radial);
             float length = radius * (0.75f + 0.35f * Hash(explosion.Seed + ray + 1));
-            LineRenderer.DrawLine(
+            LineRenderer.DrawDepthTestedLine(
                 explosion.Centre + direction * (radius * 0.12f),
                 explosion.Centre + direction * length,
                 core);

@@ -23,7 +23,7 @@ namespace Demiurge
 		public float EyeHeight { get; set; } = Digging.EyeHeight;
 
 		/// <summary>How much the view drops while crouching.</summary>
-		public float CrouchEyeDrop { get; set; } = 0.45f;
+		public float CrouchEyeDrop { get; set; } = PlayerMovement.CrouchEyeDrop;
 
 		/// <summary>
 		/// The camera follows predicted movement with this sharpness. Rotation stays unsmoothed; this
@@ -87,6 +87,11 @@ namespace Demiurge
 			}
 
 			if (Registry.LocalPlayer is not { } local) return;
+			if (local.IsDead)
+			{
+				following = false;
+				return;
+			}
 
 			if (!seededRotation)
 			{

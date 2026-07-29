@@ -8,7 +8,9 @@ navigation, perception, engagement, cover, squad coordination, digging, and a co
 - **Step 1 foundation is implemented:** packed multi-level navigation cells, collision-derived
   standability and slope checks, deterministic bounded A*, goals, partial paths, and headless
   coverage. Jump edges are validated by simulating the authoritative capsule and fixed-timestep
-  jump solver. Deliberate fall and dig edges remain later navigation extensions.
+  jump solver. Steep upward edges also receive a bounded no-jump movement simulation so sharp SDF
+  ledges become jump actions while genuinely walkable slopes remain ordinary traversal. Deliberate
+  fall and dig edges remain later navigation extensions.
 - **Step 2 walking integration is implemented:** one replacement-aware navigation worker,
   request-generation and terrain-edit invalidation, waypoint following, one-second stall replans,
   and the existing `PlayerMovement.Step` as the sole movement authority.
@@ -23,8 +25,27 @@ navigation, perception, engagement, cover, squad coordination, digging, and a co
   settle aim at a bounded turn rate, compensate projectile drop, choose controlled or suppressive
   AK fire from hit probability, suppress actors on near misses, and use the authoritative ammo,
   cadence, projectile, friendly-fire, damage, and reload paths.
-- The next slice is **Step 6 cover**. NPCs fight now, but they do not yet seek fighting positions
-  or move tactically under fire.
+- **Step 6 cover is implemented:** one globally budgeted, event-driven spatial query samples 13
+  deterministic nearby navigation cells against up to two believed threats. It distinguishes
+  crouch-blocked/stand-clear fighting positions from full concealment, scores travel and escape
+  routes in pure `Common` logic, sends the winner through the existing navigation worker, invalidates
+  it on terrain edits or material threat movement, and makes an arrived NPC crouch/peek on a bounded
+  cadence. Fully blocked positions also test validated lateral cells for corner peeks, which are
+  preferred over popping over low cover; cover paths disable jump edges so an agent routes around
+  the obstacle instead of vaulting it. Cover-query time and count are included in `ai stats`.
+- **Step 7 squad blackboards are implemented:** NPCs are assigned deterministically to team-local
+  squads of four. Direct sightings enter shared contact memory after 11 server ticks (~367 ms),
+  short cover leases prevent squadmates from selecting the same fighting position, and two
+  engagement plus two advance permits rotate every three seconds. This produces bounded focus fire
+  and alternating fire-and-movement without adding replication messages or bypassing individual
+  LOS checks. The board also carries a shared Conquest objective: squads path to the nearest
+  neutral, enemy, or threatened friendly flag, spread into stable positions inside its capture
+  radius, and remain assigned there to defend or retake it.
+- **The Step 8 grenade slice is implemented:** an NPC can use a recently lost believed contact to
+  probe just behind intervening cover, solve a low ballistic arc, reject terrain-blocked or
+  friendly-unsafe throws, and reserve the throw on its squad board so grenades arrive singly rather
+  than as an eight-NPC volley. Mortar and heavy-machine-gun items remain prerequisites for the
+  crew-served portions of Step 8.
 
 **Architecture:** AI produces *intent* and nothing else. The same `Vector3` direction and
 `PlayerStateFlags` a client input packet carries goes into `PlayerMovement.Step`, and the same
@@ -81,8 +102,9 @@ trusted when its turn comes.
 | `Server/Ai/NavigationSystem.cs` | Path request queue, worker thread, edit-version invalidation |
 | `Server/Ai/PathFollower.cs` | Path → intent, waypoint advance, replan triggers |
 | `Server/Ai/Perception.cs` | FOV + budgeted LOS raycasts, writes `ContactMemory` |
-| `Server/Ai/SquadBlackboard.cs` | Shared contacts, position claims, fire tokens |
+| `Server/Ai/SquadBlackboard.cs` | Shared contacts, position claims, engage/advance tokens |
 | `Server/Ai/CombatBehavior.cs` | Engage / suppress / hold decision and aim |
+| `Server/Ai/GrenadeBehavior.cs` | Safe low-arc throws against recently occluded contacts |
 | `Common/Ballistics/ThrowSolver.cs` | Launch angle for a lobbed projectile; terrain clearance along the arc |
 | `Common/Ai/AreaTargeting.cs` | Best splash centre given believed contacts, with a friendly exclusion |
 | `Server/Ai/CrewWeapon.cs` | Lug → deploy → fire → pack state machine for emplaced weapons |
@@ -557,8 +579,8 @@ placement data — follow `RECIPES.md`, and remember the enum order **is** the p
 
 ## Step 8 — Crew-served and indirect weapons
 
-Grenades, mortars and heavy machine guns. **Gated on the PVP track** — `TODO.md` has all three
-unchecked, and none of this can start until they exist as weapons.
+Grenades, mortars and heavy machine guns. The player grenade and its first AI use now exist.
+Mortars and heavy machine guns remain gated on their PVP-track weapon implementations.
 
 Without this step the plan describes a system that deadlocks. Steps 5–7 are all direct fire gated
 on LOS, and under those rules alone cover is strictly dominant: a unit in a good fighting position

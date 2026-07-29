@@ -23,6 +23,10 @@ public class PlayerRegistry : IDisposable
         + ((Stopwatch.GetTimestamp() - newestArrival) / (double)Stopwatch.Frequency) * NetworkConfig.TickRate // fraction
         - NetworkConfig.InterpolationDelayTicks;
 
+    public double EstimatedServerTick => newestTick
+        + ((Stopwatch.GetTimestamp() - newestArrival) / (double)Stopwatch.Frequency)
+        * NetworkConfig.TickRate;
+
     // Add listeners
     public PlayerRegistry(NetworkManager network, TerrainState terrain, WeaponMount mount)
     {
@@ -78,6 +82,7 @@ public class PlayerRegistry : IDisposable
         switch (player)
         {
             case LocalPlayer local:
+                local.RespawnTick = data.RespawnTick;
                 local.Reconcile(data.Move, data.LastProcessedSequence);
                 break;
             case RemotePlayer remote:
@@ -88,6 +93,7 @@ public class PlayerRegistry : IDisposable
                 remote.Hotbar = data.Hotbar;
                 remote.State = data.State;
                 remote.Velocity = data.Velocity;
+                remote.RespawnTick = data.RespawnTick;
                 break;
         }
 

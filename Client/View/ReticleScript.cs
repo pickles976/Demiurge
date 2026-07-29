@@ -33,6 +33,7 @@ namespace Demiurge
             // is holding is just clutter on the debug view.
             if (InputState.TerminalOpen || Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
             if (Registry.LocalPlayer is not { } local) return;
+            if (local.IsDead) return;
 
             bool aiming = local.State.HasFlag(PlayerStateFlags.Aiming);
             float baseGap = aiming ? AimGap : HipGap;

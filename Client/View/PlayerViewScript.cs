@@ -22,6 +22,8 @@ public class PlayerViewScript : SyncScript
 
     public override void Update()
     {
+        if (Entity.Get<ModelComponent>() is { } model)
+            model.Enabled = Player is not LocalPlayer && !Player.IsDead;
 
         switch (Player)
         {

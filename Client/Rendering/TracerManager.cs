@@ -56,7 +56,7 @@ namespace Demiurge
                 float alpha = 1f - t.Age / t.Lifetime;
                 var color = t.BaseColor;
                 color.A = (byte)(MathUtil.Clamp(alpha, 0f, 1f) * t.BaseColor.A);
-                LineRenderer.DrawLine(t.Start, t.End, color);
+                LineRenderer.DrawDepthTestedLine(t.Start, t.End, color);
 
                 Tracers[i] = t;
             }

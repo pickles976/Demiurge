@@ -194,6 +194,28 @@ namespace Demiurge
             root.Children.Add(statusCanvas);
             root.Children.Add(hotbarPanel);
 
+            var respawnText = new TextBlock
+            {
+                Text = "KILLCAM",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 30,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(20, 12, 20, 12),
+            };
+            var respawnPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 175),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 36, 0, 0),
+                Content = respawnText,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(respawnPanel);
+
             // Put the driving script on the same entity as the UI and hand it the text
             // block to write into.
             var uiEntity = new Entity
@@ -212,6 +234,8 @@ namespace Demiurge
                     HotbarLabels = hotbarLabels,
                     MissingThumbnail = missingThumbnail,
                     Thumbnails = thumbnails,
+                    RespawnPanel = respawnPanel,
+                    RespawnText = respawnText,
                 },
             };
 
@@ -418,6 +442,8 @@ namespace Demiurge
             public SpriteFromTexture MissingThumbnail { get; set; } = null!;
             public IReadOnlyDictionary<ItemType, SpriteFromTexture> Thumbnails { get; set; }
                 = new Dictionary<ItemType, SpriteFromTexture>();
+            public UIElement RespawnPanel { get; set; } = null!;
+            public TextBlock RespawnText { get; set; } = null!;
 
             private PlayerRegistry _registry = null!;
 
@@ -429,6 +455,8 @@ namespace Demiurge
             private uint _lastPrimaryId = uint.MaxValue;
             private uint _lastGrenadeId = uint.MaxValue;
             private int _lastGrenades = int.MinValue;
+            private bool _lastDead;
+            private int _lastRespawnSeconds = int.MinValue;
 
             public override void Start()
             {
@@ -455,6 +483,8 @@ namespace Demiurge
                     HealthText.Text = $"HP {health}";
                 }
 
+                RefreshRespawn(local);
+
                 int ammo = local.IsArmed ? local.Ammo : -1;
                 if (ammo != _lastAmmo || local.IsReloading != _lastReloading)
                 {
@@ -466,6 +496,25 @@ namespace Demiurge
                 }
 
                 RefreshHotbar(local);
+            }
+
+            private void RefreshRespawn(LocalPlayer local)
+            {
+                bool dead = local.IsDead;
+                int seconds = local.RespawnTick == 0
+                    ? RespawnConfig.WaveSeconds
+                    : Math.Max(
+                        0,
+                        (int)Math.Ceiling(
+                            (local.RespawnTick - _registry.EstimatedServerTick)
+                            / NetworkConfig.TickRate));
+                if (dead == _lastDead && (!dead || seconds == _lastRespawnSeconds)) return;
+
+                _lastDead = dead;
+                _lastRespawnSeconds = seconds;
+                RespawnPanel.Visibility = dead ? Visibility.Visible : Visibility.Collapsed;
+                if (dead)
+                    RespawnText.Text = $"KILLCAM\nRESPAWN WAVE IN {seconds}";
             }
 
             private void RefreshHotbar(LocalPlayer local)

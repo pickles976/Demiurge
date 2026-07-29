@@ -21,7 +21,24 @@ public sealed class ContactMemory
     public int Count => observations.Count;
 
     public void Observe(ushort actorId, Vector3 position, uint tick)
-        => observations[actorId] = new Observation(position, tick);
+    {
+        if (!observations.TryGetValue(actorId, out var existing)
+            || tick >= existing.LastSeenTick)
+            observations[actorId] = new Observation(position, tick);
+    }
+
+    /// <summary>
+    /// Copies still-believed observations without allocating a snapshot. Older squad reports cannot
+    /// overwrite a newer direct sighting because <see cref="Observe"/> is monotonic by sighting tick.
+    /// </summary>
+    public void MergeInto(ContactMemory target, uint tick)
+    {
+        foreach (var pair in observations)
+        {
+            if (Confidence(pair.Value.LastSeenTick, tick) <= 0f) continue;
+            target.Observe(pair.Key, pair.Value.Position, pair.Value.LastSeenTick);
+        }
+    }
 
     public bool TryGet(ushort actorId, uint tick, out AiContact contact)
     {

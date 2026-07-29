@@ -120,6 +120,60 @@ public class NavigationTests
     }
 
     [Fact]
+    public void SharpOneMetreLedgeUsesJumpInsteadOfMisclassifiedWalk()
+    {
+        var platformCentre = new Vector3(
+            0.5f,
+            SyntheticTerrain.GroundHeight + 0.5f,
+            0f);
+        var platformExtent = new Vector3(2f, 0.5f, 100f);
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(
+                y - SyntheticTerrain.GroundHeight,
+                TerrainEdits.BoxDistance(
+                    new Vector3(x, y, z) - platformCentre,
+                    platformExtent)));
+        var start = CellAt(map, -3, 0);
+        var target = CellAt(map, 1, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch);
+
+        Assert.True(path.ReachedGoal);
+        Assert.Contains(path.Waypoints, waypoint => waypoint.Action == NavAction.Jump);
+    }
+
+    [Fact]
+    public void WalkOnlySearchDoesNotJumpAcrossCover()
+    {
+        var trenchCentre = new Vector3(
+            0.5f,
+            SyntheticTerrain.GroundHeight + 4f,
+            0f);
+        var trenchExtent = new Vector3(0.55f, 8f, 100f);
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Max(
+                y - SyntheticTerrain.GroundHeight,
+                -TerrainEdits.BoxDistance(
+                    new Vector3(x, y, z) - trenchCentre,
+                    trenchExtent)));
+        var start = CellAt(map, -2, 0);
+        var target = CellAt(map, 2, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch with { AllowJump = false });
+
+        Assert.False(path.ReachedGoal);
+        Assert.DoesNotContain(path.Waypoints, waypoint => waypoint.Action == NavAction.Jump);
+    }
+
+    [Fact]
     public void SolidStartFailsImmediately()
     {
         var map = SyntheticTerrain.Solid();

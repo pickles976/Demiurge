@@ -14,7 +14,7 @@ internal sealed class CombatBehavior
     // before recoil, while close-range fire remains dangerous.
     private const float AiAimMoa = 360f;
     private const float AimToleranceDegrees = 7f;
-    private const float AimTurnDegreesPerSecond = 90f;
+    private const float AimTurnDegreesPerSecond = 180f;
     private const int SuppressionBurstShots = 3;
     private const int ReactionTicks = (55 * NetworkConfig.TickRate + 99) / 100;
     private const int LostContactHoldTicks = 3 * NetworkConfig.TickRate / 2;
@@ -32,7 +32,12 @@ internal sealed class CombatBehavior
     }
 
     /// <returns>True while combat owns movement and actor state for this tick.</returns>
-    public bool Tick(ServerPlayer mob, MobBrain brain, uint tick, float dt)
+    public bool Tick(
+        ServerPlayer mob,
+        MobBrain brain,
+        uint tick,
+        float dt,
+        bool mayFire = true)
     {
         if (!brain.Contacts.TryNearest(mob.Position, tick, out var contact)
             || tick - contact.LastSeenTick > LostContactHoldTicks)
@@ -50,7 +55,10 @@ internal sealed class CombatBehavior
         }
 
         mob.Hotbar = HotbarSlot.Primary;
-        Vector3 origin = mob.Position + Vector3.UnitY * Digging.EyeHeight;
+        float eyeHeight = mob.State.HasFlag(PlayerStateFlags.Crouching)
+            ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
+            : Digging.EyeHeight;
+        Vector3 origin = mob.Position + Vector3.UnitY * eyeHeight;
         Vector3 target = contact.Position + Vector3.UnitY * GunConfig.PlayerCenterHeight;
         if (!weapons.TryGetActiveWeapon(mob, out var weapon))
         {
@@ -81,13 +89,13 @@ internal sealed class CombatBehavior
 
         if (tick < mob.ReloadDoneTick)
         {
-            mob.State |= PlayerStateFlags.Reloading;
+            mob.State = PlayerStateFlags.Reloading;
             return true;
         }
         if (weapon.Weapon.CurrentAmmo <= 0)
         {
             weapons.ApplyReload(mob, tick);
-            mob.State |= PlayerStateFlags.Reloading;
+            mob.State = PlayerStateFlags.Reloading;
             return true;
         }
 
@@ -96,6 +104,11 @@ internal sealed class CombatBehavior
         bool aimSettled = Vector3.Dot(brain.AimDirection, desired) >= AimToleranceCos;
         if (!visibleNow || !reacted || !aimSettled)
             return true;
+        if (!mayFire)
+        {
+            brain.BurstShotsRemaining = 0;
+            return true;
+        }
 
         float moa = Spread.Combine(
             mob.Spread.TotalMoa(mob.State, ballistics),

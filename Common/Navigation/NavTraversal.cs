@@ -13,6 +13,11 @@ public static class NavTraversal
 
     private const float SurfaceEpsilon = 1e-5f;
     private const float ContactTolerance = 0.015f;
+    private const float WalkValidationRise =
+        PlayerMovement.GroundSnapDistance * 2f;
+    private static readonly int MaximumWalkValidationTicks =
+        (int)MathF.Ceiling(
+            2f / PlayerMovement.WalkSpeed / NetworkConfig.FixedDt);
     private static readonly float MaximumRisePerMetre =
         MathF.Tan(PlayerMovement.MaxSlopeDegrees * MathF.PI / 180f);
     private static readonly int MaximumJumpTicks =
@@ -116,6 +121,66 @@ public static class NavTraversal
         float distance = MathF.Sqrt(horizontal * horizontal + (toY - fromY) * (toY - fromY));
         cost = distance * NavCosts.WalkOneMetre;
         return true;
+    }
+
+    /// <summary>
+    /// Cheap height gate for the uncommon ascent where endpoint geometry can make a sharp ledge
+    /// look like a legal slope. Call <see cref="CanWalkAscent"/> only when this returns true.
+    /// </summary>
+    public static bool NeedsWalkValidation(
+        ChunkMap map,
+        NavCell from,
+        NavCell to)
+        => Standable(map, from.X, from.Y, from.Z, out float fromY)
+           && Standable(map, to.X, to.Y, to.Z, out float toY)
+           && toY - fromY > WalkValidationRise;
+
+    /// <summary>
+    /// Runs a short no-jump traversal with the authoritative movement solver. This distinguishes a
+    /// continuous steep slope from a block lip whose interpolated endpoints pass geometric tests
+    /// but whose capsule collision prevents walking onto it.
+    /// </summary>
+    public static bool CanWalkAscent(
+        ChunkMap map,
+        NavCell from,
+        NavCell to)
+    {
+        int dx = to.X - from.X;
+        int dz = to.Z - from.Z;
+        if ((dx == 0 && dz == 0) || Math.Abs(dx) > 1 || Math.Abs(dz) > 1)
+            return false;
+        if (!Standable(map, to.X, to.Y, to.Z, out float targetY))
+            return false;
+
+        var state = new MoveState
+        {
+            Position = Position(map, from),
+            Velocity = Vector3.Zero,
+            Grounded = true,
+        };
+        Vector3 target = Position(map, to);
+        Vector3 intent = Vector3.Normalize(new Vector3(dx, 0f, dz));
+        float arrivalRadiusSquared = 0.55f * 0.55f;
+        float verticalTolerance =
+            PlayerMovement.GroundSnapDistance + PlayerMovement.SkinWidth + 0.15f;
+
+        for (int tick = 0; tick < MaximumWalkValidationTicks; tick++)
+        {
+            PlayerMovement.Step(
+                map,
+                ref state,
+                intent,
+                PlayerStateFlags.Moving,
+                NetworkConfig.FixedDt);
+            float horizontalDistanceSquared =
+                (state.Position.X - target.X) * (state.Position.X - target.X)
+                + (state.Position.Z - target.Z) * (state.Position.Z - target.Z);
+            if (horizontalDistanceSquared <= arrivalRadiusSquared
+                && MathF.Abs(state.Position.Y - targetY) <= verticalTolerance)
+                return true;
+        }
+
+        return false;
     }
 
     public static Vector3 Position(ChunkMap map, NavCell cell)

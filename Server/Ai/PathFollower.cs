@@ -22,6 +22,8 @@ internal sealed class PathFollower
     private float bestDistance = float.PositiveInfinity;
     private long terrainVersion;
     private bool jumpIssued;
+    private bool jumpBecameAirborne;
+    private Vector3 jumpIntent;
 
     public bool ReachedGoal => path?.ReachedGoal == true;
 
@@ -33,6 +35,8 @@ internal sealed class PathFollower
         stalledTicks = 0;
         bestDistance = float.PositiveInfinity;
         jumpIssued = false;
+        jumpBecameAirborne = false;
+        jumpIntent = Vector3.Zero;
     }
 
     public void Clear()
@@ -42,6 +46,8 @@ internal sealed class PathFollower
         stalledTicks = 0;
         bestDistance = float.PositiveInfinity;
         jumpIssued = false;
+        jumpBecameAirborne = false;
+        jumpIntent = Vector3.Zero;
     }
 
     public PathFollowState Update(
@@ -59,6 +65,32 @@ internal sealed class PathFollower
             return PathFollowState.NeedsPath;
         }
 
+        // A jump edge is planned by simulating continuous directional input until landing. Do not
+        // advance the landing waypoint merely because the airborne capsule passed over its X/Z;
+        // doing so removed horizontal velocity near the apex and made NPCs drop into the obstacle.
+        if (jumpIssued)
+        {
+            jumpBecameAirborne |= !grounded;
+            if (!jumpBecameAirborne)
+            {
+                intent = jumpIntent;
+                jump = true;
+                return PathFollowState.Following;
+            }
+            if (!grounded)
+            {
+                intent = jumpIntent;
+                return PathFollowState.Following;
+            }
+
+            waypoint++;
+            stalledTicks = 0;
+            bestDistance = float.PositiveInfinity;
+            jumpIssued = false;
+            jumpBecameAirborne = false;
+            jumpIntent = Vector3.Zero;
+        }
+
         while (waypoint < path.Waypoints.Count
                && HorizontalDistanceSquared(position, path.Waypoints[waypoint].Position)
                    <= ArrivalRadius * ArrivalRadius)
@@ -67,6 +99,8 @@ internal sealed class PathFollower
             stalledTicks = 0;
             bestDistance = float.PositiveInfinity;
             jumpIssued = false;
+            jumpBecameAirborne = false;
+            jumpIntent = Vector3.Zero;
         }
 
         if (waypoint >= path.Waypoints.Count)
@@ -96,6 +130,7 @@ internal sealed class PathFollower
         {
             jump = true;
             jumpIssued = true;
+            jumpIntent = intent;
         }
         return PathFollowState.Following;
     }

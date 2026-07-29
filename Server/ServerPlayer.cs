@@ -42,8 +42,9 @@ namespace Demiurge.GameServer
         public WeaponSpreadState Spread;
 
         /// <summary>
-        /// Zero while alive. Death is held for one complete replicated tick before respawn so
-        /// clients observe the reliable zero-health transition and can create cosmetic death FX.
+        /// Zero while alive; otherwise the global wave tick on which this actor will respawn.
+        /// A wave is always strictly after the death tick, so a death on the boundary cannot
+        /// disappear before clients observe the zero-health transition.
         /// </summary>
         public uint RespawnTick { get; set; }
 

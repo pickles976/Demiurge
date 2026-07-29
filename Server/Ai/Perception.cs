@@ -14,21 +14,36 @@ internal sealed class Perception
 
     public Perception(ChunkMap terrain) => this.terrain = terrain;
 
-    public void Tick(
+    public AiContact? Tick(
         ServerPlayer observer,
         ICollection<ServerPlayer> actors,
         MobBrain brain,
         uint tick)
     {
         brain.Contacts.Prune(tick);
-        if (actors.Count <= 1) return;
+        if (actors.Count <= 1) return null;
 
         int start = brain.PerceptionCursor % actors.Count;
-        if (TrySenseRange(observer, actors, brain, tick, start, actors.Count)
-            || TrySenseRange(observer, actors, brain, tick, 0, start))
-            return;
+        if (TrySenseRange(
+                observer,
+                actors,
+                brain,
+                tick,
+                start,
+                actors.Count,
+                out var observed)
+            || TrySenseRange(
+                observer,
+                actors,
+                brain,
+                tick,
+                0,
+                start,
+                out observed))
+            return observed;
 
         brain.PerceptionCursor = (start + 1) % actors.Count;
+        return null;
     }
 
     private bool TrySenseRange(
@@ -37,8 +52,10 @@ internal sealed class Perception
         MobBrain brain,
         uint tick,
         int first,
-        int last)
+        int last,
+        out AiContact? observed)
     {
+        observed = null;
         int index = 0;
         foreach (var target in actors)
         {
@@ -56,7 +73,10 @@ internal sealed class Perception
                 || target.Status is { Health.Current: 0 })
                 continue;
 
-            Vector3 origin = observer.Position + Vector3.UnitY * Digging.EyeHeight;
+            float eyeHeight = observer.State.HasFlag(PlayerStateFlags.Crouching)
+                ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
+                : Digging.EyeHeight;
+            Vector3 origin = observer.Position + Vector3.UnitY * eyeHeight;
             // Exactly the point CombatBehavior aims at. A higher perception ray could see over a
             // low wall while the actual centre-mass shot still drives into it.
             Vector3 aim = target.Position + Vector3.UnitY * GunConfig.PlayerCenterHeight;
@@ -75,7 +95,10 @@ internal sealed class Perception
             brain.PerceptionCursor = (candidateIndex + 1) % actors.Count;
             var hit = TerrainRaycast.Cast(terrain, origin, delta, distance);
             if (hit is null || hit.Value.Distance >= distance - 0.1f)
+            {
                 brain.Contacts.Observe(target.Id, target.Position, tick);
+                observed = new AiContact(target.Id, target.Position, tick, 1f);
+            }
             return true;
         }
 

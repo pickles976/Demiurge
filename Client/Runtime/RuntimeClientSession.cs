@@ -112,6 +112,13 @@ public sealed class RuntimeClientSession : IClientSession
 
         camera.Add(new DebugFlyCameraScript { InputState = inputState, Priority = 0 });
         camera.Add(new FirstPersonCameraScript { Registry = registry, InputState = inputState, Priority = 10 });
+        camera.Add(new KillcamCameraScript
+        {
+            Registry = registry,
+            Terrain = terrainState,
+            InputState = inputState,
+            Priority = 15,
+        });
         camera.Add(new LocalPlayerController
         {
             CameraEntity = camera,
@@ -211,6 +218,7 @@ public sealed class RuntimeClientSession : IClientSession
     {
         entity.Remove<DebugFlyCameraScript>();
         entity.Remove<FirstPersonCameraScript>();
+        entity.Remove<KillcamCameraScript>();
         entity.Remove<LocalPlayerController>();
         entity.Remove<ReticleScript>();
         entity.Remove<DigScript>();

@@ -25,7 +25,8 @@ internal sealed class NavigationSystem : IDisposable
         ushort MobId,
         long RequestId,
         NavCell Start,
-        INavGoal Goal);
+        INavGoal Goal,
+        bool AllowJump);
 
     private readonly ChunkMap terrain;
     private readonly object requestGate = new();
@@ -56,7 +57,11 @@ internal sealed class NavigationSystem : IDisposable
     /// Enqueues one current request per mob. If that mob is still waiting in the FIFO, this request
     /// replaces it in-place instead of growing the queue.
     /// </summary>
-    public long Request(ushort mobId, NavCell start, INavGoal goal)
+    public long Request(
+        ushort mobId,
+        NavCell start,
+        INavGoal goal,
+        bool allowJump = true)
     {
         long requestId = Interlocked.Increment(ref nextRequestId);
         lock (requestGate)
@@ -64,7 +69,12 @@ internal sealed class NavigationSystem : IDisposable
             if (stopping) return 0;
             if (!pendingByMob.ContainsKey(mobId))
                 requestOrder.Enqueue(mobId);
-            pendingByMob[mobId] = new PathRequest(mobId, requestId, start, goal);
+            pendingByMob[mobId] = new PathRequest(
+                mobId,
+                requestId,
+                start,
+                goal,
+                allowJump);
         }
 
         Interlocked.Increment(ref requestedCount);
@@ -109,7 +119,11 @@ internal sealed class NavigationSystem : IDisposable
 
             long terrainVersion = terrain.EditVersion;
             long started = Stopwatch.GetTimestamp();
-            NavPath path = NavSearch.Find(terrain, request.Start, request.Goal);
+            NavPath path = NavSearch.Find(
+                terrain,
+                request.Start,
+                request.Goal,
+                NavSearchOptions.Default with { AllowJump = request.AllowJump });
             long elapsedUs = (long)(Stopwatch.GetElapsedTime(started).TotalMilliseconds * 1000d);
 
             completed.Enqueue(new PathResult(
