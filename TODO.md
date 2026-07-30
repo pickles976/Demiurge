@@ -42,36 +42,52 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 - [ ] clean up UI and stuff
 
-# AI 
+# AI
 
-- [ ] AI "teams"
+- [x] Integer teams, team spawns, enemy-only perception, and friendly fire
+- [x] Standard NPC inventory: AK-47, four grenades, and shovel
 - [ ] AI should have different behaviors based on weapon
   - [ ] SMG -- close the gap by moving from cover to cover, once close start suppressing and using grenades. Ideal engagement range is <30m
   - [ ] automatic rifle -- fire and advance. Seek cover before firing, coordinate with nearby units for fire and advance. Ideal engagement range is 100-200m
   - [ ] sniper rifle, 200m+. Seek cover and take shots when you can. Fall back as units get closer to better vantage points. Look for cover and high spots with far LOS.
-- [ ] how do AI find "cover"?
-  - [ ] seek out parts of a chunk with steep gradients, perform LOS-checks to known enemies in the AI's blackboard to evaluate the quality of cover
-  - [ ] concealment-- use cover when engaging in combat, use concealment to move stealthily or perform ambushes.
-- [ ] AI not omniscient, need full LOS to see enemies. Can remember where it last saw enemies with memory fade.
-- [ ] when no good cover is available, AI can dig their own foxholes. If AI get stuck it should staircase out of a hole or a tunnel. 
-- [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches.
-- [ ] units can share knowledge of enemy positions with one another
-- [ ] squad tactics, riflemen use "fire and advance", snipers provide suppression and overwatch, assault troops close the distance and go in for the kill
-
-- [ ] commander-level AI, sets theater-scale objectives (take objective, build fortifications, move MG or mortar to location)
-- [ ] squad-level AI - how to achieve theater goals locally, delegate mortar lugging job to least useful unit in the group, when to attack, when to defend, who should hold a defensive post and who should work on digging, etc.
-- [ ] unit-level AI -- goals like "stand on cap point" or "bring MG to this area". Intermediate behaviors like engaging, flanking, digging into cover, seeking cover, etc.
+- [x] Bounded cover search with LOS, crouched/standing exposure, corner peeks, escape routes,
+  concealment, and squad position claims
+- [x] LOS/FOV perception, decaying contact memory, delayed squad sharing, gunshot investigation,
+  idle scanning, and incoming-fire response
+- [x] Fire-and-advance permits, conservative long-range fire, projectile-drop aim, suppression,
+  cover grenades, closing ineffective ranges, and a 70 m engagement gate so distant shared contacts
+  stop freezing NPCs in place
+- [x] Dirt/grass objective digging, rising pit-escape targets, and emergency cover digging
+- [x] Dig escalation on an exhausted air-only search, dig-site commitment across bites, and a foxhole
+  depth cap an NPC can always jump out of
+- [x] Dynamic proximity squads: membership re-forms from live positions instead of being fixed at spawn
+- [x] Fire and movement: base-of-fire vs bound roles, sticky flank sides, envelope positions that close
+  each bound, emergent leapfrog, and suppressing fire at a contact's last known position
+- [x] Capsule hit volume and multi-body-point AI aim, so a head peeking over cover is both visible and
+  hittable
+- [x] `ai track` NPC debug overlay (beacons, facing, clustering)
+- [ ] Connected foxhole/trench construction
+- [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches. Needs a
+  `PathFollowState.Digging` case in the bound follower first; a digging man gives up his aim
+- [ ] Raise the global cover-query budget once measured; at 1/tick a squad is slow to go set
+- [x] Commander flag ranking, squad allocation, emergency reinforcement, and assignment stability
+- [ ] Commander fortification and crew-weapon objectives
+- [x] Squad-level objective execution, shared contacts, cover claims, fire/advance permits, and
+  grenade reservations
+- [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
+- [x] Unit-level capture/defend, combat, cover, grenade, jump, dig, hearing, and stuck recovery
 
 # AI Battle
 
-- [ ] create map
+- [x] Create and load the `conquest` map
   - [ ] add trees back in
   - [ ] reusable structure editor
-  - [ ] Add team-specific spawn points
-  - [ ] add flag zones
+  - [x] Add team-specific spawn points
+  - [x] Add flag zones
   - [ ] add heavy MG and mortar items
-- [ ] set up AI team battle
-  - [ ] frontlines. Capture flags to secure spawn points. Goal is to capture all flags on the map. 20s respawn timer for "wave" spawning.
+- [x] Set up two teams of 16 NPCs plus a team-1 player in singleplayer
+  - [x] Capturable/neutralizable flags, controlled spawn areas, and 20-second wave respawns
+  - [x] Kill/flag/stuck-NPC activity feed
   - [ ] Give player "commander" abilities to direct friendly units
 
 # PVP Demo
@@ -93,7 +109,7 @@ For weapons, need to model sights and add anchors for camera to figure out where
 - [ ] Profile long editing sessions and add compaction only if justified
 
 # Open World
-w
+
 - [ ] Track active chunks per player on the server
 - [ ] Stream chunks as players move
 - [ ] Replicate objects according to active player chunks

@@ -4,6 +4,17 @@ namespace Demiurge.Tests;
 
 public class NavigationTests
 {
+    private sealed class TerrainChangingGoal(ChunkMap map, NavCell cell) : INavGoal
+    {
+        public bool IsInGoal(NavCell candidate)
+        {
+            SetCellToAir(map, cell);
+            return candidate == cell;
+        }
+
+        public float Heuristic(NavCell candidate) => 0f;
+    }
+
     private static readonly NavSearchOptions CompleteSearch = new(
         TimeSpan.FromSeconds(2),
         TimeSpan.FromSeconds(2),
@@ -120,6 +131,38 @@ public class NavigationTests
     }
 
     [Fact]
+    public void TerrainEditDuringReconstructionReturnsFailedPath()
+    {
+        var map = SyntheticTerrain.Flat();
+        Assert.True(NavTraversal.TryFindStandable(
+            map,
+            0,
+            0,
+            aroundY: 12,
+            below: 4,
+            above: 4,
+            out var start,
+            out _));
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new TerrainChangingGoal(map, start));
+
+        Assert.Empty(path.Waypoints);
+        Assert.False(path.ReachedGoal);
+    }
+
+    private static void SetCellToAir(ChunkMap map, NavCell cell)
+    {
+        var chunk = Assert.IsType<TerrainChunk>(
+            map.Get(ChunkTransforms.ChunkAt(cell.X, cell.Z)));
+        for (int y = cell.Y - 2; y <= cell.Y + 3; y++)
+            chunk[ChunkTransforms.WorldVoxelIndex(cell.X, y, cell.Z)] =
+                Voxel.OutsideAbove;
+    }
+
+    [Fact]
     public void SharpOneMetreLedgeUsesJumpInsteadOfMisclassifiedWalk()
     {
         var platformCentre = new Vector3(
@@ -227,6 +270,130 @@ public class NavigationTests
         Assert.Contains(digging.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
         Assert.Equal(NavAction.Dig, digging.Waypoints[^1].Action);
         Assert.False(digging.ReachedGoal);
+    }
+
+    [Fact]
+    public void TrenchWithWalkableFloorStillCutsAnExitTowardTheGoal()
+    {
+        // A trench the actor can walk along but not climb out of. Digging must win here even though
+        // ordinary movement is available, or the NPC paces the floor forever: the search makes
+        // lateral progress, so a dig gated on "no progress at all" is never chosen.
+        const float trenchBottom = 8.5f;
+        const float rim = 12.5f;
+        const float halfWidth = 1.5f;
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            y - (MathF.Abs(x) <= halfWidth ? trenchBottom : rim));
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, 0, 0, aroundY: (int)trenchBottom);
+        var beyondTheWall = CellAt(map, 8, 0, aroundY: (int)rim);
+
+        var pacing = NavSearch.Find(
+            map,
+            start,
+            new GoalNear(beyondTheWall, 1f),
+            CompleteSearch with { AllowDig = false });
+        var digging = NavSearch.Find(
+            map,
+            start,
+            new GoalNear(beyondTheWall, 1f),
+            CompleteSearch with { AllowDig = true });
+
+        Assert.False(pacing.ReachedGoal);
+        Assert.All(
+            pacing.Waypoints,
+            waypoint => Assert.True(
+                waypoint.Position.Y < rim - 1f,
+                $"Walk-only route left the trench at {waypoint.Position}"));
+
+        Assert.Contains(digging.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+        Assert.Equal(NavAction.Dig, digging.Waypoints[^1].Action);
+        Vector3 bite = digging.Waypoints[^1].Position;
+        Assert.True(
+            bite.X > 0f,
+            $"Expected the cut aimed at the goal side of the trench, got {bite}");
+    }
+
+    [Fact]
+    public void PacingATrenchEscalatesToADigSearchButABoundedPrefixDoesNot()
+    {
+        // The gate that decides whether to pay for a second, dig-allowed search. Both cases below
+        // return an incomplete path with waypoints, which is why "did the air-only pass come back
+        // empty" could not tell them apart and left AllowDig dead for anything but a sealed actor.
+        const float trenchBottom = 8.5f;
+        const float rim = 12.5f;
+        const float halfWidth = 1.5f;
+        var trench = SyntheticTerrain.Build((x, y, z) =>
+            y - (MathF.Abs(x - z) * 0.70710678f <= halfWidth ? trenchBottom : rim));
+        var trenchStart = CellAt(trench, 0, 0, aroundY: (int)trenchBottom);
+        var acrossTheWall = CellAt(trench, 10, -10, aroundY: (int)rim);
+        var goal = new GoalNear(acrossTheWall, 1f);
+
+        var pacing = NavSearch.Find(
+            trench,
+            trenchStart,
+            goal,
+            CompleteSearch with { AllowDig = false });
+
+        Assert.False(pacing.ReachedGoal);
+        Assert.NotEmpty(pacing.Waypoints);
+        Assert.True(
+            NavSearch.NeedsDigEscalation(pacing),
+            "A diagonal trench the actor cannot climb out of must escalate to a dig search");
+
+        RepaintSolid(trench, BlockType.BlockType_Dirt);
+        var escalated = NavSearch.Find(
+            trench,
+            trenchStart,
+            goal,
+            CompleteSearch with { AllowDig = true });
+        Assert.Contains(escalated.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+
+        var open = SyntheticTerrain.Flat();
+        var openStart = CellAt(open, -14, 0);
+        var openTarget = CellAt(open, 24, 0);
+        var openGoal = new GoalPosition(openTarget);
+        var prefix = NavSearch.Find(
+            open,
+            openStart,
+            openGoal,
+            new NavSearchOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                MaximumExpandedNodes: 60,
+                MinimumPartialDistance: 0f));
+
+        Assert.False(prefix.ReachedGoal);
+        Assert.NotEmpty(prefix.Waypoints);
+        Assert.False(
+            NavSearch.NeedsDigEscalation(prefix),
+            "A bounded prefix of a good open route must not pay for a second search");
+    }
+
+    [Fact]
+    public void WalkableRouteIsStillPreferredOverDiggingThroughAWall()
+    {
+        // The other half of the same decision: a finite wall with open ground around it must not
+        // start being tunnelled now that a dig can outrank a partial walk route.
+        var wallCentre = new Vector3(0f, SyntheticTerrain.GroundHeight + 5f, 0f);
+        var wallExtent = new Vector3(0.6f, 8f, 2.5f);
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(
+                y - SyntheticTerrain.GroundHeight,
+                TerrainEdits.BoxDistance(
+                    new Vector3(x, y, z) - wallCentre,
+                    wallExtent)));
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, -5, 0);
+        var target = CellAt(map, 5, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch with { AllowDig = true });
+
+        Assert.True(path.ReachedGoal);
+        Assert.DoesNotContain(path.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
     }
 
     [Fact]

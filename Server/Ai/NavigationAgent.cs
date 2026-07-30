@@ -11,9 +11,18 @@ internal sealed class NavigationAgent
 {
     private readonly record struct PendingRequest(long RequestId, bool ForCover);
 
+    /// <summary>
+    /// How long an excavation stays the committed site after the last bite landed. Long enough to
+    /// survive the replan each bite forces, short enough that abandoning a cut is still possible when
+    /// the situation changes.
+    /// </summary>
+    private const uint DigSiteMemoryTicks = 5 * NetworkConfig.TickRate;
+
     private PendingRequest? pending;
     private long? blockedCellKey;
     private int blockedReplansRemaining;
+    private NavCell? digSite;
+    private uint digSiteTick;
 
     public PathFollower Path { get; } = new();
     public NavigationProgressWatch Progress { get; } = new();
@@ -57,6 +66,25 @@ internal sealed class NavigationAgent
         return null;
     }
 
+    /// <summary>
+    /// Records where a shovel bite just landed, so the next search prefers finishing this cut over
+    /// opening a fresh one. Every bite changes the terrain and therefore forces a replan, and without
+    /// this the replan re-picked its best frontier from scratch and the NPC wandered off mid-excavation.
+    /// </summary>
+    public void RememberDigSite(Vector3 target, uint tick)
+    {
+        digSite = new NavCell(
+            (int)MathF.Floor(target.X),
+            (int)MathF.Floor(target.Y),
+            (int)MathF.Floor(target.Z));
+        digSiteTick = tick;
+    }
+
+    public NavCell? PreferredDigSite(uint tick)
+        => digSite is { } site && tick - digSiteTick <= DigSiteMemoryTicks ? site : null;
+
+    public void ForgetDigSite() => digSite = null;
+
     public void ResetBlocked()
     {
         blockedCellKey = null;
@@ -84,6 +112,7 @@ internal sealed class NavigationAgent
         Progress.Reset();
         pending = null;
         ResetBlocked();
+        ForgetDigSite();
         Destination = default;
         HasDestination = false;
     }

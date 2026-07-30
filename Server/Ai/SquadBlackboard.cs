@@ -46,31 +46,67 @@ internal sealed class SquadBlackboard
     private readonly Dictionary<ushort, TokenLease> advanceTokens = new();
     private readonly Dictionary<ushort, uint> advanceCooldowns = new();
     private readonly List<ushort> expiredActors = new(MaximumMembers);
-    private Vector3 homeSum;
-    private int homeCount;
+    private readonly List<ushort> roster = new(MaximumMembers);
+    private readonly Dictionary<ushort, SquadTacticalOrder> orders = new(MaximumMembers);
     private SquadObjective? objective;
     private uint nextGrenadeTick;
 
-    public Vector3 Home => homeCount > 0 ? homeSum / homeCount : Vector3.Zero;
+    /// <summary>
+    /// Live centre of mass. This used to be the mean of members' spawn positions and was never updated,
+    /// so every squad-relative calculation -- including the commander's travel costing -- kept measuring
+    /// from base long after the squad had advanced.
+    /// </summary>
+    public Vector3 Centre { get; private set; }
+
+    public int MemberCount => roster.Count;
+    public IReadOnlyList<ushort> Roster => roster;
     public uint ObjectiveRevision { get; private set; }
 
-    public void AddMemberHome(Vector3 position)
+    /// <summary>Replaces the roster and recomputes the centre from where the members actually are.</summary>
+    public void SetRoster(List<ushort> actorIds, Vector3 centre)
     {
-        homeSum += position;
-        homeCount++;
+        foreach (ushort actorId in roster)
+            if (!actorIds.Contains(actorId))
+                Release(actorId);
+        roster.Clear();
+        roster.AddRange(actorIds);
+        Centre = centre;
+
+        expiredActors.Clear();
+        foreach (var pair in orders)
+            if (!roster.Contains(pair.Key))
+                expiredActors.Add(pair.Key);
+        foreach (ushort actorId in expiredActors)
+            orders.Remove(actorId);
     }
 
-    public void RemoveMember(ushort actorId, Vector3 home)
+    public void SetOrders(List<SquadTacticalOrder> planned)
+    {
+        orders.Clear();
+        foreach (var order in planned)
+            orders[order.ActorId] = order;
+    }
+
+    public bool TryGetOrder(ushort actorId, out SquadTacticalOrder order)
+        => orders.TryGetValue(actorId, out order);
+
+    /// <summary>Drops every lease an actor holds. Called when it leaves the squad or dies.</summary>
+    public void Release(ushort actorId)
     {
         claims.Remove(actorId);
         engagementTokens.Remove(actorId);
         engagementCooldowns.Remove(actorId);
         advanceTokens.Remove(actorId);
         advanceCooldowns.Remove(actorId);
-        if (homeCount <= 0) return;
-        homeSum -= home;
-        homeCount--;
+        orders.Remove(actorId);
     }
+
+    /// <summary>
+    /// The threat the squad is manoeuvring against: the shared contact nearest its centre. One threat
+    /// per squad on purpose, because a squad that splits its plan across two enemies does neither.
+    /// </summary>
+    public bool TryGetPrimaryThreat(uint tick, out AiContact threat)
+        => sharedContacts.TryNearest(Centre, tick, out threat);
 
     public void SetObjective(SquadObjective? value)
     {

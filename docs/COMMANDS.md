@@ -9,7 +9,8 @@ Press `Tab` to complete command tokens. Block and item arguments complete to can
 
 Session and map commands are handled locally by the persistent client coordinator. Runtime `spawn`
 and `equip` commands are sent to the authoritative server. Editor commands mutate only the local
-source document and never travel over the network.
+source document and never travel over the network. `ai track` is a client-side view toggle and is
+also answered locally, so it never reaches the server.
 
 ## Runtime Commands
 
@@ -26,6 +27,8 @@ Commands accept an optional leading `/`.
 spawn mob [x z]
 spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
+ai stats
+ai track [off|on|beacons|facing|clustering]
 ```
 
 Examples:
@@ -35,6 +38,8 @@ spawn mob
 spawn pickup demiurge:glock ~3 ~
 equip @s demiurge:body_armor
 equip @60002 demiurge:ak47
+ai track on
+ai track beacons clustering
 ```
 
 Without coordinates, spawn commands place the entity three metres in front of the issuer. Coordinate
@@ -42,6 +47,22 @@ components prefixed by `~` are relative to the issuer. Y always comes from the s
 terrain surface. Mob and player IDs share one actor-ID space; a successful mob spawn prints the ID to
 use with `equip`, for example `actor ID @60000`. A pickup spawn prints a distinct replicated object
 ID such as `object ID #1`; `equip` accepts actor IDs, not object IDs.
+
+### `ai track` — NPC debug overlay
+
+Draws every AI actor the client knows about. Layers combine, `off` clears them, and no argument
+reports the current state. Actors are identified as NPCs by `ActorIds.IsMob` (id >= 60000) rather
+than by a replicated flag, so nothing was added to the wire for it.
+
+| Layer | Draws |
+| --- | --- |
+| `beacons` | A vertical beam per NPC in team colour, without depth testing, so it reads through terrain |
+| `facing` | A ground ring and heading spoke, depth tested, for reading stance and bearing up close |
+| `clustering` | A line between every pair of NPCs within 4 m — roughly what one burst or grenade covers, which is what bunching costs them |
+
+`on` and `all` enable every layer. The overlay is drawn by `NpcTrackerScript` from the replicated
+player registry and touches no simulation or network state; the toggle is process-wide, so it
+survives session transitions and can be set before a session exists.
 
 Runtime commands mutate the current server session only. They do not modify `source.json`, so
 `map save` does not preserve a runtime-spawned mob or a weapon assigned with runtime `equip`.
@@ -55,6 +76,7 @@ demiurge:ak47
 demiurge:awp
 demiurge:glock
 demiurge:body_armor
+demiurge:grenade
 ```
 
 Short aliases are accepted as input, but results always print canonical IDs. Add new canonical names

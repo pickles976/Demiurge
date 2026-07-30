@@ -80,7 +80,9 @@ two extra rows of numbers:
 1. `Common/Component.cs`: append to `ItemType`.
 2. `Common/ItemCatalog.cs`: one canonical namespaced ID and any input aliases.
 3. `Common/ItemConfig.cs`: one row — `Category = Equippable`, Hand slot.
-4. `Common/WeaponConfig.cs`: one row — capacity, cadence, reload, damage, range.
+4. `Common/WeaponConfig.cs`: one row — capacity, cadence, reload, damage, and ballistics profile.
+   Add or reuse that class in `Common/Ballistics/BallisticsConfig.cs` for projectile speed,
+   bench accuracy, and recoil.
 5. `Client/View/ItemCosmetics.cs`: one row in `Model(...)`;
    `Client/View/WeaponFx.cs`: one row (shot sound, tracer color) + assets.
 6. Spawn: `items.SpawnPickup(ItemType.Shotgun, pos)`.

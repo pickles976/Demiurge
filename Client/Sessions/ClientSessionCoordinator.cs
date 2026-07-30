@@ -70,6 +70,13 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 return TerminalOutputFor(result.Success, result.Output);
             }
 
+            // A view-only overlay toggle, so it is answered here rather than sent to the server. It is
+            // also accepted with no session attached: the flag simply applies to the next one.
+            if (tokens[0].Equals("ai", StringComparison.OrdinalIgnoreCase)
+                && tokens.Length > 1
+                && tokens[1].Equals("track", StringComparison.OrdinalIgnoreCase))
+                return ExecuteAiTrack(tokens);
+
             if (current is RuntimeClientSession runtime)
             {
                 runtime.Network.SendCommand(commandLine);
@@ -109,6 +116,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 lines.Add("spawn pickup <item> [x z]");
                 lines.Add("equip <@s|@actor-id> <item>");
                 lines.Add("ai stats");
+                lines.Add("ai track <off|on|beacons|facing|clustering>");
             }
             else
             {
@@ -121,6 +129,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             lines.Add("spawn pickup <item> [x z]");
             lines.Add("equip <@s|@actor-id> <item>");
             lines.Add("ai stats");
+            lines.Add("ai track <off|on|beacons|facing|clustering>");
         }
         lines.Add("Type 'help <command>' for details. Press Tab to complete names and IDs.");
         return lines;
@@ -227,8 +236,13 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
         if (root == "equip" && tokenIndex == 2)
             return ItemCatalog.All.Select(definition => definition.Id);
-        if (root == "ai" && tokenIndex == 1)
-            return ["stats"];
+        if (root == "ai")
+        {
+            if (tokenIndex == 1) return ["stats", "track"];
+            if (tokenIndex >= 2 && tokens.Length > 1
+                && tokens[1].Equals("track", StringComparison.OrdinalIgnoreCase))
+                return ["off", "on", "beacons", "facing", "clustering"];
+        }
         if (root == "session" && tokenIndex == 1)
             return ["status", "editor", "host", "join", "playtest", "playtest-networked"];
         if (root == "help")
@@ -331,11 +345,55 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             [
                 "AI diagnostics:",
                 "  ai stats",
+                "  ai track [off|on|beacons|facing|clustering]",
                 "Shows the latest 1-second average for mob movement and off-thread path searches.",
+                "track draws a debug overlay over every NPC; layers combine, and no argument reports",
+                "the current state. beacons are vertical beams visible through terrain, facing adds a",
+                "ground ring and heading spoke, clustering links NPCs within 4 m of each other.",
+                "The overlay is client-side only and never reaches the server.",
             ],
             _ => [$"No help topic named '{topics[0]}'. Type 'help' to list commands."],
         };
     }
+
+    private TerminalOutput ExecuteAiTrack(string[] tokens)
+    {
+        if (tokens.Length == 2)
+            return TerminalOutputFor(
+                true,
+                $"NPC tracking: {DescribeTrackerLayers(NpcTracker.Layers)}");
+
+        var layers = NpcTrackerLayers.None;
+        for (int i = 2; i < tokens.Length; i++)
+            switch (tokens[i].ToLowerInvariant())
+            {
+                case "off" or "none":
+                    break;
+                case "on" or "all":
+                    layers |= NpcTrackerLayers.All;
+                    break;
+                case "beacons":
+                    layers |= NpcTrackerLayers.Beacons;
+                    break;
+                case "facing":
+                    layers |= NpcTrackerLayers.Facing;
+                    break;
+                case "clustering":
+                    layers |= NpcTrackerLayers.Clustering;
+                    break;
+                default:
+                    return TerminalOutputFor(
+                        false,
+                        $"Unknown tracking layer: {tokens[i]}. "
+                        + "Use off, on, beacons, facing, or clustering");
+            }
+
+        NpcTracker.Layers = layers;
+        return TerminalOutputFor(true, $"NPC tracking: {DescribeTrackerLayers(layers)}");
+    }
+
+    private static string DescribeTrackerLayers(NpcTrackerLayers layers)
+        => layers == NpcTrackerLayers.None ? "off" : layers.ToString().ToLowerInvariant();
 
     private TerminalOutput ExecuteSession(string[] tokens)
     {

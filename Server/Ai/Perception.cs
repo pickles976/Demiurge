@@ -77,15 +77,16 @@ internal sealed class Perception
                 ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
                 : Digging.EyeHeight;
             Vector3 origin = observer.Position + Vector3.UnitY * eyeHeight;
-            // Exactly the point CombatBehavior aims at. A higher perception ray could see over a
-            // low wall while the actual centre-mass shot still drives into it.
-            Vector3 aim = target.Position + Vector3.UnitY * GunConfig.PlayerCenterHeight;
-            Vector3 delta = aim - origin;
-            float distance = delta.Length();
+            // Range and field of view are judged against centre mass. Only the line of sight probe
+            // varies by body point, because which PART of a target is exposed is a cover question
+            // rather than a sensing one.
+            Vector3 centre = target.Position + Vector3.UnitY * GunConfig.PlayerCenterHeight;
+            Vector3 toCentre = centre - origin;
+            float distance = toCentre.Length();
             if (distance <= 1e-5f || distance > MaximumSightDistance)
                 continue;
 
-            Vector3 flat = delta with { Y = 0f };
+            Vector3 flat = toCentre with { Y = 0f };
             if (flat.LengthSquared() <= 1e-6f) continue;
             flat = Vector3.Normalize(flat);
             var facing = new Vector3(MathF.Sin(observer.Yaw), 0f, MathF.Cos(observer.Yaw));
@@ -93,11 +94,27 @@ internal sealed class Perception
                 continue;
 
             brain.PerceptionCursor = (candidateIndex + 1) % actors.Count;
-            var hit = TerrainRaycast.Cast(terrain, origin, delta, distance);
-            if (hit is null || hit.Value.Distance >= distance - 0.1f)
+
+            // Centre mass first, then the head. Probing only centre mass is what made a target
+            // peeking over cover with just its head exposed completely invisible: the ray drove into
+            // the cover and the NPC never acquired a contact, so it never returned fire. The second
+            // ray is only paid when centre mass is genuinely blocked, which is the uncommon case.
+            // Whichever point answered is remembered so CombatBehavior aims where perception saw.
+            foreach (float height in GunConfig.AimHeights)
             {
+                Vector3 aim = target.Position + Vector3.UnitY * height;
+                Vector3 delta = aim - origin;
+                float aimDistance = delta.Length();
+                if (aimDistance <= 1e-5f) continue;
+
+                var hit = TerrainRaycast.Cast(terrain, origin, delta, aimDistance);
+                if (hit is { } blocked && blocked.Distance < aimDistance - 0.1f) continue;
+
                 brain.Contacts.Observe(target.Id, target.Position, tick);
+                brain.PerceivedTargetId = target.Id;
+                brain.PerceivedAimHeight = height;
                 observed = new AiContact(target.Id, target.Position, tick, 1f);
+                break;
             }
             return true;
         }

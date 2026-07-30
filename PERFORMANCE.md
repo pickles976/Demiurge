@@ -3,6 +3,46 @@
 This file records measured bottlenecks and the evidence behind them. Treat timings emitted by
 individual subsystems as leads, not whole-frame profiles.
 
+## Current baselines
+
+- Client target: 60 FPS at 1920x1080.
+- Server target: 30 TPS.
+- Binding workload: embedded singleplayer, where the server tick shares the client frame.
+- Scale scenario: `conquest`, player on team 1, 16 NPCs per team.
+- Final verified display geometry: 1920x1080 window and 1920x1080 back buffer in borderless desktop
+  fullscreen.
+- Measured after the fullscreen fix: roughly 60–85 FPS during initial terrain streaming and
+  105–130 FPS in later debug windows while LOD churn was still active.
+
+## AI and navigation
+
+AI keeps authoritative mutation on the main thread and moves only path computation to a bounded
+worker pool. The pool uses half the logical processors clamped to 1–8. Per-NPC requests are
+replacement-aware and prioritized; stale searches check cancellation every 64 expansions.
+
+The navigation scale pass added:
+
+- chunk-scoped corridor revisions, avoiding global path invalidation after unrelated edits;
+- cached standability/walk/jump traversal answers per terrain generation;
+- distance-based prefetch before a partial path ends;
+- shared and progressively extended squad objective trunks with short per-member connectors;
+- conservative collinear walk smoothing;
+- queue/search p50 and p95, expansions, returned metres, cache hits, route reuse, cancellation, and
+  spatial invalidation counters in `ai stats`.
+
+On the 16-core development host, the saved 32-NPC conquest benchmark reduced initial long-route
+queue p95 from 639 ms to about 232 ms. All 32 actors received useful paths in about 447 ms. This is
+a development-host regression baseline, not a substitute for the Beelink SER5 acceptance run.
+
+An edit can race a worker because terrain remains mutable. Path reconstruction now revalidates
+standability and returns a stale/failed request instead of throwing; corridor revisions then decide
+whether a completed result may be installed.
+
+Remaining optimizations are measurement-gated: reverse objective fields, a coarse portal hierarchy,
+pooled search storage, and capsule-checked string pulling. See
+[NPC navigation](docs/NAVIGATION.md) and the performance roadmap in
+[AI_IMPLEMENTATION.md](AI_IMPLEMENTATION.md).
+
 ## 1920x1080 fullscreen slowdown
 
 Profiled on 2026-07-29 in a debug singleplayer session on the `conquest` map with 16 NPCs per team.

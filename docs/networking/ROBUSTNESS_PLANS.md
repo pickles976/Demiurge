@@ -173,13 +173,11 @@ but it's already in the component system, so it merges for free later).
 
 ## 14. Chunk-backed spatial queries — follow-on to 7a, not before
 
-**Today:** `Server/WeaponSystem.Raycast` linearly sweeps every Transform-bearing
-object plus every player per shot, and `TryPickup` (the O(n²) its own TODO
-flags) tests every player against every object, **every tick, unconditionally**.
-At current scale this is the right amount of engineering: a ray-sphere test is
-nanoseconds, and 100 players at full AK cadence is single-digit ms of CPU per
-second. Brute force also has a correctness virtue — no spatial structure to keep
-in sync with *rewound* player positions.
+**Today:** `Server/WeaponSystem.TryHit` linearly sweeps every Transform-bearing
+object plus every player for each projectile tick segment, and `TryPickup` tests
+every player against every object. At current scale this is the right amount of
+engineering: the projectile list is bounded by cadence and a 1 km safety
+distance, and brute force has no spatial structure to keep synchronized.
 
 **Scaling order:** the pickup scan hits the wall first, not the raycast —
 raycasts cost only when someone fires; the pickup scan costs always, and map gen
@@ -187,12 +185,12 @@ raycasts cost only when someone fires; the pickup scan costs always, and map gen
 
 **Change, once 7a's chunks exist** (do NOT build a separate structure for this):
 - `TryPickup`: query the player's chunk + 8 neighbors instead of the world.
-- `Raycast`: DDA-walk the chunks the ray traverses, testing only entities
-  registered there; early-exit at MaxRange or first hit.
-- Player rewind vs. the index: either keep players brute-force (capped at 100 —
-  cheap forever), or index them by *newest* position and inflate the query
-  radius by max-speed × max-rewind (4 m/s × 1s = 4m) so a rewound position can
-  never escape the searched chunks. Getting this wrong breaks lag comp silently.
+- Projectile sweep: DDA-walk the chunks each tick segment traverses, testing
+  only registered entities; early-exit at the first terrain/entity hit or the
+  projectile's remaining safety distance.
+- Players can remain brute-force at the current cap. Projectile collision runs
+  forward on current authoritative positions; target rewind is not part of the
+  present shooting path.
 
 **Interim, only if §5 telemetry ever shows the pickup loop:** run `TryPickup`
 every few ticks instead of every tick — 100ms of pickup latency is imperceptible

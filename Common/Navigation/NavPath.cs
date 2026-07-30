@@ -23,13 +23,19 @@ public readonly record struct NavChunkRevision(
     ChunkIndex Chunk,
     long Revision);
 
+/// <param name="ExhaustedReachable">
+/// The search emptied its open set rather than stopping on a node or time budget, so every cell
+/// ordinary movement can reach from the start was examined. Only meaningful when the goal was not
+/// reached, where it distinguishes "cannot get there" from "did not have time to".
+/// </param>
 public sealed record NavPath(
     IReadOnlyList<NavWaypoint> Waypoints,
     bool ReachedGoal,
     float Cost,
     int ExpandedNodes,
     int CacheHits = 0,
-    IReadOnlyList<NavChunkRevision>? CorridorRevisions = null)
+    IReadOnlyList<NavChunkRevision>? CorridorRevisions = null,
+    bool ExhaustedReachable = false)
 {
     public static NavPath Failed(int expandedNodes = 0)
         => new([], false, NavCosts.Inf, expandedNodes);

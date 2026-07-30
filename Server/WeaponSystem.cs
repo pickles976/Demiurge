@@ -15,13 +15,22 @@ namespace Demiurge.GameServer
             Vector3 Position,
             uint Tick);
 
+        internal readonly record struct AcceptedSuppression(
+            ushort TargetId,
+            ushort ShooterId,
+            int ShooterTeam,
+            Vector3 ThreatPosition,
+            uint Tick);
+
         private sealed class Projectile
         {
             public required ServerPlayer Shooter { get; init; }
+            public required Vector3 Origin { get; init; }
             public required Vector3 Position { get; set; }
             public required Vector3 Velocity { get; set; }
             public required float RemainingDistance { get; set; }
             public required ushort Damage { get; init; }
+            public HashSet<ushort> SuppressedActors { get; } = [];
         }
 
         private readonly Server server;
@@ -30,6 +39,7 @@ namespace Demiurge.GameServer
         private readonly ActivityFeedSystem? activityFeed;
         private readonly List<Projectile> projectiles = new();
         private readonly Queue<AcceptedGunshot> gunshots = new();
+        private readonly Queue<AcceptedSuppression> suppressions = new();
 
         public WeaponSystem(
             Server server,
@@ -110,6 +120,7 @@ namespace Demiurge.GameServer
             projectiles.Add(new Projectile
             {
                 Shooter = player,
+                Origin = origin,
                 Position = origin,
                 Velocity = direction * ballistics.ProjectileSpeed,
                 RemainingDistance = ProjectileMotion.SafetyDistance,
@@ -134,12 +145,15 @@ namespace Demiurge.GameServer
         internal bool TryDequeueGunshot(out AcceptedGunshot gunshot)
             => gunshots.TryDequeue(out gunshot);
 
+        internal bool TryDequeueSuppression(out AcceptedSuppression suppression)
+            => suppressions.TryDequeue(out suppression);
+
         /// <summary>
         /// Advances shooter dispersion and every live projectile once. Collision is swept over
         /// the whole tick segment, so a fast rifle bullet cannot tunnel through a target between
         /// two 30 Hz updates.
         /// </summary>
-        public void Tick(float dt, IEnumerable<ServerPlayer> players)
+        public void Tick(float dt, uint tick, IEnumerable<ServerPlayer> players)
         {
             var actors = players as ICollection<ServerPlayer> ?? players.ToArray();
             foreach (var player in actors)
@@ -162,7 +176,7 @@ namespace Demiurge.GameServer
                     dt,
                     projectile.RemainingDistance);
 
-                if (TryHit(step.Start, step.End, projectile.Shooter, actors, out var hit))
+                if (TryHit(step.Start, step.End, projectile, actors, tick, out var hit))
                 {
                     if (hit is { } target && target.Has.HasFlag(NetComponents.Health))
                         ApplyDamage(
@@ -201,11 +215,13 @@ namespace Demiurge.GameServer
         private bool TryHit(
             Vector3 start,
             Vector3 end,
-            ServerPlayer shooter,
+            Projectile projectile,
             IEnumerable<ServerPlayer> players,
+            uint tick,
             out ServerObject? hit)
         {
             hit = null;
+            var shooter = projectile.Shooter;
             var segment = end - start;
             float length = segment.Length();
             if (length < 1e-6f) return false;
@@ -233,8 +249,19 @@ namespace Demiurge.GameServer
                 float along = Math.Clamp(Vector3.Dot(center - start, direction), 0f, length);
                 if (along < nearestT
                     && Vector3.DistanceSquared(start + direction * along, center) <= 4f)
+                {
                     player.Spread.Suppress();
-                if (GunMath.HitDistance(start, direction, center, length) is not { } t) continue;
+                    if (player.Team != shooter.Team
+                        && projectile.SuppressedActors.Add(player.Id))
+                        suppressions.Enqueue(new AcceptedSuppression(
+                            player.Id,
+                            shooter.Id,
+                            shooter.Team,
+                            projectile.Origin,
+                            tick));
+                }
+                if (GunMath.PlayerHitDistance(start, direction, player.Position, length)
+                    is not { } t) continue;
                 if (t >= nearestT) continue;
 
                 hit = player.Status;

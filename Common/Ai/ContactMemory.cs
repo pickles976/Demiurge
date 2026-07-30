@@ -57,6 +57,9 @@ public sealed class ContactMemory
         return false;
     }
 
+    /// <summary>Forgets everything. Death is the one event that genuinely clears a belief.</summary>
+    public void Forget() => observations.Clear();
+
     public void Prune(uint tick)
     {
         List<ushort>? expired = null;

@@ -102,6 +102,7 @@ public sealed class RuntimeClientSession : IClientSession
         {
             new TracerSystem(),
             new GrenadeExplosionScript { Objects = objectRegistry },
+            new NpcTrackerScript { Registry = registry },
         });
 
         camera = embedding?.Camera ?? game.Add3DCamera();

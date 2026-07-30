@@ -43,10 +43,10 @@ public class CommanderAiTests
         Assert.Equal(west.NetworkId, eastReinforcement.FlagId);
     }
 
-    private static SquadBlackboard BoardAt(Vector3 home)
+    private static SquadBlackboard BoardAt(Vector3 centre)
     {
         var board = new SquadBlackboard();
-        board.AddMemberHome(home);
+        board.SetRoster([60000], centre);
         return board;
     }
 }

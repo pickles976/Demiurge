@@ -11,20 +11,33 @@ navigation, perception, engagement, cover, squad coordination, digging, and a co
   jump solver. Steep upward edges also receive a bounded no-jump movement simulation so sharp SDF
   ledges become jump actions while genuinely walkable slopes remain ordinary traversal. Deliberate
   fall edges remain a later navigation extension.
-- **Step 2 walking integration is implemented:** one replacement-aware navigation worker,
-  request-generation and terrain-edit invalidation, waypoint following, one-second stall replans,
-  and the existing `PlayerMovement.Step` as the sole movement authority.
+- **Step 2 walking integration is implemented and scaled:** a replacement-aware prioritized worker
+  pool (half the logical processors, clamped to 1–8), per-NPC `NavigationAgent`, chunk-corridor
+  invalidation, shared squad objective trunks, partial-path prefetch, waypoint recovery, and the
+  existing `PlayerMovement.Step` as the sole movement authority.
 - Run `ai stats` in the developer terminal or dedicated console for the latest one-second window:
   average live agents, mob movement time on the server tick, off-thread path-search time, and path
   request/completion counts.
-- **Step 3 perception is implemented:** each NPC performs at most one enemy-only FOV/terrain-LOS
-  ray per tick and writes sightings into a five-second confidence-decaying `ContactMemory`.
+- **Step 3 perception is implemented:** each NPC checks at most one enemy per tick against range,
+  field of view, and terrain LOS, and writes sightings into a five-second confidence-decaying
+  `ContactMemory`. LOS probes the ordered body points in `GunConfig.AimHeights` — centre mass, then
+  the head — and remembers which one answered so `CombatBehavior` aims where perception could
+  actually see. The second ray is only cast when centre mass is blocked. Probing centre mass alone
+  made a target peeking over cover with only its head exposed completely invisible, and the aim point
+  it used sat inside the old torso-sphere hit volume, so such a target was also unhittable; see
+  `docs/networking/Shooting.md`.
 - Shared ballistics, recoil/spread, and hit-probability math from **Step 4** already exists from the
   projectile weapon work.
 - **Step 5 engagement is implemented:** NPCs hold while engaged, acquire with a reaction delay,
   settle aim at a bounded turn rate, compensate projectile drop, choose controlled or suppressive
   AK fire from hit probability, suppress actors on near misses, and use the authoritative ammo,
-  cadence, projectile, friendly-fire, damage, and reload paths.
+  cadence, projectile, friendly-fire, damage, and reload paths. Engagement is bounded by
+  `MaxEngagementRange` (70 m): a contact beyond it is still believed but does not make combat own the
+  NPC's movement. Without that gate any contact the squad shared — perception reaches 100 m — froze
+  men nowhere near the fight in place, aiming across the map instead of manoeuvring. A base of fire
+  additionally fires in a **suppressing** mode aimed at the contact's last known position on a slower
+  cadence; ordinary fire requires current visibility, which made suppression impossible against
+  precisely the target it exists for.
 - **Step 6 cover is implemented:** one globally budgeted, event-driven spatial query samples 13
   deterministic nearby navigation cells against up to two believed threats. It distinguishes
   crouch-blocked/stand-clear fighting positions from full concealment, scores travel and escape
@@ -33,48 +46,117 @@ navigation, perception, engagement, cover, squad coordination, digging, and a co
   cadence. Fully blocked positions also test validated lateral cells for corner peeks, which are
   preferred over popping over low cover; cover paths disable jump edges so an agent routes around
   the obstacle instead of vaulting it. Cover-query time and count are included in `ai stats`.
-- **Step 7 squad blackboards are implemented:** NPCs are assigned deterministically to team-local
-  squads of four. Direct sightings enter shared contact memory after 11 server ticks (~367 ms),
-  short cover leases prevent squadmates from selecting the same fighting position, and two
-  engagement plus two advance permits rotate every three seconds. This produces bounded focus fire
-  and alternating fire-and-movement without adding replication messages or bypassing individual
-  LOS checks. The board also carries a shared Conquest objective: squads path to the nearest
-  neutral, enemy, or threatened friendly flag, spread into stable positions inside its capture
-  radius, and remain assigned there to defend or retake it.
+- **Step 7 squad blackboards are implemented:** direct sightings enter shared contact memory after
+  11 server ticks (~367 ms), short cover leases prevent squadmates from selecting the same fighting
+  position, and two engagement plus two advance permits rotate every three seconds. This produces
+  bounded focus fire without adding replication messages or bypassing individual LOS checks. The
+  board also carries a shared Conquest objective: squads path to the nearest neutral, enemy, or
+  threatened friendly flag, spread into stable positions inside its capture radius, and remain
+  assigned there to defend or retake it. `SquadBlackboard.Centre` is recomputed from live member
+  positions each re-formation pass; it used to be the mean of members' *spawn* points and was never
+  updated, so every squad-relative calculation including commander travel costing kept measuring
+  from base.
+- **Step 7b dynamic squads are implemented:** membership re-forms from live proximity once per second
+  in pure, deterministic `SquadFormation`. A cohesive squad keeps its members, over-strength squads
+  shed their outliers, separated members join the nearest squad with room, and under-strength squads
+  merge into neighbours — that last pass is what handles a lone unit standing beside a squad, since
+  cohesion measured against a squad's own centre makes a squad of one trivially cohesive with itself.
+  Membership was previously fixed at spawn: `MobBrain.SquadIndex` was init-only and the per-team
+  counter never decremented, so a squad could never re-form and a replacement NPC became a permanent
+  squad of one that the commander then sent to its own objective. Leases are released on the granting
+  board when a member changes squad, and empty squads are dropped so the commander stops planning for
+  units that no longer exist.
+- **Step 7c squad tactics are implemented:** pure `SquadTactics` turns the squad's primary believed
+  threat into a per-member role at 2 Hz. It derives a threat axis from the live squad centre, assigns
+  sticky left/right envelope sides, and orders one man per side to **bound** while the rest are
+  **base of fire**. Two properties are worth stating because they replace machinery that could not
+  express them:
+  - **Nobody moves until somebody is set.** With no member in position the whole squad goes to ground
+    and digs in first.
+  - **Leapfrog is emergent, not a state machine.** The rule is "the man farthest from the threat
+    bounds next", so once he has moved past his partner the partner is farthest and takes the next
+    bound. The previous three-second advance-token lease was a timer and could not express "wait
+    until he is set".
+
+  Each completed bound shortens that member's standoff (45 m opening, 12 m floor) and narrows the
+  envelope, so the two sides converge rather than walking past. A bound reuses the cover-destination
+  lane deliberately — claims, path priority, and arrival detection are the same problem as moving to
+  a fighting position — and going set on arrival is what hands the next bound to the partner.
+  `MobBrain.AtCover` used to be terminal: an arrived NPC never moved again unless the threat shifted
+  five metres, which was the single largest reason nothing ever leapfrogged.
 - **The Step 8 grenade slice is implemented:** an NPC can use a recently lost believed contact to
   probe just behind intervening cover, solve a low ballistic arc, reject terrain-blocked or
   friendly-unsafe throws, and reserve the throw on its squad board so grenades arrive singly rather
   than as an eight-NPC volley. Mortar and heavy-machine-gun items remain prerequisites for the
   crew-served portions of Step 8.
-- **The first playable Step 9 digging slice is implemented:** normal objective navigation always
-  runs first. When it reaches a completely blocked frontier, a dirt/grass-only dig edge can equip
-  the NPC shovel and issue the same two-bite, server-authoritative sphere edit as a player. Every
-  accepted bite invalidates the path and replans against the actual new terrain. Stone, combat
-  movement, cover paths, and aimless roaming never authorize excavation. Multi-voxel virtual
-  planning and commander-designated trench construction remain later Step 9/10 work.
+- **The Step 9 digging slice is implemented:** normal air-only navigation always runs first, and a
+  second dig-allowed search runs only when `NavSearch.NeedsDigEscalation` says the first one
+  exhausted every cell ordinary movement can reach without arriving. That predicate is the fix for
+  "NPCs stuck in a trench never dig out": the escalation used to be gated on the air-only pass
+  returning *zero waypoints*, which happens only for an actor sealed in on every side, so a trench —
+  where an NPC can walk the floor but not climb the walls — returned a pacing path forever and
+  `AllowDig` was effectively dead. Exhaustion is the right signal rather than distance covered,
+  because a bounded prefix of a good long route is exactly what the search budget is supposed to
+  return and must not pay for a second search.
+
+  A dig deliberately does **not** compete on `f = g + h`. One frontier bite costs seconds while
+  buying at most a metre of heuristic, so no cost comparison would ever choose one; whether digging
+  is on the table at all is the escalation gate's decision, and the search only ranks bites against
+  each other. Consecutive bites also commit to a **site** rather than a cell (the frontier cell moves
+  as the cut advances): a candidate within `NavSearch.DigSiteRadius` of the last bite gets a two-bite
+  score bonus, remembered for five seconds by `NavigationAgent`. Without it every bite invalidated
+  the path, the replan recomputed its best frontier from scratch, a marginally better cut elsewhere
+  won, and the NPC took one or two voxels then wandered off to start a fresh hole.
+
+  Emergency fighting positions are capped at `MaxFoxholeDepth` (1 m) below the surrounding grade,
+  measured behind the digger so it samples untouched ground rather than its own hole. That dig was
+  unbounded, so an NPC under sustained fire bit the same spot every `TicksPerDig` until it stood in a
+  pit it could neither jump out of (jump clears 1.5 m) nor excavate out of. A base of fire now digs
+  when *ordered to hold*, not only while rounds are landing, and termination is the cover scorer
+  itself: once the cut classifies the spot as a `FightingPosition` the cover query accepts it and
+  digging stops, which is "deep enough to peek over, low enough to crouch behind" without a depth
+  constant deciding it. Stone is never diggable. **Still deferred:** digging during a bound — the
+  bound follower has no `PathFollowState.Digging` case, and executing a bite needs the shovel, pitch
+  and yaw that `CombatBehavior` holds for aiming, so a digging man is not simultaneously shooting.
+  Commander-designated trench construction also remains Step 10 work.
 - **Step 10 strategic flag allocation is implemented:** a one-hertz commander for each team ranks
   threatened friendly flags, contested/active captures, untouched neutral points, enemy points,
   and quiet rear security. Equal-priority assignments minimize squad travel with a stability bias;
   urgent flags create a second reinforcement slot before low-priority objectives are covered.
-  One-member/incomplete squads remain valid units. The singleplayer battle now uses `conquest`
-  with four squads (16 NPCs) per team, spread around the authored team spawn clusters.
+  One-member/incomplete squads remain valid units, and squad count now varies during a match as
+  membership re-forms. The singleplayer battle uses `conquest` with 16 NPCs per team, spread around
+  the authored team spawn clusters.
 - **Reactive search and movement are implemented:** accepted enemy gunshots within 60 m create
   bounded investigation goals, idle defenders rotate a regular visual scan, repeatedly stalled
   terrain waypoints are temporarily excluded from replanning, ineffective long-range rifle fire
   advances through closer cover or bounded forward waypoints, and dirt pit walls generate rising
-  shovel targets. Stone remains non-diggable.
+  shovel targets. A hostile projectile passing within 2 m creates a two-second believed threat at
+  its firing position, interrupting ordinary travel for cover selection or emergency dirt digging.
+  Stone remains non-diggable.
+- **Failure reporting is implemented:** kills, flag neutralizations/captures, and the reason for a
+  60-second navigation-stuck deletion are published through the reliable activity feed. Terrain
+  edits racing a background search now fail/retry reconstruction instead of throwing from a worker.
+- **Respawn clears the brain:** `MobSystem.OnRespawn` drops cover, contacts, the under-fire window,
+  the heard-gunshot goal, flank side and bound progress. Respawn reset the replicated `ServerPlayer`
+  but never `MobBrain`, so a mob returned to base still believing it was at cover, under fire, and
+  holding a contact — and stood there crouched behind nothing.
+- **`ai track` draws the NPC debug overlay** (`docs/COMMANDS.md`). Client-side only; beacons, facing,
+  and a clustering layer that links NPCs within 4 m, which is the view for judging bunching.
 
 **Architecture:** AI produces *intent* and nothing else. The same `Vector3` direction and
-`PlayerStateFlags` a client input packet carries goes into `PlayerMovement.Step`, and the same
-`PlayerFireData` shape goes into `WeaponSystem.ApplyFire`. Every layer below stays untouched, so
-there is never a second movement or shooting path to keep in sync. Pure logic (search, ballistics,
-scoring, memory) lives in `Common` with no Stride dependency and is therefore testable headless;
-orchestration, threading and world access live in `Server`.
+`PlayerStateFlags` a client input packet carries goes into `PlayerMovement.Step`. Human fire enters
+through validated `PlayerFireData`; NPC fire enters through `TryFireAi`, then both converge on the
+same authoritative ammo, cadence, spread, projectile, damage, and reload core. Every layer below
+stays shared, so there is never a second movement or shooting implementation to keep in sync. Pure
+logic (search, ballistics, scoring, memory) lives in `Common` with no Stride dependency and is
+therefore testable headless; orchestration, threading and world access live in `Server`.
 
-**This is a system, not a feature.** It is built one step at a time, each playable and each ending
-with what is *deliberately not* in it. Expect the shape to change between steps — the design past
-step 3 is a sketch that runs ahead of the code on purpose, and should be re-read rather than
-trusted when its turn comes.
+The current cross-system boundaries are summarized in `docs/ARCHITECTURE.md`; the navigation
+lifecycle and diagnostics are in `docs/NAVIGATION.md`.
+
+**This is a system, not a feature.** The detailed step sections below preserve the implementation
+sequence and design reasoning. This status section is authoritative when an older step description
+still talks about the smaller implementation that existed when the step was written.
 
 ---
 
@@ -85,18 +167,18 @@ trusted when its turn comes.
   requirement, not an aspiration. The binding case is singleplayer, where `ServerHost` steps from
   the client's `Update()` and the server tick shares the 16.6 ms frame budget instead of owning
   33 ms. A step that cannot hold this on that machine is not done. See Performance budget below.
-- Nothing here adds a wire message. Mobs already replicate as `ServerPlayer`s through
-  `ServerToClientId.PlayerSpawn` / `PlayerPosition` and `ObjectReplication`. If a step appears to
-  need a new `ServerToClientId`, stop — it probably means logic drifted to the client.
+- AI state adds no per-NPC wire stream. Mobs already replicate as `ServerPlayer`s through
+  `ServerToClientId.PlayerSpawn` / `PlayerPosition` and `ObjectReplication`. The activity feed is a
+  match-event message, not replicated AI decision state.
 - `Common` must not reference Stride. Anything in `Common/Navigation`, `Common/Ballistics`,
   `Common/Ai` is `System.Numerics` only.
 - `DemiurgeSharp.csproj` globs `**/*.cs` from the repo root. New directories under `Common/`,
   `Server/` are already covered by existing `<Compile Remove>` lines; **no new directory at the
   repo root** without adding one.
 - All cadence in server ticks, derived from `NetworkConfig.TickRate` (30). Never hardcode 30.
-- Test only complex pure logic — search correctness, coordinate/angle math, probability. Do not
-  write tests for behaviour arbitration, state transitions, or anything verifiable by watching a
-  playtest.
+- Test complex pure logic and narrow server boundaries: search correctness, coordinate/angle math,
+  probability, shared-route scheduling, path following, strategic allocation, and watchdog timing.
+  Use playtests for emergent arbitration and presentation.
 - Run `dotnet test --filter "Category!=Benchmark"` after each step (~1s).
 
 ---
@@ -116,18 +198,29 @@ trusted when its turn comes.
 | `Common/Ballistics/HitEstimate.cs` | `Probability` — Rayleigh CDF over σ, range, target size |
 | `Common/Ai/ContactMemory.cs` | Believed enemy contacts with confidence fade |
 | `Common/Ai/CoverScore.cs` | Scores a candidate position given threats and LOS results |
-| `Server/Ai/NavigationSystem.cs` | Path request queue, worker thread, edit-version invalidation |
+| `Common/Ai/GunshotHearing.cs` | Team/distance gate and investigation lifetime |
+| `Common/Ai/StrategicObjectivePlanner.cs` | Deterministic team-relative flag allocation |
+| `Common/ActorIds.cs` | Mob actor-id range; the client's only way to tell an AI from a remote human |
+| `Client/Rendering/NpcTrackerScript.cs` | `ai track` debug overlay: beacons, facing, clustering |
+| `Server/Ai/NavigationSystem.cs` | Prioritized worker pool, shared routes, caching, metrics |
+| `Server/Ai/NavigationAgent.cs` | One NPC's destination, request, path, blocked-cell and progress lifecycle |
+| `Server/Ai/NavigationProgressWatch.cs` | Travel-only 60-second stuck detection |
 | `Server/Ai/PathFollower.cs` | Path → intent, waypoint advance, replan triggers |
 | `Server/Ai/Perception.cs` | FOV + budgeted LOS raycasts, writes `ContactMemory` |
-| `Server/Ai/SquadBlackboard.cs` | Shared contacts, position claims, engage/advance tokens |
-| `Server/Ai/CombatBehavior.cs` | Engage / suppress / hold decision and aim |
+| `Server/Ai/SquadBlackboard.cs` | Roster, live centre, shared contacts, position claims, engage/advance tokens, tactical orders |
+| `Server/Ai/SquadFormation.cs` | Pure proximity re-grouping: cohesion, capacity, orphan joins, under-strength merges |
+| `Server/Ai/SquadTactics.cs` | Pure doctrine: threat axis, flank sides, base-of-fire vs bound, envelope positions |
+| `Server/Ai/CombatBehavior.cs` | Engage / suppress / hold decision and aim; range gate and suppressing fire mode |
 | `Server/Ai/GrenadeBehavior.cs` | Safe low-arc throws against recently occluded contacts |
 | `Common/Ballistics/ThrowSolver.cs` | Launch angle for a lobbed projectile; terrain clearance along the arc |
 | `Common/Ai/AreaTargeting.cs` | Best splash centre given believed contacts, with a friendly exclusion |
-| `Server/Ai/CrewWeapon.cs` | Lug → deploy → fire → pack state machine for emplaced weapons |
 | `Server/Ai/MobBrain.cs` | Per-unit arbitration; owns the above for one mob |
-| `Server/Ai/CommanderAi.cs` | Theater objectives, frontline, trench designation (step 10) |
+| `Server/Ai/CommanderAi.cs` | Low-frequency team flag assignments |
 | `Server/MobSystem.cs` | *Modified* — delegates to `MobBrain`, keeps spawn/roam helpers |
+| `Server/ActivityFeedSystem.cs` | Reliable kill, flag, and stuck-deletion match events |
+
+`Server/Ai/CrewWeapon.cs` remains a planned seam for mortar/heavy-MG lug, deploy, fire, and pack
+states; those items do not exist yet.
 
 ---
 
@@ -281,19 +374,23 @@ concurrent read. That is tolerable — a torn read of a 2-byte `Voxel` yields a 
 a crash — so we do not copy the map. Instead:
 
 - add an `EditVersion` counter to `ChunkMap`, incremented by every `TerrainEdits` write
-- `NavigationSystem` records the version when a search starts; if it differs on completion, the
-  path is discarded and re-requested
-- one worker thread, one request at a time, FIFO queue with per-mob replacement (a mob's newer
-  request supersedes its older one rather than queueing behind it)
+- record the version when a search starts and discard stale results
+- use one worker and a FIFO with per-mob replacement
 
 Digs are rate-limited to two per second per player, so version churn is low.
+
+That was the initial integration. The current implementation replaces the global discard with
+chunk-corridor revision stamps, uses a prioritized bounded pool, cancels superseded active work,
+and serializes ownership only for duplicate searches of the same shared squad route. Reconstruction
+rechecks standability because edits may race the optimistic terrain read.
 
 ### Path following
 
 `PathFollower` converts the current waypoint into the intent `MobSystem` already produces —
 `LastIntent`, `State`, `Yaw` — and `PlayerMovement.Step` remains the only thing that moves anybody.
 Advance to the next waypoint within an arrival radius; request a replan when the path is exhausted,
-the edit version moved, or progress stalls for a second.
+its corridor revision moved, or progress stalls. Partial paths prefetch before their final waypoint;
+short uphill stalls try a bounded recovery jump before replanning.
 
 `MobSystem.RandomSurfacePoint` stays as the destination chooser; it just becomes the seed for a
 `GoalNear` instead of a straight-line target.
@@ -486,19 +583,19 @@ the mechanic teaches itself and step 6's cover work is what gives it meaning.
 
 Two other outcomes worth preserving if these numbers get retuned: an AK's first standing shot at
 100 m is 0.996 while its shot at recoil cap is 0.50, which is the first-shot-accurate /
-spray-inaccurate curve for free; and a crouched sniper at 200 m — the AWP's actual `MaxRange` — is
-0.998 on an exposed target but 0.51 on a peeker, making long-range duels about exposure discipline
-rather than about the rifle.
+spray-inaccurate curve for free; and a crouched sniper at 200 m — well inside the projectile safety
+distance — is 0.998 on an exposed target but 0.51 on a peeker, making long-range duels about
+exposure discipline rather than about the rifle.
 
 Tests: MOA→radian conversion against the table above; `SigmaRadians` reproduces r95 at the 95%
 point; `Probability` is monotonically decreasing in range, approaches 1 as range → 0, and equals
 `1 - exp(-0.5)` ≈ 0.393 when σ exactly equals the target radius; recoil decays back to `BaseMoa`
 and never below it.
 
-**Deliberately not in this step:** projectile simulation, lead and drop solving, changing
-`WeaponSystem` from hitscan. This step only produces the numbers. When projectiles land, the lead
-and drop solver joins this directory and is shared by the client reticle, the server, and the AI —
-computed once, like every other position in this codebase.
+At the time of this step, projectile simulation and drop solving were deliberately deferred. They
+are now implemented: `WeaponSystem` sweeps server-side projectiles under gravity, and NPC aim
+compensates drop. Weapons have no gameplay `MaxRange`; `ProjectileMotion.SafetyDistance` is a 1 km
+runaway-projectile bound.
 
 ---
 
@@ -520,7 +617,7 @@ The decision is a mode selection, not one threshold:
 |---|---|---|
 | **Aimed fire** | P(hit) above the role's threshold, LOS confirmed this tick | Fire single shots, let recoil decay between |
 | **Suppressive fire** | P(hit) low but the enemy's *position* is known and reachable | Fire bursts at the cover, accepting misses |
-| **Hold** | No LOS, out of `WeaponStats.MaxRange`, reloading, or ammo low and no immediate threat | Reposition or reload |
+| **Hold** | No current LOS, projectile trajectory obstructed, reloading, or ammo low and no immediate threat | Reposition or reload |
 
 Suppression is the point of automatic fire in this game, so a low P(hit) means *suppress*, not
 *hold*. Thresholds differ per role and that is what makes the SMG and the sniper behave differently
@@ -720,6 +817,103 @@ commander abilities.
 
 ---
 
+## Step 11 — Fire and movement
+
+**Files:** create `Server/Ai/{SquadFormation,SquadTactics}.cs`,
+`Server.Tests/{SquadFormationTests,SquadTacticsTests}.cs`; modify `Server/Ai/SquadBlackboard.cs`,
+`Server/Ai/MobBrain.cs`, `Server/Ai/CombatBehavior.cs`, `Server/MobSystem.cs`.
+
+The step that turns N individuals into a squad. Everything before it was *arbitration* — two
+engagement tokens, two advance tokens, position claims — while each NPC independently decided to
+close on the threat. That is why a squad read as a crowd converging on one point.
+
+### A squad is a group, not an index
+
+Membership re-forms from live proximity once per second. `SquadFormation` is pure and deterministic:
+members are considered in actor-id order and squad indices are the lowest free ones, so the same
+battlefield always produces the same grouping regardless of dictionary iteration order.
+
+Four rules, in order: a cohesive squad keeps its members; an over-strength squad sheds the members
+farthest from its centre; separated members join the nearest squad with room; under-strength squads
+merge into neighbours. **The merge pass is the non-obvious one.** Cohesion is measured against a
+squad's own centre, so a squad of one is trivially cohesive with itself and would keep its index
+forever — which is exactly the "adjacent unit with no squad" case. Merging is ordered (smallest into
+largest, ties by lowest index) so it cannot oscillate.
+
+Cohesion (30 m) is deliberately more generous than the join radius (20 m). Squads legitimately spread
+out to envelope, and re-forming a squad mid-bound would throw away the very plan that spread it.
+
+### Roles, at 2 Hz
+
+`SquadTactics` maps the squad's primary believed threat — the shared contact nearest its live centre,
+one per squad, because a squad splitting its plan across two enemies does neither — onto a role per
+member. It is pure, and terrain is deliberately absent: this produces intent, and navigation and
+cover selection resolve it against the actual field.
+
+- A **threat axis** runs from the live squad centre to the threat. `SquadTactics.LateralAxis` is the
+  single definition of its right-hand perpendicular, so the geometry and the Left/Right labels cannot
+  drift apart.
+- **Sides are sticky.** A member already committed to going left keeps going left; a replan
+  mid-manoeuvre must not walk a flanker back across the axis through the beaten zone.
+- One man per side **bounds**; everyone else is **base of fire**.
+
+Two properties replace machinery that could not express them:
+
+**Nobody moves until somebody is set.** With no member in position, every role is base of fire: the
+squad goes to ground and digs in before anyone walks into fire. A lone set man on a side will not
+abandon overwatch to bound unless the other side has fire down.
+
+**Leapfrog is emergent, not a state machine.** The rule is only "the man farthest from the threat
+bounds next". Once he has moved past his partner, the partner is farthest and takes the next bound,
+and they alternate for as long as the fight lasts. There is no hand-off record and no timer. The
+previous advance token was a three-second lease with a cooldown, which can express "your turn is
+over" but never "wait until he is set" — the one condition that matters.
+
+Each completed bound increments that member's `BoundIndex`, which shortens its standoff (45 m
+opening, 12 m floor) and narrows the envelope, so the two sides converge on the threat instead of
+walking past it. `BoundIndex` resets when contact is broken, so the next fight opens at full standoff
+rather than resuming a closing sequence against an enemy who is no longer there.
+
+### Executing a role
+
+A bound reuses the cover-destination lane on purpose: claims, path priority, and arrival detection are
+the same problem as moving to a fighting position, and `CoverKind.Advance` already means "a temporary
+forward navigation point". Going set on arrival is what hands the next bound to the partner, and
+dropping the Advance destination lets the ordinary cover query find real cover where the man now
+stands.
+
+Two gates had to be opened for any of this to move at all:
+
+- **`AtCover` was terminal.** An arrived NPC never moved again unless the threat shifted five metres.
+  This was the single largest reason nothing leapfrogged.
+- **A base of fire could not query cover.** The query was gated on `mayAdvance`, which is false for a
+  man with no wish to advance — so a man ordered to hold and shoot from open ground stood in it, never
+  went set, and therefore nobody in the squad was ever cleared to bound.
+
+A base of fire also digs when *ordered to hold*, not only while rounds are landing, and suppresses:
+`CombatBehavior` gained a mode that fires at the contact's last known position on a slower cadence.
+Ordinary fire requires current visibility, which made suppression impossible against precisely the
+target it exists for — one with its head down. The receiving half already existed, so this closes the
+loop and a base of fire now actually pins its target.
+
+Engagement is bounded at 70 m. Any shared contact used to make combat own an NPC's movement, so men
+nowhere near the fight stood still aiming across the map.
+
+### Deliberately not in this step
+
+- **Digging during a bound.** The bound follower has no `PathFollowState.Digging` case, and executing
+  a bite needs the shovel, pitch and yaw `CombatBehavior` holds for aiming — a digging man is not
+  simultaneously shooting, which is a doctrine decision rather than plumbing.
+- **Foxhole connectivity.** Cuts still converge on disconnected positions; see the trench note in
+  Step 10. Nothing here supplies connectivity.
+- **Roles on the wire.** They are server-only, so `ai track` cannot label them. Judging the doctrine
+  means watching behaviour and the clustering layer, not reading state off the screen.
+- **Cover query budget.** `CoverQueriesPerTick` is still 1 across all NPCs, so with 32 agents a man
+  waits on the order of a second to go set and the opening of a fight is slower than it should look.
+  Raising it is a measured decision; `ai stats` reports cover cost per tick.
+
+---
+
 ## Performance budget — 32–64 agents at 60 FPS / 30 TPS on a Beelink SER5
 
 ### Do the arithmetic first, because it decides the architecture
@@ -744,9 +938,10 @@ A SER5 is a Ryzen 5 5500U/5560U class part: 6 cores / 12 threads, Radeon Vega 6�
 dual-channel DDR4 shared between CPU and GPU, 15–25 W sustained. That shape, not its raw speed,
 is what should steer decisions here.
 
-- **The frame is GPU-bound, the CPU has cores to spare.** So the preferred fix for an expensive AI
-  system is to move it to a worker, not to micro-optimize it on the main thread. One pathfinding
-  worker is comfortable and a second is affordable; a thread per agent is not.
+- **The CPU has cores available for bounded computation workers.** Move expensive pure AI
+  computation off the main thread, but do not assume a low frame rate is GPU-bound: the measured
+  1920x1080 regression was an SDL device-reset loop. The navigation pool is capped at eight; a
+  thread per agent is still prohibited.
 - **Only computation moves.** Anything creating a Riptide `Message` or mutating world state stays on
   the main thread and returns results through a queue — the same discipline `TerrainState` uses. The
   Riptide message pool is unsynchronised and this is not negotiable.
@@ -819,11 +1014,11 @@ version moved need the full solver. Safe because mobs are replicated positions, 
 
 ### Navigation cleanup and scale roadmap
 
-Playtesting with two teams of sixteen exposed a stop/start failure that cannot be solved by merely
-raising the partial-path distance. The current implementation performs one flat A* per NPC on one
-worker, returns bounded prefixes, and invalidates every path whenever *any* terrain edit increments
-the map-wide `EditVersion`. Once NPC digging and grenade deformation are active, a shovel bite at
-one flag can therefore stop and replan actors at every other flag.
+Playtesting with two teams of sixteen exposed a stop/start failure that could not be solved by merely
+raising the partial-path distance. Before this cleanup, the implementation performed one flat A*
+per NPC on one worker, returned bounded prefixes, and invalidated every path whenever any terrain
+edit incremented the map-wide `EditVersion`. A shovel bite at one flag could therefore stop and
+replan actors at every other flag.
 
 Implement the following in order. Each layer is independently measurable and remains useful if a
 later layer is deferred:

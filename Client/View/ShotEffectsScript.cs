@@ -185,9 +185,8 @@ public class ShotEffectsScript : SyncScript
         foreach (var player in Registry.Players)
         {
             if (player.Id == shooterId) continue;
-            var center = player.Position
-                + new System.Numerics.Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
-            if (GunMath.HitDistance(start, direction, center, length) is not { } t || t >= nearest)
+            if (GunMath.PlayerHitDistance(start, direction, player.Position, length) is not { } t
+                || t >= nearest)
                 continue;
 
             nearest = t;

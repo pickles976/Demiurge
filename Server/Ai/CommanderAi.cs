@@ -37,7 +37,7 @@ internal sealed class CommanderAi
             var strategicSquads = boards
                 .Select(pair => new StrategicSquad(
                     pair.Key.Squad,
-                    pair.Value.Home,
+                    pair.Value.Centre,
                     pair.Value.TryGetObjective(out var current)
                         ? current.FlagId
                         : 0))

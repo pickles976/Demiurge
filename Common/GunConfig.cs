@@ -15,6 +15,24 @@ namespace Demiurge
         public const float PlayerCenterHeight = 0.5f;
 
         /// <summary>
+        /// Height of the head above the feet. Used as an AI aim point, not as a damage multiplier —
+        /// there is no headshot, only a part of the body that stays exposed behind low cover.
+        /// </summary>
+        public const float PlayerPeekHeight = 1.45f;
+
+        private static readonly float[] aimHeights = [PlayerCenterHeight, PlayerPeekHeight];
+
+        /// <summary>
+        /// Body points an AI tries to see and shoot, in preference order: centre mass first because it
+        /// is the largest target, then the head, so a target peeking over cover with only its head
+        /// exposed draws fire instead of being invisible.
+        ///
+        /// Every entry must lie inside the capsule <see cref="GunMath.PlayerHitDistance"/> tests, or an
+        /// AI would settle on a point it can see and provably cannot damage. GunMathTests asserts it.
+        /// </summary>
+        public static ReadOnlySpan<float> AimHeights => aimHeights;
+
+        /// <summary>
         /// How far a shot's claimed origin may sit from the server's position for that player before
         /// the shot is thrown away. A sanity gate on a client-supplied number, not a tight bound.
         ///

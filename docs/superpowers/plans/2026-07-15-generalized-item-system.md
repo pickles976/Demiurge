@@ -1,5 +1,10 @@
 # Generalized Item System Implementation Plan
 
+> **Historical plan:** The component/slot architecture was implemented, but concrete signatures in
+> this document predate projectile ballistics, grenades, and later wire additions. Use the current
+> [recipes](../../../RECIPES.md), [architecture](../../ARCHITECTURE.md), and source for extension
+> work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > **For this project:** the owner implements tasks by hand; this document is the deliverable. Spec: `docs/superpowers/specs/2026-07-15-generalized-item-system-design.md`.
 

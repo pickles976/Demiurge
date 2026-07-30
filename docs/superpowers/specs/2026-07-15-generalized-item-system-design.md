@@ -3,6 +3,11 @@
 **Date:** 2026-07-15
 **Status:** Approved
 
+> **Historical design record:** The component-driven identity/trait/slot decisions remain current,
+> but concrete weapon fields and message inventory have since evolved. Use the current
+> [recipes](../../../RECIPES.md) and [architecture](../../ARCHITECTURE.md) for the live extension
+> rules.
+
 ## Problem
 
 Pickup/equip logic was pulled into `WeaponSystem` prematurely, and item kinds are

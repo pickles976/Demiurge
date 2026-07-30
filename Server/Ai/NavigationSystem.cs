@@ -57,6 +57,7 @@ internal sealed class NavigationSystem : IDisposable
         long? BlockedCellKey,
         long SharedRouteKey,
         NavigationPriority Priority,
+        NavCell? PreferredDigSite,
         long EnqueuedTimestamp);
 
     private readonly record struct RequestTicket(ushort MobId, long RequestId);
@@ -130,7 +131,8 @@ internal sealed class NavigationSystem : IDisposable
         bool allowDig = false,
         long? blockedCellKey = null,
         long sharedRouteKey = 0,
-        NavigationPriority priority = NavigationPriority.Objective)
+        NavigationPriority priority = NavigationPriority.Objective,
+        NavCell? preferredDigSite = null)
     {
         long requestId = Interlocked.Increment(ref nextRequestId);
         lock (requestGate)
@@ -146,6 +148,7 @@ internal sealed class NavigationSystem : IDisposable
                 blockedCellKey,
                 sharedRouteKey,
                 priority,
+                preferredDigSite,
                 Stopwatch.GetTimestamp());
             requestOrder.Enqueue(
                 new RequestTicket(mobId, requestId),
@@ -260,9 +263,11 @@ internal sealed class NavigationSystem : IDisposable
                 () => IsSuperseded(request),
                 traversalCache);
 
-        // The ordinary search owns the common case and can return useful partial paths. Only a
-        // completely blocked objective frontier pays for the solid-volume probes.
-        if (request.AllowDig && path.Waypoints.Count == 0)
+        // The ordinary search owns the common case and can return useful partial paths. Only pay for
+        // the solid-volume probes when air-only movement is not closing on the goal. Gating this on
+        // an empty result meant the pass only ever ran for an actor sealed in on every side, so a
+        // trench with steep walls returned a pacing path forever and nothing ever dug its way out.
+        if (request.AllowDig && NavSearch.NeedsDigEscalation(path))
             path = NavSearch.Find(
                 terrain,
                 request.Start,
@@ -274,7 +279,8 @@ internal sealed class NavigationSystem : IDisposable
                 },
                 request.BlockedCellKey,
                 () => IsSuperseded(request),
-                traversalCache);
+                traversalCache,
+                request.PreferredDigSite);
         if (IsSuperseded(request))
         {
             Interlocked.Increment(ref cancelledCount);

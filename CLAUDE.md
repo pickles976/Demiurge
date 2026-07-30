@@ -25,6 +25,10 @@ works (the bare `--` matters; dotnet eats unknown flags first). It refuses to st
 falling back if the port is taken — silently attaching to an already-running server would mean
 testing a stale build.
 
+The current singleplayer scenario loads `conquest`, reserves a team-1 spawn for the player, and
+creates 16 NPCs per team around authored team spawn clusters. Use `npc-test` through the editor or
+an explicit hosted map for smaller focused tests.
+
 `Common` has no Stride dependency — it's plain `System.Numerics` — so anything in it is
 testable without booting the engine. That's why the voxel coordinate maths has real tests and
 the rest of the codebase doesn't; keep new pure logic in `Common` and it stays that way. Note
@@ -50,8 +54,9 @@ in `ItemCatalog` and are namespaced (`demiurge:ak47`), while `ItemType` remains 
 numeric wire identity. Runtime mob IDs are actor selectors (`@60000`); replicated object IDs use
 `#1`. Runtime spawn/equip commands mutate only the current server session and never modify or save
 the editor source map. Editor placements use stable GUIDs displayed as unique eight-character
-prefixes; `editor object equip` persists a mob weapon in that source placement. See
-`docs/COMMANDS.md`.
+prefixes; `editor object equip` persists a mob weapon in that source placement. `ai stats` reports the
+last one-second AI window; `ai track` is a client-side NPC debug overlay and is answered locally
+without reaching the server. See `docs/COMMANDS.md`.
 
 ## Performance targets
 
@@ -62,8 +67,10 @@ The SER5 is the reference machine and its shape matters more than its speed: a R
 class part, **6 cores / 12 threads**, a **Radeon Vega 6–7 iGPU**, and dual-channel DDR4 whose
 bandwidth the CPU and GPU **share**, at 15–25 W sustained. Three consequences:
 
-- **The iGPU is the client bottleneck, not the CPU.** Frame cost is dominated by terrain rendering,
-  so the cheapest wins are usually fewer draw calls and less overdraw, not tighter C#.
+- **Do not infer the bottleneck from resolution alone.** The measured 1920x1080 regression was an
+  SDL fullscreen resize/device-reset loop, not GPU load; forcing the RTX 4060 did not improve it.
+  Terrain rendering/streaming remains a likely steady-state cost, but profile before choosing a
+  CPU, GPU, or allocation fix. See `PERFORMANCE.md`.
 - **There are cores to spare.** Pushing work onto a worker is the preferred fix over micro-optimizing
   it on the main thread — but only *computation* moves. Anything that creates a Riptide `Message` or
   mutates world state stays on the main thread and hands results back through a queue, exactly as
@@ -104,6 +111,10 @@ steps that are easy to forget are exactly the ones that shipped bugs before.
 
 Wire rule worth repeating here: enum values and the `ComponentBundle` if-chain order
 ARE the protocol. Append, never reorder, never delete — clients desync silently.
+
+`docs/ARCHITECTURE.md` is the current subsystem map. `AI_IMPLEMENTATION.md` keeps the staged AI
+design and implemented/deferred status; `docs/NAVIGATION.md` documents the live navigation lifecycle,
+worker scheduling, recovery, metrics, and tests.
 
 `ClientApplication` is the process composition root. It owns Stride, global rendering and lighting,
 the persistent terminal, and `ClientSessionCoordinator`. `RuntimeClientSession` owns networking,
@@ -150,6 +161,39 @@ Runtime terrain has two separate load-bearing subscriptions:
 thread. A connected stream without the second subscription leaves the terrain map empty and causes
 continuous movement reconciliation because the client predicts against unloaded terrain.
 
+AI is decision-only. `SquadFormation` re-groups NPCs into squads from live proximity, `CommanderAi`
+assigns team objectives, `SquadBlackboard` shares delayed contacts/claims/permits and carries the
+roster and tactical orders, `SquadTactics` decides who is base of fire and who bounds, `MobSystem`
+arbitrates per-unit behavior, and every NPC ultimately emits the same movement flags and
+weapon/dig/grenade requests used by players. Do not add a second movement, damage, reload, or
+terrain-edit path for mobs.
+
+Squad membership is **not** fixed at spawn, and `SquadTactics` is where "spread out and leapfrog"
+lives — one man per flank bounds while the rest suppress, and the leapfrog is emergent from "the man
+farthest from the threat bounds next" rather than any hand-off state. Both are pure and tested in
+`Server.Tests`. Two invariants there have bitten already: `MobBrain.AtCover` must not be treated as
+terminal (an arrived NPC that can never move again is why nothing bounded), and a base of fire must be
+allowed to run a cover query even though it does not want to advance (otherwise it stands in the open,
+never goes set, and nobody in the squad is ever cleared to move). `ai track` draws the NPC debug
+overlay; roles are server-only and deliberately not on the wire.
+
+An actor's hittable volume is the capsule `PlayerMovement.Body` describes, via
+`GunMath.PlayerHitDistance`. It was a single sphere at 0.5 m, which left a standing player's head and
+shoulders unhittable by anyone and made peeking over cover invulnerable. Every entry in
+`GunConfig.AimHeights` must stay inside that capsule — an AI must never aim at a point it can see and
+cannot damage. `docs/networking/Shooting.md` carries the detail.
+
+Navigation search is the exception to main-thread computation: `NavigationSystem` uses a prioritized
+pool capped at eight workers and returns plain paths. Riptide messages, actor mutation, terrain edits,
+and result installation stay on the main thread. Paths carry chunk-corridor revisions rather than
+depending on the map-wide edit generation; reconstruction must tolerate terrain changing during an
+optimistic worker read.
+
+Client display configuration is also a composition-root invariant. Set the 1920x1080 back buffer
+before `game.Run`, leave `Game.AutoLoadDefaultSettings` disabled, and use borderless desktop
+fullscreen on SDL. Calling `ApplyChanges` from the post-device start callback can recreate the
+resize/device-reset loop in `PERFORMANCE.md`.
+
 Design specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`,
 loose notes in `docs/scratchpad/`. `docs/networking/` explains the object replication,
 movement and shooting paths end to end.
@@ -159,8 +203,9 @@ movement and shooting paths end to end.
 `Common/NetworkProtocol.cs` is the tuning surface. Port 7777 for Riptide, 7778 for the terrain
 stream (`ChunkTransport.Port`, derived so there is one number to change); `TickRate` is 30 Hz and
 **everything tick-related must derive from it** or client and server drift;
-`InterpolationDelayTicks` is 3; `MaxRewindTicks` equals `TickRate`, i.e. one second of
-lag-compensation rewind, matching the snapshot buffer's retention.
+`InterpolationDelayTicks` is 3; `MaxRewindTicks` equals `TickRate`, i.e. the one-second accepted
+age window for fire/throw requests and snapshot retention. Projectile collision runs forward and
+does not currently rewind targets.
 
 `SimulatedLatencySeconds` / `SimulatedJitterSeconds` fake inbound lag on the client only —
 set them non-zero to reproduce lag bugs with both ends on this machine.

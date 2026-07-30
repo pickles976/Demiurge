@@ -4,6 +4,20 @@ namespace Demiurge.ServerTests;
 
 public class CombatBehaviorTests
 {
+    [Fact]
+    public void IncomingFireCreatesABoundedDefensiveWindow()
+    {
+        var brain = new MobBrain();
+
+        brain.MarkUnderFire(100);
+
+        Assert.True(brain.IsUnderFire(100));
+        Assert.True(brain.IsUnderFire(
+            100 + MobBrain.IncomingFireResponseTicks - 1));
+        Assert.False(brain.IsUnderFire(
+            100 + MobBrain.IncomingFireResponseTicks));
+    }
+
     [Theory]
     [InlineData(0.10f, 60f, true)]
     [InlineData(0.60f, 60f, false)]

@@ -31,7 +31,9 @@ dotnet build DemiurgeSharp.slnx --no-incremental
 ### Single Player
 
 Single player starts a real authoritative server inside the client process and connects through the
-normal network paths. This is the fastest way to test gameplay and server changes:
+normal network paths. It currently loads the authored `conquest` source map, puts the player on team
+1 with an AK-47, and creates 16 AK/grenade/shovel NPCs per team around the authored team spawns.
+This is the fastest integrated AI, gameplay, and server test:
 
 ```bash
 dotnet run --launch-profile singleplayer
@@ -177,7 +179,10 @@ dedicated-server console.
 
 ```text
 Common/             shared protocol, voxel math, movement, commands, runtime map format
+Common/Navigation/  deterministic traversal, A*, goals, paths, and terrain corridor stamps
+Common/Ai/          testable contact, cover, hearing, and strategic planning logic
 Server/             authoritative simulation, replication, terrain streaming, server console
+Server/Ai/          commander, squads, tactical behaviors, navigation workers and followers
 Client/             Stride composition, networking, simulation mirrors, rendering, input
 Editor.Core/        engine-independent source documents, undo/redo, validation, baking
 Common.Tests/       shared logic and voxel tests
@@ -201,6 +206,10 @@ logic remains headless and testable.
 ## Further Reading
 
 - [CLAUDE.md](CLAUDE.md): architecture invariants and implementation guidance
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): current process, authority, AI, and data-flow boundaries
+- [AI_IMPLEMENTATION.md](AI_IMPLEMENTATION.md): implemented tactical AI and staged design history
+- [docs/NAVIGATION.md](docs/NAVIGATION.md): navigation model, workers, recovery, diagnostics, and tests
+- [PERFORMANCE.md](PERFORMANCE.md): measured fullscreen and AI/navigation performance findings
 - [RECIPES.md](RECIPES.md): checklists for adding replicated gameplay features
 - [EDITOR.md](EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
 - [docs/COMMANDS.md](docs/COMMANDS.md): terminal command reference

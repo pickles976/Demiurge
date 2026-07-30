@@ -22,7 +22,7 @@ namespace Demiurge.GameServer
         private readonly Server server;
 
         private uint _Tick = 0;
-        private ushort nextMobId = 60000;
+        private ushort nextMobId = ActorIds.FirstMob;
 
         private const int MaxQueuedMoves = 3;
 
@@ -210,11 +210,12 @@ namespace Demiurge.GameServer
 
         private ushort AllocateMobId()
         {
-            const ushort firstMobId = 60000;
-            for (int attempts = 0; attempts <= ushort.MaxValue - firstMobId; attempts++)
+            for (int attempts = 0; attempts <= ushort.MaxValue - ActorIds.FirstMob; attempts++)
             {
                 ushort candidate = nextMobId;
-                nextMobId = candidate == ushort.MaxValue ? firstMobId : (ushort)(candidate + 1);
+                nextMobId = candidate == ushort.MaxValue
+                    ? ActorIds.FirstMob
+                    : (ushort)(candidate + 1);
                 if (!players.ContainsKey(candidate)) return candidate;
             }
 
@@ -408,7 +409,7 @@ namespace Demiurge.GameServer
                 player.History.Store(_Tick, player.Position);
             }
 
-            weapons.Tick(dt, players.Values);
+            weapons.Tick(dt, _Tick, players.Values);
             grenades.Tick(dt, _Tick, players.Values);
 
             // Death and respawn
@@ -439,6 +440,7 @@ namespace Demiurge.GameServer
                 status.Health.Current = status.Health.Max;
                 status.Dirty |= NetComponents.Health;
                 items.RefillRespawnLoadout(player);
+                if (player.IsMob) mobs.OnRespawn(player);
                 player.RespawnTick = 0;
             }
 

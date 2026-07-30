@@ -314,6 +314,27 @@ public static class NavSearch
         (-1, 1),
     ];
 
+    /// <summary>
+    /// Whether an air-only result justifies paying for a second, dig-allowed search. Exhausting the
+    /// reachable region without reaching the goal is the test, not distance covered: a bounded prefix
+    /// of a good long route is exactly what the budget is supposed to return and must not escalate,
+    /// while an actor pacing a trench floor it cannot climb out of covers ground while getting
+    /// nowhere and empties its open set doing it.
+    /// </summary>
+    public static bool NeedsDigEscalation(NavPath airOnly)
+        => !airOnly.ReachedGoal
+           && (airOnly.Waypoints.Count == 0 || airOnly.ExhaustedReachable);
+
+    /// <summary>
+    /// How far from an established excavation a dig frontier still counts as the same site, and how
+    /// many seconds of score continuing that site is worth. Without this an NPC took one or two bites
+    /// and wandered off to start a fresh hole elsewhere: every bite changes the terrain, which
+    /// invalidates the path and forces a fresh search whose best frontier is recomputed from scratch,
+    /// so a marginally better cut somewhere else won each time and nothing ever got finished.
+    /// </summary>
+    public const float DigSiteRadius = 3f;
+    public static readonly float DigSiteCommitmentSeconds = 2f * NavCosts.DigOneVoxel;
+
     public static NavPath Find(
         ChunkMap map,
         NavCell start,
@@ -321,7 +342,8 @@ public static class NavSearch
         NavSearchOptions? requestedOptions = null,
         long? blockedCellKey = null,
         Func<bool>? cancellationRequested = null,
-        NavTraversalCache? sharedTraversalCache = null)
+        NavTraversalCache? sharedTraversalCache = null,
+        NavCell? preferredDigSite = null)
     {
         var options = requestedOptions ?? NavSearchOptions.Default;
         if (options.MaximumExpandedNodes <= 0
@@ -350,6 +372,11 @@ public static class NavSearch
         long primaryTicks = BudgetTicks(options.PrimaryBudget);
         long failureTicks = BudgetTicks(options.FailureBudget);
 
+        // Whether the open set emptied on its own. "I explored everywhere I can reach and the goal
+        // is not among it" is a categorically different answer from "I ran out of budget", and only
+        // the first one means ordinary movement can never get there.
+        bool exhaustedReachable = true;
+
         while (open.TryDequeue(out long key))
         {
             var current = nodes[key];
@@ -370,7 +397,10 @@ public static class NavSearch
                 best = current;
 
             if (expanded >= options.MaximumExpandedNodes)
+            {
+                exhaustedReachable = false;
                 break;
+            }
 
             if ((expanded & 63) == 0)
             {
@@ -380,7 +410,10 @@ public static class NavSearch
                 bool usefulPartial =
                     GoalPosition.Distance(start, best.Cell) >= options.MinimumPartialDistance;
                 if (elapsed >= failureTicks || elapsed >= primaryTicks && usefulPartial)
+                {
+                    exhaustedReachable = false;
                     break;
+                }
             }
 
             foreach (var direction in Directions)
@@ -393,24 +426,38 @@ public static class NavSearch
                     options.AllowJump,
                     options.AllowDig,
                     blockedCellKey,
+                    preferredDigSite,
                     traversal,
                     nodes,
                     open,
                     ref bestDig);
         }
 
-        if (best.Cell == start && bestDig is { } dig)
-            return ReconstructDig(map, nodes, dig, expanded, traversal.Hits);
+        // Reaching the goal already returned above, so getting here with digging enabled means walking
+        // cannot finish the route and the best bite is the answer. A dig deliberately does NOT compete
+        // on f: it is a single frontier bite, so it costs seconds while buying at most a metre of
+        // heuristic, and no cost comparison would ever choose one. Whether digging is on the table at
+        // all is decided one layer up by NeedsDigEscalation, which only escalates once an air-only
+        // pass has exhausted every cell ordinary movement can reach. Score still ranks bites against
+        // each other: cheapest to walk to, closest to the goal once cut.
+        if (bestDig is { } dig)
+            return ReconstructDig(map, nodes, dig, expanded, traversal.Hits)
+                with { ExhaustedReachable = exhaustedReachable };
 
         return best.Cell == start
-            ? NavPath.Failed(expanded) with { CacheHits = traversal.Hits }
+            ? NavPath.Failed(expanded) with
+            {
+                CacheHits = traversal.Hits,
+                ExhaustedReachable = exhaustedReachable,
+            }
             : Reconstruct(
                 map,
                 nodes,
                 best,
                 reachedGoal: false,
                 expanded,
-                traversal.Hits);
+                traversal.Hits)
+                with { ExhaustedReachable = exhaustedReachable };
     }
 
     private static void VisitNeighbour(
@@ -422,6 +469,7 @@ public static class NavSearch
         bool allowJump,
         bool allowDig,
         long? blockedCellKey,
+        NavCell? preferredDigSite,
         TraversalCache traversal,
         Dictionary<long, Node> nodes,
         NavHeap open,
@@ -508,6 +556,11 @@ public static class NavSearch
             current.Cell.Z + dz);
         float candidateCost = current.Cost + edgeCost;
         float score = candidateCost + goal.Heuristic(blocked);
+        // Finishing a cut already started beats opening a better-scoring one somewhere else. The
+        // frontier cell itself moves as the cut advances, so commitment is to the SITE, not the cell.
+        if (preferredDigSite is { } site
+            && GoalPosition.Distance(blocked, site) <= DigSiteRadius)
+            score -= DigSiteCommitmentSeconds;
         if (bestDig is null || score < bestDig.Value.Score)
             bestDig = new DigCandidate(current, blocked, target, candidateCost, score);
     }
@@ -567,9 +620,20 @@ public static class NavSearch
         var node = end;
         while (true)
         {
+            // Terrain edits can land while a background search is running. A node that was
+            // standable when expanded may therefore cease to be standable before reconstruction.
+            // Treat that result as stale and let the navigation agent re-request it; calling
+            // NavTraversal.Position here would throw on the worker thread and terminate the game.
+            if (!NavTraversal.Standable(
+                    map,
+                    node.Cell.X,
+                    node.Cell.Y,
+                    node.Cell.Z,
+                    out float surfaceY))
+                return NavPath.Failed(expanded) with { CacheHits = cacheHits };
             reversed.Add(new NavWaypoint(
                 node.Cell,
-                NavTraversal.Position(map, node.Cell),
+                new Vector3(node.Cell.X + 0.5f, surfaceY, node.Cell.Z + 0.5f),
                 node.ActionFromParent));
             if (!node.HasParent) break;
             node = nodes[node.Parent];
@@ -592,6 +656,8 @@ public static class NavSearch
             reachedGoal: false,
             expanded,
             cacheHits);
+        if (prefix.Waypoints.Count == 0)
+            return prefix;
         var waypoints = prefix.Waypoints.ToList();
         waypoints.Add(new NavWaypoint(dig.BlockedCell, dig.Target, NavAction.Dig));
         return new NavPath(waypoints, false, dig.Cost, expanded, cacheHits);
