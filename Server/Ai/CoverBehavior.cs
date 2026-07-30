@@ -44,7 +44,8 @@ internal sealed class CoverBehavior
         ServerPlayer mob,
         IReadOnlyList<AiContact> believedThreats,
         SquadBlackboard squad,
-        out Choice choice)
+        out Choice choice,
+        bool requireAdvance = false)
     {
         choice = default;
         if (believedThreats.Count == 0) return false;
@@ -84,6 +85,10 @@ internal sealed class CoverBehavior
             if (!TryCellAt(x, z, mob.Position.Y, out var cell, out var position)
                 || !visited.Add(cell.Key)
                 || squad.IsClaimedByOther(mob.Id, position))
+                return;
+            if (requireAdvance
+                && HorizontalDistance(position, threats[0].Position)
+                    >= HorizontalDistance(mob.Position, threats[0].Position) - 1.5f)
                 return;
 
             int crouchedExposures = 0;

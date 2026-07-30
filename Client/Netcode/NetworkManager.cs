@@ -41,6 +41,7 @@ namespace Demiurge.GameClient
         public event Action<TerrainEditData>? TerrainEdited;
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
         public event Action<CommandResultData>? CommandResultReceived;
+        public event Action<ActivityFeedData>? ActivityFeedReceived;
 
         private uint nextCommandRequestId;
 
@@ -183,6 +184,10 @@ namespace Demiurge.GameClient
                 case ServerToClientId.CommandResult:
                     var commandResult = e.Message.GetSerializable<CommandResultData>();
                     Dispatch(() => CommandResultReceived?.Invoke(commandResult));
+                    break;
+                case ServerToClientId.ActivityFeed:
+                    var activity = e.Message.GetSerializable<ActivityFeedData>();
+                    Dispatch(() => ActivityFeedReceived?.Invoke(activity));
                     break;
             }
         }

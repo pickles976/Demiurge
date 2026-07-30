@@ -1,8 +1,11 @@
+using System.Numerics;
+
 namespace Demiurge.GameServer;
 
 /// <summary>
 /// Deterministic startup population for focused scenarios. One spawn on the player's team is
-/// reserved for the human; NPCs consume distinct remaining team locations.
+/// reserved for the human. Authored team locations seed a compact golden-angle formation when a
+/// large battle requests more actors than distinct editor markers.
 /// </summary>
 internal sealed record InitialTeamSpawnPlan(
     RuntimePlacement? PlayerSpawn,
@@ -36,15 +39,48 @@ internal sealed record InitialTeamSpawnPlan(
         {
             var available = spawns
                 .Where(spawn => spawn.Team == team && spawn != playerSpawn)
-                .Take(npcsPerTeam)
                 .ToArray();
-            if (available.Length < npcsPerTeam)
+            if (available.Length == 0)
                 throw new InvalidDataException(
                     $"Singleplayer scenario needs {npcsPerTeam} NPC spawn locations for team "
-                    + $"{team}, but only {available.Length} are available after reserving the player");
-            npcSpawns.AddRange(available);
+                    + $"{team}, but none are available after reserving the player");
+
+            var generated = new List<RuntimePlacement>(npcsPerTeam);
+            generated.AddRange(available.Take(npcsPerTeam));
+            if (generated.Count < npcsPerTeam)
+            {
+                Vector3 centre = new(
+                    available.Average(spawn => spawn.Position.X),
+                    available.Average(spawn => spawn.Position.Y),
+                    available.Average(spawn => spawn.Position.Z));
+                int candidate = 1;
+                while (generated.Count < npcsPerTeam)
+                {
+                    float radius = 1.25f * MathF.Sqrt(candidate);
+                    float angle = (candidate + team * 17) * 2.39996323f;
+                    Vector3 position = centre + new Vector3(
+                        MathF.Cos(angle) * radius,
+                        0f,
+                        MathF.Sin(angle) * radius);
+                    candidate++;
+                    if (generated.Any(spawn =>
+                        HorizontalDistanceSquared(spawn.Position, position) < 1f))
+                        continue;
+
+                    var template = available[generated.Count % available.Length];
+                    generated.Add(template with { Position = position });
+                }
+            }
+            npcSpawns.AddRange(generated);
         }
 
         return new InitialTeamSpawnPlan(playerSpawn, npcSpawns);
+    }
+
+    private static float HorizontalDistanceSquared(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return dx * dx + dz * dz;
     }
 }

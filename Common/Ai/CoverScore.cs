@@ -6,6 +6,8 @@ public enum CoverKind : byte
     Concealment,
     FightingPosition,
     CornerFightingPosition,
+    /// <summary>A temporary forward navigation point used to close ineffective rifle range.</summary>
+    Advance,
 }
 
 /// <summary>

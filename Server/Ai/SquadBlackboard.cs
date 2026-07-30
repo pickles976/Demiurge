@@ -60,6 +60,18 @@ internal sealed class SquadBlackboard
         homeCount++;
     }
 
+    public void RemoveMember(ushort actorId, Vector3 home)
+    {
+        claims.Remove(actorId);
+        engagementTokens.Remove(actorId);
+        engagementCooldowns.Remove(actorId);
+        advanceTokens.Remove(actorId);
+        advanceCooldowns.Remove(actorId);
+        if (homeCount <= 0) return;
+        homeSum -= home;
+        homeCount--;
+    }
+
     public void SetObjective(SquadObjective? value)
     {
         if (objective == value) return;

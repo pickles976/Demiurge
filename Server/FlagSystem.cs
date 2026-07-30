@@ -16,10 +16,17 @@ public sealed class FlagSystem
     }
 
     private readonly ObjectReplication objects;
+    private readonly ActivityFeedSystem? activityFeed;
     private readonly List<Flag> flags = [];
     private readonly Dictionary<int, int> nextSpawnByTeam = [];
 
-    public FlagSystem(ObjectReplication objects) => this.objects = objects;
+    public FlagSystem(
+        ObjectReplication objects,
+        ActivityFeedSystem? activityFeed = null)
+    {
+        this.objects = objects;
+        this.activityFeed = activityFeed;
+    }
 
     public ServerObject Spawn(Vector3 position)
     {
@@ -130,6 +137,13 @@ public sealed class FlagSystem
                 flag.Object.Dirty |= NetComponents.Team;
                 flag.LastReplicatedBucket = bucket;
             }
+            if (oldOwner != state.Value)
+            {
+                if (state.Value == FlagConfig.NeutralTeam)
+                    activityFeed?.ReportFlagNeutralized(team, flag.Position);
+                else
+                    activityFeed?.ReportFlagCaptured(state.Value, flag.Position);
+            }
         }
     }
 
@@ -138,6 +152,45 @@ public sealed class FlagSystem
             (int)MathF.Floor(progress * FlagConfig.ProgressReplicationBuckets),
             0,
             FlagConfig.ProgressReplicationBuckets);
+
+    /// <summary>
+    /// Builds one small team-relative strategic snapshot. Called once per team per commander
+    /// second, not per NPC tick, so the straightforward flag × actor scan remains both clearer and
+    /// cheaper than maintaining another mutable occupancy index.
+    /// </summary>
+    internal IReadOnlyList<StrategicFlag> StrategicSnapshot(
+        int team,
+        ICollection<ServerPlayer> players)
+    {
+        float radiusSq = FlagConfig.CaptureRadius * FlagConfig.CaptureRadius;
+        var snapshot = new StrategicFlag[flags.Count];
+        for (int i = 0; i < flags.Count; i++)
+        {
+            var flag = flags[i];
+            int friendlyPresence = 0;
+            int enemyPresence = 0;
+            foreach (var player in players)
+            {
+                if (player.Team <= 0
+                    || player.Status is not { Health.Current: > 0 }
+                    || Vector3.DistanceSquared(player.Position, flag.Position) > radiusSq)
+                    continue;
+                if (player.Team == team) friendlyPresence++;
+                else enemyPresence++;
+            }
+
+            snapshot[i] = new StrategicFlag(
+                flag.Object.NetworkId,
+                flag.Position,
+                flag.Object.Team.Value,
+                flag.Object.Team.CapturingTeam,
+                flag.Object.Team.Progress,
+                friendlyPresence,
+                enemyPresence);
+        }
+
+        return snapshot;
+    }
 
     /// <summary>
     /// Finds the closest flag this team can make useful progress on. Fully secured friendly flags

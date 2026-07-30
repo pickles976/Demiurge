@@ -194,6 +194,28 @@ namespace Demiurge
             root.Children.Add(statusCanvas);
             root.Children.Add(hotbarPanel);
 
+            var activityText = new TextBlock
+            {
+                Text = "",
+                TextColor = new Color(235, 238, 242, 245),
+                Font = font,
+                TextSize = 18,
+                TextAlignment = TextAlignment.Right,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                WrapText = false,
+                Margin = new Thickness(12, 8, 12, 8),
+            };
+            var activityPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 125),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 18, 18, 0),
+                Content = activityText,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(activityPanel);
+
             var respawnText = new TextBlock
             {
                 Text = "KILLCAM",
@@ -236,6 +258,8 @@ namespace Demiurge
                     Thumbnails = thumbnails,
                     RespawnPanel = respawnPanel,
                     RespawnText = respawnText,
+                    ActivityPanel = activityPanel,
+                    ActivityText = activityText,
                 },
             };
 
@@ -444,8 +468,17 @@ namespace Demiurge
                 = new Dictionary<ItemType, SpriteFromTexture>();
             public UIElement RespawnPanel { get; set; } = null!;
             public TextBlock RespawnText { get; set; } = null!;
+            public UIElement ActivityPanel { get; set; } = null!;
+            public TextBlock ActivityText { get; set; } = null!;
 
             private PlayerRegistry _registry = null!;
+            private NetworkManager _network = null!;
+            private readonly Queue<(string Text, long Expires)> _activity = [];
+            private readonly Queue<string> _receivedActivity = [];
+            private readonly object _activityGate = new();
+            private const int MaximumActivityLines = 6;
+            private static readonly long ActivityLifetimeTicks =
+                8L * System.Diagnostics.Stopwatch.Frequency;
 
             private int _lastAmmo = int.MinValue;
             private bool _lastReloading;
@@ -461,7 +494,15 @@ namespace Demiurge
             public override void Start()
             {
                 _registry = Services.GetSafeServiceAs<PlayerRegistry>();
+                _network = Services.GetSafeServiceAs<NetworkManager>();
+                _network.ActivityFeedReceived += OnActivityFeed;
                 Root.Visibility = Visibility.Collapsed;   // until spawn
+            }
+
+            public override void Cancel()
+            {
+                if (_network is not null)
+                    _network.ActivityFeedReceived -= OnActivityFeed;
             }
 
             public override void Update()
@@ -496,6 +537,43 @@ namespace Demiurge
                 }
 
                 RefreshHotbar(local);
+                RefreshActivityFeed();
+            }
+
+            private void OnActivityFeed(ActivityFeedData activity)
+            {
+                if (string.IsNullOrWhiteSpace(activity.Text)) return;
+                lock (_activityGate)
+                    _receivedActivity.Enqueue(activity.Text);
+            }
+
+            private void RefreshActivityFeed()
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                bool changed = false;
+                lock (_activityGate)
+                {
+                    while (_receivedActivity.TryDequeue(out string? text))
+                    {
+                        _activity.Enqueue((text, now + ActivityLifetimeTicks));
+                        changed = true;
+                        while (_activity.Count > MaximumActivityLines)
+                            _activity.Dequeue();
+                    }
+                }
+
+                while (_activity.TryPeek(out var line) && line.Expires <= now)
+                {
+                    _activity.Dequeue();
+                    changed = true;
+                }
+                if (!changed) return;
+
+                ActivityPanel.Visibility =
+                    _activity.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+                ActivityText.Text = string.Join(
+                    Environment.NewLine,
+                    _activity.Select(entry => entry.Text));
             }
 
             private void RefreshRespawn(LocalPlayer local)

@@ -13,7 +13,9 @@ namespace Demiurge;
 
 public sealed class ClientApplication : IDisposable
 {
-    private const string DefaultSingleplayerMap = "npc-test";
+    private const string DefaultSingleplayerMap = "conquest";
+    private const int WindowWidth = 1920;
+    private const int WindowHeight = 1080;
 
     private readonly Game game = new();
     private readonly ClientInputState inputState = new();
@@ -23,9 +25,24 @@ public sealed class ClientApplication : IDisposable
     public void Run(string[] args)
     {
         var initial = ParseInitialSession(args);
+        ConfigureWindow();
+        game.WindowCreated += UseBorderlessFullscreen;
         game.Run(
+            context: GameContextFactory.NewGameContext(
+                AppContextType.DesktopSDL,
+                WindowWidth,
+                WindowHeight),
             start: scene => Start(scene, initial),
             update: (_, time) => coordinator.Update(time));
+    }
+
+    private void UseBorderlessFullscreen(object? sender, EventArgs args)
+    {
+        // Exclusive fullscreen on Stride's SDL backend repeatedly reports a size change on this
+        // Linux setup. The graphics manager responds by resizing the device, which reports another
+        // size change. Desktop fullscreen has the same presentation size without that mode switch.
+        game.Window.FullscreenIsBorderlessWindow = true;
+        game.WindowCreated -= UseBorderlessFullscreen;
     }
 
     public void Dispose()
@@ -38,13 +55,22 @@ public sealed class ClientApplication : IDisposable
     private void Start(Scene scene, SessionRequest initial)
     {
         ConfigureRendering();
-        ConfigureWindow();
+        LogDisplayGeometry();
         AddLighting(scene);
 
         coordinator = new ClientSessionCoordinator(game, inputState);
         terminal = HUD.CreateTerminal(game, inputState, coordinator);
         terminal.Scene = scene;
         coordinator.Start(scene, initial);
+    }
+
+    private void LogDisplayGeometry()
+    {
+        var window = game.Window.ClientBounds;
+        var backBuffer = game.GraphicsDevice.Presenter.BackBuffer;
+        Console.WriteLine(
+            $"[Display]: window {window.Width}x{window.Height}, "
+            + $"back buffer {backBuffer.Width}x{backBuffer.Height}");
     }
 
     private static SessionRequest ParseInitialSession(string[] args)
@@ -62,7 +88,7 @@ public sealed class ClientApplication : IDisposable
             return SessionRequest.SourceHost(
                 DefaultSingleplayerMap,
                 initialPlayerTeam: 1,
-                initialNpcsPerTeam: 4);
+                initialNpcsPerTeam: 16);
         return SessionRequest.Join(NetworkConfig.ServerHost);
     }
 
@@ -82,9 +108,14 @@ public sealed class ClientApplication : IDisposable
 
     private void ConfigureWindow()
     {
-        game.GraphicsDeviceManager.PreferredBackBufferWidth = 1280;
-        game.GraphicsDeviceManager.PreferredBackBufferHeight = 720;
-        game.GraphicsDeviceManager.ApplyChanges();
+        // The toolkit's start callback runs after Stride creates the window and graphics device, so
+        // all initial presentation preferences must be set before Run. This client configures its
+        // compositor and window in code; allowing the generated GameSettings asset to auto-load
+        // would overwrite these values with Stride's 1280x720 defaults during PrepareContext.
+        game.AutoLoadDefaultSettings = false;
+        game.GraphicsDeviceManager.PreferredBackBufferWidth = WindowWidth;
+        game.GraphicsDeviceManager.PreferredBackBufferHeight = WindowHeight;
+        game.GraphicsDeviceManager.IsFullScreen = true;
     }
 
     private static void AddLighting(Scene scene)

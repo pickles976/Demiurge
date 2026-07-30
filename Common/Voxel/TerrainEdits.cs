@@ -392,7 +392,7 @@ namespace Demiurge
             if (mode == EditMode.Subtract && editShape is EditShape.Sphere or EditShape.Organic)
                 CullTinySolidComponents(map, low, high, MaxDisconnectedSolidSamples);
 
-            map.MarkEdited();
+            map.MarkEdited(first, last);
             return (new Vector3(low.X, low.Y, low.Z), new Vector3(high.X, high.Y, high.Z));
         }
 

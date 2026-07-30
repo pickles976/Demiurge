@@ -14,7 +14,7 @@ public static class NavTraversal
     private const float SurfaceEpsilon = 1e-5f;
     private const float ContactTolerance = 0.015f;
     private const float WalkValidationRise =
-        PlayerMovement.GroundSnapDistance * 2f;
+        PlayerMovement.GroundSnapDistance;
     private static readonly int MaximumWalkValidationTicks =
         (int)MathF.Ceiling(
             2f / PlayerMovement.WalkSpeed / NetworkConfig.FixedDt);
@@ -76,6 +76,60 @@ public static class NavTraversal
     }
 
     /// <summary>
+    /// Finds a capsule-valid cell near an authored or procedurally spread point. Runtime formation
+    /// offsets can land on a steep SDF sample even when the nearby spawn area is valid; failing the
+    /// entire path request in that case makes an NPC appear permanently idle.
+    /// </summary>
+    public static bool TryFindNearestStandable(
+        ChunkMap map,
+        Vector3 position,
+        int horizontalRadius,
+        out NavCell cell)
+    {
+        if (horizontalRadius < 0)
+            throw new ArgumentOutOfRangeException(nameof(horizontalRadius));
+
+        int centreX = (int)MathF.Floor(position.X);
+        int centreZ = (int)MathF.Floor(position.Z);
+        int centreY = (int)MathF.Floor(position.Y);
+        for (int radius = 0; radius <= horizontalRadius; radius++)
+            for (int dz = -radius; dz <= radius; dz++)
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                        continue;
+                    int x = centreX + dx;
+                    int z = centreZ + dz;
+                    if (TryFindStandable(
+                            map,
+                            x,
+                            z,
+                            centreY,
+                            below: 6,
+                            above: 6,
+                            out cell,
+                            out _))
+                        return true;
+
+                    if (SurfaceQuery.HighestSurfaceY(map, x, z) is not { } surfaceY
+                        || !TryFindStandable(
+                            map,
+                            x,
+                            z,
+                            (int)MathF.Floor(surfaceY),
+                            below: 2,
+                            above: 2,
+                            out cell,
+                            out _))
+                        continue;
+                    return true;
+                }
+
+        cell = default;
+        return false;
+    }
+
+    /// <summary>
     /// A continuous walk edge between adjacent columns. Midpoint validation rejects narrow gaps and
     /// endpoint slope limits reject ledges steeper than the movement solver can climb.
     /// </summary>
@@ -125,7 +179,7 @@ public static class NavTraversal
 
     /// <summary>
     /// Cheap height gate for the uncommon ascent where endpoint geometry can make a sharp ledge
-    /// look like a legal slope. Call <see cref="CanWalkAscent"/> only when this returns true.
+    /// look like a legal slope. Call <see cref="CanWalkEdge"/> only when this returns true.
     /// </summary>
     public static bool NeedsWalkValidation(
         ChunkMap map,
@@ -141,6 +195,18 @@ public static class NavTraversal
     /// but whose capsule collision prevents walking onto it.
     /// </summary>
     public static bool CanWalkAscent(
+        ChunkMap map,
+        NavCell from,
+        NavCell to)
+        => CanWalkEdge(map, from, to);
+
+    /// <summary>
+    /// Runs a short no-jump traversal with the authoritative movement solver. In addition to sharp
+    /// ascents, this is used to validate diagonal travel along narrow bridges where the two
+    /// cardinal cell centres can be over open air even though the capsule's actual diagonal line is
+    /// fully supported.
+    /// </summary>
+    public static bool CanWalkEdge(
         ChunkMap map,
         NavCell from,
         NavCell to)
@@ -246,6 +312,134 @@ public static class NavTraversal
 
         return false;
     }
+
+    /// <summary>
+    /// Finds the first soil voxel blocking a cardinal move. This deliberately returns a frontier
+    /// action rather than pretending the terrain has already been removed: the server performs one
+    /// real shovel bite, increments the terrain version, and then plans against the resulting field.
+    /// Repeating that loop naturally clears both the lower and upper parts of a capsule-sized
+    /// passage while stone remains an absolute boundary.
+    /// </summary>
+    public static bool TryDig(
+        ChunkMap map,
+        NavCell from,
+        int dx,
+        int dz,
+        out Vector3 target,
+        out float cost)
+    {
+        target = default;
+        cost = NavCosts.Inf;
+        if (Math.Abs(dx) + Math.Abs(dz) != 1
+            || !Standable(map, from.X, from.Y, from.Z, out _))
+            return false;
+
+        Vector3 feet = Position(map, from);
+        Vector3 direction = Vector3.Normalize(new Vector3(dx, 0f, dz));
+
+        // A substantially higher standable surface in the adjacent column means this is the side
+        // of a pit or embankment. Aim upward first so repeated frontier replans cut a rising series
+        // of bites rather than a level tunnel under the surface.
+        if (TryFindHigherSurface(1, out var upper)
+            || TryFindHigherSurface(2, out upper))
+        {
+            Vector3 risingDirection = Vector3.Normalize(
+                new Vector3(dx, 0.75f, dz));
+            Vector3 risingOrigin = PlayerMovement.Body.SampleCenter(feet, 1);
+            if (TryDigTargetAlongRay(
+                    map,
+                    risingOrigin,
+                    risingDirection,
+                    direction,
+                    out target))
+            {
+                cost = NavCosts.DigOneVoxel;
+                return true;
+            }
+        }
+
+        // Probe the capsule axis, low to high. Removing the lowest blocker first avoids carving a
+        // decorative hole above an obstruction the actor still cannot walk through.
+        for (int i = 0; i < CapsuleBody.SampleCount; i++)
+        {
+            Vector3 origin = PlayerMovement.Body.SampleCenter(feet, i);
+            if (!TryDigTargetAlongRay(map, origin, direction, direction, out target))
+                continue;
+            cost = NavCosts.DigOneVoxel;
+            return true;
+        }
+
+        return false;
+
+        bool TryFindHigherSurface(int steps, out SurfaceQuery.SurfaceHit upper)
+        {
+            upper = default;
+            var surface = SurfaceQuery.HighestSurface(
+                map,
+                from.X + dx * steps,
+                from.Z + dz * steps);
+            if (surface is not { } found
+                || found.Y <= feet.Y + MaximumTraverseCellDelta
+                || !IsSoil(found.Material))
+                return false;
+            upper = found;
+            return true;
+        }
+    }
+
+    private static bool TryDigTargetAlongRay(
+        ChunkMap map,
+        Vector3 origin,
+        Vector3 rayDirection,
+        Vector3 inwardDirection,
+        out Vector3 target)
+    {
+        target = default;
+        if (TerrainRaycast.Cast(map, origin, rayDirection, 1.75f) is not { } hit)
+            return false;
+
+        Vector3 voxelTarget = Digging.TargetVoxel(hit.Point, hit.Normal);
+        if (!TryVoxel(map, voxelTarget, out var surfaceVoxel))
+            return false;
+        if (surfaceVoxel.Distance < 0f)
+        {
+            // A solid rock sample is an absolute boundary even if soil happens to sit behind it.
+            // SubtractSoil cannot change it, so accepting the edge would replan forever.
+            if (!IsSoil(surfaceVoxel))
+                return false;
+        }
+        else
+        {
+            // An exact isosurface may round to its zero-density (air-labelled) grid point. Inspect
+            // one point inward before rejecting it, but keep the brush centred on the surface.
+            Vector3 inward = voxelTarget + inwardDirection;
+            if (!IsSolidSoil(map, inward))
+                return false;
+        }
+
+        target = voxelTarget;
+        return true;
+    }
+
+    private static bool IsSolidSoil(ChunkMap map, Vector3 target)
+        => TryVoxel(map, target, out var voxel)
+           && voxel.Distance < 0f
+           && IsSoil(voxel);
+
+    private static bool TryVoxel(ChunkMap map, Vector3 target, out Voxel voxel)
+        => map.TryGetVoxel(
+            (int)MathF.Round(target.X),
+            (int)MathF.Round(target.Y),
+            (int)MathF.Round(target.Z),
+            out voxel);
+
+    private static bool IsSoil(Voxel voxel)
+        => IsSoil(voxel.Material);
+
+    private static bool IsSoil(BlockType material)
+        => material is (
+            BlockType.BlockType_Grass
+            or BlockType.BlockType_Dirt);
 
     private static bool TryStandableAtNear(
         ChunkMap map,

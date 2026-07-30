@@ -13,10 +13,12 @@ public class GrenadeSystemTests
         var friendly = PlayerAt(2, 7f);
         var mob = PlayerAt(60000, 4f, isMob: true);
         var outside = PlayerAt(3, 10f);
+        var killed = new List<ushort>();
 
         GrenadeSystem.ApplyBlastDamage(
             Vector3.Zero,
-            [thrower, friendly, mob, outside]);
+            [thrower, friendly, mob, outside],
+            victim => killed.Add(victim.Id));
 
         Assert.Equal(0, thrower.Status!.Health.Current);
         Assert.Equal(50, friendly.Status!.Health.Current);
@@ -26,6 +28,7 @@ public class GrenadeSystemTests
         Assert.True(friendly.Status.Dirty.HasFlag(NetComponents.Health));
         Assert.True(mob.Status.Dirty.HasFlag(NetComponents.Health));
         Assert.False(outside.Status.Dirty.HasFlag(NetComponents.Health));
+        Assert.Equal([thrower.Id, mob.Id], killed);
     }
 
     [Fact]

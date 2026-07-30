@@ -16,6 +16,7 @@ namespace Demiurge.GameServer
         private readonly GrenadeSystem grenades;
         private readonly FlagSystem flags;
         private readonly TerrainSystem terrainEdits;
+        private readonly ActivityFeedSystem activityFeed;
         private readonly ChunkTcpServer chunks;
 
         private readonly Server server;
@@ -79,11 +80,17 @@ namespace Demiurge.GameServer
 
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
-            weapons = new WeaponSystem(server, objects, terrain);
-            flags = new FlagSystem(objects);
+            activityFeed = new ActivityFeedSystem(server);
+            weapons = new WeaponSystem(server, objects, terrain, activityFeed);
+            flags = new FlagSystem(objects, activityFeed);
             terrainEdits = new TerrainSystem(server, terrain);
-            grenades = new GrenadeSystem(objects, items, terrainEdits, terrain);
-            mobs = new MobSystem(terrain, weapons, flags, grenades);
+            grenades = new GrenadeSystem(
+                objects,
+                items,
+                terrainEdits,
+                terrain,
+                activityFeed);
+            mobs = new MobSystem(terrain, terrainEdits, weapons, flags, grenades);
 
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
@@ -113,7 +120,14 @@ namespace Demiurge.GameServer
         {
             foreach (var spawn in spawns)
             {
-                var mob = SpawnMob(spawn.Position, spawn.Team);
+                Vector3 position = NavTraversal.TryFindNearestStandable(
+                        terrain,
+                        spawn.Position,
+                        horizontalRadius: 8,
+                        out var spawnCell)
+                    ? NavTraversal.Position(terrain, spawnCell)
+                    : spawn.Position;
+                var mob = SpawnMob(position, spawn.Team);
                 mob.Yaw = spawn.Yaw;
             }
         }
@@ -246,22 +260,25 @@ namespace Demiurge.GameServer
 
         public void RemovePlayer(ushort clientId)
         {
-                
-                
             chunks.Forget(clientId);
+            RemoveActor(clientId);
+        }
 
-            if (players.Remove(clientId, out var player))
+        private void RemoveActor(ushort actorId)
+        {
+            if (players.Remove(actorId, out var player))
             {
+                if (player.IsMob)
+                    mobs.RemoveMob(player);
                 items.DespawnFor(player);
                 if (player.Status != null) objects.Despawn(player.Status.NetworkId);
             }
-
 
             Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.PlayerDespawn);
             message.AddSerializable(
                 new PlayerDespawnData
                 {
-                    PlayerId = clientId,
+                    PlayerId = actorId,
                     Tick = _Tick
                 });
             server.SendToAll(message);
@@ -372,6 +389,16 @@ namespace Demiurge.GameServer
                     PlayerMovement.Step(terrain, ref player.Move, player.LastIntent, player.State, dt);
             }
             mobs.RecordTick(mobMovementTicks, mobCount);
+            while (mobs.TryDequeueStuckMob(out ushort stuckMobId))
+            {
+                if (!players.TryGetValue(stuckMobId, out var stuck)
+                    || !stuck.IsMob)
+                    continue;
+                activityFeed.ReportNpcDeleted(
+                    stuckMobId,
+                    "stuck for 60 seconds while navigating");
+                RemoveActor(stuckMobId);
+            }
 
             flags.Tick(dt, players.Values);
 

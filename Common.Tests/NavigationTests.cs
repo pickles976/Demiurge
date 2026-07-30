@@ -147,6 +147,37 @@ public class NavigationTests
     }
 
     [Fact]
+    public void SharpHalfMetreBridgeLipIsAuthoritativelyValidated()
+    {
+        var platformCentre = new Vector3(
+            0.5f,
+            SyntheticTerrain.GroundHeight + 0.25f,
+            0f);
+        var platformExtent = new Vector3(2f, 0.25f, 1.25f);
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(
+                y - SyntheticTerrain.GroundHeight,
+                TerrainEdits.BoxDistance(
+                    new Vector3(x, y, z) - platformCentre,
+                    platformExtent)));
+        var start = CellAt(map, -3, 0);
+        var target = CellAt(map, 1, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch);
+
+        Assert.True(path.ReachedGoal);
+        // The solver may ground-snap this exact lip or jump it depending on contact interpolation;
+        // either result has been simulated with the authoritative capsule before A* accepts it.
+        Assert.True(
+            path.Waypoints.Any(waypoint => waypoint.Cell.X >= 0),
+            "Path never crossed the bridge lip");
+    }
+
+    [Fact]
     public void WalkOnlySearchDoesNotJumpAcrossCover()
     {
         var trenchCentre = new Vector3(
@@ -171,6 +202,125 @@ public class NavigationTests
 
         Assert.False(path.ReachedGoal);
         Assert.DoesNotContain(path.Waypoints, waypoint => waypoint.Action == NavAction.Jump);
+    }
+
+    [Fact]
+    public void BlockedSoilFrontierProducesADigActionOnlyWhenEnabled()
+    {
+        var map = SyntheticTerrain.Wall(0f);
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, -2, 0);
+        var unreachable = new NavCell(2, start.Y, 0);
+
+        var ordinary = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(unreachable),
+            CompleteSearch with { AllowDig = false });
+        var digging = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(unreachable),
+            CompleteSearch with { AllowDig = true });
+
+        Assert.DoesNotContain(ordinary.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+        Assert.Contains(digging.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+        Assert.Equal(NavAction.Dig, digging.Waypoints[^1].Action);
+        Assert.False(digging.ReachedGoal);
+    }
+
+    [Fact]
+    public void StoneFrontierNeverProducesADigAction()
+    {
+        var map = SyntheticTerrain.Wall(0f);
+        RepaintSolid(map, BlockType.BlockType_Stone);
+        var start = CellAt(map, -2, 0);
+        var unreachable = new NavCell(2, start.Y, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(unreachable),
+            CompleteSearch with { AllowDig = true });
+
+        Assert.DoesNotContain(path.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+    }
+
+    [Fact]
+    public void DirtPitFrontierAimsUpwardToCutAnExit()
+    {
+        const float pitBottom = 8.5f;
+        const float rim = 12.5f;
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            y - (x < 0 ? pitBottom : rim));
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, -2, 0, aroundY: (int)pitBottom);
+        Vector3 feet = NavTraversal.Position(map, start);
+
+        Assert.True(NavTraversal.TryDig(
+            map,
+            start,
+            dx: 1,
+            dz: 0,
+            out var target,
+            out _));
+        Assert.True(
+            target.Y > feet.Y + 0.5f,
+            $"Expected a rising exit bite above feet {feet.Y:0.00}, got {target.Y:0.00}");
+    }
+
+    [Fact]
+    public void DeepDirtPitFrontierStillAimsUpwardToCutAnExit()
+    {
+        const float pitBottom = 4.5f;
+        const float rim = 24.5f;
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            y - (x < 0 ? pitBottom : rim));
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, -2, 0, aroundY: (int)pitBottom);
+        Vector3 feet = NavTraversal.Position(map, start);
+
+        Assert.True(NavTraversal.TryDig(
+            map,
+            start,
+            dx: 1,
+            dz: 0,
+            out var target,
+            out _));
+        Assert.True(
+            target.Y > feet.Y + 0.5f,
+            $"Expected a rising exit bite above feet {feet.Y:0.00}, got {target.Y:0.00}");
+    }
+
+    [Fact]
+    public void NarrowDiagonalBridgeUsesAuthoritativeCapsuleValidation()
+    {
+        const float trenchBottom = 2.5f;
+        const float bridgeHeight = 12.5f;
+        const float bridgeHalfWidth = 0.65f;
+        float inverseSqrtTwo = 1f / MathF.Sqrt(2f);
+        var map = SyntheticTerrain.Build((x, y, z) =>
+        {
+            float bridge = MathF.Max(
+                MathF.Abs(x - z) * inverseSqrtTwo - bridgeHalfWidth,
+                y - bridgeHeight);
+            return MathF.Min(y - trenchBottom, bridge);
+        });
+        var start = CellAt(map, -3, -3, aroundY: (int)bridgeHeight);
+        var target = CellAt(map, 3, 3, aroundY: (int)bridgeHeight);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch);
+
+        Assert.True(path.ReachedGoal);
+        Assert.All(
+            path.Waypoints,
+            waypoint => Assert.True(
+                waypoint.Position.Y > bridgeHeight - 1f,
+                $"Path left the bridge at {waypoint.Position}"));
     }
 
     [Fact]
@@ -244,6 +394,177 @@ public class NavigationTests
     }
 
     [Fact]
+    public void TemporarilyBlockedCellRoutesAroundARepeatedStall()
+    {
+        var map = SyntheticTerrain.Flat();
+        var start = CellAt(map, -3, 0);
+        var target = CellAt(map, 3, 0);
+        var blocked = CellAt(map, 0, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch,
+            blockedCellKey: blocked.Key);
+
+        Assert.True(path.ReachedGoal);
+        Assert.DoesNotContain(path.Waypoints, waypoint => waypoint.Cell == blocked);
+    }
+
+    [Fact]
+    public void PathCorridorIgnoresFarTerrainEditsAndRejectsNearbyOnes()
+    {
+        var map = SyntheticTerrain.Build(
+            (x, y, z) => y - SyntheticTerrain.GroundHeight,
+            chunkRadius: 3);
+        var start = CellAt(map, -4, 0);
+        var target = CellAt(map, 4, 0);
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch);
+        Assert.True(NavPathTerrain.TryStamp(
+            map,
+            path,
+            map.EditVersion,
+            out var stamped));
+
+        TerrainEdits.ApplyBox(
+            map,
+            new Vector3(40f, SyntheticTerrain.GroundHeight, 40f),
+            Vector3.One,
+            EditMode.Subtract,
+            BlockType.BlockType_Air);
+        Assert.True(NavPathTerrain.IsValid(map, stamped));
+
+        TerrainEdits.ApplyBox(
+            map,
+            new Vector3(0f, SyntheticTerrain.GroundHeight, 0f),
+            Vector3.One,
+            EditMode.Subtract,
+            BlockType.BlockType_Air);
+        Assert.False(NavPathTerrain.IsValid(map, stamped));
+    }
+
+    [Fact]
+    public void SmoothedLongPathStillTracksChunksBetweenItsEndpoints()
+    {
+        var map = SyntheticTerrain.Build(
+            (x, y, z) => y - SyntheticTerrain.GroundHeight,
+            chunkRadius: 4);
+        var start = CellAt(map, -40, 0);
+        var target = CellAt(map, 40, 0);
+        var sparsePath = new NavPath(
+            [
+                new NavWaypoint(start, NavTraversal.Position(map, start)),
+                new NavWaypoint(target, NavTraversal.Position(map, target)),
+            ],
+            ReachedGoal: true,
+            Cost: 80f,
+            ExpandedNodes: 0);
+        Assert.True(NavPathTerrain.TryStamp(
+            map,
+            sparsePath,
+            map.EditVersion,
+            out var stamped));
+
+        TerrainEdits.ApplyBox(
+            map,
+            new Vector3(0f, SyntheticTerrain.GroundHeight, 0f),
+            Vector3.One,
+            EditMode.Subtract,
+            BlockType.BlockType_Air);
+
+        Assert.False(NavPathTerrain.IsValid(map, stamped));
+    }
+
+    [Fact]
+    public void CollinearSmoothingRetainsPeriodicSquadJoinAnchors()
+    {
+        var waypoints = Enumerable.Range(0, 25)
+            .Select(x => new NavWaypoint(
+                new NavCell(x, 12, 0),
+                new Vector3(x + 0.5f, 12.5f, 0.5f)))
+            .ToArray();
+
+        var smoothed = NavPathSmoothing.RemoveCollinearWalks(
+            new NavPath(waypoints, true, 24f, 0));
+
+        Assert.True(smoothed.Waypoints.Count > 2);
+        for (int i = 1; i < smoothed.Waypoints.Count; i++)
+            Assert.True(
+                Vector3.Distance(
+                    smoothed.Waypoints[i - 1].Position,
+                    smoothed.Waypoints[i].Position)
+                <= NavPathSmoothing.MaximumWalkSegmentLength);
+    }
+
+    [Fact]
+    public void SearchCachesRepeatedTraversalQueries()
+    {
+        var map = SyntheticTerrain.Flat();
+        var start = CellAt(map, -8, -8);
+        var target = CellAt(map, 8, 8);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch);
+
+        Assert.True(path.ReachedGoal);
+        Assert.True(path.CacheHits > 0);
+    }
+
+    [Fact]
+    public void IndependentSearchesReuseTheSharedTraversalCache()
+    {
+        var map = SyntheticTerrain.Flat();
+        var start = CellAt(map, -8, -8);
+        var target = CellAt(map, 8, 8);
+        var cache = new NavTraversalCache();
+
+        _ = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch,
+            sharedTraversalCache: cache);
+        var repeated = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch,
+            sharedTraversalCache: cache);
+
+        Assert.True(repeated.ReachedGoal);
+        Assert.True(repeated.CacheHits > 0);
+    }
+
+    [Fact]
+    public void SearchCanBeCancelledAtItsAmortizedCheckBoundary()
+    {
+        var map = SyntheticTerrain.Build(
+            (x, y, z) => y - SyntheticTerrain.GroundHeight,
+            chunkRadius: 4);
+        var start = CellAt(map, -50, 0);
+        var target = CellAt(map, 50, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch,
+            cancellationRequested: () => true);
+
+        Assert.False(path.ReachedGoal);
+        Assert.Empty(path.Waypoints);
+        Assert.Equal(64, path.ExpandedNodes);
+    }
+
+    [Fact]
     public void GoalNearAndAwayUseBoundedDistance()
     {
         var origin = new NavCell(0, 12, 0);
@@ -285,4 +606,18 @@ public class NavigationTests
             ChunkConstants.ChunkHeight,
             out cell,
             out _);
+
+    private static void RepaintSolid(ChunkMap map, BlockType material)
+    {
+        foreach (var chunk in map.Snapshot())
+            for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
+            {
+                var voxel = chunk[i];
+                if (voxel.Distance < 0f)
+                {
+                    voxel.Material = material;
+                    chunk[i] = voxel;
+                }
+            }
+    }
 }

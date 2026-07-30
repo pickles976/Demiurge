@@ -10,7 +10,7 @@ navigation, perception, engagement, cover, squad coordination, digging, and a co
   coverage. Jump edges are validated by simulating the authoritative capsule and fixed-timestep
   jump solver. Steep upward edges also receive a bounded no-jump movement simulation so sharp SDF
   ledges become jump actions while genuinely walkable slopes remain ordinary traversal. Deliberate
-  fall and dig edges remain later navigation extensions.
+  fall edges remain a later navigation extension.
 - **Step 2 walking integration is implemented:** one replacement-aware navigation worker,
   request-generation and terrain-edit invalidation, waypoint following, one-second stall replans,
   and the existing `PlayerMovement.Step` as the sole movement authority.
@@ -46,6 +46,23 @@ navigation, perception, engagement, cover, squad coordination, digging, and a co
   friendly-unsafe throws, and reserve the throw on its squad board so grenades arrive singly rather
   than as an eight-NPC volley. Mortar and heavy-machine-gun items remain prerequisites for the
   crew-served portions of Step 8.
+- **The first playable Step 9 digging slice is implemented:** normal objective navigation always
+  runs first. When it reaches a completely blocked frontier, a dirt/grass-only dig edge can equip
+  the NPC shovel and issue the same two-bite, server-authoritative sphere edit as a player. Every
+  accepted bite invalidates the path and replans against the actual new terrain. Stone, combat
+  movement, cover paths, and aimless roaming never authorize excavation. Multi-voxel virtual
+  planning and commander-designated trench construction remain later Step 9/10 work.
+- **Step 10 strategic flag allocation is implemented:** a one-hertz commander for each team ranks
+  threatened friendly flags, contested/active captures, untouched neutral points, enemy points,
+  and quiet rear security. Equal-priority assignments minimize squad travel with a stability bias;
+  urgent flags create a second reinforcement slot before low-priority objectives are covered.
+  One-member/incomplete squads remain valid units. The singleplayer battle now uses `conquest`
+  with four squads (16 NPCs) per team, spread around the authored team spawn clusters.
+- **Reactive search and movement are implemented:** accepted enemy gunshots within 60 m create
+  bounded investigation goals, idle defenders rotate a regular visual scan, repeatedly stalled
+  terrain waypoints are temporarily excluded from replanning, ineffective long-range rifle fire
+  advances through closer cover or bounded forward waypoints, and dirt pit walls generate rising
+  shovel targets. Stone remains non-diggable.
 
 **Architecture:** AI produces *intent* and nothing else. The same `Vector3` direction and
 `PlayerStateFlags` a client input packet carries goes into `PlayerMovement.Step`, and the same
@@ -683,10 +700,15 @@ connectivity maintenance under collapse.
 
 **Files:** create `Server/Ai/CommanderAi.cs`; modify map format for team spawns and flag zones.
 
-The commander sets theater objectives and the squad tier decides how. Trench designation lives
-here: individual agents digging cover converge on disconnected foxholes, because **connectivity is
-the one property that does not emerge from local decisions**. A commander stamping a template
-oriented against the threat axis is the simplest thing that supplies it.
+The implemented commander sets theater objectives and the squad tier decides how. It evaluates
+flag ownership, partial capture state, friendly/enemy presence, travel, and assignment stability
+once per second. Primary slots distribute squads across useful objectives; emergency reinforcement
+slots can pull a second squad to a threatened friendly flag or active capture.
+
+Trench designation remains later work: individual agents digging cover converge on disconnected
+foxholes, because **connectivity is the one property that does not emerge from local decisions**.
+A commander stamping a template oriented against the threat axis is the simplest thing that
+supplies it.
 
 Worth testing the cheap alternative first: dug space is free to traverse afterwards, so a squad
 repeatedly pathing the same axis with digging allowed and exposure priced into the cost may extend
@@ -794,6 +816,94 @@ version moved need the full solver. Safe because mobs are replicated positions, 
 - Flat A\* over a 1 km map is ~10⁶ surface nodes. Time-budgeted segmentation (step 1) is the first
   answer and is the same code a hierarchy would sit on top of. **Do not build portals or hierarchy
   until measurement says the budget is the problem.**
+
+### Navigation cleanup and scale roadmap
+
+Playtesting with two teams of sixteen exposed a stop/start failure that cannot be solved by merely
+raising the partial-path distance. The current implementation performs one flat A* per NPC on one
+worker, returns bounded prefixes, and invalidates every path whenever *any* terrain edit increments
+the map-wide `EditVersion`. Once NPC digging and grenade deformation are active, a shovel bite at
+one flag can therefore stop and replan actors at every other flag.
+
+Implement the following in order. Each layer is independently measurable and remains useful if a
+later layer is deferred:
+
+1. **Spatial terrain revisions and path corridors.**
+   - Keep the existing global version as a cheap diagnostic generation.
+   - Also increment a revision for every terrain chunk touched by an edit.
+   - A completed path records the chunks crossed by its waypoints plus a one-chunk safety apron.
+   - Following and in-flight validation reject a path only when a recorded chunk revision changes.
+   - Terrain edits outside the route no longer interrupt movement.
+
+2. **One navigation lifecycle owner per NPC.**
+   - Move destination, pending request generation, partial-path prefetch, blocked-cell avoidance,
+     path following, and stuck detection behind a `NavigationAgent`.
+   - `MobSystem` chooses a destination and consumes a movement/action result; it must not duplicate
+     request bookkeeping.
+   - Superseding a request changes the agent generation so stale results cannot be installed.
+
+3. **Interruptible, prioritized worker scheduling.**
+   - Requests with no usable path outrank speculative prefetches; cover paths outrank idle roaming.
+   - A search checks cancellation at the same amortized 64-expansion boundary as its time budget.
+   - Record queue latency, search latency, expansions, returned path metres, partial/complete
+     counts, spatial invalidations, stale/cancelled work, and cache hits.
+   - Prefer a stable expansion slice over using wall-clock time as the only bound.
+
+4. **Share the long route, not the final formation placement.**
+   - A squad owns one strategic corridor from its current centre toward its assigned flag.
+   - Members locally connect to that corridor and locally leave it for their formation offsets.
+   - Jump, fall, digging, cover, and blocked-cell recovery remain per-NPC actions.
+   - With four-person squads, the conquest scenario reduces thirty-two long objective searches to
+     at most eight shared trunks.
+
+5. **Many-to-one objective fields and hierarchy.**
+   - If measurements still show long-route pressure, cache reverse integration fields per active
+     flag and terrain-region revision so multiple squads reuse the same work.
+   - Above that, introduce an 8–16 m coarse chunk/portal graph. Coarse A* supplies a full-map
+     corridor; detailed voxel A* only solves the next 15–30 m execution window.
+   - Do not make detailed jump/dig edges part of the coarse graph.
+
+6. **Cache the expensive traversal contract.**
+   - Within one spatial terrain revision, cache standable cells, surface heights, walk edges, and
+     authoritative jump probes.
+   - Reuse search dictionaries/heaps or move node state to pooled value storage after profiling.
+   - Add a second path worker only after spatial invalidation and shared routes prevent both workers
+     from duplicating immediately-stale work.
+
+7. **Path presentation.**
+   - String-pull consecutive walk nodes against the authoritative capsule to remove unnecessary
+     one-metre steering changes.
+   - Never smooth across jump, fall, or dig actions.
+   - Smoothing improves motion readability; it is not a substitute for fixing queue starvation or
+     invalidation churn.
+
+Acceptance for the conquest scenario:
+
+- unrelated terrain edits do not clear an NPC's route;
+- no stationary wait occurs between healthy partial segments under the normal worker queue;
+- `ai stats` reports queue/search percentiles, average returned metres, invalidation and cache data;
+- shared strategic searches scale with squads/objectives rather than actor count;
+- a deliberately non-progressing navigating NPC is deleted after sixty seconds with an activity
+  feed reason, while combatants and flag defenders are never classified as stuck.
+
+Implementation status (2026-07-29):
+
+- Implemented: chunk-scoped edit revisions and stamped path corridors; per-NPC
+  `NavigationAgent`; priority scheduling; active/stale request cancellation at 64 expansions;
+  traversal caching across searches; an adaptive bounded worker pool (up to eight workers);
+  immediately reusable and progressively extended squad objective trunks with parallel per-member
+  connectors; validated spawn/destination snapping; distance-based partial-path prefetch;
+  conservative collinear walk smoothing; queue/search p50 and p95 plus the other counters above in
+  `ai stats`; and the sixty-second stuck deletion watchdog.
+- Measurement-gated: reverse objective flow fields, the coarse portal hierarchy, pooled search
+  storage, and capsule-checked string pulling beyond collinear runs. Build these only if conquest
+  telemetry still shows long-route queue pressure after shared trunks and spatial invalidation are
+  active.
+
+The saved 32-NPC `conquest` benchmark is the scale gate. On the 16-core development host, the first
+optimization pass reduced initial long-route queue p95 from 639 ms to approximately 232 ms, with all
+32 actors receiving useful paths in approximately 447 ms total. The benchmark remains tagged
+`Category=Benchmark` so ordinary unit runs stay deterministic.
 
 ### Line of sight
 

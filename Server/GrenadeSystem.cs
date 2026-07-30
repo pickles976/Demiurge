@@ -16,6 +16,7 @@ public sealed class GrenadeSystem
         public required Vector3 Velocity { get; set; }
         public required uint SpawnTick { get; init; }
         public required uint DetonateTick { get; init; }
+        public required ServerPlayer Owner { get; init; }
         public bool Resting { get; set; }
     }
 
@@ -23,18 +24,21 @@ public sealed class GrenadeSystem
     private readonly ItemSystem items;
     private readonly TerrainSystem terrainEdits;
     private readonly ChunkMap terrain;
+    private readonly ActivityFeedSystem? activityFeed;
     private readonly List<ActiveGrenade> active = [];
 
     public GrenadeSystem(
         ObjectReplication objects,
         ItemSystem items,
         TerrainSystem terrainEdits,
-        ChunkMap terrain)
+        ChunkMap terrain,
+        ActivityFeedSystem? activityFeed = null)
     {
         this.objects = objects;
         this.items = items;
         this.terrainEdits = terrainEdits;
         this.terrain = terrain;
+        this.activityFeed = activityFeed;
     }
 
     public bool IsGrenadeEquipped(ServerPlayer player)
@@ -110,6 +114,7 @@ public sealed class GrenadeSystem
             Velocity = direction * GrenadeConfig.ThrowSpeed,
             SpawnTick = tick,
             DetonateTick = tick + GrenadeConfig.FuseTicks,
+            Owner = player,
         });
         return true;
     }
@@ -221,7 +226,10 @@ public sealed class GrenadeSystem
 
     private void Detonate(ActiveGrenade grenade, IEnumerable<ServerPlayer> players)
     {
-        ApplyBlastDamage(grenade.Position, players);
+        ApplyBlastDamage(
+            grenade.Position,
+            players,
+            victim => activityFeed?.ReportKill(grenade.Owner, victim));
 
         // Keep the readable 2x2 footprint, but apply each bite at half strength so the total
         // deformation is half of the original four-click crater.
@@ -261,12 +269,14 @@ public sealed class GrenadeSystem
     /// </summary>
     internal static void ApplyBlastDamage(
         Vector3 origin,
-        IEnumerable<ServerPlayer> players)
+        IEnumerable<ServerPlayer> players,
+        Action<ServerPlayer>? killed = null)
     {
         foreach (var player in players)
         {
             if (player.Status is not { } status || status.Health.Current == 0) continue;
 
+            bool wasAlive = status.Health.Current > 0;
             float distance = Vector3.Distance(origin, player.Position);
             float fraction = GrenadeConfig.DamageFraction(distance);
             if (fraction <= 0f) continue;
@@ -287,6 +297,8 @@ public sealed class GrenadeSystem
                     : (ushort)0;
             }
             status.Dirty |= NetComponents.Health;
+            if (wasAlive && status.Health.Current == 0)
+                killed?.Invoke(player);
         }
     }
 

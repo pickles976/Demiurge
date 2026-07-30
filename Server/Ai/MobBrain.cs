@@ -8,7 +8,7 @@ internal sealed class MobBrain
     public int Team { get; init; }
     public int SquadIndex { get; init; }
     public uint ObjectiveRevision { get; set; }
-    public PathFollower Path { get; } = new();
+    public NavigationAgent Navigation { get; } = new();
     public ContactMemory Contacts { get; } = new();
     public int PerceptionCursor { get; set; }
     public ushort CombatTargetId { get; set; }
@@ -17,6 +17,7 @@ internal sealed class MobBrain
     public uint ShotSequence { get; set; }
     public int BurstShotsRemaining { get; set; }
     public uint NextBurstTick { get; set; }
+    public uint NextPrecisionShotTick { get; set; }
     public uint NextGrenadeDecisionTick { get; set; }
     public bool HasCoverDestination { get; set; }
     public bool AtCover { get; set; }
@@ -28,12 +29,20 @@ internal sealed class MobBrain
     public long CoverTerrainVersion { get; set; }
     public uint NextCoverQueryTick { get; set; }
     public uint CoverArrivedTick { get; set; }
+    public ushort HeardActorId { get; set; }
+    public Vector3 HeardPosition { get; set; }
+    public uint HeardTick { get; set; }
+    public uint HeardRevision { get; set; }
+    public uint AppliedHeardRevision { get; set; }
+    public bool ShouldCloseDistance { get; set; }
 
     public void ClearCombatTarget()
     {
         CombatTargetId = 0;
         TargetAcquiredTick = 0;
         BurstShotsRemaining = 0;
+        NextPrecisionShotTick = 0;
+        ShouldCloseDistance = false;
     }
 
     public void ClearCover()
@@ -47,6 +56,20 @@ internal sealed class MobBrain
         CoverThreatPosition = default;
         CoverTerrainVersion = 0;
         CoverArrivedTick = 0;
-        Path.Clear();
+        Navigation.Path.Clear();
+    }
+
+    public bool HasRecentGunshot(uint tick)
+        => HeardActorId != 0
+           && tick >= HeardTick
+           && tick - HeardTick < GunshotHearing.InvestigationTicks;
+
+    public void ClearGunshot()
+    {
+        HeardActorId = 0;
+        HeardPosition = default;
+        HeardTick = 0;
+        HeardRevision = 0;
+        AppliedHeardRevision = 0;
     }
 }

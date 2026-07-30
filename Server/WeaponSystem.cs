@@ -9,6 +9,12 @@ namespace Demiurge.GameServer
     /// GameWorld resolves clientId -> ServerPlayer and delegates.</summary>
     public class WeaponSystem
     {
+        internal readonly record struct AcceptedGunshot(
+            ushort ShooterId,
+            int ShooterTeam,
+            Vector3 Position,
+            uint Tick);
+
         private sealed class Projectile
         {
             public required ServerPlayer Shooter { get; init; }
@@ -21,13 +27,20 @@ namespace Demiurge.GameServer
         private readonly Server server;
         private readonly ObjectReplication objects;
         private readonly ChunkMap terrain;
+        private readonly ActivityFeedSystem? activityFeed;
         private readonly List<Projectile> projectiles = new();
+        private readonly Queue<AcceptedGunshot> gunshots = new();
 
-        public WeaponSystem(Server server, ObjectReplication objects, ChunkMap terrain)
+        public WeaponSystem(
+            Server server,
+            ObjectReplication objects,
+            ChunkMap terrain,
+            ActivityFeedSystem? activityFeed = null)
         {
             this.server = server;
             this.objects = objects;
             this.terrain = terrain;
+            this.activityFeed = activityFeed;
         }
 
         public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick)
@@ -89,6 +102,11 @@ namespace Demiurge.GameServer
                 Spread.ShotSeed(player.Id, sequence));
 
             player.Spread.AddRecoil(ballistics);
+            gunshots.Enqueue(new AcceptedGunshot(
+                player.Id,
+                player.Team,
+                origin,
+                tick));
             projectiles.Add(new Projectile
             {
                 Shooter = player,
@@ -113,6 +131,9 @@ namespace Demiurge.GameServer
             return true;
         }
 
+        internal bool TryDequeueGunshot(out AcceptedGunshot gunshot)
+            => gunshots.TryDequeue(out gunshot);
+
         /// <summary>
         /// Advances shooter dispersion and every live projectile once. Collision is swept over
         /// the whole tick segment, so a fast rifle bullet cannot tunnel through a target between
@@ -120,7 +141,8 @@ namespace Demiurge.GameServer
         /// </summary>
         public void Tick(float dt, IEnumerable<ServerPlayer> players)
         {
-            foreach (var player in players)
+            var actors = players as ICollection<ServerPlayer> ?? players.ToArray();
+            foreach (var player in actors)
             {
                 if (!TryGetActiveWeapon(player, out var weapon))
                     continue;
@@ -140,10 +162,14 @@ namespace Demiurge.GameServer
                     dt,
                     projectile.RemainingDistance);
 
-                if (TryHit(step.Start, step.End, projectile.Shooter, players, out var hit))
+                if (TryHit(step.Start, step.End, projectile.Shooter, actors, out var hit))
                 {
                     if (hit is { } target && target.Has.HasFlag(NetComponents.Health))
-                        ApplyDamage(projectile.Shooter, target, projectile.Damage);
+                        ApplyDamage(
+                            projectile.Shooter,
+                            target,
+                            actors.FirstOrDefault(actor => actor.Status == target),
+                            projectile.Damage);
                     projectiles.RemoveAt(i);
                     continue;
                 }
@@ -218,8 +244,13 @@ namespace Demiurge.GameServer
             return nearestT < float.MaxValue;
         }
 
-        private void ApplyDamage(ServerPlayer shooter, ServerObject hit, ushort damage)
+        private void ApplyDamage(
+            ServerPlayer shooter,
+            ServerObject hit,
+            ServerPlayer? victim,
+            ushort damage)
         {
+            bool wasAlive = hit.Health.Current > 0;
             hit.Health.Current = hit.Health.Current > damage
                 ? (ushort)(hit.Health.Current - damage)
                 : (ushort)0;
@@ -233,6 +264,8 @@ namespace Demiurge.GameServer
             });
             if (!shooter.IsMob)
                 server.Send(confirm, shooter.Id);
+            if (wasAlive && hit.Health.Current == 0 && victim is not null)
+                activityFeed?.ReportKill(shooter, victim);
         }
 
         private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);

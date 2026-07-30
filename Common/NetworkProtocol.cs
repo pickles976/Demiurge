@@ -56,7 +56,8 @@ namespace Demiurge
         ChunkSlabs,
         // Appended, never inserted — these values ARE the protocol.
         TerrainEdit,
-        CommandResult
+        CommandResult,
+        ActivityFeed
     }
 
     public enum ClientToServerId : ushort

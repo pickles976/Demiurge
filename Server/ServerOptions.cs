@@ -23,7 +23,8 @@ public sealed record ServerOptions
 
     /// <summary>
     /// Optional scenario population built from the map's team player-spawn locations. Zero leaves
-    /// authored mob placements entirely in control. The singleplayer NPC demo requests four.
+    /// authored mob placements entirely in control. Large scenarios spread additional NPCs around
+    /// the authored team locations when the requested count exceeds the number of markers.
     /// </summary>
     public int InitialNpcsPerTeam { get; init; }
 }

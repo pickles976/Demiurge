@@ -13,12 +13,18 @@ internal sealed class CombatBehavior
     // unsettled combat shooter rather than bench accuracy: about 22% centre-mass chance at 40 m
     // before recoil, while close-range fire remains dangerous.
     private const float AiAimMoa = 360f;
+    private const float LongRangeAimMoa = 90f;
+    private const float LongRangeStart = 30f;
+    private const float LongRangeFullAccuracy = 70f;
     private const float AimToleranceDegrees = 7f;
+    private const float LongRangeAimToleranceDegrees = 2.5f;
     private const float AimTurnDegreesPerSecond = 180f;
     private const int SuppressionBurstShots = 3;
     private const int ReactionTicks = (55 * NetworkConfig.TickRate + 99) / 100;
     private const int LostContactHoldTicks = 3 * NetworkConfig.TickRate / 2;
     private const int BurstPauseTicks = 3 * NetworkConfig.TickRate / 4;
+    private const int PrecisionShotIntervalTicks = 6 * NetworkConfig.TickRate / 5;
+    internal const float PreferredEngagementRange = 25f;
     private static readonly float AimToleranceCos =
         MathF.Cos(AimToleranceDegrees * MathF.PI / 180f);
 
@@ -101,7 +107,11 @@ internal sealed class CombatBehavior
 
         bool visibleNow = contact.LastSeenTick == tick;
         bool reacted = tick - brain.TargetAcquiredTick >= ReactionTicks;
-        bool aimSettled = Vector3.Dot(brain.AimDirection, desired) >= AimToleranceCos;
+        bool precisionShot = range >= LongRangeStart;
+        float aimToleranceCos = precisionShot
+            ? MathF.Cos(LongRangeAimToleranceDegrees * MathF.PI / 180f)
+            : AimToleranceCos;
+        bool aimSettled = Vector3.Dot(brain.AimDirection, desired) >= aimToleranceCos;
         if (!visibleNow || !reacted || !aimSettled)
             return true;
         if (!mayFire)
@@ -110,16 +120,25 @@ internal sealed class CombatBehavior
             return true;
         }
 
+        float aiAimMoa = AimMoaForRange(range);
         float moa = Spread.Combine(
             mob.Spread.TotalMoa(mob.State, ballistics),
-            AiAimMoa);
+            aiAimMoa);
         float probability = HitEstimate.Probability(
             Spread.SigmaRadians(moa),
             range,
             GunConfig.HitRadius);
+        brain.ShouldCloseDistance = ShouldAdvance(probability, range);
 
         bool requestShot;
-        if (probability >= AimedFireThreshold)
+        if (precisionShot)
+        {
+            brain.BurstShotsRemaining = 0;
+            if (tick < brain.NextPrecisionShotTick)
+                return true;
+            requestShot = true;
+        }
+        else if (probability >= AimedFireThreshold)
         {
             brain.BurstShotsRemaining = 0;
             requestShot = true;
@@ -150,14 +169,32 @@ internal sealed class CombatBehavior
                 brain.AimDirection,
                 tick,
                 ++brain.ShotSequence,
-                AiAimMoa))
+                aiAimMoa))
         {
             mob.State |= PlayerStateFlags.Shooting;
-            if (brain.BurstShotsRemaining > 0
+            if (precisionShot)
+                brain.NextPrecisionShotTick = tick + PrecisionShotIntervalTicks;
+            else if (brain.BurstShotsRemaining > 0
                 && --brain.BurstShotsRemaining == 0)
                 brain.NextBurstTick = tick + BurstPauseTicks;
         }
         return true;
+    }
+
+    internal static bool ShouldAdvance(float hitProbability, float range)
+        => float.IsFinite(hitProbability)
+           && float.IsFinite(range)
+           && hitProbability < AimedFireThreshold
+           && range > PreferredEngagementRange;
+
+    internal static float AimMoaForRange(float range)
+    {
+        float amount = Math.Clamp(
+            (range - LongRangeStart)
+            / (LongRangeFullAccuracy - LongRangeStart),
+            0f,
+            1f);
+        return float.Lerp(AiAimMoa, LongRangeAimMoa, amount);
     }
 
     private static Vector3 Facing(float yaw)

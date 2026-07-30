@@ -95,12 +95,22 @@ namespace Demiurge
     public class ChunkMap
     {
         private long editVersion;
+        private readonly ConcurrentDictionary<ChunkIndex, long> chunkEditVersions = new();
 
         /// <summary>
         /// Monotonically increasing generation for gameplay terrain edits. Background consumers
         /// may read the mutable voxel field optimistically, then reject their result if this changed.
         /// </summary>
         public long EditVersion => Interlocked.Read(ref editVersion);
+
+        /// <summary>
+        /// Last global edit generation that touched this terrain chunk. Zero means the chunk has
+        /// not received a runtime edit. Assigning the shared global generation lets a background
+        /// query started at generation N cheaply ask whether any chunk in its eventual corridor
+        /// changed after it began, without copying the whole revision table.
+        /// </summary>
+        public long ChunkEditVersion(ChunkIndex index)
+            => chunkEditVersions.GetValueOrDefault(index);
 
         /// <summary>
         /// Concurrent because MESHING READS THIS FROM WORKER THREADS while the main thread inserts
@@ -121,10 +131,19 @@ namespace Demiurge
         public void Reset()
         {
             this.chunks.Clear();
+            chunkEditVersions.Clear();
             MarkEdited();
         }
 
         internal void MarkEdited() => Interlocked.Increment(ref editVersion);
+
+        internal void MarkEdited(ChunkIndex first, ChunkIndex last)
+        {
+            long version = Interlocked.Increment(ref editVersion);
+            for (int z = first.z; z <= last.z; z++)
+                for (int x = first.x; x <= last.x; x++)
+                    chunkEditVersions[new ChunkIndex { x = x, z = z }] = version;
+        }
 
         public bool Has(ChunkIndex index)
         {
