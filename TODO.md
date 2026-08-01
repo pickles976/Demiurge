@@ -4,33 +4,23 @@ use 16x16 textures for the ground
 For weapons, need to model sights and add anchors for camera to figure out where to position weapon for ADS
 
 # PVP Mechanics
-- [ ] brick wall texture and block type
-
-- [ ] animation clean-up
-    - [ ] keep gun pointed forward when not sprinting, don't wobble
-        - [ ] shoot without aiming
-        - [ ] aim down sights
-    - [ ] fix body armor positioning
 
 - [ ] PVP
-    - [ ] shovel
-      - [ ] add helmet
-    - [ ] add mosin-nagant
-    - [ ] add SKS
     - [ ] add ppsh
-    - [ ] flag 3D model
+    - [ ] add mosin-nagant
     - [ ] add black cats
 
-    - [ ] grenade pickup
-        - [ ] throwing arc
-        - [ ] server-side splash damage 
-        - [ ] deform the terrain
-        - [ ] camera shake
-        - [ ] particles
+    - [ ] flag 3D model
     - [ ] crate
     - [ ] mortar
     - [ ] heavy MG
       - [ ] takes time to assemble and disassemble, player has to lug crate around and is vulnerable
+    - [ ] add helmet
+
+- [ ] brick wall texture and block type
+- [ ] pain sound
+- [ ] bullet crack sound
+- [ ] camera shake
 
 - [ ] add trees
 - [ ] tree destruction

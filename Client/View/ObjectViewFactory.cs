@@ -16,6 +16,7 @@ public class ObjectViewFactory : IDisposable
     private readonly LocalWeaponView weaponView;
     private readonly TreeViewFactory.Manager treeViews;
     private readonly ObjectRegistry registry;
+    private readonly ModelLocators modelLocators;
 
     // Scenery only. Items never appear here: their model comes from
     // ItemCosmetics and their behavior from the component mask.
@@ -32,6 +33,7 @@ public class ObjectViewFactory : IDisposable
         this.players = players;
         this.cameraEntity = cameraEntity;
         this.weaponView = weaponView;
+        this.modelLocators = modelLocators;
         treeViews = new TreeViewFactory.Manager(game, scene, players, modelLocators);
         builders = new()
         {
@@ -39,7 +41,7 @@ public class ObjectViewFactory : IDisposable
                                           new() { IncludeCollider = false }),
             [ObjectType.TrainingDummy] = _ => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
-            [ObjectType.Grenade] = _ => CreateGrenadeSphere(),
+            [ObjectType.Grenade] = _ => CreateThrownGrenade(),
             [ObjectType.Flag] = obj => new Entity
             {
                 new FlagViewScript { Object = obj },
@@ -68,9 +70,7 @@ public class ObjectViewFactory : IDisposable
 
         Entity entity;
         if (isItem)
-            entity = ItemCosmetics.UsesSpherePrimitive(obj.Item.Type)
-                ? CreateGrenadeSphere()
-                : new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(obj.Item.Type))) };
+            entity = new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(obj.Item.Type))) };
         else if (builders.TryGetValue(obj.Type, out var build))
             entity = build(obj);
         else return;   // no visual (PlayerStatus, unknown types): skip, don't crash
@@ -83,23 +83,29 @@ public class ObjectViewFactory : IDisposable
         // the attach presenter owns it instead.
         if (isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new PickupBobScript { Object = obj });
         if (isItem && obj.Has.HasFlag(NetComponents.Owner))
-            entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Priority = 25 });
+            entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Locators = modelLocators, Priority = 25 });
         if (!isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
+
+        // A pickup on the ground and a worn item share one size; the first-person view model is the
+        // only thing that draws an item at a different scale, and ItemAttachScript owns that.
+        if (isItem)
+            entity.Transform.Scale = new Stride.Core.Mathematics.Vector3(
+                ItemCosmetics.WorldScale(obj.Item.Type));
 
         entity.Transform.Position = obj.Transform.Position.ToStride();
         entity.Scene = scene;
     }
 
-    private Entity CreateGrenadeSphere()
-        => Stride.CommunityToolkit.Games.GameExtensions.Create3DPrimitive(
-            game,
-            PrimitiveModelType.Sphere,
-            new Primitive3DEntityOptions
-            {
-                // Primitive3DEntityOptions interprets sphere Size as a radius.
-                Size = new System.Numerics.Vector3(GrenadeConfig.Radius),
-            });
+    /// <summary>A grenade in flight. The model is a stick grenade about 0.32 m long; the 0.075 m
+    /// GrenadeConfig.Radius stays what it always was — a server-side collision number, not a
+    /// description of the art. The tumble runs after NetTransformScript and replaces its yaw.</summary>
+    private Entity CreateThrownGrenade()
+        => new()
+        {
+            new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(ItemType.Grenade))),
+            new ThrownGrenadeSpinScript { Priority = 10 },
+        };
 
     private void DestroyView(NetObject obj)
     {

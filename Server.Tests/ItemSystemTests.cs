@@ -55,7 +55,7 @@ public class ItemSystemTests
     }
 
     [Fact]
-    public void InfantryLoadoutStartsWithAkFourGrenadesAndPlaceholderShovel()
+    public void InfantryLoadoutStartsWithDefaultRifleShovelAndFourGrenades()
     {
         var objects = new ObjectReplication(new Server());
         var items = new ItemSystem(objects);
@@ -65,17 +65,22 @@ public class ItemSystemTests
 
         Assert.Equal(HotbarSlot.Primary, npc.Hotbar);
         Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarPrimary], out var primary));
-        Assert.Equal(ItemType.Ak47, primary.Item.Type);
+        Assert.Equal(ItemConfig.DefaultPrimaryWeapon, primary.Item.Type);
         Assert.Equal(
-            WeaponConfig.Require(ItemType.Ak47).MagazineCapacity,
+            WeaponConfig.Require(ItemConfig.DefaultPrimaryWeapon).MagazineCapacity,
             primary.Weapon.CurrentAmmo);
 
         Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarGrenade], out var grenades));
         Assert.Equal(ItemType.Grenade, grenades.Item.Type);
         Assert.Equal(4, grenades.Weapon.CurrentAmmo);
 
-        // The shovel is intentionally an empty hotbar slot, available by selection rather than
-        // represented by a replicated item object.
+        // The shovel is a real item object now — it is what the hip and the hand render — but it
+        // is a tool, not a gun: no WeaponConfig row means no WeaponState bit, so fire and reload
+        // skip it while selecting its slot still authorizes digging.
+        Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarShovel], out var shovel));
+        Assert.Equal(ItemType.Shovel, shovel.Item.Type);
+        Assert.False(shovel.Has.HasFlag(NetComponents.Weapon));
+
         Assert.False(npc.Equipped.ContainsKey(EquipSlot.Hand));
         Assert.True(HotbarConfig.IsValid(HotbarSlot.Shovel));
     }

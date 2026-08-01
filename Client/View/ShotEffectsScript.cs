@@ -25,15 +25,40 @@ public class ShotEffectsScript : SyncScript
         public required float RemainingDistance { get; set; }
         public required ushort ShooterId { get; init; }
         public required Color Color { get; init; }
+
+        /// <summary>One whiz per round, at its closest approach — a bullet does not pass you twice.</summary>
+        public bool Whizzed;
     }
 
     private readonly record struct VisualHit(
         System.Numerics.Vector3 Point,
         System.Numerics.Vector3? Normal,
-        bool Flesh);
+        bool Flesh,
+        bool Ground = false);
 
     private const float TracerLifetime = 0.055f;
     private const float MinTracerLength = 0.03f;
+
+    /// <summary>
+    /// How close a round has to pass to be heard going by. Generous on purpose: the point of a whiz
+    /// is telling a player they are being shot AT rather than shot NEAR, and a near miss you never
+    /// hear is a near miss that teaches nothing.
+    /// </summary>
+    private const float WhizRadius = 4f;
+
+    /// <summary>
+    /// Whizzes are played at the listener rather than at the bullet, and the distance is spent on
+    /// volume instead. A one-shot sample fired at a point a supersonic round has already left is
+    /// spatialised against a position that was true for a few milliseconds; putting it on the ear
+    /// and fading it with miss distance is what actually reads as "that one was close".
+    /// </summary>
+    private static readonly string[] WhizSounds =
+    [
+        "assets/sfx/bullet_whiz_1.wav",
+        "assets/sfx/bullet_whiz_2.wav",
+    ];
+
+    private const string DirtImpactSound = "assets/sfx/bullet_impact_dirt.wav";
 
     /// <summary>Dust, not sparks: pale and a little transparent, so a burst of them reads as one
     /// kicked-up cloud rather than seven separate lines.</summary>
@@ -108,7 +133,7 @@ public class ShotEffectsScript : SyncScript
 
         var fx = WeaponFx.Get(weapon);
         var start = origin.ToStride();
-        sound.PlayOneShotSpatial(fx.ShotSoundPath, start);
+        sound.PlayOneShotSpatial(WeaponFx.ShotSound(fx), start);
         projectiles.Add(new VisualProjectile
         {
             Position = origin,
@@ -132,13 +157,20 @@ public class ShotEffectsScript : SyncScript
                 dt,
                 projectile.RemainingDistance);
 
+            PlayWhiz(step.Start, step.End, projectile);
+
             if (TryHit(step.Start, step.End, projectile.ShooterId, out var hit))
             {
                 DrawSegment(step.Start, hit.Point, projectile.Color);
                 if (hit.Flesh)
                     ImpactManager.Spawn(hit.Point.ToStride(), hit.Normal!.Value.ToStride(), FleshImpactColor);
                 else if (hit.Normal is { } normal)
+                {
                     ImpactManager.Spawn(hit.Point.ToStride(), normal.ToStride(), ImpactColor);
+                    // Ground is the only surface with a sample; a round into a crate or a tree
+                    // stays silent rather than borrowing the wrong material's sound.
+                    if (hit.Ground) sound.PlayOneShotSpatial(DirtImpactSound, hit.Point.ToStride());
+                }
                 projectiles.RemoveAt(i);
                 continue;
             }
@@ -168,7 +200,7 @@ public class ShotEffectsScript : SyncScript
         if (TerrainRaycast.Cast(Terrain.Map, start, direction, length) is { } ground)
         {
             nearest = ground.Distance;
-            hit = new VisualHit(ground.Point, ground.Normal, Flesh: false);
+            hit = new VisualHit(ground.Point, ground.Normal, Flesh: false, Ground: true);
         }
 
         foreach (var obj in Objects.Objects)
@@ -194,6 +226,44 @@ public class ShotEffectsScript : SyncScript
         }
 
         return nearest < float.MaxValue;
+    }
+
+    /// <summary>
+    /// A round going past the local player's ear, once, at its closest approach on this tick's
+    /// segment.
+    ///
+    /// The closest point is computed on the SEGMENT, not from the endpoints: at 715 m/s a bullet
+    /// covers 24 m in one 30 Hz step, so a round that passes within a metre is nowhere near the
+    /// listener at either end of the step it did it in. Our own rounds never whiz — they all leave
+    /// from a muzzle about half a metre from the camera.
+    /// </summary>
+    private void PlayWhiz(
+        System.Numerics.Vector3 start,
+        System.Numerics.Vector3 end,
+        VisualProjectile projectile)
+    {
+        if (projectile.Whizzed || projectile.ShooterId == Network.ClientId) return;
+        if (Registry.LocalPlayer is not { IsDead: false } local) return;
+
+        var ear = Digging.Eye(local.Position);
+        var segment = end - start;
+        float lengthSq = segment.LengthSquared();
+        if (lengthSq < 1e-8f) return;
+
+        // Strictly INSIDE the step, which is what makes this the frame the round goes past: clamped
+        // to the far end means it is still closing and a later frame owns the miss; clamped to the
+        // near end means it is already leaving.
+        float along = System.Numerics.Vector3.Dot(ear - start, segment) / lengthSq;
+        if (along <= 0f || along >= 1f) return;
+
+        float missDistance = System.Numerics.Vector3.Distance(start + segment * along, ear);
+        if (missDistance > WhizRadius) return;
+
+        projectile.Whizzed = true;
+        sound.PlayOneShotSpatial(
+            WhizSounds[Random.Shared.Next(WhizSounds.Length)],
+            ear.ToStride(),
+            volume: 1f - missDistance / WhizRadius);
     }
 
     private static void DrawSegment(

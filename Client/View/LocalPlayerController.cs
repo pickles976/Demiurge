@@ -85,6 +85,11 @@ public class LocalPlayerController : SyncScript
 		bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
 		bool primaryDown = Input.IsMouseButtonDown(MouseButton.Left);
 
+		// Shooting means "actuating the held item", which is why digging sets it too: it is the
+		// replicated signal every other client's view reads to swing the shovel, and it is
+		// cosmetic on the server (nothing gates on it), so widening it costs nothing.
+		bool usingItem = primaryDown && (local.IsArmed || local.Hotbar == HotbarSlot.Shovel);
+
 		local.State = local.State
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
 			.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
@@ -94,7 +99,7 @@ public class LocalPlayerController : SyncScript
 			// holding Space jumps again the moment you land. It also sidesteps IsKeyPressed, which
 			// re-fires on OS auto-repeat and is not a reliable one-shot for a held key.
 			.With(PlayerStateFlags.Jumping, Input.IsKeyDown(Keys.Space))
-			.With(PlayerStateFlags.Shooting, local.IsArmed && primaryDown)
+			.With(PlayerStateFlags.Shooting, usingItem)
 			.With(PlayerStateFlags.Reloading, local.IsReloading);
 
 		// Rotation. The active look camera owns facing — you look where the camera looks. Turning
@@ -126,9 +131,12 @@ public class LocalPlayerController : SyncScript
 			cameraTransform.Position,
 			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
 
-		// Guns remain level-triggered and let TryFire's cooldown produce their cadence. A grenade is
-		// primed while LMB is held (the view uses Shooting for its pullback) and is thrown exactly
-		// once on release, provided the same grenade is still equipped.
+		// Automatic weapons remain level-triggered and let TryFire's cooldown produce their cadence;
+		// a SEMI-AUTOMATIC one wants the trigger PRESS, so holding the button pays out exactly one
+		// round. That distinction lives in WeaponConfig rather than here — see FireMode for why the
+		// server enforces cadence and not the trigger edge. A grenade is primed while LMB is held
+		// (the view uses Shooting for its pullback) and is thrown exactly once on release, provided
+		// the same grenade is still equipped.
 		//
 		// A POINT, not a direction. The muzzle is not the camera, so a direction copied from the
 		// camera would send the bullet parallel to the line of sight and never onto the reticle —
@@ -145,7 +153,7 @@ public class LocalPlayerController : SyncScript
 		}
 		else if (primedGrenadeId == null
 		         && local.IsArmed
-		         && primaryDown
+		         && TriggerPulled(local, primaryDown)
 		         && AimPoint is { } weaponTarget)
 		{
 			local.TryFire(weaponTarget, Registry.RenderTick, FireOrigin(local));
@@ -161,6 +169,16 @@ public class LocalPlayerController : SyncScript
 			local.TryInteract();
 
 	}
+
+	/// <summary>
+	/// Whether the trigger is asking for a shot this frame: held for an automatic, freshly pressed
+	/// for a semi-automatic. The cooldown in TryFire still caps how fast presses pay out, so a
+	/// player clicking faster than the weapon cycles gets the weapon's rate and nothing more.
+	/// </summary>
+	private bool TriggerPulled(LocalPlayer local, bool primaryDown)
+		=> local.Stats.FireMode == FireMode.SemiAutomatic
+			? primaryDown && !primaryWasDown
+			: primaryDown;
 
 	private void HandleHotbarInput(LocalPlayer local)
 	{
@@ -184,12 +202,12 @@ public class LocalPlayerController : SyncScript
 			return muzzle;
 
 		var cameraTransform = CameraEntity.Transform;
-		var grip = local.Weapon!.Item.Type == ItemType.Grenade
+		var type = local.Weapon!.Item.Type;
+		float scale = ItemCosmetics.FirstPersonScale(type);
+		var grip = type == ItemType.Grenade
 			? WeaponMount.GrenadePullbackGripOffset
-			: WeaponMount.FirstPersonGripOffset(
-				local.Weapon.Item.Type,
-				local.State.HasFlag(PlayerStateFlags.Aiming));
-		var offset = Mount.FirstPersonMuzzleOffset(local.Weapon!.Item.Type, grip).ToStride();
+			: Mount.FirstPersonGripOffset(type, local.State.HasFlag(PlayerStateFlags.Aiming), scale);
+		var offset = Mount.FirstPersonMuzzleOffset(type, grip, scale).ToStride();
 
 		return (Vector3)(cameraTransform.Position
 			+ Stride.Core.Mathematics.Vector3.Transform(offset, cameraTransform.Rotation));

@@ -27,6 +27,8 @@ namespace Demiurge
         Glock = 3,
         BodyArmor = 4,
         Grenade = 5,
+        Sks = 6,
+        Shovel = 7,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"

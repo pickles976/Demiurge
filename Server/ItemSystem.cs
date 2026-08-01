@@ -47,12 +47,15 @@ namespace Demiurge.GameServer
             => SpawnOwned(player, type, HotbarConfig.StorageSlot(hotbar), ammo, dropReplaced);
 
         /// <summary>
-        /// Standard infantry inventory shared by every NPC. Slot 2 is the placeholder shovel and
-        /// deliberately has no item object; selecting that slot authorizes digging.
+        /// Standard infantry inventory shared by every NPC. Slot 2 is a real shovel object now: it
+        /// has no WeaponConfig row, so it carries no WeaponState and fire/reload skip it, but it
+        /// gives the slot something to render — on the hip when stowed, in hand when selected.
+        /// Selecting the slot is still what authorizes digging.
         /// </summary>
         internal void SpawnInfantryLoadout(ServerPlayer actor)
         {
-            SpawnHotbar(actor, ItemType.Ak47, HotbarSlot.Primary);
+            SpawnHotbar(actor, ItemConfig.DefaultPrimaryWeapon, HotbarSlot.Primary);
+            SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
             SpawnHotbar(
                 actor,
                 ItemType.Grenade,
@@ -69,11 +72,19 @@ namespace Demiurge.GameServer
         internal void RefillRespawnLoadout(ServerPlayer actor)
         {
             bool hasPrimary = false;
+            bool hasShovel = false;
             bool hasGrenades = false;
             foreach (var pair in actor.Equipped)
             {
                 if (!objects.TryGet(pair.Value, out var item)
-                    || !item.Has.HasFlag(NetComponents.Item | NetComponents.Weapon)
+                    || !item.Has.HasFlag(NetComponents.Item))
+                    continue;
+
+                // The shovel is the one default slot with no magazine to refill, so it is checked
+                // before the weapon filter rather than inside it.
+                hasShovel |= pair.Key == EquipSlot.HotbarShovel;
+
+                if (!item.Has.HasFlag(NetComponents.Weapon)
                     || WeaponConfig.Get(item.Item.Type) is not { } weapon)
                     continue;
 
@@ -85,7 +96,9 @@ namespace Demiurge.GameServer
             }
 
             if (!hasPrimary)
-                SpawnHotbar(actor, ItemType.Ak47, HotbarSlot.Primary);
+                SpawnHotbar(actor, ItemConfig.DefaultPrimaryWeapon, HotbarSlot.Primary);
+            if (!hasShovel)
+                SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
             if (!hasGrenades)
                 SpawnHotbar(
                     actor,

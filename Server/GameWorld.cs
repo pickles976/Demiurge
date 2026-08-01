@@ -103,6 +103,8 @@ namespace Demiurge.GameServer
                 SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
                 SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
                 SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
+                SpawnPickupOnSurface(ItemType.Sks, -3f, 0f);
+                SpawnPickupOnSurface(ItemType.Shovel, -1.5f, 1.5f);
                 SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
                 SpawnPickupOnSurface(ItemType.Grenade, 1.5f, 1.5f);
 

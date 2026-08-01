@@ -134,7 +134,20 @@ foreach (var gltfPath in gltfFiles)
     // A skeleton is required for animation: Stride only emits per-node animation
     // curves when the AnimationAsset references a Skeleton, and skinned meshes need
     // it to deform at runtime. Generate one whenever the source has animations or a skin.
-    var needsSkeleton = gltf.LogicalAnimations.Count > 0 || gltf.LogicalSkins.Count > 0;
+    //
+    // ...and also whenever the model has an ARTICULATED GROUP: a mesh-less node with meshes
+    // under it. Without a skeleton Stride takes ImportModelCommand's merge branch, collapsing
+    // every node to index 0 and baking each mesh's transform into its vertex buffer — so a part
+    // the artist deliberately grouped (an SKS bolt) has no runtime existence to move. Grouping
+    // meshes is the only reason to do it in the first place, so the grouping IS the opt-in.
+    //
+    // The cost is that every node survives as its own mesh, i.e. one draw call per part instead
+    // of one for the model. If that ever shows up in a profile the fix is to emit the .sdskel's
+    // Nodes list with Preserve:false on everything but the moving groups — Stride then merges the
+    // rest back into the closest preserved ancestor — rather than to give the bolt up.
+    var needsSkeleton = gltf.LogicalAnimations.Count > 0
+        || gltf.LogicalSkins.Count > 0
+        || HasArticulatedGroup(gltf);
     var skeletonContentPath = contentPath + "_skeleton";
     var skeletonGuid = ComputeGuid(skeletonContentPath);
 
@@ -304,6 +317,15 @@ static byte[] RepairNullTransforms(byte[] json, string fileName)
         return repaired;
     }
 }
+
+// True when some mesh-less node has a mesh somewhere beneath it — the artist grouped parts, which
+// only means anything at runtime if the node hierarchy survives. A locator's parent does NOT count:
+// locators are mesh-less all the way down, so a rack of anchors never drags in a skeleton.
+static bool HasArticulatedGroup(SharpGLTF.Schema2.ModelRoot gltf)
+    => gltf.LogicalNodes.Any(node => node.Mesh == null && HasMeshDescendant(node));
+
+static bool HasMeshDescendant(SharpGLTF.Schema2.Node node)
+    => node.VisualChildren.Any(child => child.Mesh != null || HasMeshDescendant(child));
 
 // Pulls the mesh-less "locator" nodes out of a model as name -> transform in the model's
 // own root space, in the rest pose and again at the start of each animation clip.

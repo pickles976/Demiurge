@@ -462,7 +462,10 @@ namespace Demiurge.GameServer
 
             mob.State = PlayerStateFlags.None
                 .With(PlayerStateFlags.Moving, intent != Vector3.Zero)
-                .With(PlayerStateFlags.Jumping, jump);
+                .With(PlayerStateFlags.Jumping, jump)
+                // Shooting reads as "actuating the held item", which is what the client's view of a
+                // shovel swings on. Digging is the tool's version of pulling the trigger.
+                .With(PlayerStateFlags.Shooting, digging);
             if (intent != Vector3.Zero)
                 mob.Yaw = RotateYawTowards(
                     mob.Yaw,
@@ -997,6 +1000,7 @@ namespace Demiurge.GameServer
                 return;
 
             mob.Hotbar = HotbarSlot.Shovel;
+            mob.State |= PlayerStateFlags.Shooting;   // swings the shovel on every client's view
             mob.Yaw = MathF.Atan2(toward.X, toward.Z);
             mob.Pitch = -MathF.PI * 0.35f;
             terrainEdits.ApplyDig(

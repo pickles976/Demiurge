@@ -36,6 +36,12 @@ public class PickupBobScript : SyncScript
 // messages aren't ordered relative to each other), so it retries every frame
 // until the player appears.
 //
+// A hotbar item whose slot is not selected is not hidden: it is WORN, at the
+// stowed socket its slot names (rifle on the back, shovel on the hip). That is
+// a client-side choice only — the item never leaves its hotbar slot on the wire
+// — which is why the stowed sockets sit in ItemCosmetics beside the held ones
+// and cost no EquipSlot and no protocol change.
+//
 // The entity stays at the scene root on purpose: ModelNodeLinkComponent drives
 // its world transform from the bone regardless of hierarchy, root-following
 // composes the owner's transform explicitly, and root-level entities keep
@@ -49,6 +55,7 @@ public class ItemAttachScript : SyncScript
     public required PlayerRegistry Registry { get; init; }
     public required Entity CameraEntity { get; init; }
     public required LocalWeaponView WeaponView { get; init; }
+    public required ModelLocators Locators { get; init; }
 
     private const float ViewModelSharpness = 18f;
     private const float RecoilReturnSharpness = 12f;
@@ -56,85 +63,174 @@ public class ItemAttachScript : SyncScript
     private const float MaxRecoilLift = 0.045f;
     private static readonly float MaxRecoilPitch = MathUtil.DegreesToRadians(10f);
 
+    /// <summary>How far the tool travels along the swing, on top of the rotation — a chop that
+    /// only pivots reads as a wrist flick.</summary>
+    private static readonly Vector3 SwingReach = new(0f, -0.10f, -0.16f);
+
     private Entity? owner;
-    private bool boneLinked;
+    private string? linkedNode;
     private Vector3 viewGripOffset = WeaponMount.HipGripOffset;
     private bool firstViewFrame = true;
     private int? observedAmmo;
     private float recoilBack;
     private float recoilLift;
     private float recoilPitch;
+    private MovingPart? bolt;
+    private int shotsThisFrame;
+    private readonly SwingAnimation swing = new();
 
     public override void Start()
     {
         if (Object.Has.HasFlag(NetComponents.Weapon))
             observedAmmo = Object.Weapon.CurrentAmmo;
+        bolt = MovingPart.For(Locators, ItemCosmetics.Model(Object.Item.Type), "bolt");
     }
 
     public override void Update()
     {
         owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
         if (owner == null) return;
+        if (Entity.Get<ModelComponent>() is not { } model) return;
 
-        if (!IsSelected())
+        float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+        if (!Registry.TryGet(Object.Owner.PlayerId, out var player) || player.IsDead)
         {
-            Entity.Get<ModelComponent>()!.Enabled = false;
+            model.Enabled = false;
             if (WeaponView.NetworkId == Object.NetworkId) WeaponView.Clear();
             return;
         }
 
-        if (IsLocalHandWeapon())
+        // A swing is driven by the Shooting flag, which is replicated, so everybody sees the same
+        // dig from their own angle. Cycling the bolt is driven by ammo falling, which is likewise
+        // replicated — predicted locally, off the wire for everyone else.
+        bool holdingTool = Object.Item.Type == ItemType.Shovel;
+        swing.Update(holdingTool && IsSelected(player) && player.State.HasFlag(PlayerStateFlags.Shooting), dt);
+
+        shotsThisFrame = ShotsSince(player);
+        if (bolt is { } part)
         {
-            UpdateFirstPersonWeapon();
+            if (shotsThisFrame > 0) part.Cycle();
+            part.Update(model, dt);
+        }
+
+        if (!IsSelected(player))
+        {
+            if (WeaponView.NetworkId == Object.NetworkId) WeaponView.Clear();
+            UpdateStowed(model);
             return;
         }
 
-        Entity.Get<ModelComponent>()!.Enabled = true;
-        var socket = ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount);
-        if (socket.Node is { } node)
+        if (IsLocalViewModel())
         {
-            if (boneLinked) return;   // latch: slot never changes in place (transitions are despawn/respawn)
-            if (owner.Get<ModelComponent>() is not { } ownerModel) return;
+            UpdateFirstPersonItem(model, dt);
+            return;
+        }
 
-            Entity.Add(new ModelNodeLinkComponent
-            {
-                Target = ownerModel,
-                NodeName = node,
-            });
-            Entity.Transform.Position = socket.Seat;
-            Entity.Transform.Rotation = socket.Rotation;
-            boneLinked = true;
-        }
-        else
-        {
-            // Root-worn items follow the owner's root transform every frame —
-            // PlayerViewScript drives that entity, this composes the seat on top.
-            Entity.Transform.Position = owner.Transform.Position + Vector3.Transform(socket.Seat, owner.Transform.Rotation);
-            Entity.Transform.Rotation = owner.Transform.Rotation * socket.Rotation;
-        }
+        model.Enabled = true;
+        Entity.Transform.Scale = new Vector3(ItemCosmetics.WorldScale(Object.Item.Type));
+        Seat(ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount)
+                 with { Rotation = WeaponMount.HandRotationFor(Object.Item.Type, swing.Angle).ToStride() });
     }
 
-    private bool IsLocalHandWeapon()
+    /// <summary>Worn rather than hidden, when the slot has somewhere to wear it.</summary>
+    private void UpdateStowed(ModelComponent model)
+    {
+        // Not for the local player: first person does not render its own body, so there is no back
+        // to hang a rifle on — and the bone the socket names belongs to a disabled ModelComponent.
+        if (IsLocalViewModel()
+            || !HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var hotbar)
+            || ItemCosmetics.StowedSocket(hotbar, Object.Item.Type) is not { } socket)
+        {
+            model.Enabled = false;
+            return;
+        }
+
+        model.Enabled = true;
+        Entity.Transform.Scale = new Vector3(ItemCosmetics.WorldScale(Object.Item.Type));
+        Seat(socket);
+    }
+
+    /// <summary>
+    /// Places the entity at a socket, relinking if the bone changed.
+    ///
+    /// The link used to latch once, on the reasoning that an item's owner and slot never change in
+    /// place. That still holds — but the SOCKET now does, every time the player scrolls the hotbar
+    /// and a rifle moves from the hand to the back, so the bone the link points at is re-checked
+    /// instead. Seat and rotation are written every frame because a swing changes them.
+    /// </summary>
+    private void Seat(ItemCosmetics.Socket socket)
+    {
+        if (socket.Node is not { } node)
+        {
+            if (linkedNode != null)
+            {
+                Entity.Remove<ModelNodeLinkComponent>();
+                linkedNode = null;
+            }
+            // Root-worn items follow the owner's root transform every frame —
+            // PlayerViewScript drives that entity, this composes the seat on top.
+            Entity.Transform.Position = owner!.Transform.Position + Vector3.Transform(socket.Seat, owner.Transform.Rotation);
+            Entity.Transform.Rotation = owner.Transform.Rotation * socket.Rotation;
+            return;
+        }
+
+        if (linkedNode != node)
+        {
+            if (owner!.Get<ModelComponent>() is not { } ownerModel) return;
+            if (linkedNode != null) Entity.Remove<ModelNodeLinkComponent>();
+            Entity.Add(new ModelNodeLinkComponent { Target = ownerModel, NodeName = node });
+            linkedNode = node;
+        }
+
+        Entity.Transform.Position = socket.Seat;
+        Entity.Transform.Rotation = socket.Rotation;
+    }
+
+    /// <summary>
+    /// True for anything the local player is holding, weapon or not. The shovel has no WeaponState
+    /// — it is a tool, not a gun — but it still has to be drawn in front of the camera rather than
+    /// on a body the first-person view does not render.
+    /// </summary>
+    private bool IsLocalViewModel()
         => Registry.LocalPlayer is { } local
            && Object.Owner.PlayerId == local.Id
            && (Object.Attachment.Slot == EquipSlot.Hand
-               || HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out _))
-           && Object.Has.HasFlag(NetComponents.Weapon);
+               || HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out _));
 
-    private bool IsSelected()
+    private bool IsSelected(Player player)
+        => !HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var slot)
+           || player.Hotbar == slot;
+
+    /// <summary>
+    /// How many rounds this item has fired since the last frame — the one signal both the bolt and
+    /// the recoil kick run off, computed once per frame so the two cannot disagree.
+    ///
+    /// Ammo falling IS the shot: predicted locally so the local player's bolt cycles on the frame
+    /// they click, and read off the replicated WeaponState for everybody else so a remote rifle
+    /// cycles too. A reload raises ammo instead of lowering it and is therefore ignored for free.
+    ///
+    /// The local reading is taken per SLOT, not from whatever is selected, so switching hotbar slots
+    /// does not swap the source between predicted and replicated ammo mid-count — that difference is
+    /// a shot or two, and would have cycled the bolt every time you scrolled back to your rifle.
+    /// </summary>
+    private int ShotsSince(Player player)
     {
-        if (!Registry.TryGet(Object.Owner.PlayerId, out var player) || player.IsDead)
-            return false;
-        if (!HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var slot))
-            return true;
-        return player.Hotbar == slot;
+        if (!Object.Has.HasFlag(NetComponents.Weapon)) return 0;
+
+        var slot = HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var hotbar)
+            ? hotbar
+            : HotbarSlot.Primary;   // legacy Hand/admin equips are tracked as slot 1
+        int current = player is LocalPlayer local && local.ItemIn(slot)?.NetworkId == Object.NetworkId
+            ? local.AmmoIn(slot)
+            : Object.Weapon.CurrentAmmo;
+
+        int shots = Math.Max(0, (observedAmmo ?? current) - current);
+        observedAmmo = current;
+        return shots;
     }
 
-    private void UpdateFirstPersonWeapon()
+    private void UpdateFirstPersonItem(ModelComponent model, float dt)
     {
-        var model = Entity.Get<ModelComponent>();
-        if (model == null) return;
-
         if (CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
         {
             model.Enabled = false;
@@ -143,19 +239,13 @@ public class ItemAttachScript : SyncScript
         }
         model.Enabled = true;
 
-        if (boneLinked)
+        if (linkedNode != null)
         {
             Entity.Remove<ModelNodeLinkComponent>();
-            boneLinked = false;
+            linkedNode = null;
         }
 
         var local = Registry.LocalPlayer!;
-        if (local.IsDead)
-        {
-            model.Enabled = false;
-            WeaponView.Clear();
-            return;
-        }
         if (Object.Item.Type == ItemType.Grenade && (local.Ammo == 0 || local.IsReloading))
         {
             model.Enabled = false;
@@ -166,10 +256,10 @@ public class ItemAttachScript : SyncScript
         bool aiming = local.State.HasFlag(PlayerStateFlags.Aiming);
         bool pullingGrenade = Object.Item.Type == ItemType.Grenade
             && local.State.HasFlag(PlayerStateFlags.Shooting);
+        float modelScale = ItemCosmetics.FirstPersonScale(Object.Item.Type);
         var targetGripOffset = pullingGrenade
             ? WeaponMount.GrenadePullbackGripOffset
-            : WeaponMount.FirstPersonGripOffset(Object.Item.Type, aiming);
-        float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+            : Mount.FirstPersonGripOffset(Object.Item.Type, aiming, modelScale);
 
         if (firstViewFrame)
         {
@@ -182,14 +272,14 @@ public class ItemAttachScript : SyncScript
                 1f - MathF.Exp(-ViewModelSharpness * dt));
         }
 
-        UpdateRecoil(local, dt);
+        UpdateRecoil(dt);
 
         var cameraRotation = CameraEntity.Transform.Rotation;
-        var weaponRotation = WeaponMount.FirstPersonRotation;
-        float modelScale = ItemCosmetics.FirstPersonScale(Object.Item.Type);
+        var weaponRotation = WeaponMount.FirstPersonRotationFor(Object.Item.Type, swing.Angle);
         var modelOffset = Mount.FirstPersonModelOffset(Object.Item.Type, viewGripOffset, modelScale).ToStride();
         var muzzleOffset = Mount.FirstPersonMuzzleOffset(Object.Item.Type, viewGripOffset, modelScale).ToStride();
-        var recoilOffset = new Vector3(0f, recoilLift, recoilBack);
+        var recoilOffset = new Vector3(0f, recoilLift, recoilBack)
+            + SwingReach * MathF.Max(0f, swing.Angle);
         var recoilRotation = Quaternion.RotationX(recoilPitch);
         var recoiledModelOffset = modelOffset + recoilOffset;
         var recoiledMuzzleOffset = recoiledModelOffset
@@ -200,6 +290,13 @@ public class ItemAttachScript : SyncScript
             + Vector3.Transform(recoiledModelOffset, cameraRotation);
         Entity.Transform.Rotation = weaponRotation.ToStride() * recoilRotation * cameraRotation;
 
+        // Only a weapon supplies the sim's shot origin; a shovel has no muzzle to report.
+        if (!Object.Has.HasFlag(NetComponents.Weapon))
+        {
+            if (WeaponView.NetworkId == Object.NetworkId) WeaponView.Clear();
+            return;
+        }
+
         WeaponView.MuzzleWorld = (System.Numerics.Vector3)(
             CameraEntity.Transform.Position
             + Vector3.Transform(recoiledMuzzleOffset, cameraRotation));
@@ -207,18 +304,16 @@ public class ItemAttachScript : SyncScript
         WeaponView.NetworkId = Object.NetworkId;
     }
 
-    private void UpdateRecoil(LocalPlayer local, float dt)
+    private void UpdateRecoil(float dt)
     {
-        if (Object.Item.Type == ItemType.Grenade) return;
+        if (!Object.Has.HasFlag(NetComponents.Weapon) || Object.Item.Type == ItemType.Grenade) return;
 
         float recovery = MathF.Exp(-RecoilReturnSharpness * dt);
         recoilBack *= recovery;
         recoilLift *= recovery;
         recoilPitch *= recovery;
 
-        int previousAmmo = observedAmmo ?? local.Ammo;
-        int shots = Math.Max(0, previousAmmo - local.Ammo);
-        observedAmmo = local.Ammo;
+        int shots = shotsThisFrame;
         if (shots == 0) return;
 
         var kick = RecoilFor(Object.Item.Type);

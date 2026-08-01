@@ -265,7 +265,7 @@ public sealed class EditorControllerScript : SyncScript
             Cell = cells.Air,
             Yaw = Settings.ObjectYaw,
             WeaponId = kind == EditorPlacementKind.Mob
-                ? ItemCatalog.Id(ItemType.Ak47)
+                ? ItemCatalog.Id(ItemConfig.DefaultPrimaryWeapon)
                 : null,
             Team = kind == EditorPlacementKind.Flag ? 0 : Settings.ObjectTeam,
         };

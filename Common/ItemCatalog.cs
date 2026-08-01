@@ -11,6 +11,8 @@ public static class ItemCatalog
     private static readonly ItemDefinition[] definitions =
     [
         new(ItemType.Ak47, "demiurge:ak47", ["ak47", "ak-47", "ak"]),
+        new(ItemType.Sks, "demiurge:sks", ["sks"]),
+        new(ItemType.Shovel, "demiurge:shovel", ["shovel", "spade"]),
         new(ItemType.AWP, "demiurge:awp", ["awp"]),
         new(ItemType.Glock, "demiurge:glock", ["glock"]),
         new(ItemType.BodyArmor, "demiurge:body_armor", ["body_armor", "body-armor", "bodyarmor"]),

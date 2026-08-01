@@ -795,7 +795,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         string details = placement.Kind switch
         {
             EditorPlacementKind.Mob =>
-                $" weapon={placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47)} team={placement.Team}",
+                $" weapon={placement.WeaponId ?? ItemCatalog.Id(ItemConfig.DefaultPrimaryWeapon)} team={placement.Team}",
             EditorPlacementKind.PlayerSpawn => $" team={placement.Team}",
             EditorPlacementKind.Flag => " neutral",
             _ => string.Empty,

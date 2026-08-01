@@ -25,6 +25,7 @@ public static class HotbarConfig
     public static EquipSlot StorageSlot(HotbarSlot slot) => slot switch
     {
         HotbarSlot.Primary => EquipSlot.HotbarPrimary,
+        HotbarSlot.Shovel => EquipSlot.HotbarShovel,
         HotbarSlot.Grenade => EquipSlot.HotbarGrenade,
         _ => throw new InvalidOperationException($"{slot} has no stored item"),
     };
@@ -34,12 +35,17 @@ public static class HotbarConfig
         hotbar = slot switch
         {
             EquipSlot.HotbarPrimary => HotbarSlot.Primary,
+            EquipSlot.HotbarShovel => HotbarSlot.Shovel,
             EquipSlot.HotbarGrenade => HotbarSlot.Grenade,
             _ => default,
         };
         return hotbar != default;
     }
 
-    public static HotbarSlot SlotFor(ItemType type)
-        => type == ItemType.Grenade ? HotbarSlot.Grenade : HotbarSlot.Primary;
+    public static HotbarSlot SlotFor(ItemType type) => type switch
+    {
+        ItemType.Grenade => HotbarSlot.Grenade,
+        ItemType.Shovel => HotbarSlot.Shovel,
+        _ => HotbarSlot.Primary,
+    };
 }

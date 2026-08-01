@@ -20,7 +20,6 @@ namespace Demiurge
         // Screen-space, in pixels from the centre. The MOA remains physical; this visual
         // scale deliberately exaggerates its movement so recoil and recovery are easy to read.
         const float HipGap = 12f;
-        const float AimGap = 7f;
         const float ArmLength = 7f;
         const float BloomVisualScale = 2.25f;
         const float MaxBloomGap = 52f;
@@ -35,16 +34,19 @@ namespace Demiurge
             if (Registry.LocalPlayer is not { } local) return;
             if (local.IsDead) return;
 
-            bool aiming = local.State.HasFlag(PlayerStateFlags.Aiming);
-            float baseGap = aiming ? AimGap : HipGap;
+            // Down the sights, the weapon's own sight picture IS the aim: a screen-space crosshair
+            // on top of it is a second, disagreeing opinion about where the shot goes — and the two
+            // only coincide at one range, because the reticle marks the camera axis and the bullet
+            // leaves the muzzle.
+            if (local.State.HasFlag(PlayerStateFlags.Aiming)) return;
+
+            float baseGap = HipGap;
             float bloom = MathUtil.Clamp(
                 SpreadGap(local.CurrentSpreadMoa) * BloomVisualScale,
                 0f,
                 MaxBloomGap);
             float gap = local.IsArmed ? MathF.Max(baseGap, bloom) : baseGap;
-            DrawCrosshair(
-                gap,
-                aiming ? new Color(255, 255, 255, 235) : new Color(255, 255, 255, 205));
+            DrawCrosshair(gap, new Color(255, 255, 255, 205));
         }
 
         /// <summary>

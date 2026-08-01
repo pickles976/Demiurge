@@ -152,7 +152,7 @@ public sealed class EditorTerrainEvaluator
 
     private static ItemType ResolveMobWeapon(EditorPlacement placement)
     {
-        string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47);
+        string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemConfig.DefaultPrimaryWeapon);
         if (!ItemCatalog.TryResolve(weaponId, out var weapon) || WeaponConfig.Get(weapon) is null)
             throw new InvalidDataException($"Unknown mob weapon {weaponId}");
         return weapon;
