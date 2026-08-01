@@ -13,6 +13,13 @@ public sealed class FlagSystem
         public required ServerObject Object { get; init; }
         public required Vector3 Position { get; init; }
         public int LastReplicatedBucket { get; set; }
+
+        /// <summary>
+        /// Teams with a living player inside the capture radius, refreshed every tick. Kept as
+        /// state rather than recomputed on demand because Tick already walks every player against
+        /// every flag, and spawn selection has no player list to walk.
+        /// </summary>
+        public HashSet<int> Occupants { get; } = [];
     }
 
     private readonly ObjectReplication objects;
@@ -57,7 +64,7 @@ public sealed class FlagSystem
         {
             int occupyingTeam = FlagConfig.NeutralTeam;
             int occupyingPlayers = 0;
-            bool contested = false;
+            flag.Occupants.Clear();
             foreach (var player in players)
             {
                 if (player.Team <= 0
@@ -65,17 +72,18 @@ public sealed class FlagSystem
                     || Vector3.DistanceSquared(player.Position, flag.Position) > radiusSq)
                     continue;
 
+                flag.Occupants.Add(player.Team);
                 if (occupyingTeam == FlagConfig.NeutralTeam)
                     occupyingTeam = player.Team;
-
                 if (player.Team == occupyingTeam)
                     occupyingPlayers++;
-                else
-                {
-                    contested = true;
-                    break;
-                }
             }
+
+            // The scan no longer stops at the first enemy, because spawn selection needs to know
+            // WHO is standing here, not merely that somebody disagrees. Contest is unchanged: more
+            // than one team present. occupyingPlayers stays a count of the first team seen, which is
+            // all it ever was and is unused once contested.
+            bool contested = flag.Occupants.Count > 1;
 
             // Empty flags retain partial progress. Two or more present teams are genuinely
             // contested and pause, matching Conquest's readable "hold the area" tug-of-war.
@@ -245,6 +253,14 @@ public sealed class FlagSystem
         return true;
     }
 
+    /// <summary>An enemy of <paramref name="team"/> is inside the capture radius.</summary>
+    private static bool IsContestedFor(Flag flag, int team)
+    {
+        foreach (int occupant in flag.Occupants)
+            if (occupant != team) return true;
+        return false;
+    }
+
     public bool TrySpawnPosition(int team, out Vector3 position)
     {
         // Spawn at the FRONT, not at the back. Ordering controlled flags by network id meant a
@@ -259,8 +275,12 @@ public sealed class FlagSystem
             .Where(flag => flag.Object.Team.Value != team)
             .ToArray();
 
+        // Never into a firefight. A flag with an enemy standing on it is either being taken or
+        // about to be, and dropping reinforcements onto it one at a time feeds them in piecemeal —
+        // the fallback in SpawnPlayerMove puts them at the team's authored spawns instead, which is
+        // further back but somewhere they arrive alive.
         var controlled = flags
-            .Where(flag => flag.Object.Team.Value == team)
+            .Where(flag => flag.Object.Team.Value == team && !IsContestedFor(flag, team))
             .OrderBy(flag => objectives.Length == 0
                 ? 0f
                 : objectives.Min(objective =>

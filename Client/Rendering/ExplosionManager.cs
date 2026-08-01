@@ -125,24 +125,25 @@ public sealed class GrenadeExplosionScript : SyncScript
 
     /// <summary>Past WeaponFx.DistantReportMetres a blast is a rumble from elsewhere, and gets its
     /// own recording for the same reason distant rifle fire does.</summary>
-    private const string DistantExplosionSound = "assets/sfx/grenade_far_off_300m.wav";
+    private const string DistantExplosionSound = "assets/sfx/grenade_far_off_200m.wav";
 
     /// <summary>Where a far-off blast is placed: along the true bearing, at a range it can be heard
     /// from. The recording already sounds distant — see PlayShotReport for the full reasoning.</summary>
     private const float DistantExplosionRange = 30f;
 
     /// <summary>
-    /// Trauma from a grenade at your feet. Full, because there is nothing worse to save the top of
-    /// the range for.
+    /// Trauma from a grenade at your feet. Over 1 on purpose: CameraTrauma clamps the pool, so the
+    /// excess is not wasted — it means everything inside half the shake radius saturates rather than
+    /// only a blast directly underfoot, and the falloff only starts biting further out.
     /// </summary>
-    private const float MaximumTrauma = 1f;
+    private const float MaximumTrauma = 2f;
 
     /// <summary>
-    /// How far out a blast is still felt. Wider than GrenadeConfig.DamageRadius on purpose — one
-    /// that lands just outside its damage radius should still rattle you, and a shake that stops
-    /// exactly where the damage stops tells the player precisely how safe they were.
+    /// How far out a blast is still felt. Much wider than GrenadeConfig.DamageRadius on purpose —
+    /// one that lands well outside its damage radius should still rattle you, and a shake that stops
+    /// where the damage stops tells the player precisely how safe they were.
     /// </summary>
-    private const float ShakeRadius = GrenadeConfig.DamageRadius * 1.6f;
+    private const float ShakeRadius = GrenadeConfig.DamageRadius * 3.2f;
 
     private SoundManager sound = null!;
 

@@ -42,11 +42,11 @@ public static class WeaponFx
     /// Past this, a shot is not the crack of a rifle near you — it is a report rolling in from
     /// somewhere else, and it gets its own recording rather than the near sample turned down.
     /// </summary>
-    public const float DistantReportMetres = 300f;
-    public const float VeryDistantReportMetres = 500f;
+    public const float DistantReportMetres = 200f;
+    public const float VeryDistantReportMetres = 400f;
 
-    private const string DistantReport = "assets/sfx/far_off_rifle_report_300m.wav";
-    private const string VeryDistantReport = "assets/sfx/far_off_rifle_report_500m.wav";
+    private const string DistantReport = "assets/sfx/far_off_rifle_report_200m.wav";
+    private const string VeryDistantReport = "assets/sfx/far_off_rifle_report_400m.wav";
 
     /// <summary>
     /// The recording for a shot heard from <paramref name="metres"/> away, or null to use the

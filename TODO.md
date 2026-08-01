@@ -5,7 +5,6 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-
 NPCs are unable to dig out of their foxholes they just jump up and down instead of digging sideways. They should start by digging a 1x1 2-deep hole, but then expand it at varying depths so they can see out while standing at certain parts.
 
 AI still struggles somewhat with building up, sometimes just jumps at the wall, although it is better than before.
@@ -28,14 +27,14 @@ Finally, NPCs can navigate over short bridges, but struggle with long ones. It a
 
 - [ ] brick wall texture and block type
 - [ ] pain sound
+- [ ] feedback sound when enemy dies
+
 
 - [ ] add trees
 - [ ] tree destruction
       - [ ] low LOD tree
       - [ ] trees have health and take damage and change models to a broken version
       - [ ] trees delete if the terrain beneath them goes away
-
-- [ ] health regeneration
 
 - [ ] clean up UI and stuff
 

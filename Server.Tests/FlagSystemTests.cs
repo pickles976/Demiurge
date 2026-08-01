@@ -80,7 +80,10 @@ public class FlagSystemTests
         Assert.Equal(1, flag.Team.Value);
         Assert.Equal(2, flag.Team.CapturingTeam);
         Assert.Equal(0.5f, flag.Team.Progress, 4);
-        Assert.True(flags.TrySpawnPosition(1, out _));
+        // Team 1 still OWNS it, but team 2 is standing on it draining it — so it is no longer a
+        // place team 1 may reinforce into. This asserted the opposite before contested flags were
+        // excluded from spawning.
+        Assert.False(flags.TrySpawnPosition(1, out _));
 
         flags.Tick(FlagConfig.CaptureSeconds / 2f, [teamTwo]);
         Assert.Equal(FlagConfig.NeutralTeam, flag.Team.Value);
@@ -191,6 +194,54 @@ public class FlagSystemTests
 
         Assert.True(flags.TrySpawnPosition(1, out var spawn));
         Assert.True(Vector3.Distance(spawn, only) <= FlagConfig.SpawnRadius);
+    }
+
+    /// <summary>
+    /// Reinforcements do not drop into a firefight. A flag with an enemy standing on it is either
+    /// being taken or about to be, and feeding men onto it one at a time is how a contested point
+    /// gets lost twice.
+    /// </summary>
+    [Fact]
+    public void AFlagWithAnEnemyOnItIsNotUsedAsASpawn()
+    {
+        var objects = new ObjectReplication(new Server());
+        var flags = new FlagSystem(objects);
+
+        var front = new Vector3(100f, 0f, 0f);
+        var rear = new Vector3(0f, 0f, 0f);
+        var objective = new Vector3(160f, 0f, 0f);
+        Capture(flags, flags.Spawn(rear), team: 1, rear);
+        Capture(flags, flags.Spawn(front), team: 1, front);
+        Capture(flags, flags.Spawn(objective), team: 2, objective);
+
+        // Uncontested, the front flag is the one reinforcements use.
+        Assert.True(flags.TrySpawnPosition(1, out var normal));
+        Assert.True(Vector3.Distance(normal, front) <= FlagConfig.SpawnRadius);
+
+        // An enemy walks onto it. Tick is what observes occupancy, so it has to run.
+        flags.Tick(0.1f, [PlayerAt(9, team: 2, front), PlayerAt(10, team: 1, rear)]);
+
+        Assert.True(flags.TrySpawnPosition(1, out var underAttack));
+        Assert.True(
+            Vector3.Distance(underAttack, rear) <= FlagConfig.SpawnRadius,
+            $"spawned at {underAttack}, wanted the uncontested rear flag at {rear}");
+    }
+
+    /// <summary>With every controlled flag contested there is nowhere safe, and TrySpawnPosition
+    /// says so rather than picking one — SpawnPlayerMove falls back to the authored team spawns.</summary>
+    [Fact]
+    public void EveryControlledFlagContestedProducesNoFlagSpawn()
+    {
+        var objects = new ObjectReplication(new Server());
+        var flags = new FlagSystem(objects);
+        var only = new Vector3(20f, 0f, 0f);
+        Capture(flags, flags.Spawn(only), team: 1, only);
+
+        Assert.True(flags.TrySpawnPosition(1, out _));
+
+        flags.Tick(0.1f, [PlayerAt(11, team: 2, only)]);
+
+        Assert.False(flags.TrySpawnPosition(1, out _));
     }
 
     private static void Capture(FlagSystem flags, ServerObject flag, int team, Vector3 position)
