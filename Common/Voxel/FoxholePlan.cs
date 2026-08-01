@@ -19,21 +19,32 @@ namespace Demiurge
     /// </summary>
     public static class FoxholePlan
     {
-        /// <summary>How far below the surrounding grade the floor is cut. Deep enough to crouch
-        /// below, shallow enough to shoot over and to climb out of afterwards.</summary>
-        public const float Depth = 1f;
+        /// <summary>Depth of the protected centre. The position starts as a one-voxel, two-metre
+        /// deep scrape before any widening begins.</summary>
+        public const float Depth = 2f;
+
+        /// <summary>The rear shelf is deep enough to crouch behind the parapet but shallow enough
+        /// to step onto while leaving the centre.</summary>
+        public const float RearShelfDepth = 1f;
+
+        /// <summary>The side shelves are standing firing steps: an actor can see and shoot over
+        /// the intact threat-side lip without having to jump out of the position.</summary>
+        public const float FiringShelfDepth = 1f;
 
         /// <summary>
         /// Offsets from the actor, in metres, as (right, forward) with forward pointing AT the
         /// threat. Ordered by priority, and the order is the tactic — the actor's own square comes
         /// first and the parapet square (positive forward) never appears.
         /// </summary>
-        private static readonly (float Right, float Forward)[] Pattern =
+        private static readonly (float Right, float Forward, float Depth)[] Pattern =
         [
-            (0f, 0f),        // under your own feet: the hole itself
-            (-1f, 0f),       // widen left
-            (1f, 0f),        // widen right
-            (0f, -1f),       // and backwards, so there is room to move in it
+            // This entry is deliberately first and deepest. NextBite does not advance to another
+            // entry until its requested depth is complete, so the initial position really is a
+            // 1x1, two-deep hole rather than four shallow bowls dug in rotation.
+            (0f, 0f, Depth),
+            (0f, -1f, RearShelfDepth),
+            (-1f, 0f, FiringShelfDepth),
+            (1f, 0f, FiringShelfDepth),
         ];
 
         /// <summary>
@@ -52,44 +63,43 @@ namespace Demiurge
             if (toward.LengthSquared() < 1e-6f) return null;
             toward = Vector3.Normalize(new Vector3(toward.X, 0f, toward.Z));
             var right = new Vector3(toward.Z, 0f, -toward.X);
-            float floorY = gradeY - Depth;
-
-            foreach (var (offsetRight, offsetForward) in Pattern)
+            foreach (var (offsetRight, offsetForward, depth) in Pattern)
             {
                 var spot = feet + right * offsetRight + toward * offsetForward;
-
-                // Already at depth: this square is done, try the next one in the pattern. Checking
-                // per SQUARE rather than once for the whole hole is what makes widening happen —
-                // a single global depth check stops the moment the first square is deep enough.
-                if (SurfaceQuery.HighestSurfaceY(map, (int)MathF.Floor(spot.X), (int)MathF.Floor(spot.Z))
-                        is not { } surfaceY
-                    || surfaceY <= floorY)
-                    continue;
-
-                if (TryBiteAt(map, spot, surfaceY) is { } target) return target;
+                if (TryBiteAt(map, spot, gradeY, depth) is { } target) return target;
             }
 
             return null;
         }
 
-        private static Vector3? TryBiteAt(ChunkMap map, Vector3 spot, float surfaceY)
+        private static Vector3? TryBiteAt(
+            ChunkMap map,
+            Vector3 spot,
+            float gradeY,
+            float depth)
         {
-            // Cast from just above this square's own surface rather than the actor's, so a square
-            // the actor has already sunk below is still probed correctly.
-            var probe = new Vector3(spot.X, surfaceY + 0.6f, spot.Z);
-            if (TerrainRaycast.Cast(map, probe, -Vector3.UnitY, 1.5f) is not { } ground) return null;
+            int x = (int)MathF.Floor(spot.X);
+            int z = (int)MathF.Floor(spot.Z);
+            int top = (int)MathF.Floor(gradeY);
+            int layers = Math.Max(1, (int)MathF.Ceiling(depth));
+            for (int layer = 0; layer < layers; layer++)
+            {
+                int y = top - layer;
+                if (!map.TryGetVoxel(x, y, z, out var voxel)) return null;
 
-            var target = Digging.TargetVoxel(ground.Point, ground.Normal);
-            if (!map.TryGetVoxel(
-                    (int)MathF.Round(target.X),
-                    (int)MathF.Round(target.Y),
-                    (int)MathF.Round(target.Z),
-                    out var voxel)
-                || voxel.Distance >= 0f
-                || voxel.Material is not (BlockType.BlockType_Dirt or BlockType.BlockType_Grass))
-                return null;
+                // A half-strength bite can relabel the centre sample Air before the spherical cut
+                // is actually clear. Keep hitting it until the same clearance threshold used by
+                // staircase excavation is reached; otherwise every layer receives only half a bite
+                // and the nominal two-deep centre remains a shallow dent.
+                if (voxel.Distance >= 0.5f) continue;
+                if (voxel.Distance < 0f
+                    && voxel.Material is not (
+                        BlockType.BlockType_Dirt or BlockType.BlockType_Grass))
+                    return null;
+                return new Vector3(x, y, z);
+            }
 
-            return target;
+            return null;
         }
     }
 }

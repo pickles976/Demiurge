@@ -16,13 +16,16 @@ internal sealed class NavigationAgent
     /// survive the replan each bite forces, short enough that abandoning a cut is still possible when
     /// the situation changes.
     /// </summary>
-    private const uint DigSiteMemoryTicks = 5 * NetworkConfig.TickRate;
+    private const uint DigSiteMemoryTicks = 15 * NetworkConfig.TickRate;
 
     private PendingRequest? pending;
     private long? blockedCellKey;
     private int blockedReplansRemaining;
     private NavCell? digSite;
     private uint digSiteTick;
+    private (int X, int Z)? escapeDirection;
+    private float escapeGrade;
+    private Vector2? escapeTread;
 
     public PathFollower Path { get; } = new();
     public NavigationProgressWatch Progress { get; } = new();
@@ -85,6 +88,43 @@ internal sealed class NavigationAgent
 
     public void ForgetDigSite() => digSite = null;
 
+    public bool TryGetEscape(out int dx, out int dz, out float grade)
+    {
+        if (escapeDirection is not { } direction)
+        {
+            dx = dz = 0;
+            grade = 0f;
+            return false;
+        }
+        dx = direction.X;
+        dz = direction.Z;
+        grade = escapeGrade;
+        return true;
+    }
+
+    public void StartEscape(int dx, int dz, float grade)
+    {
+        escapeDirection = (dx, dz);
+        escapeGrade = grade;
+        Path.Clear();
+    }
+
+    public void SetEscapeTread(NavCell? cell)
+        => escapeTread = cell is { } tread ? tread.CentreXZ : null;
+
+    public bool TryGetEscapeTread(out Vector2 tread)
+    {
+        tread = escapeTread.GetValueOrDefault();
+        return escapeTread.HasValue;
+    }
+
+    public void StopEscape()
+    {
+        escapeDirection = null;
+        escapeGrade = 0f;
+        escapeTread = null;
+    }
+
     public void ResetBlocked()
     {
         blockedCellKey = null;
@@ -113,6 +153,7 @@ internal sealed class NavigationAgent
         pending = null;
         ResetBlocked();
         ForgetDigSite();
+        StopEscape();
         Destination = default;
         HasDestination = false;
     }

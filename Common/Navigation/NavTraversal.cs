@@ -520,9 +520,22 @@ public static class NavTraversal
         int dz,
         out Vector3 target,
         out float cost)
+        => TryDig(map, from, dx, dz, out target, out cost, out _);
+
+    /// <summary>The escape-planner form also reports the tread whose headroom is being cleared, so
+    /// the live actor can steer to that exact cell instead of overrunning it into the next wall.</summary>
+    public static bool TryDig(
+        ChunkMap map,
+        NavCell from,
+        int dx,
+        int dz,
+        out Vector3 target,
+        out float cost,
+        out NavCell? treadCell)
     {
         target = default;
         cost = NavCosts.Inf;
+        treadCell = null;
         if (Math.Abs(dx) + Math.Abs(dz) != 1
             || !Standable(map, from.X, from.Y, from.Z, out _))
             return false;
@@ -543,6 +556,10 @@ public static class NavTraversal
             // level bite below. The two branches were digging against each other: the forward dig
             // drives straight through the tread the stair depends on, and the hole always won.
             if (!TryStaircaseTarget(map, from, dx, dz, wallSteps, out target)) return false;
+            treadCell = new NavCell(
+                from.X + dx * wallSteps,
+                from.Y + 1,
+                from.Z + dz * wallSteps);
             cost = NavCosts.DigOneVoxel;
             return true;
         }
@@ -563,13 +580,26 @@ public static class NavTraversal
         bool TryFindHigherSurface(int steps, out SurfaceQuery.SurfaceHit upper)
         {
             upper = default;
+            int x = from.X + dx * steps;
+            int z = from.Z + dz * steps;
             var surface = SurfaceQuery.HighestSurface(
                 map,
-                from.X + dx * steps,
-                from.Z + dz * steps);
+                x,
+                z);
             if (surface is not { } found
-                || found.Y <= feet.Y + MaximumTraverseCellDelta
-                || !IsSoil(found.Material))
+                // TryDig is reached only after ordinary traversal already failed. Once a wall is
+                // being converted into a tread, its sampled top drops below the old two-cell gate
+                // before the capsule aperture is actually standable; switching to a forward bite
+                // at that point destroys the tread and makes a horizontal tunnel. Any remaining
+                // positive lip stays a staircase until TryStaircaseTarget's authoritative
+                // Standable check says the step is complete.
+                || found.Y <= feet.Y + 0.1f
+                || !IsSoil(found.Material)
+                // A sub-cell SDF lip can report a slightly higher surface even though the intended
+                // tread is already air. That is an ordinary wall/tunnel frontier, not a staircase;
+                // selecting it here would make TryStaircaseTarget reject the missing tread and
+                // suppress the valid forward bite.
+                || !IsSolidSoil(map, new Vector3(x, from.Y + 1, z)))
                 return false;
             upper = found;
             return true;
@@ -586,7 +616,7 @@ public static class NavTraversal
     /// the capsule keeps failing the standability check, so the actor re-cuts the same step instead
     /// of climbing it. Over-cutting only wastes the bites it spends. When in doubt, cut more.
     /// </summary>
-    private const int StaircaseHeadroomCells = 3;
+    private const int StaircaseHeadroomCells = 4;
 
     /// <summary>
     /// How positive a sample has to read before the headroom counts as cut. Not simply "air":
@@ -650,7 +680,29 @@ public static class NavTraversal
                     return true;
                 }
 
-        return false;   // headroom already open; this step is cut and the actor can climb it
+        var treadCell = new NavCell(x, tread, z);
+        if (Standable(map, treadCell.X, treadCell.Y, treadCell.Z, out _))
+            return false;
+
+        // The SDF brush rounds the nominal 2x2 aperture. On a sharp excavated wall those rounded
+        // shoulders can still intersect the authoritative capsule even though every centre sample
+        // above the tread is clear. Do not call the stair finished until the same Standable query
+        // used by A* agrees; widen only the surrounding apron, keeping all bites above the tread so
+        // the floor itself survives.
+        for (int y = tread + 1; y <= tread + StaircaseHeadroomCells; y++)
+            for (int stepZ = -1; stepZ <= 2; stepZ++)
+                for (int stepX = -1; stepX <= 2; stepX++)
+                {
+                    if (stepX is 0 or 1 && stepZ is 0 or 1) continue;
+                    var sample = new Vector3(x + stepX, y, z + stepZ);
+                    if (!TryVoxel(map, sample, out var voxel)) return false;
+                    if (voxel.Distance >= StaircaseClearedDistance) continue;
+                    if (voxel.Distance < 0f && !IsSoil(voxel)) continue;
+                    target = sample;
+                    return true;
+                }
+
+        return false;
     }
 
     private static bool TryDigTargetAlongRay(

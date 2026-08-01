@@ -59,6 +59,7 @@ public class ShotEffectsScript : SyncScript
     ];
 
     private const string DirtImpactSound = "assets/sfx/bullet_impact_dirt.wav";
+    private const string HitmarkerSound = "assets/sfx/hitmarker.wav";
 
     /// <summary>Dust, not sparks: pale and a little transparent, so a burst of them reads as one
     /// kicked-up cloud rather than seven separate lines.</summary>
@@ -137,6 +138,7 @@ public class ShotEffectsScript : SyncScript
 
         var position = player.Position + new System.Numerics.Vector3(0f, GunConfig.PlayerCenterHeight + 0.6f, 0f);
         DamageTextManager.Spawn(position.ToStride(), confirm.Damage, DamageTextColor);
+        sound.PlayOneShot(HitmarkerSound);
     }
 
     private void PlayEffects(

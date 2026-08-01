@@ -22,6 +22,7 @@ namespace Demiurge
         public required PlayerRegistry Registry { get; init; }
 
         private const string HeartbeatSound = "assets/sfx/heartbeat.wav";
+        private const string HurtSound = "assets/sfx/hurt_sound.wav";
 
         /// <summary>
         /// How far the world is pushed away at zero health. Not silence: losing the ability to hear
@@ -66,6 +67,9 @@ namespace Demiurge
                 ? (lastHealth - current) / (float)Math.Max(1, max)
                 : 0f;
             lastHealth = current;
+
+            if (lost > 0f)
+                sound.PlayOneShot(HurtSound);
 
             float fraction = HealthConfig.Fraction(current, max);
             vision?.Update(fraction, lost, dt, alive);

@@ -343,7 +343,7 @@ public static class NavSearch
     /// invalidates the path and forces a fresh search whose best frontier is recomputed from scratch,
     /// so a marginally better cut somewhere else won each time and nothing ever got finished.
     /// </summary>
-    public const float DigSiteRadius = 3f;
+    public const float DigSiteRadius = 1.1f;
     public static readonly float DigSiteCommitmentSeconds = 2f * NavCosts.DigOneVoxel;
 
     public static NavPath Find(
@@ -576,11 +576,23 @@ public static class NavSearch
         float score = candidateCost + goal.Heuristic(blocked);
         // Finishing a cut already started beats opening a better-scoring one somewhere else. The
         // frontier cell itself moves as the cut advances, so commitment is to the SITE, not the cell.
+        // An excavation site is a horizontal cut, not one particular Y sample. Staircase digging
+        // deliberately targets headroom several cells above the tread; including that vertical
+        // separation made the next replan decide its own staircase was outside the commitment
+        // radius and open a fresh cut on another wall. The result was a ring of alcoves at floor
+        // height rather than one route to the surface.
         if (preferredDigSite is { } site
-            && GoalPosition.Distance(blocked, site) <= DigSiteRadius)
+            && HorizontalDistanceSquared(blocked, site) <= DigSiteRadius * DigSiteRadius)
             score -= DigSiteCommitmentSeconds;
         if (bestDig is null || score < bestDig.Value.Score)
             bestDig = new DigCandidate(current, blocked, target, candidateCost, score);
+    }
+
+    private static float HorizontalDistanceSquared(NavCell a, NavCell b)
+    {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return dx * dx + dz * dz;
     }
 
     private static void Relax(

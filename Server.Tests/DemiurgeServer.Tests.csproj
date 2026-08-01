@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <AssemblyName>DemiurgeServer.Tests</AssemblyName>
+    <!-- Full-system scenarios have their own explicit feature-test command. Keep ordinary runs
+         fast; a command-line test filter overrides this when integration coverage is wanted. -->
+    <VSTestTestCaseFilter Condition="'$(VSTestTestCaseFilter)' == ''">Category!=Integration</VSTestTestCaseFilter>
   </PropertyGroup>
 
   <ItemGroup>

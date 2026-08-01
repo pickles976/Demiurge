@@ -14,8 +14,8 @@ dotnet run                                      # client only; connects to a ser
 dotnet run -- --editor trench-test              # in-engine map editor
 dotnet run --project Server/DemiurgeServer.csproj   # standalone server
 dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), headless
-dotnet test --filter "Category!=Benchmark"      # ~1s; skips the pipeline benchmarks, which
-                                                # generate the whole world and cost a few seconds
+dotnet test --filter "Category!=Benchmark&Category!=Integration"  # ordinary fast suite
+dotnet test Server.Tests/DemiurgeServer.Tests.csproj --filter "Category=Integration"  # feature integration
 ```
 
 **Singleplayer is the normal way to test anything server-side** — one launch instead of two.

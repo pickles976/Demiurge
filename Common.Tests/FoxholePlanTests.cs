@@ -77,6 +77,50 @@ public class FoxholePlanTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void FinishesTheTwoDeepCentreBeforeWidening()
+    {
+        var map = Soil();
+        var feet = new Vector3(0.5f, Ground, 0.5f);
+        var toward = Vector3.UnitZ;
+        int centreBites = 0;
+
+        while (centreBites < 100
+               && FoxholePlan.NextBite(map, feet, toward, Ground) is { } target)
+        {
+            var square = ((int)MathF.Round(target.X), (int)MathF.Round(target.Z));
+            if (square != (0, 0))
+                break;
+            TerrainEdits.ApplyBox(
+                map, target, Digging.Bite, EditMode.SubtractSoil,
+                BlockType.BlockType_Air, EditShape.Sphere, Digging.BiteStrength);
+            centreBites++;
+        }
+
+        float centre = SurfaceQuery.HighestSurfaceY(map, 0, 0) ?? Ground;
+        Assert.True(centreBites > 0);
+        Assert.True(
+            centre <= Ground - FoxholePlan.Depth + 0.35f,
+            $"centre widened early at {centre:0.00}");
+    }
+
+    [Fact]
+    public void ExpansionCreatesStandingFiringShelvesAtDifferentDepths()
+    {
+        var map = Soil();
+        var feet = new Vector3(0.5f, Ground, 0.5f);
+
+        _ = Excavate(map, feet, Vector3.UnitZ);
+
+        float centre = SurfaceQuery.HighestSurfaceY(map, 0, 0) ?? Ground;
+        float rear = SurfaceQuery.HighestSurfaceY(map, 0, -1) ?? Ground;
+        float left = SurfaceQuery.HighestSurfaceY(map, -1, 0) ?? Ground;
+        float right = SurfaceQuery.HighestSurfaceY(map, 1, 0) ?? Ground;
+        Assert.True(rear > centre + 0.15f, $"rear {rear:0.00}, centre {centre:0.00}");
+        Assert.True(left > centre + 0.35f, $"left {left:0.00}, centre {centre:0.00}");
+        Assert.True(right > centre + 0.35f, $"right {right:0.00}, centre {centre:0.00}");
+    }
+
+    [Fact]
     public void LeavesTheParapetOnTheThreatSideIntact()
     {
         var map = Soil();

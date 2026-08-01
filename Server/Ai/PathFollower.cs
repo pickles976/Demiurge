@@ -17,7 +17,9 @@ internal sealed class PathFollower
     private const float ProgressEpsilon = 0.025f;
     private const float UphillRecoveryRise = 0.2f;
     private const int UphillRecoveryTicks = NetworkConfig.TickRate / 4;
-    private const int MaxUphillRecoveryAttempts = 2;
+    private const int MaxUphillRecoveryAttempts = 1;
+    private const int JumpTakeoffTimeoutTicks = NetworkConfig.TickRate / 2;
+    private const float JumpLandingTolerance = 1.5f;
     private const int StallTicks = 3 * NetworkConfig.TickRate / 4;
     private const float PartialRefreshDistance = 12f;
 
@@ -30,7 +32,9 @@ internal sealed class PathFollower
     private ChunkMap? terrain;
     private bool jumpIssued;
     private bool jumpBecameAirborne;
+    private int jumpTakeoffTicks;
     private Vector3 jumpIntent;
+    private bool staleDigIssued;
     private Vector3 lastPosition;
     private bool hasLastPosition;
 
@@ -56,7 +60,9 @@ internal sealed class PathFollower
         bestDistance = float.PositiveInfinity;
         jumpIssued = false;
         jumpBecameAirborne = false;
+        jumpTakeoffTicks = 0;
         jumpIntent = Vector3.Zero;
+        staleDigIssued = false;
         if (currentPosition is { } joinedPosition)
         {
             lastPosition = joinedPosition;
@@ -101,7 +107,9 @@ internal sealed class PathFollower
         bestDistance = float.PositiveInfinity;
         jumpIssued = false;
         jumpBecameAirborne = false;
+        jumpTakeoffTicks = 0;
         jumpIntent = Vector3.Zero;
+        staleDigIssued = false;
         lastPosition = default;
         hasLastPosition = false;
     }
@@ -121,11 +129,32 @@ internal sealed class PathFollower
         blockedCell = null;
         lastPosition = position;
         hasLastPosition = true;
-        if (path is null
-            || (terrain is not null
-                ? !NavPathTerrain.IsValid(terrain, path)
-                : terrainVersion != currentTerrainVersion))
+        if (path is null)
         {
+            Clear();
+            return PathFollowState.NeedsPath;
+        }
+
+        bool terrainChanged = terrain is not null
+            ? !NavPathTerrain.IsValid(terrain, path)
+            : terrainVersion != currentTerrainVersion;
+        if (terrainChanged)
+        {
+            // A squad often receives several paths to the same excavation frontier in one tick.
+            // The first shovel bite changes the chunk revision; throwing every later path away
+            // before its owner can swing makes one actor do all of the work. Let each already-
+            // planned dig contribute one bite, then force a fresh search on its next update.
+            int action = NextActionableWaypoint(position);
+            if (!staleDigIssued
+                && action < path.Waypoints.Count
+                && path.Waypoints[action].Action == NavAction.Dig)
+            {
+                waypoint = action;
+                staleDigIssued = true;
+                digTarget = path.Waypoints[action].Position;
+                return PathFollowState.Digging;
+            }
+
             Clear();
             return PathFollowState.NeedsPath;
         }
@@ -138,6 +167,13 @@ internal sealed class PathFollower
             jumpBecameAirborne |= !grounded;
             if (!jumpBecameAirborne)
             {
+                jumpTakeoffTicks++;
+                if (jumpTakeoffTicks >= JumpTakeoffTimeoutTicks)
+                {
+                    blockedCell = path.Waypoints[waypoint].Cell;
+                    Clear();
+                    return PathFollowState.NeedsPath;
+                }
                 intent = jumpIntent;
                 jump = true;
                 return PathFollowState.Following;
@@ -148,12 +184,21 @@ internal sealed class PathFollower
                 return PathFollowState.Following;
             }
 
+            if (HorizontalDistanceSquared(position, path.Waypoints[waypoint].Position)
+                > JumpLandingTolerance * JumpLandingTolerance)
+            {
+                blockedCell = path.Waypoints[waypoint].Cell;
+                Clear();
+                return PathFollowState.NeedsPath;
+            }
+
             waypoint++;
             stalledTicks = 0;
             uphillRecoveryAttempts = 0;
             bestDistance = float.PositiveInfinity;
             jumpIssued = false;
             jumpBecameAirborne = false;
+            jumpTakeoffTicks = 0;
             jumpIntent = Vector3.Zero;
         }
 
@@ -168,6 +213,7 @@ internal sealed class PathFollower
             bestDistance = float.PositiveInfinity;
             jumpIssued = false;
             jumpBecameAirborne = false;
+            jumpTakeoffTicks = 0;
             jumpIntent = Vector3.Zero;
         }
 
@@ -204,6 +250,7 @@ internal sealed class PathFollower
         {
             jump = true;
             jumpIssued = true;
+            jumpTakeoffTicks = 0;
             jumpIntent = intent;
         }
         else if (path.Waypoints[waypoint].Action == NavAction.Walk
@@ -228,6 +275,18 @@ internal sealed class PathFollower
             return PathFollowState.NeedsPath;
         }
         return PathFollowState.Following;
+    }
+
+    private int NextActionableWaypoint(Vector3 position)
+    {
+        if (path is null) return 0;
+        int action = waypoint;
+        while (action < path.Waypoints.Count
+               && path.Waypoints[action].Action != NavAction.Dig
+               && HorizontalDistanceSquared(position, path.Waypoints[action].Position)
+                   <= ArrivalRadius * ArrivalRadius)
+            action++;
+        return action;
     }
 
     private static float HorizontalDistanceSquared(Vector3 a, Vector3 b)

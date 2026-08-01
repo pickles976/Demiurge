@@ -121,7 +121,10 @@ public static class NavPathTerrain
 /// <summary>Removes redundant steering points without crossing a non-walk traversal action.</summary>
 public static class NavPathSmoothing
 {
-    public const float MaximumWalkSegmentLength = 8f;
+    // Four-metre steering anchors keep small lateral errors from accumulating along a long narrow
+    // bridge. Eight-metre segments were fine in ideal path tests but gave the live follower enough
+    // time to drift to an edge before receiving another centre-line correction.
+    public const float MaximumWalkSegmentLength = 4f;
 
     public static NavPath RemoveCollinearWalks(NavPath path)
     {

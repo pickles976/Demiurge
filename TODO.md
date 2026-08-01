@@ -5,22 +5,23 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-Bugs: 
+AI Improvements: 
 
-After relocation, pathfinding stops and NPCs stand idle.
+When NPCs are relocated due to being stuck, when they respawn, they just rotate and scan. 
 
-NPCs are unable to dig out of their foxholes they often just jump up and down instead of digging sideways. They should start by digging a 1x1 2-deep hole, but then expand it at varying depths so they can see out while standing at certain parts.
+NPCs also still try to walk up slopes that they can't, and struggle to dig/pathfind out of deep pits. Make a full integration test for this as well.
 
-AI still struggles somewhat with building up, sometimes they just jump at the wall, although it is better than before.
+NPCs also will sometimes dig a foxhole, but not actually enter it. They need to physically enter the foxhole and ensure they are covered before engaging the enemy if they are choosing to entrench themselves. Write an integration fuzz test to test this.
 
-It looks like only one squad member is digging at a time? Could multiple squad members contribute to digging rather than just 1?. Also if a single squad is stuck for a long period of time, perhaps each squad member could do their own pathfinding to dig out, so they aren't all bunched up in the same spot.
+NPCs should use digging for movement. If there is no good way to approach the enemy, make them dig towards the enemy. Several members of a squad can dig while the others engage the enemy and keep them pinned down. They can dig a 2m deep trench that will keep them totally safe from gunfire while crouched.
 
-NPCs can navigate over short bridges sometimes, but often struggle with long ones. It appears to be non-deterministic.
+NPCs also should have to switch to the shovel when they dig. 
 
 Client performance issues. 
+FPS drops off a cliff early in the game once we walk far enough away from our starting location. 
+FPS reliably drops off a cliff once combat starts.
 
 - [ ] PVP
-    - [x] add ppsh
     - [ ] add mosin-nagant
     - [ ] add black cats
 
@@ -35,9 +36,6 @@ Client performance issues.
     - [ ] add helmet
 
 - [ ] brick wall texture and block type
-- [ ] pain sound
-- [ ] feedback sound when enemy dies
-
 
 - [ ] add trees
 - [ ] tree destruction
@@ -52,8 +50,8 @@ Client performance issues.
 - [x] Integer teams, team spawns, enemy-only perception, and friendly fire
 - [x] Standard NPC inventory: AK-47, four grenades, and shovel
 - [ ] AI should have different behaviors based on weapon
-  - [ ] SMG -- close the gap by moving from cover to cover, once close start suppressing and using grenades. Ideal engagement range is <30m
-  - [ ] automatic rifle -- fire and advance. Seek cover before firing, coordinate with nearby units for fire and advance. Ideal engagement range is 100-200m
+  - [x] SMG -- close the gap by moving from cover to cover, once close start suppressing and using grenades. Ideal engagement range is <30m
+  - [x] automatic rifle -- fire and advance. Seek cover before firing, coordinate with nearby units for fire and advance. Ideal engagement range is 100-200m
   - [ ] sniper rifle, 200m+. Seek cover and take shots when you can. Fall back as units get closer to better vantage points. Look for cover and high spots with far LOS.
 - [x] Bounded cover search with LOS, crouched/standing exposure, corner peeks, escape routes,
   concealment, and squad position claims

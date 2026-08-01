@@ -145,6 +145,10 @@ resize/device-reset loop documented in [PERFORMANCE.md](../PERFORMANCE.md).
 - Server orchestration boundaries and systems belong in `Server.Tests`.
 - `ConquestNavigationBenchmarkTests` is tagged `Category=Benchmark` and is excluded from ordinary
   test runs.
-- Use `dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark"` for the fast suite.
+- Full-system scenarios such as `MobDigEscapeIntegrationTests` are tagged `Category=Integration`
+  and run only during feature-specific validation.
+- Use `dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark&Category!=Integration"` for the
+  fast suite. While validating NPC pathfinding, use the explicit integration-test command from
+  `CLAUDE.md`.
 - Use singleplayer `conquest` for the integrated 32-NPC scale test and `ai stats` for the current
   one-second AI/navigation window.

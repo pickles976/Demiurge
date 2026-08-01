@@ -179,7 +179,7 @@ still talks about the smaller implementation that existed when the step was writ
 - Test complex pure logic and narrow server boundaries: search correctness, coordinate/angle math,
   probability, shared-route scheduling, path following, strategic allocation, and watchdog timing.
   Use playtests for emergent arbitration and presentation.
-- Run `dotnet test --filter "Category!=Benchmark"` after each step (~1s).
+- Run `dotnet test --filter "Category!=Benchmark&Category!=Integration"` after each step (~1s).
 
 ---
 

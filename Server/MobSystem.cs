@@ -383,63 +383,78 @@ namespace Demiurge.GameServer
             }
             else
             {
-                followState = follower.Update(
-                    mob.Position,
-                    mob.Move.Grounded,
-                    terrain.EditVersion,
-                    out intent,
-                    out jump,
-                    out var digTarget,
-                    out var blockedCell);
-                brain.Navigation.RememberBlocked(blockedCell);
-                if (followState == PathFollowState.Digging)
-                {
-                    digging = true;
-                    intent = Vector3.Zero;
-                    jump = false;
-                    mob.Hotbar = HotbarSlot.Shovel;
-                    FaceDigTarget(mob, digTarget, dt);
-                    long versionBeforeDig = terrain.EditVersion;
-                    terrainEdits.ApplyDig(
+                if (TryEscapeRamp(
                         mob,
-                        new PlayerDigData
-                        {
-                            Target = digTarget,
-                            Hotbar = HotbarSlot.Shovel,
-                        },
-                        tick);
-                    terrainProgress = terrain.EditVersion != versionBeforeDig;
-                    if (terrainProgress)
-                        brain.Navigation.RememberDigSite(digTarget, tick);
-                }
-                if (followState == PathFollowState.Complete)
+                        brain,
+                        destination,
+                        tick,
+                        out intent,
+                        out jump,
+                        out digging,
+                        out terrainProgress))
                 {
-                    bool reachedGoal = follower.ReachedGoal;
-                    follower.Clear();
-                    if (reachedGoal && heardGunshot)
+                    followState = PathFollowState.Following;
+                }
+                else
+                {
+                    followState = follower.Update(
+                        mob.Position,
+                        mob.Move.Grounded,
+                        terrain.EditVersion,
+                        out intent,
+                        out jump,
+                        out var digTarget,
+                        out var blockedCell);
+                    brain.Navigation.RememberBlocked(blockedCell);
+                    if (followState == PathFollowState.Digging)
                     {
-                        brain.ClearGunshot();
-                        heardGunshot = false;
-                        brain.Navigation.SetDestination(
-                            hasObjective
-                                ? ObjectiveDestination(mob.Id, objective.Position, squad)
-                                : RandomSurfacePoint(HomeOf(mob)));
-                        destination = brain.Navigation.Destination;
-                        followState = PathFollowState.NeedsPath;
+                        digging = true;
+                        intent = Vector3.Zero;
+                        jump = false;
+                        mob.Hotbar = HotbarSlot.Shovel;
+                        FaceDigTarget(mob, digTarget, dt);
+                        long versionBeforeDig = terrain.EditVersion;
+                        terrainEdits.ApplyDig(
+                            mob,
+                            new PlayerDigData
+                            {
+                                Target = digTarget,
+                                Hotbar = HotbarSlot.Shovel,
+                            },
+                            tick);
+                        terrainProgress = terrain.EditVersion != versionBeforeDig;
+                        if (terrainProgress)
+                            brain.Navigation.RememberDigSite(digTarget, tick);
                     }
-                    else if (reachedGoal && hasObjective)
+                    if (followState == PathFollowState.Complete)
                     {
-                        followState = PathFollowState.Following;
-                    }
-                    else
-                    {
-                        if (reachedGoal)
+                        bool reachedGoal = follower.ReachedGoal;
+                        follower.Clear();
+                        if (reachedGoal && heardGunshot)
                         {
+                            brain.ClearGunshot();
+                            heardGunshot = false;
                             brain.Navigation.SetDestination(
-                                RandomSurfacePoint(HomeOf(mob)));
+                                hasObjective
+                                    ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                                    : RandomSurfacePoint(HomeOf(mob)));
                             destination = brain.Navigation.Destination;
+                            followState = PathFollowState.NeedsPath;
                         }
-                        followState = PathFollowState.NeedsPath;
+                        else if (reachedGoal && hasObjective)
+                        {
+                            followState = PathFollowState.Following;
+                        }
+                        else
+                        {
+                            if (reachedGoal)
+                            {
+                                brain.Navigation.SetDestination(
+                                    RandomSurfacePoint(HomeOf(mob)));
+                                destination = brain.Navigation.Destination;
+                            }
+                            followState = PathFollowState.NeedsPath;
+                        }
                     }
                 }
             }
@@ -517,6 +532,109 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
+        /// Owns one cardinal ramp until a trapped actor reaches the surrounding grade. Generic A*
+        /// is free to reconsider every frontier after every terrain edit; inside a small pit that
+        /// produces several disconnected alcoves instead of one staircase. Escape is the case where
+        /// commitment is more important than global optimality: cut the next tread, move onto it,
+        /// and repeat in the objective's direction.
+        /// </summary>
+        private bool TryEscapeRamp(
+            ServerPlayer mob,
+            MobBrain brain,
+            Vector3 destination,
+            uint tick,
+            out Vector3 intent,
+            out bool jump,
+            out bool digging,
+            out bool terrainProgress)
+        {
+            intent = Vector3.Zero;
+            jump = false;
+            digging = false;
+            terrainProgress = false;
+
+            if (!brain.Navigation.TryGetEscape(out int dx, out int dz, out float grade))
+            {
+                // Only an open depression starts escape mode. A cave has unrelated terrain above
+                // the actor in its own column and remains ordinary navigation terrain.
+                int atX = (int)MathF.Floor(mob.Position.X);
+                int atZ = (int)MathF.Floor(mob.Position.Z);
+                if (SurfaceQuery.HighestSurfaceY(terrain, atX, atZ) is not { } localFloor
+                    || MathF.Abs(localFloor - mob.Position.Y) > 0.75f)
+                    return false;
+
+                grade = localFloor;
+                for (int z = atZ - 4; z <= atZ + 4; z++)
+                    for (int x = atX - 4; x <= atX + 4; x++)
+                        if (SurfaceQuery.HighestSurfaceY(terrain, x, z) is { } surface)
+                            grade = MathF.Max(grade, surface);
+                if (grade - mob.Position.Y < 1.5f)
+                    return false;
+
+                Vector3 toward = destination - mob.Position;
+                if (MathF.Abs(toward.X) > MathF.Abs(toward.Z))
+                {
+                    dx = toward.X < 0f ? -1 : 1;
+                    dz = 0;
+                }
+                else
+                {
+                    dx = 0;
+                    dz = toward.Z < 0f ? -1 : 1;
+                }
+                CancelPending(mob.Id, brain.Navigation);
+                brain.Navigation.StartEscape(dx, dz, grade);
+            }
+
+            if (mob.Position.Y >= grade - 0.35f)
+            {
+                brain.Navigation.StopEscape();
+                return false;
+            }
+            if (!TryCellAt(mob.Position, out var from))
+                return true;
+
+            if (NavTraversal.TryDig(
+                    terrain,
+                    from,
+                    dx,
+                    dz,
+                    out var target,
+                    out _,
+                    out var tread))
+            {
+                brain.Navigation.SetEscapeTread(tread);
+                digging = true;
+                long version = terrain.EditVersion;
+                PerformNavigationDig(mob, brain, target, tick);
+                terrainProgress = terrain.EditVersion != version;
+                return true;
+            }
+
+            Vector3 movementTarget;
+            if (brain.Navigation.TryGetEscapeTread(out var treadPosition))
+            {
+                movementTarget = new Vector3(treadPosition.X, mob.Position.Y, treadPosition.Y);
+                Vector3 delta = movementTarget - mob.Position;
+                delta.Y = 0f;
+                if (delta.LengthSquared() <= 0.25f * 0.25f)
+                {
+                    brain.Navigation.SetEscapeTread(null);
+                    return true;
+                }
+                intent = Vector3.Normalize(delta);
+            }
+            else
+            {
+                intent = Vector3.Normalize(new Vector3(dx, 0f, dz));
+            }
+            // This tread was cut for this actor, but the capsule can be off-centre when it becomes
+            // usable. Keep pressing toward it and pulse jump while grounded until it settles.
+            jump = mob.Move.Grounded;
+            return true;
+        }
+
+        /// <summary>
         /// Wipes the fight out of a brain when its NPC comes back on a respawn wave. Respawn reset the
         /// replicated ServerPlayer but never the brain, so a mob returned to base still believing it was
         /// at cover, under fire, and holding a contact -- and stood there crouched behind nothing.
@@ -537,10 +655,18 @@ namespace Demiurge.GameServer
             brain.BoundIndex = 0;
             brain.AssaultDashActive = false;
             brain.NextCoverQueryTick = 0;
-            CancelPending(mob.Id, brain.Navigation);
+            // Cancel by actor as well as clearing the agent's bookkeeping. Cover and objective
+            // requests can replace one another, so the worker's latest generation is the authority;
+            // cancelling only the request the agent happened to remember could leave a pre-
+            // relocation job alive and able to suppress the first request from the new spawn.
+            navigation.Cancel(mob.Id);
             brain.Navigation.Clear();
             homes[mob.Id] = mob.Position;
-            brain.Navigation.SetDestination(RandomSurfacePoint(mob.Position));
+            brain.ObjectiveRevision = squad.ObjectiveRevision;
+            brain.Navigation.SetDestination(
+                squad.TryGetObjective(out var objective)
+                    ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                    : RandomSurfacePoint(mob.Position));
         }
 
         public void Dispose() => navigation.Dispose();
@@ -743,11 +869,22 @@ namespace Demiurge.GameServer
                     tick,
                     forCover: true,
                     replacePending: true,
-                    allowJump: true);
+                    allowJump: true,
+                    allowDig: true);
                 return;
             }
 
             squad.RefreshClaim(mob.Id, tick);
+            if (TryEscapeRamp(
+                    mob,
+                    brain,
+                    brain.CoverDestination,
+                    tick,
+                    out intent,
+                    out jump,
+                    out _,
+                    out _))
+                return;
             if (HorizontalDistanceSquared(mob.Position, brain.CoverDestination)
                 <= BoundArrivalDistance * BoundArrivalDistance)
             {
@@ -763,10 +900,16 @@ namespace Demiurge.GameServer
                 terrain.EditVersion,
                 out intent,
                 out jump,
-                out _,
+                out var digTarget,
                 out var blockedCell);
             brain.Navigation.RememberBlocked(blockedCell);
-            if (followState == PathFollowState.Complete)
+            if (followState == PathFollowState.Digging)
+            {
+                intent = Vector3.Zero;
+                jump = false;
+                PerformNavigationDig(mob, brain, digTarget, tick);
+            }
+            else if (followState == PathFollowState.Complete)
             {
                 intent = Vector3.Zero;
                 jump = false;
@@ -777,7 +920,13 @@ namespace Demiurge.GameServer
             {
                 intent = Vector3.Zero;
                 jump = false;
-                RequestPath(mob, brain.CoverDestination, tick, forCover: true, allowJump: true);
+                RequestPath(
+                    mob,
+                    brain.CoverDestination,
+                    tick,
+                    forCover: true,
+                    allowJump: true,
+                    allowDig: true);
             }
         }
 
@@ -910,7 +1059,8 @@ namespace Demiurge.GameServer
                             choice.Position,
                             tick,
                             forCover: true,
-                            replacePending: true);
+                            replacePending: true,
+                            allowDig: true);
                     }
                 }
                 else if (closingDistance
@@ -933,17 +1083,14 @@ namespace Demiurge.GameServer
                     brain.CoverThreatPosition = primaryThreat.Position;
                     brain.CoverTerrainVersion = terrain.EditVersion;
                     brain.NextCoverQueryTick = tick + CoverRetryTicks;
-                    // Digging is deliberately still off here. The cover follower below discards the
-                    // dig target and has no Digging case, so a dig waypoint would stall the NPC on it
-                    // forever. Executing one needs the shovel, pitch, and yaw that CombatBehavior has
-                    // already claimed for aiming, which is a behaviour decision rather than plumbing.
                     RequestPath(
                         mob,
                         advance,
                         tick,
                         forCover: true,
                         replacePending: true,
-                        allowJump: true);
+                        allowJump: true,
+                        allowDig: true);
                 }
                 else
                 {
@@ -980,16 +1127,33 @@ namespace Demiurge.GameServer
             if (!mayAdvance)
                 return;
 
+            if (TryEscapeRamp(
+                    mob,
+                    brain,
+                    brain.CoverDestination,
+                    tick,
+                    out intent,
+                    out jump,
+                    out _,
+                    out _))
+                return;
+
             var followState = brain.Navigation.Path.Update(
                 mob.Position,
                 mob.Move.Grounded,
                 terrain.EditVersion,
                 out intent,
                 out jump,
-                out _,
+                out var digTarget,
                 out var blockedCell);
             brain.Navigation.RememberBlocked(blockedCell);
-            if (followState == PathFollowState.Complete)
+            if (followState == PathFollowState.Digging)
+            {
+                intent = Vector3.Zero;
+                jump = false;
+                PerformNavigationDig(mob, brain, digTarget, tick);
+            }
+            else if (followState == PathFollowState.Complete)
             {
                 bool arrived = brain.Navigation.Path.ReachedGoal
                     || HorizontalDistanceSquared(mob.Position, brain.CoverDestination)
@@ -1018,8 +1182,31 @@ namespace Demiurge.GameServer
                     mob,
                     brain.CoverDestination,
                     tick,
-                    forCover: true);
+                    forCover: true,
+                    allowDig: true);
             }
+        }
+
+        private void PerformNavigationDig(
+            ServerPlayer mob,
+            MobBrain brain,
+            Vector3 target,
+            uint tick)
+        {
+            mob.Hotbar = HotbarSlot.Shovel;
+            mob.State |= PlayerStateFlags.Shooting;
+            FaceDigTarget(mob, target, NetworkConfig.FixedDt);
+            long versionBeforeDig = terrain.EditVersion;
+            terrainEdits.ApplyDig(
+                mob,
+                new PlayerDigData
+                {
+                    Target = target,
+                    Hotbar = HotbarSlot.Shovel,
+                },
+                tick);
+            if (terrain.EditVersion != versionBeforeDig)
+                brain.Navigation.RememberDigSite(target, tick);
         }
 
         private static bool ShouldCrouchAtCover(MobBrain brain, uint tick)
@@ -1203,10 +1390,14 @@ namespace Demiurge.GameServer
                 || !TryCellAt(destination, out var target))
                 return false;
             long? blockedCellKey = navigationAgent.TakeAvoidedCell();
+            NavCell? preferredDigSite = navigationAgent.PreferredDigSite(tick);
+            bool recoveringFromBlockedEdge = blockedCellKey is not null;
             long sharedRouteKey = 0;
             var brain = brains[mob.Id];
             if (!forCover
                 && BoardFor(brain).TryGetObjective(out var objective)
+                && blockedCellKey is null
+                && preferredDigSite is null
                 && HorizontalDistanceSquared(destination, objective.Position)
                     <= FlagConfig.CaptureRadius * FlagConfig.CaptureRadius)
             {
@@ -1220,7 +1411,11 @@ namespace Demiurge.GameServer
                 mob.Id,
                 start,
                 new GoalNear(target, forCover ? CoverArrivalDistance : ArriveDistance),
-                allowJump: !forCover || allowJump,
+                // A jump that the live follower failed is stronger evidence than the idealized
+                // centre-of-cell simulation that originally admitted it. For the next few replans,
+                // remove jump edges entirely and let the dig escalation produce another stair tread
+                // instead of selecting a different theoretical jump and hopping at the wall again.
+                allowJump: (!forCover || allowJump) && !recoveringFromBlockedEdge,
                 // Every cover request used to force this off, so an NPC in a firefight -- which is
                 // exactly when it is in a trench -- could never dig, because combat owns movement and
                 // the objective path that permits digging never runs. The caller decides now; short
@@ -1229,7 +1424,7 @@ namespace Demiurge.GameServer
                 blockedCellKey: blockedCellKey,
                 sharedRouteKey: sharedRouteKey,
                 priority: forCover ? NavigationPriority.Combat : priority,
-                preferredDigSite: navigationAgent.PreferredDigSite(tick));
+                preferredDigSite: preferredDigSite);
             if (requestId != 0)
                 navigationAgent.RecordRequest(requestId, forCover);
             return requestId != 0;

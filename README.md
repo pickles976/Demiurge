@@ -10,12 +10,18 @@ map editor. The project currently targets Linux and Vulkan; there is no Stride G
 - A Vulkan-capable GPU and driver
 - Linux is the actively tested platform
 
-Build and run the non-benchmark tests:
+Build and run the ordinary fast test suite:
 
 ```bash
 dotnet restore
 dotnet build DemiurgeSharp.slnx
-dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark"
+dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark&Category!=Integration"
+```
+
+Run the full-system pathfinding scenarios only when working on that feature:
+
+```bash
+dotnet test Server.Tests/DemiurgeServer.Tests.csproj --filter "Category=Integration"
 ```
 
 When dependency state needs a clean rebuild:
