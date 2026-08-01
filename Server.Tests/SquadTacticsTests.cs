@@ -13,8 +13,19 @@ public class SquadTacticsTests
         float z,
         bool set = false,
         FlankSide side = FlankSide.None,
-        int boundIndex = 0)
-        => new(id, new Vector3(x, 0f, z), side, boundIndex, set);
+        int boundIndex = 0,
+        bool assault = false,
+        bool threatReloading = false,
+        bool committed = false)
+        => new(
+            id,
+            new Vector3(x, 0f, z),
+            side,
+            boundIndex,
+            set,
+            assault,
+            threatReloading,
+            committed);
 
     private static List<SquadTacticalOrder> Plan(params SquadTacticalInput[] members)
     {
@@ -189,5 +200,46 @@ public class SquadTacticsTests
 
         Assert.Equal(4, orders.Count);
         Assert.Equal(4, orders.Select(order => order.ActorId).Distinct().Count());
+    }
+
+    [Fact]
+    public void AssaultElementWaitsInCoverUntilTheThreatReloads()
+    {
+        var orders = Plan(
+            Man(60000, 0f, 20f, set: true, side: FlankSide.Left, assault: true),
+            Man(60001, 2f, 20f, set: true, side: FlankSide.Right, assault: true),
+            Man(60002, 0f, 10f, set: true, side: FlankSide.Left),
+            Man(60003, 2f, 10f, set: true, side: FlankSide.Right));
+
+        Assert.All(orders, order => Assert.Equal(SquadRole.BaseOfFire, order.Role));
+    }
+
+    [Fact]
+    public void ReloadTellSendsAssaultElementWhileRiflesKeepFiring()
+    {
+        var orders = Plan(
+            Man(60000, 0f, 20f, set: true, side: FlankSide.Left,
+                assault: true, threatReloading: true),
+            Man(60001, 2f, 20f, set: true, side: FlankSide.Right,
+                assault: true, threatReloading: true),
+            Man(60002, 0f, 10f, set: true, side: FlankSide.Left),
+            Man(60003, 2f, 10f, set: true, side: FlankSide.Right));
+
+        Assert.Equal(SquadRole.Bound, For(orders, 60000).Role);
+        Assert.Equal(SquadRole.Bound, For(orders, 60001).Role);
+        Assert.Equal(SquadRole.BaseOfFire, For(orders, 60002).Role);
+        Assert.Equal(SquadRole.BaseOfFire, For(orders, 60003).Role);
+    }
+
+    [Fact]
+    public void AssaultDashFinishesAfterReloadTellEnds()
+    {
+        var orders = Plan(
+            Man(60000, 0f, 20f, side: FlankSide.Left,
+                assault: true, committed: true),
+            Man(60002, 0f, 10f, set: true, side: FlankSide.Left));
+
+        Assert.Equal(SquadRole.Bound, For(orders, 60000).Role);
+        Assert.Equal(SquadRole.BaseOfFire, For(orders, 60002).Role);
     }
 }

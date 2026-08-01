@@ -27,6 +27,8 @@ RootAssets:
     - a1c2311d-86f9-2c54-4afa-520e8bf3e1e5:models/glock
     - d5a9cf33-e6e0-1d7a-8e30-373b802dea66:models/grass
     - c605e5d7-c639-5541-5331-8318a2984af1:models/grenade
+    - 3aa2019a-0c38-617b-6392-cd993646fd91:models/ppsh
+    - 88e75af5-6e6c-cc31-7933-053209af5a3b:models/ppsh_skeleton
     - 0d15c1eb-9e34-a972-e091-f2f524af60c7:models/shovel
     - 898107ad-0fcb-75f5-57cb-bbd3ce64873e:models/sks
     - f52e82d5-ad52-47d8-cc6f-891fe13d672a:models/sks_skeleton

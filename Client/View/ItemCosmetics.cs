@@ -23,6 +23,7 @@ public static class ItemCosmetics
     {
         ItemType.Ak47 => "assets/models/ak47.gltf",
         ItemType.Sks => "assets/models/sks.gltf",
+        ItemType.Ppsh => "assets/models/ppsh.gltf",
         ItemType.AWP => "assets/models/sniper_rifle.gltf",
         ItemType.Glock => "assets/models/glock.gltf",
         ItemType.Shovel => "assets/models/shovel.gltf",

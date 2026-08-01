@@ -36,7 +36,7 @@ namespace Demiurge.GameServer
         public Dictionary<EquipSlot, uint> Equipped { get; } = new();
 
         public uint NextDigTick { get; set; }      // earliest tick the next dig is legal
-        public uint NextFireTick { get; set; }     // earliest tick the next shot is legal
+        public float NextFireTick { get; set; }    // fractional deadline; 20 Hz is 1.5 ticks at 30 TPS
         public uint ReloadDoneTick { get; set; }   // firing is blocked until this tick
         public uint NextGrenadeThrowTick { get; set; }
         public WeaponSpreadState Spread;

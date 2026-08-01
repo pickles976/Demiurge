@@ -98,7 +98,11 @@ namespace Demiurge.GameServer
                 || weapon.Weapon.CurrentAmmo <= 0)
                 return false;
 
-            player.NextFireTick = tick + (uint)stats.TicksPerShot;
+            // Retain a deadline that is at most one tick behind so fractional rates preserve their
+            // phase (1.5 ticks alternates 2/1), but an idle weapon cannot bank a magazine of shots.
+            player.NextFireTick = player.NextFireTick < tick - 1f
+                ? tick + stats.TicksPerShot
+                : player.NextFireTick + stats.TicksPerShot;
             weapon.Weapon.CurrentAmmo--;
             weapon.Dirty |= NetComponents.Weapon;       // ammo replicates like any component
 
@@ -176,6 +180,9 @@ namespace Demiurge.GameServer
                     tick));
             }
         }
+
+        /// <summary>How many projectiles are in flight, for the tick breakdown.</summary>
+        internal int LiveProjectiles => projectiles.Count;
 
         internal bool TryDequeueGunshot(out AcceptedGunshot gunshot)
             => gunshots.TryDequeue(out gunshot);
@@ -365,6 +372,22 @@ namespace Demiurge.GameServer
             if (player.Hotbar == HotbarSlot.Primary && !player.Equipped.ContainsKey(slot))
                 slot = EquipSlot.Hand;
 
+            return player.Equipped.TryGetValue(slot, out uint weaponId)
+                && objects.TryGet(weaponId, out weapon!)
+                && weapon.Has.HasFlag(NetComponents.Weapon)
+                && weapon.Item.Type != ItemType.Grenade;
+        }
+
+        /// <summary>
+        /// The stored primary regardless of what is currently in the actor's hands. AI planning runs
+        /// before each mob selects its slot for the tick, so an assaulter who ended the previous tick
+        /// digging must still be recognized as a PPSH carrier while the shovel is selected.
+        /// </summary>
+        internal bool TryGetPrimaryWeapon(ServerPlayer player, out ServerObject weapon)
+        {
+            weapon = null!;
+            EquipSlot slot = EquipSlot.HotbarPrimary;
+            if (!player.Equipped.ContainsKey(slot)) slot = EquipSlot.Hand;
             return player.Equipped.TryGetValue(slot, out uint weaponId)
                 && objects.TryGet(weaponId, out weapon!)
                 && weapon.Has.HasFlag(NetComponents.Weapon)

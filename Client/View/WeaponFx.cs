@@ -15,10 +15,15 @@ public static class WeaponFx
     public readonly record struct Entry(
         IReadOnlyList<string> ShotSoundPaths,
         Color TracerColor,
-        string? ReloadSoundPath = null)
+        string? ReloadSoundPath = null,
+        string? DistantReportSoundPath = null)
     {
-        public Entry(string shotSoundPath, Color tracerColor, string? reloadSoundPath = null)
-            : this([shotSoundPath], tracerColor, reloadSoundPath) { }
+        public Entry(
+            string shotSoundPath,
+            Color tracerColor,
+            string? reloadSoundPath = null,
+            string? distantReportSoundPath = null)
+            : this([shotSoundPath], tracerColor, reloadSoundPath, distantReportSoundPath) { }
     }
 
     public static Entry Get(ItemType type) => type switch
@@ -32,6 +37,14 @@ public static class WeaponFx
             ],
             Color.Yellow,
             ReloadSoundPath: "assets/sfx/sks_reload.wav"),
+        ItemType.Ppsh => new(
+            [
+                "assets/sfx/ppsh_shot_1.wav",
+                "assets/sfx/ppsh_shot_2.wav",
+            ],
+            Color.Yellow,
+            ReloadSoundPath: "assets/sfx/ppsh_reload.wav",
+            DistantReportSoundPath: "assets/sfx/ppsh_report_far_off_200m.wav"),
         ItemType.AWP => new("assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.Glock => new("assets/sfx/ak47_shot.wav", Color.Yellow),
 
@@ -52,8 +65,10 @@ public static class WeaponFx
     /// The recording for a shot heard from <paramref name="metres"/> away, or null to use the
     /// weapon's own near sample.
     /// </summary>
-    public static string? DistantReportFor(float metres)
-        => metres >= VeryDistantReportMetres ? VeryDistantReport
+    public static string? DistantReportFor(in Entry entry, float metres)
+        => metres >= DistantReportMetres && entry.DistantReportSoundPath is { } weaponReport
+            ? weaponReport
+         : metres >= VeryDistantReportMetres ? VeryDistantReport
          : metres >= DistantReportMetres ? DistantReport
          : null;
 

@@ -264,9 +264,9 @@ public sealed class EditorControllerScript : SyncScript
             ArchetypeId = Settings.ObjectId,
             Cell = cells.Air,
             Yaw = Settings.ObjectYaw,
-            WeaponId = kind == EditorPlacementKind.Mob
-                ? ItemCatalog.Id(ItemConfig.DefaultPrimaryWeapon)
-                : null,
+            // Null lets the server allocate this NPC as one member of the default mixed squad.
+            // `editor object equip` turns it into an explicit per-placement override.
+            WeaponId = null,
             Team = kind == EditorPlacementKind.Flag ? 0 : Settings.ObjectTeam,
         };
         Session.Execute(new AddPlacementCommand(placement));

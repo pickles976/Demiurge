@@ -73,6 +73,20 @@ public sealed class ClientApplication : IDisposable
             + $"back buffer {backBuffer.Width}x{backBuffer.Height}");
     }
 
+    /// <summary>
+    /// Value following a flag, or null. Exists so a profiling or test run can pick its own map and
+    /// population — `--map npc-test --npcs 16` puts thirty-two NPCs on a small map that starts
+    /// fighting immediately, which is the scenario worth measuring and the slowest to reach by hand.
+    /// </summary>
+    private static string? Option(string[] args, string flag)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i].Equals(flag, StringComparison.OrdinalIgnoreCase)
+                && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                return args[i + 1];
+        return null;
+    }
+
     private static SessionRequest ParseInitialSession(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -86,9 +100,9 @@ public sealed class ClientApplication : IDisposable
 
         if (args.Contains("--singleplayer", StringComparer.OrdinalIgnoreCase))
             return SessionRequest.SourceHost(
-                DefaultSingleplayerMap,
+                Option(args, "--map") ?? DefaultSingleplayerMap,
                 initialPlayerTeam: 1,
-                initialNpcsPerTeam: 16);
+                initialNpcsPerTeam: int.TryParse(Option(args, "--npcs"), out int npcs) ? npcs : 16);
         return SessionRequest.Join(NetworkConfig.ServerHost);
     }
 

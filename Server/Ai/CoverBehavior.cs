@@ -38,7 +38,24 @@ internal sealed class CoverBehavior
 
     private readonly ChunkMap terrain;
 
-    public CoverBehavior(ChunkMap terrain) => this.terrain = terrain;
+    /// <summary>
+    /// Reset at the start of every query and never held across one — see <see cref="NavProbeCache"/>
+    /// for why the window is exactly that long.
+    ///
+    /// A query evaluates thirteen candidate positions and, for each one that qualifies, counts
+    /// escape routes over its eight neighbours. The candidates overlap, the neighbours overlap, and
+    /// counting one cell's routes asks whether that same cell is standable once per direction.
+    /// Measured as the dominant cost of the whole query, ahead of the raycasts.
+    ///
+    /// Server main thread only, like the rest of this class.
+    /// </summary>
+    private readonly NavProbeCache probes;
+
+    public CoverBehavior(ChunkMap terrain)
+    {
+        this.terrain = terrain;
+        probes = new NavProbeCache(terrain);
+    }
 
     public bool TryChoose(
         ServerPlayer mob,
@@ -49,6 +66,8 @@ internal sealed class CoverBehavior
     {
         choice = default;
         if (believedThreats.Count == 0) return false;
+
+        probes.Reset(terrain);
 
         var threats = new AiContact[MaximumThreats];
         int threatCount = SelectNearestThreats(
@@ -91,25 +110,28 @@ internal sealed class CoverBehavior
                     >= HorizontalDistance(mob.Position, threats[0].Position) - 1.5f)
                 return;
 
-            int crouchedExposures = 0;
-            int standingExposures = 0;
+            // Crouched exposure disqualifies the position outright, so ask that first and stop on
+            // the first yes. This used to cast all four rays — both stances against both threats —
+            // and only then check, which meant every REJECTED candidate paid full price. Most
+            // candidates are rejected, and a query evaluates thirteen of them, so the wasted rays
+            // were most of the query. Same predicate, asked lazily.
+            var crouchedEye = position + Vector3.UnitY
+                * (Digging.EyeHeight - PlayerMovement.CrouchEyeDrop);
             for (int i = 0; i < threatCount; i++)
-            {
-                Vector3 target =
-                    threats[i].Position + Vector3.UnitY * GunConfig.PlayerCenterHeight;
                 if (HasLineOfSight(
-                        position + Vector3.UnitY
-                        * (Digging.EyeHeight - PlayerMovement.CrouchEyeDrop),
-                        target))
-                    crouchedExposures++;
-                if (HasLineOfSight(
-                        position + Vector3.UnitY * Digging.EyeHeight,
-                        target))
-                    standingExposures++;
-            }
+                        crouchedEye,
+                        threats[i].Position + Vector3.UnitY * GunConfig.PlayerCenterHeight))
+                    return;
 
-            // Do the collision-heavy escape count only for a geometrically valid cover shape.
-            if (crouchedExposures != 0) return;
+            // Only a candidate that already qualifies as cover pays for the standing rays, which
+            // decide whether it can shoot back rather than whether it is cover at all.
+            int standingExposures = 0;
+            var standingEye = position + Vector3.UnitY * Digging.EyeHeight;
+            for (int i = 0; i < threatCount; i++)
+                if (HasLineOfSight(
+                        standingEye,
+                        threats[i].Position + Vector3.UnitY * GunConfig.PlayerCenterHeight))
+                    standingExposures++;
 
             Vector3 peekPosition = position;
             bool canShootBack = standingExposures > 0;
@@ -124,7 +146,8 @@ internal sealed class CoverBehavior
             float horizontalDistance = HorizontalDistance(mob.Position, position);
             var facts = new CoverFacts(
                 threatCount,
-                crouchedExposures,
+                // Zero by construction: any crouched exposure returned above.
+                CrouchedExposures: 0,
                 standingExposures,
                 CanShootBack: canShootBack,
                 TravelSeconds: horizontalDistance / PlayerMovement.SlowSpeed,
@@ -193,7 +216,7 @@ internal sealed class CoverBehavior
         foreach (var direction in EscapeDirections)
         {
             if (!NavTraversal.TryFindStandable(
-                    terrain,
+                    probes,
                     from.X + direction.X,
                     from.Z + direction.Z,
                     from.Y,
@@ -215,14 +238,14 @@ internal sealed class CoverBehavior
         return Math.Abs(dx) <= 1
             && Math.Abs(dz) <= 1
             && (dx != 0 || dz != 0)
-            && NavTraversal.TryStep(terrain, from, to, out _)
+            && NavTraversal.TryStep(probes, from, to, out _)
             && (dx == 0 || dz == 0
                 || CardinalClear(from, dx, 0) && CardinalClear(from, 0, dz));
     }
 
     private bool CardinalClear(NavCell from, int dx, int dz)
         => NavTraversal.TryFindStandable(
-               terrain,
+               probes,
                from.X + dx,
                from.Z + dz,
                from.Y,
@@ -230,7 +253,7 @@ internal sealed class CoverBehavior
                NavTraversal.MaximumTraverseCellDelta,
                out var adjacent,
                out _)
-           && NavTraversal.TryStep(terrain, from, adjacent, out _);
+           && NavTraversal.TryStep(probes, from, adjacent, out _);
 
     private bool TryCellAt(
         float x,
@@ -240,7 +263,7 @@ internal sealed class CoverBehavior
         out Vector3 position)
     {
         if (NavTraversal.TryFindStandable(
-                terrain,
+                probes,
                 (int)MathF.Floor(x),
                 (int)MathF.Floor(z),
                 (int)MathF.Floor(aroundY),
@@ -249,7 +272,9 @@ internal sealed class CoverBehavior
                 out cell,
                 out _))
         {
-            position = NavTraversal.Position(terrain, cell);
+            // Already memoized by the find above, so this is a dictionary hit rather than a
+            // second capsule resolve.
+            if (!NavTraversal.TryPosition(probes, cell, out position)) return false;
             return true;
         }
 

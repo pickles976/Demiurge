@@ -152,7 +152,10 @@ public sealed class EditorTerrainEvaluator
 
     private static ItemType ResolveMobWeapon(EditorPlacement placement)
     {
-        string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemConfig.DefaultPrimaryWeapon);
+        // No authored weapon means "use the server's mixed squad loadout", represented by the
+        // RuntimePlacement default. An explicit editor equip remains authoritative.
+        if (placement.WeaponId is null) return default;
+        string weaponId = placement.WeaponId;
         if (!ItemCatalog.TryResolve(weaponId, out var weapon) || WeaponConfig.Get(weapon) is null)
             throw new InvalidDataException($"Unknown mob weapon {weaponId}");
         return weapon;

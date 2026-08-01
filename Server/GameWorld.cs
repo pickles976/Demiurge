@@ -22,6 +22,55 @@ namespace Demiurge.GameServer
         private readonly Server server;
 
         private uint _Tick = 0;
+        private readonly Dictionary<int, int> npcSpawnOrdinalsByTeam = [];
+        private ServerTickBreakdown serverBreakdown;
+
+        /// <summary>
+        /// Where a server tick goes, once a second. In singleplayer this whole thing runs inside the
+        /// client's frame, so every millisecond here is a millisecond off the frame budget.
+        /// </summary>
+        private struct ServerTickBreakdown
+        {
+            private long windowStart;
+            private int ticks;
+            private long aiTicks, actorTicks, flagTicks, weaponTicks, grenadeTicks, broadcastTicks;
+            private long projectileSum;
+            private double worstMs;
+
+            public void Record(
+                long start, long afterAi, long afterActors, long afterFlags,
+                long afterWeapons, long afterGrenades, long end, int projectiles)
+            {
+                ticks++;
+                aiTicks += afterAi - start;
+                actorTicks += afterActors - afterAi;
+                flagTicks += afterFlags - afterActors;
+                weaponTicks += afterWeapons - afterFlags;
+                grenadeTicks += afterGrenades - afterWeapons;
+                broadcastTicks += end - afterGrenades;
+                projectileSum += projectiles;
+                worstMs = Math.Max(worstMs, (end - start) * 1000.0 / Stopwatch.Frequency);
+
+                long now = Stopwatch.GetTimestamp();
+                if (windowStart == 0) windowStart = now;
+                if ((now - windowStart) / (double)Stopwatch.Frequency < 1.0) return;
+
+                double perTick = 1000.0 / Stopwatch.Frequency / ticks;
+                Console.WriteLine(
+                    $"[ServerTick]: server tick: {ticks} ticks | ai {aiTicks * perTick:F2} ms "
+                  + $"| actors {actorTicks * perTick:F2} | flags {flagTicks * perTick:F2} "
+                  + $"| weapons {weaponTicks * perTick:F2} | grenades {grenadeTicks * perTick:F2} "
+                  + $"| broadcast {broadcastTicks * perTick:F2} "
+                  + $"| total {(aiTicks + actorTicks + flagTicks + weaponTicks + grenadeTicks + broadcastTicks) * perTick:F2} "
+                  + $"| worst {worstMs:F1} ms | live projectiles {projectileSum / ticks}");
+
+                windowStart = now;
+                ticks = 0;
+                aiTicks = actorTicks = flagTicks = weaponTicks = grenadeTicks = broadcastTicks = 0;
+                projectileSum = 0;
+                worstMs = 0;
+            }
+        }
         private ushort nextMobId = ActorIds.FirstMob;
 
         private const int MaxQueuedMoves = 3;
@@ -104,6 +153,7 @@ namespace Demiurge.GameServer
                 SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
                 SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
                 SpawnPickupOnSurface(ItemType.Sks, -3f, 0f);
+                SpawnPickupOnSurface(ItemType.Ppsh, 0f, -3f);
                 SpawnPickupOnSurface(ItemType.Shovel, -1.5f, 1.5f);
                 SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
                 SpawnPickupOnSurface(ItemType.Grenade, 1.5f, 1.5f);
@@ -129,7 +179,7 @@ namespace Demiurge.GameServer
                         out var spawnCell)
                     ? NavTraversal.Position(terrain, spawnCell)
                     : spawn.Position;
-                var mob = SpawnMob(position, spawn.Team);
+                var mob = SpawnMob(position, spawn.Team, weapon: null);
                 mob.Yaw = spawn.Yaw;
             }
         }
@@ -144,7 +194,7 @@ namespace Demiurge.GameServer
                         items.SpawnPickup(placement.Item, placement.Position);
                         break;
                     case RuntimePlacementKind.Mob:
-                        var mob = SpawnMob(placement.Position, placement.Team);
+                        var mob = SpawnMob(placement.Position, placement.Team, placement.Item);
                         mob.Yaw = placement.Yaw;
                         break;
                     case RuntimePlacementKind.Flag:
@@ -159,9 +209,9 @@ namespace Demiurge.GameServer
             => items.SpawnPickup(type, SurfaceQuery.SurfacePosition(terrain, worldX, worldZ));
 
         public ServerPlayer SpawnMob(Vector3? requestedPosition = null)
-            => SpawnMob(requestedPosition, team: 1);
+            => SpawnMob(requestedPosition, team: 1, weapon: null);
 
-        private ServerPlayer SpawnMob(Vector3? requestedPosition, int team)
+        private ServerPlayer SpawnMob(Vector3? requestedPosition, int team, ItemType? weapon)
         {
             var position = requestedPosition ?? mobs.RandomSpawnPoint();
             var mob = mobs.CreateMob(AllocateMobId(), position, team);
@@ -172,9 +222,21 @@ namespace Demiurge.GameServer
                 obj.Health = new HealthState { Current = 100, Max = 100 };
             });
             players[mob.Id] = mob;
-            items.SpawnInfantryLoadout(mob);
+            ItemType cohortWeapon = NextNpcPrimary(team);
+            items.SpawnInfantryLoadout(
+                mob,
+                weapon is { } authored && WeaponConfig.Get(authored) is not null
+                    ? authored
+                    : cohortWeapon);
             server.SendToAll(CreateSpawnMessage(mob));
             return mob;
+        }
+
+        private ItemType NextNpcPrimary(int team)
+        {
+            int ordinal = npcSpawnOrdinalsByTeam.GetValueOrDefault(team);
+            npcSpawnOrdinalsByTeam[team] = ordinal + 1;
+            return NpcSquadLoadout.PrimaryForSpawnOrdinal(ordinal);
         }
 
         public ServerObject SpawnPickup(ItemType type, Vector3 position)
@@ -351,7 +413,9 @@ namespace Demiurge.GameServer
         public void Tick(float dt)
         {
             _Tick++;
+            long tickStart = Stopwatch.GetTimestamp();
             mobs.BeginTick(_Tick, players.Values);
+            long afterBeginTick = Stopwatch.GetTimestamp();
             long mobMovementTicks = 0;
             int mobCount = 0;
 
@@ -403,6 +467,7 @@ namespace Demiurge.GameServer
                 Relocate(stuck);
             }
 
+            long afterActors = Stopwatch.GetTimestamp();
             flags.Tick(dt, players.Values);
 
             // Save history
@@ -411,9 +476,12 @@ namespace Demiurge.GameServer
                 player.History.Store(_Tick, player.Position);
             }
 
+            long afterFlags = Stopwatch.GetTimestamp();
             weapons.Tick(dt, _Tick, players.Values);
+            long afterWeapons = Stopwatch.GetTimestamp();
             grenades.Tick(dt, _Tick, players.Values);
             RegenerateHealth(dt);
+            long afterGrenades = Stopwatch.GetTimestamp();
 
             // Death and respawn
             foreach (var player in players.Values)
@@ -449,6 +517,18 @@ namespace Demiurge.GameServer
 
             objects.BroadcastDirtyStatess(_Tick);
             BroadcastPositions();
+
+            if (_Tick % (NetworkConfig.TickRate * 2) == 0) mobs.LogStats();
+
+            serverBreakdown.Record(
+                tickStart,
+                afterBeginTick,
+                afterActors,
+                afterFlags,
+                afterWeapons,
+                afterGrenades,
+                Stopwatch.GetTimestamp(),
+                projectiles: weapons.LiveProjectiles);
         }
 
         private int AssignPlayerTeam()

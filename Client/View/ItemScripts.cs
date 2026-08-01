@@ -305,7 +305,7 @@ public class ItemAttachScript : SyncScript
                 1f - MathF.Exp(-ViewModelSharpness * dt));
         }
 
-        UpdateRecoil(dt);
+        UpdateRecoil(dt, aiming);
 
         var cameraRotation = CameraEntity.Transform.Rotation;
         var weaponRotation = WeaponMount.FirstPersonRotationFor(Object.Item.Type, swing.Angle);
@@ -345,7 +345,7 @@ public class ItemAttachScript : SyncScript
         WeaponView.NetworkId = Object.NetworkId;
     }
 
-    private void UpdateRecoil(float dt)
+    private void UpdateRecoil(float dt, bool aiming)
     {
         if (!Object.Has.HasFlag(NetComponents.Weapon) || Object.Item.Type == ItemType.Grenade) return;
 
@@ -358,6 +358,14 @@ public class ItemAttachScript : SyncScript
         if (shots == 0) return;
 
         var kick = RecoilFor(Object.Item.Type);
+        if (aiming && Object.Item.Type == ItemType.Ppsh)
+        {
+            const float PpshAdsKickScale = 0.30f;
+            kick = new RecoilKick(
+                kick.Back * PpshAdsKickScale,
+                kick.Lift * PpshAdsKickScale,
+                kick.PitchRadians * PpshAdsKickScale);
+        }
         recoilBack = MathF.Min(MaxRecoilBack, recoilBack + kick.Back * shots);
         recoilLift = MathF.Min(MaxRecoilLift, recoilLift + kick.Lift * shots);
         recoilPitch = MathF.Min(MaxRecoilPitch, recoilPitch + kick.PitchRadians * shots);
@@ -366,7 +374,7 @@ public class ItemAttachScript : SyncScript
     private static RecoilKick RecoilFor(ItemType type) => type switch
     {
         ItemType.AWP => new RecoilKick(0.10f, 0.020f, MathUtil.DegreesToRadians(6f)),
-        ItemType.Glock => new RecoilKick(0.040f, 0.008f, MathUtil.DegreesToRadians(3.5f)),
+        ItemType.Glock or ItemType.Ppsh => new RecoilKick(0.040f, 0.008f, MathUtil.DegreesToRadians(3.5f)),
         _ => new RecoilKick(0.050f, 0.010f, MathUtil.DegreesToRadians(2.5f)),
     };
 }

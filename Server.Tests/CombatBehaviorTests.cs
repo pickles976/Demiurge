@@ -1,3 +1,4 @@
+using System.Numerics;
 using Demiurge.GameServer;
 
 namespace Demiurge.ServerTests;
@@ -20,6 +21,7 @@ public class CombatBehaviorTests
 
     [Theory]
     [InlineData(0.10f, 60f, true)]
+    [InlineData(0.10f, 35f, true)]
     [InlineData(0.60f, 60f, false)]
     [InlineData(0.10f, 15f, false)]
     public void LowProbabilityFireClosesOnlyFromLongRange(
@@ -40,5 +42,43 @@ public class CombatBehaviorTests
         Assert.True(close > medium);
         Assert.True(medium > far);
         Assert.Equal(far, CombatBehavior.AimMoaForRange(200f));
+    }
+
+    [Theory]
+    [InlineData(ItemType.Ppsh, 55f, true)]
+    [InlineData(ItemType.Ppsh, 50f, false)]
+    [InlineData(ItemType.Ppsh, 40f, false)]
+    [InlineData(ItemType.Ppsh, 20f, false)]
+    [InlineData(ItemType.Sks, 40f, false)]
+    public void PpshHoldsFireUntilItsEffectiveRange(
+        ItemType weapon,
+        float range,
+        bool expected)
+        => Assert.Equal(expected, CombatBehavior.PrefersToHoldFire(weapon, range));
+
+    [Theory]
+    [InlineData(ItemType.Sks, 100f)]
+    [InlineData(ItemType.Ppsh, 70f)]
+    [InlineData(ItemType.Ak47, 70f)]
+    public void EngagementCeilingIsWeaponSpecific(ItemType weapon, float expected)
+        => Assert.Equal(expected, CombatBehavior.MaxEngagementRangeFor(weapon));
+
+    [Theory]
+    [InlineData(99f, true, true)]
+    [InlineData(101f, true, false)]
+    [InlineData(50f, false, false)]
+    public void EnemyReloadTellIsKnownOnlyWhileReloadingWithinOneHundredMetres(
+        float range,
+        bool reloading,
+        bool expected)
+    {
+        var observer = new ServerPlayer { Move = new MoveState { Position = Vector3.Zero } };
+        var enemy = new ServerPlayer
+        {
+            Move = new MoveState { Position = new Vector3(0f, 0f, range) },
+            State = reloading ? PlayerStateFlags.Reloading : PlayerStateFlags.None,
+        };
+
+        Assert.Equal(expected, MobSystem.CanRecognizeEnemyReload(observer, enemy));
     }
 }

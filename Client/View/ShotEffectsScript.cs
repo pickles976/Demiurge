@@ -113,6 +113,10 @@ public class ShotEffectsScript : SyncScript
     {
         ItemType.AWP => 0.75f,
         ItemType.Glock => 0.26f,
+        // Twenty additions per second would pin the shared trauma pool at one if this inherited a
+        // rifle's 0.40. The small per-round impulse still stacks into a burst without turning a
+        // 35-round magazine into continuous full-strength camera shake.
+        ItemType.Ppsh => 0.12f,
         _ => 0.40f,
     };
 
@@ -188,7 +192,7 @@ public class ShotEffectsScript : SyncScript
         var toShot = origin - ear;
         float range = toShot.Length();
 
-        if (WeaponFx.DistantReportFor(range) is not { } report)
+        if (WeaponFx.DistantReportFor(fx, range) is not { } report)
         {
             sound.PlayOneShotSpatial(WeaponFx.ShotSound(fx), start, falloff: SoundFalloff.Gunshot);
             return;

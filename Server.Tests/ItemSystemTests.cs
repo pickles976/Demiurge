@@ -65,9 +65,9 @@ public class ItemSystemTests
 
         Assert.Equal(HotbarSlot.Primary, npc.Hotbar);
         Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarPrimary], out var primary));
-        Assert.Equal(ItemConfig.DefaultPrimaryWeapon, primary.Item.Type);
+        Assert.Equal(ItemConfig.DefaultNpcPrimaryWeapon, primary.Item.Type);
         Assert.Equal(
-            WeaponConfig.Require(ItemConfig.DefaultPrimaryWeapon).MagazineCapacity,
+            WeaponConfig.Require(ItemConfig.DefaultNpcPrimaryWeapon).MagazineCapacity,
             primary.Weapon.CurrentAmmo);
 
         Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarGrenade], out var grenades));
@@ -83,6 +83,20 @@ public class ItemSystemTests
 
         Assert.False(npc.Equipped.ContainsKey(EquipSlot.Hand));
         Assert.True(HotbarConfig.IsValid(HotbarSlot.Shovel));
+    }
+
+    [Fact]
+    public void PlayerLoadoutStartsWithPpsh()
+    {
+        var objects = new ObjectReplication(new Server());
+        var items = new ItemSystem(objects);
+        var player = new ServerPlayer { Id = 7 };
+
+        items.SpawnInfantryLoadout(player);
+
+        Assert.True(objects.TryGet(player.Equipped[EquipSlot.HotbarPrimary], out var primary));
+        Assert.Equal(ItemType.Ppsh, primary.Item.Type);
+        Assert.Equal(35, primary.Weapon.CurrentAmmo);
     }
 
     [Fact]

@@ -25,13 +25,17 @@ internal sealed class CombatBehavior
     private const int BurstPauseTicks = 3 * NetworkConfig.TickRate / 4;
     private const int PrecisionShotIntervalTicks = 6 * NetworkConfig.TickRate / 5;
     internal const float PreferredEngagementRange = 25f;
+    // The assault gun opens fire at 50 m, but its low hit probability outside the preferred 25 m
+    // standoff still leaves ShouldCloseDistance set while it fires.
+    internal const float PpshEffectiveRange = 50f;
 
     /// <summary>
     /// Past this, a believed contact is known about but not engaged. Without the gate any contact the
     /// squad shared -- perception reaches 100 m -- made combat own an NPC's movement, so men nowhere
     /// near the fight stood still aiming across the map instead of manoeuvring or holding an objective.
     /// </summary>
-    internal const float MaxEngagementRange = 70f;
+    internal const float DefaultMaxEngagementRange = 70f;
+    internal const float SksMaxEngagementRange = 100f;
 
     /// <summary>
     /// Suppressing fire is aimed at a place rather than a visible body, so it is deliberately slower
@@ -65,8 +69,16 @@ internal sealed class CombatBehavior
         // shooting at where he is while he has his head down and is therefore not visible.
         uint holdTicks = (uint)(suppressing ? SuppressionMemoryTicks : LostContactHoldTicks);
         if (!brain.Contacts.TryNearest(mob.Position, tick, out var contact)
-            || tick - contact.LastSeenTick > holdTicks
-            || HorizontalDistance(mob.Position, contact.Position) > MaxEngagementRange)
+            || tick - contact.LastSeenTick > holdTicks)
+        {
+            brain.ClearCombatTarget();
+            return false;
+        }
+
+        mob.Hotbar = HotbarSlot.Primary;
+        if (!weapons.TryGetActiveWeapon(mob, out var weapon)
+            || HorizontalDistance(mob.Position, contact.Position)
+                > MaxEngagementRangeFor(weapon.Item.Type))
         {
             brain.ClearCombatTarget();
             return false;
@@ -80,7 +92,6 @@ internal sealed class CombatBehavior
             brain.AimDirection = Facing(mob.Yaw);
         }
 
-        mob.Hotbar = HotbarSlot.Primary;
         float eyeHeight = mob.State.HasFlag(PlayerStateFlags.Crouching)
             ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
             : Digging.EyeHeight;
@@ -92,17 +103,13 @@ internal sealed class CombatBehavior
             ? brain.PerceivedAimHeight
             : GunConfig.PlayerCenterHeight;
         Vector3 target = contact.Position + Vector3.UnitY * aimHeight;
-        if (!weapons.TryGetActiveWeapon(mob, out var weapon))
-        {
-            brain.ClearCombatTarget();
-            return false;
-        }
-
         var ballistics = BallisticsConfig.Require(weapon.Item.Type);
         Vector3 uncompensated = target - origin;
         float range = uncompensated.Length();
         if (range <= 1e-5f)
             return false;
+        bool holdingForEffectiveRange = PrefersToHoldFire(weapon.Item.Type, range);
+        brain.ShouldCloseDistance = holdingForEffectiveRange;
 
         // Compensate only for projectile drop. Contact memory intentionally carries no live target
         // velocity, so this does not grant server-side omniscient leading.
@@ -143,7 +150,7 @@ internal sealed class CombatBehavior
         bool aimSettled = Vector3.Dot(brain.AimDirection, desired) >= aimToleranceCos;
         if (!visibleNow || !reacted || !aimSettled)
             return true;
-        if (!mayFire)
+        if (!mayFire || holdingForEffectiveRange)
         {
             brain.BurstShotsRemaining = 0;
             return true;
@@ -157,7 +164,7 @@ internal sealed class CombatBehavior
             Spread.SigmaRadians(moa),
             range,
             GunConfig.HitRadius);
-        brain.ShouldCloseDistance = ShouldAdvance(probability, range);
+        brain.ShouldCloseDistance |= ShouldAdvance(probability, range);
 
         bool requestShot;
         if (suppressing)
@@ -222,6 +229,16 @@ internal sealed class CombatBehavior
            && float.IsFinite(range)
            && hitProbability < AimedFireThreshold
            && range > PreferredEngagementRange;
+
+    internal static bool PrefersToHoldFire(ItemType weapon, float range)
+        => weapon == ItemType.Ppsh
+           && float.IsFinite(range)
+           && range > PpshEffectiveRange;
+
+    internal static float MaxEngagementRangeFor(ItemType weapon)
+        => weapon == ItemType.Sks
+            ? SksMaxEngagementRange
+            : DefaultMaxEngagementRange;
 
     internal static float AimMoaForRange(float range)
     {

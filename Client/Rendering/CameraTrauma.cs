@@ -22,9 +22,9 @@ namespace Demiurge
     /// </summary>
     public static class CameraTrauma
     {
-        /// <summary>Trauma per second bled off. A rifle shot's worth lingers about half a second,
-        /// so consecutive shots overlap into one continuous shake rather than separate jolts.</summary>
-        private const float DecayPerSecond = 0.8f;
+        /// <summary>Trauma per second bled off. A shot's worth is gone in about a quarter second —
+        /// slower than this and consecutive shots smear into one continuous wobble.</summary>
+        private const float DecayPerSecond = 1.6f;
 
         /// <summary>How fast the noise is walked. High enough to read as a shock, low enough that
         /// consecutive frames stay related.</summary>

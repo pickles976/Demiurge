@@ -36,12 +36,13 @@ namespace Demiurge
     public static class ItemConfig
     {
         /// <summary>
-        /// The rifle an actor gets when nothing says otherwise — the spawn loadout for players and
-        /// NPCs alike, and what an editor mob placement with no explicit weapon resolves to. One
-        /// constant because those two defaults have to agree: a map authored against a different
-        /// starting rifle than the one players carry is a balance bug nobody would think to look for.
+        /// The primary a human player receives on spawn. NPCs have their own default because their
+        /// four-man squad composition deliberately mixes two assault guns with two rifles.
         /// </summary>
-        public const ItemType DefaultPrimaryWeapon = ItemType.Sks;
+        public const ItemType DefaultPlayerPrimaryWeapon = ItemType.Ppsh;
+
+        /// <summary>The intermediate-range half of a default NPC squad.</summary>
+        public const ItemType DefaultNpcPrimaryWeapon = ItemType.Sks;
 
         public static ItemStats Get(ItemType type) => type switch
         {
@@ -49,6 +50,7 @@ namespace Demiurge
             ItemType.AWP => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.Glock => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.Sks => new(ItemCategory.Equippable, EquipSlot.Hand),
+            ItemType.Ppsh => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.BodyArmor => new(ItemCategory.Equippable, EquipSlot.Chest),
             ItemType.Grenade => new(ItemCategory.Equippable, EquipSlot.Hand),
             // The shovel is a tool, not a gun: it has no WeaponConfig row, so it never gets a

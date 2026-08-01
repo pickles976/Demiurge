@@ -71,7 +71,13 @@ namespace Demiurge
             return TrySampleCell(ref cursor, p, out distance, out _);
         }
 
-        static bool TrySampleRaw(ref VoxelCursor cursor, Vector3 p, out float distance)
+        /// <summary>
+        /// <see cref="TrySampleRaw(ChunkMap, Vector3, out float)"/> for a caller that is already
+        /// walking a small region and can keep the chunk memo alive across its whole sweep. The
+        /// per-call overload above starts cold every time, which for something like a navigation
+        /// column — dozens of samples inside one chunk — throws the memo away between each one.
+        /// </summary>
+        public static bool TrySampleRaw(ref VoxelCursor cursor, Vector3 p, out float distance)
             => TrySampleCell(ref cursor, p, out distance, out _);
 
         /// <summary>
@@ -140,11 +146,27 @@ namespace Demiurge
             return TrySample(ref cursor, p, out point);
         }
 
-        static bool TrySample(ref VoxelCursor cursor, Vector3 p, out FieldPoint point)
+        /// <summary>Cursor-sharing <see cref="TrySample(ChunkMap, Vector3, out FieldPoint)"/>, for a
+        /// caller marching a ray or sweeping a small region.</summary>
+        public static bool TrySample(ref VoxelCursor cursor, Vector3 p, out FieldPoint point)
+            => TrySample(ref cursor, p, out point, out _);
+
+        /// <summary>
+        /// <see cref="TrySample(ref VoxelCursor, Vector3, out FieldPoint)"/> that also hands back the
+        /// RAW stored value it had to compute anyway.
+        ///
+        /// For a caller that wants both — a ray march needs the corrected distance to know it has
+        /// arrived and the raw one to know how far it may safely step — this is the difference
+        /// between one eight-corner trilinear evaluation and two identical ones at the same point.
+        /// </summary>
+        public static bool TrySample(
+            ref VoxelCursor cursor, Vector3 p, out FieldPoint point, out float rawDistance)
         {
             point = default;
+            rawDistance = 0f;
 
             if (!TrySampleCell(ref cursor, p, out float raw, out var cellGradient)) return false;
+            rawDistance = raw;
             if (!TryGradient(ref cursor, p, out var gradient)) return false;
 
             float length = gradient.Length();
@@ -176,6 +198,19 @@ namespace Demiurge
             // One cursor across all three sample spheres: they are a capsule's worth apart, so the
             // second and third usually land in the chunk the first already resolved.
             var cursor = new VoxelCursor(map);
+            return TryDeepestContact(ref cursor, body, feet, out deepest);
+        }
+
+        /// <summary>
+        /// <see cref="TryDeepestContact(ChunkMap, in CapsuleBody, Vector3, out FieldPoint)"/>
+        /// sharing the caller's memo. A standability check resolves the capsule up to four times in
+        /// one column and each pass used to start cold, so the same chunk was looked up from scratch
+        /// hundreds of times for one cell.
+        /// </summary>
+        public static bool TryDeepestContact(
+            ref VoxelCursor cursor, in CapsuleBody body, Vector3 feet, out FieldPoint deepest)
+        {
+            deepest = new FieldPoint(float.MaxValue, Vector3.UnitY, Vector3.UnitY);
 
             for (int i = 0; i < CapsuleBody.SampleCount; i++)
             {

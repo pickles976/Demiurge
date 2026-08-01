@@ -12,6 +12,7 @@ public static class ItemCatalog
     [
         new(ItemType.Ak47, "demiurge:ak47", ["ak47", "ak-47", "ak"]),
         new(ItemType.Sks, "demiurge:sks", ["sks"]),
+        new(ItemType.Ppsh, "demiurge:ppsh", ["ppsh", "ppsh-41", "ppsh41"]),
         new(ItemType.Shovel, "demiurge:shovel", ["shovel", "spade"]),
         new(ItemType.AWP, "demiurge:awp", ["awp"]),
         new(ItemType.Glock, "demiurge:glock", ["glock"]),

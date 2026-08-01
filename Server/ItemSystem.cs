@@ -52,9 +52,14 @@ namespace Demiurge.GameServer
         /// gives the slot something to render — on the hip when stowed, in hand when selected.
         /// Selecting the slot is still what authorizes digging.
         /// </summary>
-        internal void SpawnInfantryLoadout(ServerPlayer actor)
+        internal void SpawnInfantryLoadout(ServerPlayer actor, ItemType? primaryWeapon = null)
         {
-            SpawnHotbar(actor, ItemConfig.DefaultPrimaryWeapon, HotbarSlot.Primary);
+            SpawnHotbar(
+                actor,
+                primaryWeapon ?? (actor.IsMob
+                    ? ItemConfig.DefaultNpcPrimaryWeapon
+                    : ItemConfig.DefaultPlayerPrimaryWeapon),
+                HotbarSlot.Primary);
             SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
             SpawnHotbar(
                 actor,
@@ -96,7 +101,12 @@ namespace Demiurge.GameServer
             }
 
             if (!hasPrimary)
-                SpawnHotbar(actor, ItemConfig.DefaultPrimaryWeapon, HotbarSlot.Primary);
+                SpawnHotbar(
+                    actor,
+                    actor.IsMob
+                        ? ItemConfig.DefaultNpcPrimaryWeapon
+                        : ItemConfig.DefaultPlayerPrimaryWeapon,
+                    HotbarSlot.Primary);
             if (!hasShovel)
                 SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
             if (!hasGrenades)

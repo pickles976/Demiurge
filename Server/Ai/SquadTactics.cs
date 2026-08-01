@@ -31,7 +31,13 @@ internal readonly record struct SquadTacticalInput(
     FlankSide Side,
     int BoundIndex,
     /// <summary>In position and able to shoot: at cover, or dug into a fighting position.</summary>
-    bool IsSet);
+    bool IsSet,
+    /// <summary>PPSH carrier: closes under rifle cover instead of serving as the base of fire.</summary>
+    bool IsAssault = false,
+    /// <summary>The believed threat is visibly reloading and within the 100 m tell radius.</summary>
+    bool ThreatReloading = false,
+    /// <summary>A reload-triggered dash already started and must finish even if the reload ends.</summary>
+    bool BoundCommitted = false);
 
 internal readonly record struct SquadTacticalOrder(
     ushort ActorId,
@@ -129,6 +135,7 @@ internal static class SquadTactics
         // state machine — once he bounds past his partner, the partner becomes the farthest and takes
         // the next bound, and they alternate for as long as the fight lasts.
         var movers = new HashSet<ushort>();
+        bool hasAssaultElement = ordered.Any(member => member.IsAssault);
         if (anySet)
             foreach (var side in (ReadOnlySpan<FlankSide>)[FlankSide.Left, FlankSide.Right])
             {
@@ -138,14 +145,21 @@ internal static class SquadTactics
                         candidates.Add(member);
                 if (candidates.Count == 0) continue;
 
-                // A lone set member on a side may not abandon overwatch unless the other side has it.
-                bool coveredElsewhere = false;
-                foreach (var member in ordered)
-                    if (sides[member.ActorId] != side && member.IsSet)
-                        coveredElsewhere = true;
+                if (hasAssaultElement)
+                {
+                    // Rifles are the base of fire. Assault carriers leave their holes only on the
+                    // reload tell; once exposed, they finish the dash rather than freezing when the
+                    // magazine change ends on the next tactical replan.
+                    candidates.RemoveAll(member =>
+                        !member.IsAssault
+                        || !member.ThreatReloading && !member.BoundCommitted);
+                    if (candidates.Count == 0) continue;
+                }
 
                 candidates.Sort((left, right) =>
                 {
+                    int byCommitment = right.BoundCommitted.CompareTo(left.BoundCommitted);
+                    if (byCommitment != 0) return byCommitment;
                     int byDistance = DistanceSquared(right.Position, threat)
                         .CompareTo(DistanceSquared(left.Position, threat));
                     return byDistance != 0 ? byDistance : left.ActorId.CompareTo(right.ActorId);
@@ -157,8 +171,8 @@ internal static class SquadTactics
                     if (selected >= MoversPerSide) break;
                     bool wouldStripSideOfFire =
                         candidate.IsSet
-                        && CountSet(candidates) <= 1
-                        && !coveredElsewhere;
+                        && !ordered.Any(member =>
+                            member.ActorId != candidate.ActorId && member.IsSet);
                     if (wouldStripSideOfFire) continue;
                     movers.Add(candidate.ActorId);
                     selected++;
@@ -210,14 +224,6 @@ internal static class SquadTactics
         float offset = EnvelopeWidth * (0.35f + 0.65f * closingFraction);
         float direction = side == FlankSide.Right ? 1f : -1f;
         return threat - axis * standoff + lateral * (offset * direction);
-    }
-
-    private static int CountSet(List<SquadTacticalInput> members)
-    {
-        int count = 0;
-        foreach (var member in members)
-            if (member.IsSet) count++;
-        return count;
     }
 
     private static Vector3 Horizontal(Vector3 value) => value with { Y = 0f };

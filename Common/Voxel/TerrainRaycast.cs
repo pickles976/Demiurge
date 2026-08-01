@@ -65,6 +65,13 @@ namespace Demiurge
             // MaxStep term is the ordinary open-air cost.
             int maxSteps = (int)(maxDistance / MaxStep) + 4 * RefineIterations + 64;
 
+            // ONE memo for the whole march. Each step samples the field 64 times and the old code
+            // built a fresh cursor for each of the two calls, so a 40 m ray threw the chunk lookup
+            // away thousands of times over — while consecutive steps are at most MaxStep apart and
+            // therefore nearly always in the chunk the previous step already resolved. Same
+            // arithmetic, same hit, far fewer dictionary probes.
+            var cursor = new VoxelCursor(map);
+
             float travelled = 0f;
             float previous = 0f;
             bool havePrevious = false;
@@ -73,16 +80,22 @@ namespace Demiurge
             {
                 var at = origin + direction * travelled;
 
-                if (!TerrainCollision.TrySample(map, at, out var point)) return null;   // ran out of loaded world
-                if (!TerrainCollision.TrySampleRaw(map, at, out float raw)) return null;
+                // Both values from one sample. The raw distance is a by-product of the corrected
+                // one — same eight corners, same trilinear evaluation — and asking for it separately
+                // repeated the whole thing at the identical point, once per step, for the length of
+                // every ray.
+                if (!TerrainCollision.TrySample(ref cursor, at, out var point, out float raw))
+                    return null;   // ran out of loaded world
 
                 if (point.Distance <= SurfaceEpsilon)
                 {
                     // Bisect between the last known-outside sample and this known-inside one. On the
                     // very first sample there is no outside to bracket with — the ray started in
                     // terrain — so report the origin rather than inventing a crossing behind it.
-                    float hit = havePrevious ? Refine(map, origin, direction, previous, travelled) : travelled;
-                    return At(map, origin, direction, hit);
+                    float hit = havePrevious
+                        ? Refine(ref cursor, origin, direction, previous, travelled)
+                        : travelled;
+                    return At(ref cursor, origin, direction, hit);
                 }
 
                 previous = travelled;
@@ -125,12 +138,12 @@ namespace Demiurge
         /// ends were both good, so the crossing is real and still between them, and giving up here
         /// would turn a genuine hit into a miss at a chunk seam.
         /// </summary>
-        static float Refine(ChunkMap map, Vector3 origin, Vector3 direction, float outside, float inside)
+        static float Refine(ref VoxelCursor cursor, Vector3 origin, Vector3 direction, float outside, float inside)
         {
             for (int i = 0; i < RefineIterations; i++)
             {
                 float middle = 0.5f * (outside + inside);
-                if (!TerrainCollision.TrySample(map, origin + direction * middle, out var point)) break;
+                if (!TerrainCollision.TrySample(ref cursor, origin + direction * middle, out var point)) break;
 
                 if (point.Distance <= 0f) inside = middle;
                 else outside = middle;
@@ -144,10 +157,10 @@ namespace Demiurge
         /// carried out of the march because the march's last sample sits wherever the stepping left
         /// it, which is not the surface.
         /// </summary>
-        static TerrainHit At(ChunkMap map, Vector3 origin, Vector3 direction, float travelled)
+        static TerrainHit At(ref VoxelCursor cursor, Vector3 origin, Vector3 direction, float travelled)
         {
             var point = origin + direction * travelled;
-            var normal = TerrainCollision.TrySample(map, point, out var field) ? field.Normal : -direction;
+            var normal = TerrainCollision.TrySample(ref cursor, point, out var field) ? field.Normal : -direction;
             return new TerrainHit(point, normal, travelled);
         }
     }

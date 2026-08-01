@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Demiurge.GameClient;
 using Demiurge.GameServer;
 using Stride.CommunityToolkit.Engine;
@@ -28,6 +29,51 @@ public sealed class RuntimeClientSession : IClientSession
     private readonly WeaponMount weaponMount;
     private readonly LocalWeaponView localWeaponView = new();
     private readonly SpawnReadiness spawnReadiness = new();
+    private FrameBreakdown frame;
+
+    /// <summary>
+    /// Where the client's own Update goes, once a second. Everything here runs on the MAIN thread,
+    /// and in singleplayer that includes the whole server tick — which is the point: the 16.6 ms
+    /// frame budget has to cover both, so a server cost is a frame cost.
+    /// </summary>
+    private struct FrameBreakdown
+    {
+        private static readonly Stride.Core.Diagnostics.Logger Log =
+            Stride.Core.Diagnostics.GlobalLogger.GetLogger("Frame");
+
+        private long windowStart;
+        private int frames;
+        private long serverTicks, networkTicks, drainTicks, terrainTicks;
+        private double worstMs;
+
+        public void Record(long t0, long t1, long t2, long t3, long t4)
+        {
+            frames++;
+            serverTicks += t1 - t0;
+            networkTicks += t2 - t1;
+            drainTicks += t3 - t2;
+            terrainTicks += t4 - t3;
+            worstMs = Math.Max(worstMs, (t4 - t0) * 1000.0 / Stopwatch.Frequency);
+
+            long now = Stopwatch.GetTimestamp();
+            if (windowStart == 0) windowStart = now;
+            double elapsed = (now - windowStart) / (double)Stopwatch.Frequency;
+            if (elapsed < 1.0) return;
+
+            double perFrame = 1000.0 / Stopwatch.Frequency / frames;
+            Log.Info(
+                $"frame: {frames} fps | server {serverTicks * perFrame:F2} ms "
+              + $"| net {networkTicks * perFrame:F2} | drain {drainTicks * perFrame:F2} "
+              + $"| terrain {terrainTicks * perFrame:F2} "
+              + $"| session total {(serverTicks + networkTicks + drainTicks + terrainTicks) * perFrame:F2} "
+              + $"| worst frame {worstMs:F1} ms");
+
+            windowStart = now;
+            frames = 0;
+            serverTicks = networkTicks = drainTicks = terrainTicks = 0;
+            worstMs = 0;
+        }
+    }
     private readonly ClientInputState inputState;
     private readonly PlayerRegistry registry;
     private readonly ObjectRegistry objectRegistry;
@@ -172,11 +218,16 @@ public sealed class RuntimeClientSession : IClientSession
 
     public void Update(GameTime time)
     {
+        long t0 = Stopwatch.GetTimestamp();
         localServer?.Step();
+        long t1 = Stopwatch.GetTimestamp();
         network.Update();
+        long t2 = Stopwatch.GetTimestamp();
         terrainState.Drain();
+        long t3 = Stopwatch.GetTimestamp();
         var lodFocus = registry.LocalPlayer?.Position ?? System.Numerics.Vector3.Zero;
         terrainView?.RebuildDirty(lodFocus);
+        frame.Record(t0, t1, t2, t3, Stopwatch.GetTimestamp());
 
         // Hold the player still until the ground they are standing on exists. Spawning into a world
         // that is still assembling itself is the one loading artefact a player cannot look away

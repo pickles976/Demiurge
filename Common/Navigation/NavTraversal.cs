@@ -35,10 +35,160 @@ public static class NavTraversal
         int y,
         int z,
         out float surfaceY)
-        => StandableAt(map, x + 0.5f, y, z + 0.5f, out surfaceY);
+    {
+        var cursor = new VoxelCursor(map);
+        return Standable(ref cursor, x, y, z, out surfaceY);
+    }
+
+    /// <summary>
+    /// The cursor-sharing form. Every one of these checks resolves the player capsule against the
+    /// field several times over, and a caller that asks about a handful of neighbouring cells —
+    /// A* expanding a node, cover counting escape routes — is reading the same one or two chunks
+    /// throughout. Handing the memo down instead of starting cold per sample is the difference,
+    /// and the arithmetic is untouched.
+    /// </summary>
+    public static bool Standable(
+        ref VoxelCursor cursor,
+        int x,
+        int y,
+        int z,
+        out float surfaceY)
+        => StandableAt(ref cursor, x + 0.5f, y, z + 0.5f, out surfaceY);
+
+    /// <summary>
+    /// The memoized form. Same answer as the others — this is the one worth reaching for, because
+    /// a caller that probes a neighbourhood asks about the same cells many times over and this is
+    /// the only overload that notices.
+    /// </summary>
+    public static bool Standable(
+        NavProbeCache cache,
+        int x,
+        int y,
+        int z,
+        out float surfaceY)
+    {
+        if (cache.Lookup(x, y, z, out bool cached, out surfaceY)) return cached;
+        bool result = StandableAt(ref cache.Cursor, x + 0.5f, y, z + 0.5f, out surfaceY);
+        cache.Store(x, y, z, result, surfaceY);
+        return result;
+    }
+
+    /// <summary>Memoized <see cref="TryFindStandable(ChunkMap, int, int, int, int, int, out NavCell, out float)"/>.</summary>
+    public static bool TryFindStandable(
+        NavProbeCache cache,
+        int x,
+        int z,
+        int aroundY,
+        int below,
+        int above,
+        out NavCell cell,
+        out float surfaceY)
+    {
+        cell = default;
+        surfaceY = 0f;
+        int maximumOffset = Math.Max(below, above);
+        for (int offset = 0; offset <= maximumOffset; offset++)
+        {
+            if (offset <= above && TryAt(cache, x, z, aroundY + offset, out cell, out surfaceY))
+                return true;
+            if (offset != 0
+                && offset <= below
+                && TryAt(cache, x, z, aroundY - offset, out cell, out surfaceY))
+                return true;
+        }
+        return false;
+
+        static bool TryAt(
+            NavProbeCache cache, int x, int z, int y, out NavCell found, out float height)
+        {
+            found = default;
+            height = 0f;
+            if (y < ChunkConstants.WorldMinY
+                || y >= ChunkConstants.WorldMaxY - 1
+                || !Standable(cache, x, y, z, out height))
+                return false;
+            found = new NavCell(x, y, z);
+            return true;
+        }
+    }
+
+    /// <summary>Memoized <see cref="TryStep(ChunkMap, NavCell, NavCell, out float)"/>.</summary>
+    public static bool TryStep(
+        NavProbeCache cache,
+        NavCell from,
+        NavCell to,
+        out float cost)
+    {
+        cost = NavCosts.Inf;
+        int dx = to.X - from.X;
+        int dz = to.Z - from.Z;
+        if ((dx == 0 && dz == 0) || Math.Abs(dx) > 1 || Math.Abs(dz) > 1)
+            return false;
+        if (!Standable(cache, from.X, from.Y, from.Z, out float fromY)
+            || !Standable(cache, to.X, to.Y, to.Z, out float toY))
+            return false;
+
+        float horizontal = MathF.Sqrt(dx * dx + dz * dz);
+        if (MathF.Abs(toY - fromY)
+            > MaximumRisePerMetre * horizontal + PlayerMovement.GroundSnapDistance)
+            return false;
+
+        // The midpoint is a half-cell offset rather than a cell, so it cannot go through the memo;
+        // it is one probe against the two-to-sixteen this call would otherwise have repeated.
+        float middleX = (from.X + to.X + 1f) * 0.5f;
+        float middleZ = (from.Z + to.Z + 1f) * 0.5f;
+        int middleCellY = (int)MathF.Floor((fromY + toY) * 0.5f);
+        if (!TryStandableAtNear(
+                ref cache.Cursor,
+                middleX,
+                middleZ,
+                middleCellY,
+                MaximumTraverseCellDelta,
+                out float middleY))
+            return false;
+
+        float firstRise = MathF.Abs(middleY - fromY);
+        float secondRise = MathF.Abs(toY - middleY);
+        float halfHorizontal = horizontal * 0.5f;
+        if (firstRise > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance
+            || secondRise > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance)
+            return false;
+
+        float distance = MathF.Sqrt(horizontal * horizontal + (toY - fromY) * (toY - fromY));
+        cost = distance * NavCosts.WalkOneMetre;
+        return true;
+    }
+
+    /// <summary>Memoized <see cref="TryPosition(ChunkMap, NavCell, out Vector3)"/>.</summary>
+    public static bool TryPosition(NavProbeCache cache, NavCell cell, out Vector3 position)
+    {
+        if (!Standable(cache, cell.X, cell.Y, cell.Z, out float surfaceY))
+        {
+            position = default;
+            return false;
+        }
+        position = new Vector3(cell.X + 0.5f, surfaceY, cell.Z + 0.5f);
+        return true;
+    }
 
     public static bool TryFindStandable(
         ChunkMap map,
+        int x,
+        int z,
+        int aroundY,
+        int below,
+        int above,
+        out NavCell cell,
+        out float surfaceY)
+    {
+        var cursor = new VoxelCursor(map);
+        return TryFindStandable(ref cursor, x, z, aroundY, below, above, out cell, out surfaceY);
+    }
+
+    /// <summary>Cursor-sharing <see cref="TryFindStandable(ChunkMap, int, int, int, int, int, out NavCell, out float)"/>.
+    /// The vertical scan stays inside one column, so every probe after the first is a memo hit.</summary>
+    public static bool TryFindStandable(
+        ref VoxelCursor cursor,
         int x,
         int z,
         int aroundY,
@@ -53,22 +203,25 @@ public static class NavTraversal
         for (int offset = 0; offset <= maximumOffset; offset++)
         {
             if (offset <= above
-                && TryAt(aroundY + offset, out cell, out surfaceY))
+                && TryAt(ref cursor, x, z, aroundY + offset, out cell, out surfaceY))
                 return true;
             if (offset != 0
                 && offset <= below
-                && TryAt(aroundY - offset, out cell, out surfaceY))
+                && TryAt(ref cursor, x, z, aroundY - offset, out cell, out surfaceY))
                 return true;
         }
         return false;
 
-        bool TryAt(int y, out NavCell found, out float height)
+        // Static with everything passed explicitly: a local function cannot close over a ref
+        // parameter, and the memo has to reach the standability check to be worth anything.
+        static bool TryAt(
+            ref VoxelCursor cursor, int x, int z, int y, out NavCell found, out float height)
         {
             found = default;
             height = 0f;
             if (y < ChunkConstants.WorldMinY
                 || y >= ChunkConstants.WorldMaxY - 1
-                || !Standable(map, x, y, z, out height))
+                || !Standable(ref cursor, x, y, z, out height))
                 return false;
             found = new NavCell(x, y, z);
             return true;
@@ -139,13 +292,25 @@ public static class NavTraversal
         NavCell to,
         out float cost)
     {
+        var cursor = new VoxelCursor(map);
+        return TryStep(ref cursor, from, to, out cost);
+    }
+
+    /// <summary>Cursor-sharing <see cref="TryStep(ChunkMap, NavCell, NavCell, out float)"/>. The two
+    /// endpoints and the midpoint are adjacent columns, so they share a chunk nearly always.</summary>
+    public static bool TryStep(
+        ref VoxelCursor cursor,
+        NavCell from,
+        NavCell to,
+        out float cost)
+    {
         cost = NavCosts.Inf;
         int dx = to.X - from.X;
         int dz = to.Z - from.Z;
         if ((dx == 0 && dz == 0) || Math.Abs(dx) > 1 || Math.Abs(dz) > 1)
             return false;
-        if (!Standable(map, from.X, from.Y, from.Z, out float fromY)
-            || !Standable(map, to.X, to.Y, to.Z, out float toY))
+        if (!Standable(ref cursor, from.X, from.Y, from.Z, out float fromY)
+            || !Standable(ref cursor, to.X, to.Y, to.Z, out float toY))
             return false;
 
         float horizontal = MathF.Sqrt(dx * dx + dz * dz);
@@ -157,7 +322,7 @@ public static class NavTraversal
         float middleZ = (from.Z + to.Z + 1f) * 0.5f;
         int middleCellY = (int)MathF.Floor((fromY + toY) * 0.5f);
         if (!TryStandableAtNear(
-                map,
+                ref cursor,
                 middleX,
                 middleZ,
                 middleCellY,
@@ -268,7 +433,14 @@ public static class NavTraversal
     /// </summary>
     public static bool TryPosition(ChunkMap map, NavCell cell, out Vector3 position)
     {
-        if (!Standable(map, cell.X, cell.Y, cell.Z, out float surfaceY))
+        var cursor = new VoxelCursor(map);
+        return TryPosition(ref cursor, cell, out position);
+    }
+
+    /// <summary>Cursor-sharing <see cref="TryPosition(ChunkMap, NavCell, out Vector3)"/>.</summary>
+    public static bool TryPosition(ref VoxelCursor cursor, NavCell cell, out Vector3 position)
+    {
+        if (!Standable(ref cursor, cell.X, cell.Y, cell.Z, out float surfaceY))
         {
             position = default;
             return false;
@@ -536,7 +708,7 @@ public static class NavTraversal
             or BlockType.BlockType_Dirt);
 
     private static bool TryStandableAtNear(
-        ChunkMap map,
+        ref VoxelCursor cursor,
         float x,
         float z,
         int aroundY,
@@ -546,16 +718,16 @@ public static class NavTraversal
         surfaceY = 0f;
         for (int offset = 0; offset <= range; offset++)
         {
-            if (StandableAt(map, x, aroundY + offset, z, out surfaceY))
+            if (StandableAt(ref cursor, x, aroundY + offset, z, out surfaceY))
                 return true;
-            if (offset != 0 && StandableAt(map, x, aroundY - offset, z, out surfaceY))
+            if (offset != 0 && StandableAt(ref cursor, x, aroundY - offset, z, out surfaceY))
                 return true;
         }
         return false;
     }
 
     private static bool StandableAt(
-        ChunkMap map,
+        ref VoxelCursor cursor,
         float x,
         int y,
         float z,
@@ -565,8 +737,8 @@ public static class NavTraversal
         if (y < ChunkConstants.WorldMinY || y >= ChunkConstants.WorldMaxY - 1)
             return false;
 
-        if (!TerrainCollision.TrySampleRaw(map, new Vector3(x, y, z), out float below)
-            || !TerrainCollision.TrySampleRaw(map, new Vector3(x, y + 1f, z), out float above)
+        if (!TerrainCollision.TrySampleRaw(ref cursor, new Vector3(x, y, z), out float below)
+            || !TerrainCollision.TrySampleRaw(ref cursor, new Vector3(x, y + 1f, z), out float above)
             || below >= -SurfaceEpsilon
             || above < 0f)
             return false;
@@ -579,7 +751,7 @@ public static class NavTraversal
         for (int pass = 0; pass < 4; pass++)
         {
             if (!TerrainCollision.TryDeepestContact(
-                    map,
+                    ref cursor,
                     PlayerMovement.Body,
                     feet,
                     out var contact)

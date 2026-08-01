@@ -77,7 +77,7 @@ public class RemotePlayer : Player
         public required NetObject Object { get; init; }
         public required WeaponStats Stats { get; init; }
         public int Ammo;
-        public int CooldownTicks;
+        public float CooldownTicks;
         public int ReloadTicksLeft;
         public WeaponSpreadState Spread;
     }
@@ -175,7 +175,10 @@ public class RemotePlayer : Player
                 Spread.ShotSeed(Id, sequence));
         if (direction == Vector3.Zero) return;
 
-        predicted.CooldownTicks = predicted.Stats.TicksPerShot;
+        // Add rather than assign so a fractional cadence keeps the sub-tick phase left over from
+        // the previous interval. At 1.5 ticks this alternates one- and two-tick gaps: exactly 20 Hz
+        // over a 30 Hz simulation instead of rounding to 15 or 30.
+        predicted.CooldownTicks += predicted.Stats.TicksPerShot;
         predicted.Ammo--;
         if (throwingGrenade && predicted.Ammo > 0)
             predicted.ReloadTicksLeft = predicted.Stats.ReloadTicks;
@@ -231,7 +234,7 @@ public class RemotePlayer : Player
             // client predict shots the server then silently rejects.
             foreach (var predicted in hotbarWeapons.Values)
             {
-                if (predicted.CooldownTicks > 0) predicted.CooldownTicks--;
+                if (predicted.CooldownTicks > 0) predicted.CooldownTicks -= 1f;
                 if (predicted.ReloadTicksLeft > 0
                     && --predicted.ReloadTicksLeft == 0
                     && predicted.Object.Item.Type != ItemType.Grenade)

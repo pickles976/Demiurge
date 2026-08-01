@@ -69,6 +69,7 @@ internal sealed class MobBrain
     public uint HeardRevision { get; set; }
     public uint AppliedHeardRevision { get; set; }
     public bool ShouldCloseDistance { get; set; }
+    public bool AssaultDashActive { get; set; }
     public uint UnderFireUntilTick { get; private set; }
 
     public void MarkUnderFire(uint tick)

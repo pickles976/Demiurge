@@ -75,9 +75,9 @@ public static class EditorValidation
                 case EditorPlacementKind.Mob:
                     if (placement.ArchetypeId != "demiurge:mob")
                         errors.Add($"Placement {placement.Id} has unknown mob {placement.ArchetypeId}");
-                    string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemConfig.DefaultPrimaryWeapon);
-                    if (!ItemCatalog.TryResolve(weaponId, out var weapon)
-                        || WeaponConfig.Get(weapon) is null)
+                    if (placement.WeaponId is { } weaponId
+                        && (!ItemCatalog.TryResolve(weaponId, out var weapon)
+                            || WeaponConfig.Get(weapon) is null))
                         errors.Add($"Placement {placement.Id} has unknown weapon {weaponId}");
                     if (placement.Team <= 0)
                         errors.Add($"Placement {placement.Id} must use a positive team");

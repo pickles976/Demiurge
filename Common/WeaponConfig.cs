@@ -21,10 +21,11 @@ namespace Demiurge
     /// <summary>Static per-weapon numbers. Never on the wire: the client
     /// predicts with them and the server enforces them, both keyed by
     /// ItemState.Type. Cadence is in server ticks so both ends count the
-    /// same clock.</summary>
+    /// same clock. It is fractional because 20 rounds/second is 1.5 ticks
+    /// at 30 TPS; both cooldown implementations retain the half-tick phase.</summary>
     public readonly record struct WeaponStats(
         int MagazineCapacity,
-        int TicksPerShot,
+        float TicksPerShot,
         int ReloadTicks,
         ushort Damage,
         WeaponBallisticsProfile BallisticsProfile,
@@ -47,6 +48,12 @@ namespace Demiurge
             // that length. Ticks rather than seconds so client prediction and server enforcement
             // count the same clock.
             ItemType.Sks => new WeaponStats(MagazineCapacity: 10, TicksPerShot: 3, ReloadTicks: 54, Damage: 30, BallisticsProfile: WeaponBallisticsProfile.Carbine, FireMode: FireMode.SemiAutomatic),
+            ItemType.Ppsh => new WeaponStats(
+                MagazineCapacity: 35,
+                TicksPerShot: NetworkConfig.TickRate / 20f,
+                ReloadTicks: 3 * NetworkConfig.TickRate / 2,
+                Damage: 18,
+                BallisticsProfile: WeaponBallisticsProfile.Pistol),
             ItemType.AWP => new WeaponStats(MagazineCapacity: 5, TicksPerShot: 60, ReloadTicks: 45, Damage: 75, BallisticsProfile: WeaponBallisticsProfile.SniperRifle),
             ItemType.Glock => new WeaponStats(MagazineCapacity: 15, TicksPerShot: 7, ReloadTicks: 20, Damage: 5, BallisticsProfile: WeaponBallisticsProfile.Pistol),
             // A grenade stack uses ammo as its remaining count. Each throw automatically cycles

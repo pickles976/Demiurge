@@ -42,6 +42,9 @@ namespace Demiurge.GameServer
         /// <summary>Arrival tolerance for a bound. Looser than cover, since the point is ground gained.</summary>
         private const float BoundArrivalDistance = 2.5f;
 
+        /// <summary>A reload is readable at the same distance its sound curve carries the tell.</summary>
+        internal const float EnemyReloadAwarenessRange = 100f;
+
         private readonly ChunkMap terrain;
         private readonly TerrainSystem terrainEdits;
         private readonly WeaponSystem weapons;
@@ -255,13 +258,23 @@ namespace Demiurge.GameServer
 
             bool hasOrder = squad.TryGetOrder(mob.Id, out var order);
             bool bounding = hasOrder && order.Role == SquadRole.Bound;
+            bool assault = weapons.TryGetActiveWeapon(mob, out var activePrimary)
+                && activePrimary.Item.Type == ItemType.Ppsh;
             // A base of fire holds and shoots at where the target is, not only at a target it can
             // currently see. That is what buys the bounding man his move.
             bool suppressing =
                 hasOrder
                 && order.Role == SquadRole.BaseOfFire
                 && brain.IsSet;
-            bool mayFire = squad.TryAcquireEngagement(mob.Id, tick);
+            bool holdingForEffectiveRange = assault
+                && brain.Contacts.TryNearest(mob.Position, tick, out var nearestContact)
+                && CombatBehavior.PrefersToHoldFire(
+                    ItemType.Ppsh,
+                    HorizontalDistance(mob.Position, nearestContact.Position));
+            bool mayFire = !holdingForEffectiveRange
+                && squad.TryAcquireEngagement(mob.Id, tick);
+            if (holdingForEffectiveRange)
+                squad.ReleaseEngagement(mob.Id);
             bool underFire =
                 brain.IsUnderFire(tick)
                 || mob.Spread.SuppressionMoa > 1f;
@@ -283,6 +296,7 @@ namespace Demiurge.GameServer
                         brain,
                         squad,
                         order,
+                        assault,
                         tick,
                         out combatIntent,
                         out combatJump);
@@ -290,9 +304,13 @@ namespace Demiurge.GameServer
                 else
                 {
                     bool wantsAdvance = brain.ShouldCloseDistance || !mayFire || underFire;
+                    bool assaultWaitingInPosition = assault
+                        && hasOrder
+                        && order.Role == SquadRole.BaseOfFire;
                     bool mayAdvance =
-                        underFire
-                        || wantsAdvance && squad.TryAcquireAdvance(mob.Id, tick);
+                        !assaultWaitingInPosition
+                        && (underFire
+                            || wantsAdvance && squad.TryAcquireAdvance(mob.Id, tick));
                     if (underFire || !mayAdvance)
                         squad.ReleaseAdvance(mob.Id);
                     UpdateCoverMovement(
@@ -303,6 +321,7 @@ namespace Demiurge.GameServer
                         brain.ShouldCloseDistance,
                         underFire,
                         hasOrder && order.Role == SquadRole.BaseOfFire,
+                        assault,
                         tick,
                         out combatIntent,
                         out combatJump);
@@ -516,6 +535,7 @@ namespace Demiurge.GameServer
             brain.Contacts.Forget();
             brain.FlankSide = FlankSide.None;
             brain.BoundIndex = 0;
+            brain.AssaultDashActive = false;
             brain.NextCoverQueryTick = 0;
             CancelPending(mob.Id, brain.Navigation);
             brain.Navigation.Clear();
@@ -613,22 +633,32 @@ namespace Demiurge.GameServer
             foreach (var pair in squads)
             {
                 var squad = pair.Value;
+                bool hasThreat = squad.TryGetPrimaryThreat(tick, out var threat);
+                var threatActor = hasThreat
+                    ? actors.FirstOrDefault(candidate => candidate.Id == threat.ActorId)
+                    : null;
                 tacticalInputs.Clear();
                 foreach (ushort actorId in squad.Roster)
                 {
                     if (!brains.TryGetValue(actorId, out var brain)) continue;
                     var actor = actors.FirstOrDefault(candidate => candidate.Id == actorId);
                     if (actor is null || actor.Status is { Health.Current: 0 }) continue;
+                    bool assault = weapons.TryGetPrimaryWeapon(actor, out var primary)
+                        && primary.Item.Type == ItemType.Ppsh;
+                    bool knowsReload = threatActor is { } enemy
+                        && CanRecognizeEnemyReload(actor, enemy);
                     tacticalInputs.Add(new SquadTacticalInput(
                         actorId,
                         actor.Position,
                         brain.FlankSide,
                         brain.BoundIndex,
-                        brain.IsSet));
+                        brain.IsSet,
+                        IsAssault: assault,
+                        ThreatReloading: knowsReload,
+                        BoundCommitted: brain.AssaultDashActive));
                 }
                 if (tacticalInputs.Count == 0) continue;
 
-                bool hasThreat = squad.TryGetPrimaryThreat(tick, out var threat);
                 SquadTactics.Plan(
                     threat.Position,
                     hasThreat,
@@ -639,9 +669,17 @@ namespace Demiurge.GameServer
                     if (brains.TryGetValue(order.ActorId, out var brain))
                     {
                         brain.FlankSide = order.Side;
+                        bool assault = tacticalInputs.Any(input =>
+                            input.ActorId == order.ActorId && input.IsAssault);
+                        if (order.Role == SquadRole.Bound && assault)
+                            brain.AssaultDashActive = true;
                         // Contact broken. The next fight opens at full standoff rather than resuming a
                         // closing sequence against an enemy that is no longer there.
-                        if (order.Role == SquadRole.None) brain.BoundIndex = 0;
+                        if (order.Role == SquadRole.None)
+                        {
+                            brain.BoundIndex = 0;
+                            brain.AssaultDashActive = false;
+                        }
                     }
             }
         }
@@ -667,6 +705,7 @@ namespace Demiurge.GameServer
             MobBrain brain,
             SquadBlackboard squad,
             SquadTacticalOrder order,
+            bool assault,
             uint tick,
             out Vector3 intent,
             out bool jump)
@@ -714,7 +753,7 @@ namespace Demiurge.GameServer
             {
                 // Ground gained. Going set here is what hands the next bound to his partner: he becomes
                 // the nearer man, so the plan picks the other one as furthest from the threat.
-                CompleteBound(mob, brain, tick);
+                CompleteBound(mob, brain, squad, assault, tick);
                 return;
             }
 
@@ -732,7 +771,7 @@ namespace Demiurge.GameServer
                 intent = Vector3.Zero;
                 jump = false;
                 brain.Navigation.Path.Clear();
-                CompleteBound(mob, brain, tick);
+                CompleteBound(mob, brain, squad, assault, tick);
             }
             else if (followState == PathFollowState.NeedsPath)
             {
@@ -746,8 +785,23 @@ namespace Demiurge.GameServer
         /// Ends a bound: the man is set, his standoff for the next one is shorter, and the Advance
         /// destination is dropped so the ordinary cover query can find him real cover where he stands.
         /// </summary>
-        private static void CompleteBound(ServerPlayer mob, MobBrain brain, uint tick)
+        private static void CompleteBound(
+            ServerPlayer mob,
+            MobBrain brain,
+            SquadBlackboard squad,
+            bool assault,
+            uint tick)
         {
+            if (assault)
+            {
+                // The reload bought a dash, not permanent safety. Drop the transit claim and dig a
+                // new position here before waiting for the next opening.
+                ClearCover(mob.Id, brain, squad);
+                brain.AssaultDashActive = false;
+                brain.BoundIndex++;
+                brain.NextCoverQueryTick = tick;
+                return;
+            }
             brain.AtCover = true;
             brain.CoverArrivedTick = tick;
             brain.BoundIndex++;
@@ -762,6 +816,7 @@ namespace Demiurge.GameServer
             bool closingDistance,
             bool underFire,
             bool baseOfFire,
+            bool assault,
             uint tick,
             out Vector3 intent,
             out bool jump)
@@ -770,6 +825,15 @@ namespace Demiurge.GameServer
             jump = false;
 
             if (!brain.Contacts.TryGet(brain.CombatTargetId, tick, out var primaryThreat))
+                return;
+
+            // PPSH carriers make their first cover instead of racing rifles to whatever natural
+            // position the scorer finds. Once the foxhole is complete, the normal query recognizes
+            // it as a fighting position and marks the unit set for the squad planner.
+            if (assault
+                && baseOfFire
+                && !brain.AtCover
+                && DigEmergencyCover(mob, primaryThreat.Position, tick))
                 return;
 
             bool invalidated =
@@ -810,7 +874,8 @@ namespace Demiurge.GameServer
                     contacts,
                     squad,
                     out var choice,
-                    requireAdvance: closingDistance);
+                    requireAdvance: closingDistance
+                        && !(assault && baseOfFire && !brain.AtCover));
                 timingCoverStopwatchTicks += Stopwatch.GetTimestamp() - coverStarted;
                 timingCoverQueries++;
                 if (foundCover)
@@ -889,7 +954,7 @@ namespace Demiurge.GameServer
                     // the spot as a fighting position the query above accepts it and digging stops, which
                     // is exactly "deep enough to peek over, low enough to crouch behind".
                     if (underFire || baseOfFire)
-                        DigEmergencyCover(mob, primaryThreat.Position, tick);
+                        _ = DigEmergencyCover(mob, primaryThreat.Position, tick);
                 }
             }
 
@@ -965,13 +1030,11 @@ namespace Demiurge.GameServer
             return elapsed % cycle < CoverCrouchTicks;
         }
 
-        private void DigEmergencyCover(
+        private bool DigEmergencyCover(
             ServerPlayer mob,
             Vector3 threatPosition,
             uint tick)
         {
-            if (tick < mob.NextDigTick) return;
-
             Vector3 toward = threatPosition - mob.Position;
             toward.Y = 0f;
             if (toward.LengthSquared() > 1e-6f)
@@ -983,12 +1046,14 @@ namespace Demiurge.GameServer
             // neither jump out of nor, digging being off for combat paths, excavate its way out of.
             int gradeX = (int)MathF.Floor(mob.Position.X - toward.X * FoxholeGradeProbeDistance);
             int gradeZ = (int)MathF.Floor(mob.Position.Z - toward.Z * FoxholeGradeProbeDistance);
-            if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is not { } grade) return;
+            if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is not { } grade) return false;
 
             // The SHAPE of the position lives in FoxholePlan -- hole first, then widen, never the
             // parapet. This used to be a single probe half a metre in front, which cut a post-hole:
             // deep enough to pass a depth check and too narrow to take cover in.
-            if (FoxholePlan.NextBite(terrain, mob.Position, toward, grade) is not { } target) return;
+            if (FoxholePlan.NextBite(terrain, mob.Position, toward, grade) is not { } target)
+                return false;
+            if (tick < mob.NextDigTick) return true;
 
             mob.Hotbar = HotbarSlot.Shovel;
             mob.State |= PlayerStateFlags.Shooting;   // swings the shovel on every client's view
@@ -1002,6 +1067,7 @@ namespace Demiurge.GameServer
                     Hotbar = HotbarSlot.Shovel,
                 },
                 tick);
+            return true;
         }
 
         public void RecordTick(long movementStopwatchTicks, int agentCount)
@@ -1063,6 +1129,12 @@ namespace Demiurge.GameServer
         }
 
         public string Stats() => latestStats;
+
+        /// <summary>
+        /// Echoes the same one-second window to stdout. `ai stats` needs somebody typing at the
+        /// right moment, which a profiling run cannot rely on.
+        /// </summary>
+        public void LogStats() => Console.WriteLine("[AI]: " + latestStats);
 
         private static long Percentile(List<long> samples, float percentile)
         {
@@ -1223,6 +1295,16 @@ namespace Demiurge.GameServer
             float dz = a.Z - b.Z;
             return dx * dx + dz * dz;
         }
+
+        private static float HorizontalDistance(Vector3 a, Vector3 b)
+            => MathF.Sqrt(HorizontalDistanceSquared(a, b));
+
+        internal static bool CanRecognizeEnemyReload(
+            ServerPlayer observer,
+            ServerPlayer enemy)
+            => enemy.State.HasFlag(PlayerStateFlags.Reloading)
+               && HorizontalDistance(observer.Position, enemy.Position)
+                   <= EnemyReloadAwarenessRange;
 
         private bool TryCombatAdvancePosition(
             ServerPlayer mob,
