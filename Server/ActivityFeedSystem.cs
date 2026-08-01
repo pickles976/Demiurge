@@ -19,8 +19,8 @@ public sealed class ActivityFeedSystem
     public void ReportFlagNeutralized(int team, Vector3 position)
         => Broadcast($"Team {team} neutralized flag at {Coordinates(position)}");
 
-    public void ReportNpcDeleted(ushort npcId, string reason)
-        => Broadcast($"NPC {npcId} deleted by server: {reason}");
+    public void ReportNpcRelocated(ushort npcId, string reason)
+        => Broadcast($"NPC {npcId} relocated by server: {reason}");
 
     private void Broadcast(string text)
     {

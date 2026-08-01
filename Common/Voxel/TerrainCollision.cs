@@ -67,15 +67,19 @@ namespace Demiurge
         /// </summary>
         public static bool TrySampleRaw(ChunkMap map, Vector3 p, out float distance)
         {
-            return TrySampleCell(map, p, out distance, out _);
+            var cursor = new VoxelCursor(map);
+            return TrySampleCell(ref cursor, p, out distance, out _);
         }
+
+        static bool TrySampleRaw(ref VoxelCursor cursor, Vector3 p, out float distance)
+            => TrySampleCell(ref cursor, p, out distance, out _);
 
         /// <summary>
         /// Trilinear value and its exact analytical gradient inside the containing cell. Deriving
         /// both from the same eight corners avoids a cross-cell finite-difference stencil pulling
         /// saturated samples into an otherwise well-resolved steep surface.
         /// </summary>
-        static bool TrySampleCell(ChunkMap map, Vector3 p, out float distance, out Vector3 gradient)
+        static bool TrySampleCell(ref VoxelCursor cursor, Vector3 p, out float distance, out Vector3 gradient)
         {
             distance = 0f;
             gradient = Vector3.Zero;
@@ -92,7 +96,7 @@ namespace Demiurge
             for (int c = 0; c < 8; c++)
             {
                 // Corner index encodes the offset as x + 2y + 4z, the same packing the mesher uses.
-                if (!map.TryGetVoxel(x0 + (c & 1), y0 + ((c >> 1) & 1), z0 + ((c >> 2) & 1), out var voxel))
+                if (!cursor.TryGet(x0 + (c & 1), y0 + ((c >> 1) & 1), z0 + ((c >> 2) & 1), out var voxel))
                     return false;
 
                 d[c] = voxel.Distance;
@@ -132,10 +136,16 @@ namespace Demiurge
         /// </summary>
         public static bool TrySample(ChunkMap map, Vector3 p, out FieldPoint point)
         {
+            var cursor = new VoxelCursor(map);
+            return TrySample(ref cursor, p, out point);
+        }
+
+        static bool TrySample(ref VoxelCursor cursor, Vector3 p, out FieldPoint point)
+        {
             point = default;
 
-            if (!TrySampleCell(map, p, out float raw, out var cellGradient)) return false;
-            if (!TryGradient(map, p, out var gradient)) return false;
+            if (!TrySampleCell(ref cursor, p, out float raw, out var cellGradient)) return false;
+            if (!TryGradient(ref cursor, p, out var gradient)) return false;
 
             float length = gradient.Length();
             float cellLength = cellGradient.Length();
@@ -163,9 +173,13 @@ namespace Demiurge
         {
             deepest = new FieldPoint(float.MaxValue, Vector3.UnitY, Vector3.UnitY);
 
+            // One cursor across all three sample spheres: they are a capsule's worth apart, so the
+            // second and third usually land in the chunk the first already resolved.
+            var cursor = new VoxelCursor(map);
+
             for (int i = 0; i < CapsuleBody.SampleCount; i++)
             {
-                if (!TrySample(map, body.SampleCenter(feet, i), out var point)) return false;
+                if (!TrySample(ref cursor, body.SampleCenter(feet, i), out var point)) return false;
                 if (point.Distance < deepest.Distance) deepest = point;
             }
 
@@ -173,24 +187,24 @@ namespace Demiurge
         }
 
         /// <summary>Smoothed central difference used for stable pushout at cell boundaries.</summary>
-        static bool TryGradient(ChunkMap map, Vector3 p, out Vector3 gradient)
+        static bool TryGradient(ref VoxelCursor cursor, Vector3 p, out Vector3 gradient)
         {
             gradient = Vector3.Zero;
 
-            if (!TryAxisDifference(map, p, Vector3.UnitX, out float dx)) return false;
-            if (!TryAxisDifference(map, p, Vector3.UnitY, out float dy)) return false;
-            if (!TryAxisDifference(map, p, Vector3.UnitZ, out float dz)) return false;
+            if (!TryAxisDifference(ref cursor, p, Vector3.UnitX, out float dx)) return false;
+            if (!TryAxisDifference(ref cursor, p, Vector3.UnitY, out float dy)) return false;
+            if (!TryAxisDifference(ref cursor, p, Vector3.UnitZ, out float dz)) return false;
 
             gradient = new Vector3(dx, dy, dz);
             return true;
         }
 
-        static bool TryAxisDifference(ChunkMap map, Vector3 p, Vector3 axis, out float difference)
+        static bool TryAxisDifference(ref VoxelCursor cursor, Vector3 p, Vector3 axis, out float difference)
         {
             difference = 0f;
 
-            if (!TrySampleRaw(map, p + axis * GradientStep, out float ahead)) return false;
-            if (!TrySampleRaw(map, p - axis * GradientStep, out float behind)) return false;
+            if (!TrySampleRaw(ref cursor, p + axis * GradientStep, out float ahead)) return false;
+            if (!TrySampleRaw(ref cursor, p - axis * GradientStep, out float behind)) return false;
 
             difference = (ahead - behind) / (2f * GradientStep);
             return true;

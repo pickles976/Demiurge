@@ -251,9 +251,30 @@ public static class NavTraversal
 
     public static Vector3 Position(ChunkMap map, NavCell cell)
     {
-        if (!Standable(map, cell.X, cell.Y, cell.Z, out float surfaceY))
+        if (!TryPosition(map, cell, out var position))
             throw new ArgumentException($"Navigation cell {cell} is not standable", nameof(cell));
-        return new Vector3(cell.X + 0.5f, surfaceY, cell.Z + 0.5f);
+        return position;
+    }
+
+    /// <summary>
+    /// <see cref="Position"/> for callers that can be handed a cell terrain has moved out from
+    /// under — anything running on a navigation worker, where the cell was sampled on the main
+    /// thread at some earlier tick and a dig may have landed since.
+    ///
+    /// Throwing is right for the main thread, where an unstandable cell means a logic error. It is
+    /// wrong on a worker: an unhandled exception there terminates the whole process, and "the world
+    /// changed while I was thinking" is an ordinary event on a worker, not a bug. Those callers
+    /// treat a false here as a stale request and let the agent ask again from a fresh cell.
+    /// </summary>
+    public static bool TryPosition(ChunkMap map, NavCell cell, out Vector3 position)
+    {
+        if (!Standable(map, cell.X, cell.Y, cell.Z, out float surfaceY))
+        {
+            position = default;
+            return false;
+        }
+        position = new Vector3(cell.X + 0.5f, surfaceY, cell.Z + 0.5f);
+        return true;
     }
 
     /// <summary>
@@ -337,25 +358,21 @@ public static class NavTraversal
         Vector3 feet = Position(map, from);
         Vector3 direction = Vector3.Normalize(new Vector3(dx, 0f, dz));
 
-        // A substantially higher standable surface in the adjacent column means this is the side
-        // of a pit or embankment. Aim upward first so repeated frontier replans cut a rising series
-        // of bites rather than a level tunnel under the surface.
-        if (TryFindHigherSurface(1, out var upper)
-            || TryFindHigherSurface(2, out upper))
+        // A substantially higher standable surface ahead means this is the side of a pit or
+        // embankment, so cut a STEP into it rather than a hole — see TryStaircaseTarget. The column
+        // that HOLDS that surface is the one the stair is cut into, which is not always the cell
+        // straight ahead: at the bottom of a pit the actor is often a cell short of the wall.
+        int wallSteps = TryFindHigherSurface(1, out _) ? 1
+                      : TryFindHigherSurface(2, out _) ? 2
+                      : 0;
+        if (wallSteps > 0)
         {
-            Vector3 risingDirection = Vector3.Normalize(
-                new Vector3(dx, 0.75f, dz));
-            Vector3 risingOrigin = PlayerMovement.Body.SampleCenter(feet, 1);
-            if (TryDigTargetAlongRay(
-                    map,
-                    risingOrigin,
-                    risingDirection,
-                    direction,
-                    out target))
-            {
-                cost = NavCosts.DigOneVoxel;
-                return true;
-            }
+            // And if no step can be cut, cut NOTHING from here rather than falling through to the
+            // level bite below. The two branches were digging against each other: the forward dig
+            // drives straight through the tread the stair depends on, and the hole always won.
+            if (!TryStaircaseTarget(map, from, dx, dz, wallSteps, out target)) return false;
+            cost = NavCosts.DigOneVoxel;
+            return true;
         }
 
         // Probe the capsule axis, low to high. Removing the lowest blocker first avoids carving a
@@ -385,6 +402,83 @@ public static class NavTraversal
             upper = found;
             return true;
         }
+    }
+
+    /// <summary>
+    /// Samples of headroom cleared above each tread. More than the 1.8 m capsule needs, and the
+    /// asymmetry is measured rather than assumed — escaping the DigEscapeTests pit costs:
+    ///
+    ///     2 cells -> 640 bites      3 cells -> 158 bites      4 cells -> 166 bites
+    ///
+    /// Under-cutting is not slightly worse, it is four times worse: a tread that only just clears
+    /// the capsule keeps failing the standability check, so the actor re-cuts the same step instead
+    /// of climbing it. Over-cutting only wastes the bites it spends. When in doubt, cut more.
+    /// </summary>
+    private const int StaircaseHeadroomCells = 3;
+
+    /// <summary>
+    /// How positive a sample has to read before the headroom counts as cut. Not simply "air":
+    /// ClicksPerVoxel makes one bite a HALF bite, so a sample can cross zero — and relabel itself
+    /// Air — while the surface has barely moved and the capsule still will not fit.
+    /// </summary>
+    private const float StaircaseClearedDistance = 0.5f;
+
+    /// <summary>
+    /// The next bite of a staircase cut into a wall the actor cannot climb.
+    ///
+    /// Digging a step is the OPPOSITE of digging a hole: the tread is the material you LEAVE, so the
+    /// bite has to take the headroom above it. That is why aiming a ray upward never worked — the
+    /// brush is a sphere centred on whatever it hits, and a sphere removes as much below the aim
+    /// point as above it, so pointing it further up a vertical wall only ever produced a higher
+    /// alcove. A dent with no floor is not a step however many bites go into it.
+    ///
+    /// One cell of rise per step, cut bottom-up: returning the LOWEST sample still in the way means
+    /// successive replans clear the column in order and the tread turns standable as soon as the
+    /// capsule fits, rather than opening a window above an obstruction that is still there.
+    /// </summary>
+    private static bool TryStaircaseTarget(
+        ChunkMap map,
+        NavCell from,
+        int dx,
+        int dz,
+        int wallSteps,
+        out Vector3 target)
+    {
+        target = default;
+
+        int x = from.X + dx * wallSteps;
+        int z = from.Z + dz * wallSteps;
+
+        // MaximumTraverseCellDelta allows two, but a stair the actor can only just manage is one
+        // the movement solver gets to veto. A single cell always climbs.
+        int tread = from.Y + 1;
+
+        // The tread has to be something to stand on. Open air here is not a wall to step up, and
+        // the forward dig is the right tool for that.
+        if (!IsSolidSoil(map, new Vector3(x, tread, z))) return false;
+
+        // A CELL is bounded by two samples on each horizontal axis, so clearing a single sample
+        // column leaves solid material half a metre from where the capsule would stand and the step
+        // is never standable — which is exactly what a one-column cut produced: a beautifully shaped
+        // pocket nobody could get into. Clear the cell's whole 2x2 footprint, bottom-up, so the
+        // space the capsule actually occupies opens level by level.
+        for (int y = tread + 1; y <= tread + StaircaseHeadroomCells; y++)
+            for (int stepZ = 0; stepZ <= 1; stepZ++)
+                for (int stepX = 0; stepX <= 1; stepX++)
+                {
+                    var sample = new Vector3(x + stepX, y, z + stepZ);
+                    if (!TryVoxel(map, sample, out var voxel)) return false;
+                    if (voxel.Distance >= StaircaseClearedDistance) continue;
+
+                    // Rock in one corner is not a reason to abandon the staircase, it is a reason to
+                    // cut the rest of it. SubtractSoil would refuse this sample anyway.
+                    if (voxel.Distance < 0f && !IsSoil(voxel)) continue;
+
+                    target = sample;
+                    return true;
+                }
+
+        return false;   // headroom already open; this step is cut and the actor can climb it
     }
 
     private static bool TryDigTargetAlongRay(

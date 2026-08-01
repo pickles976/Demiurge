@@ -104,7 +104,7 @@ public class ObjectViewFactory : IDisposable
         => new()
         {
             new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(ItemType.Grenade))),
-            new ThrownGrenadeSpinScript { Priority = 10 },
+            new ThrownGrenadeScript { Priority = 10 },
         };
 
     private void DestroyView(NetObject obj)

@@ -247,9 +247,25 @@ public sealed class FlagSystem
 
     public bool TrySpawnPosition(int team, out Vector3 position)
     {
+        // Spawn at the FRONT, not at the back. Ordering controlled flags by network id meant a
+        // reinforcement was as likely to appear at the flag furthest from the fighting as the
+        // nearest one, and then had to walk the length of the map to matter — which for an attacking
+        // team is most of the round spent in transit.
+        //
+        // "Front" is defined by what is still to be taken: for each flag this team holds, how far it
+        // is from the nearest flag this team does NOT hold. Ties and the no-objectives-left case
+        // fall back on network id, so the ordering stays deterministic.
+        var objectives = flags
+            .Where(flag => flag.Object.Team.Value != team)
+            .ToArray();
+
         var controlled = flags
             .Where(flag => flag.Object.Team.Value == team)
-            .OrderBy(flag => flag.Object.NetworkId)
+            .OrderBy(flag => objectives.Length == 0
+                ? 0f
+                : objectives.Min(objective =>
+                    Vector3.DistanceSquared(flag.Position, objective.Position)))
+            .ThenBy(flag => flag.Object.NetworkId)
             .ToArray();
         if (controlled.Length == 0)
         {
@@ -257,13 +273,16 @@ public sealed class FlagSystem
             return false;
         }
 
+        // The front flag, every time, rather than a round robin over everything held. Cycling was
+        // the actual defect: sorting alone only changes which flag the cycle STARTS at, so
+        // reinforcements still went to the rear ones in turn. The counter now only scatters men
+        // within the one spawn circle so they do not stack on the flag itself.
         int index = nextSpawnByTeam.GetValueOrDefault(team);
         nextSpawnByTeam[team] = index == int.MaxValue ? 0 : index + 1;
-        var centre = controlled[index % controlled.Length].Position;
-        int sample = index / controlled.Length;
+        var centre = controlled[0].Position;
         const float goldenAngle = 2.39996323f;
-        float angle = sample * goldenAngle;
-        float radius = FlagConfig.SpawnRadius * MathF.Sqrt(((sample % 8) + 0.5f) / 8f);
+        float angle = index * goldenAngle;
+        float radius = FlagConfig.SpawnRadius * MathF.Sqrt(((index % 8) + 0.5f) / 8f);
         position = centre + new Vector3(
             MathF.Cos(angle) * radius,
             0f,

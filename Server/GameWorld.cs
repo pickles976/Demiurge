@@ -397,10 +397,10 @@ namespace Demiurge.GameServer
                 if (!players.TryGetValue(stuckMobId, out var stuck)
                     || !stuck.IsMob)
                     continue;
-                activityFeed.ReportNpcDeleted(
+                activityFeed.ReportNpcRelocated(
                     stuckMobId,
                     "stuck for 60 seconds while navigating");
-                RemoveActor(stuckMobId);
+                Relocate(stuck);
             }
 
             flags.Tick(dt, players.Values);
@@ -413,6 +413,7 @@ namespace Demiurge.GameServer
 
             weapons.Tick(dt, _Tick, players.Values);
             grenades.Tick(dt, _Tick, players.Values);
+            RegenerateHealth(dt);
 
             // Death and respawn
             foreach (var player in players.Values)
@@ -517,6 +518,63 @@ namespace Demiurge.GameServer
                 Team = player.Team,
             });
             return message;
+        }
+
+        /// <summary>
+        /// Moves a wedged actor back to a spawn instead of removing it.
+        ///
+        /// Being stuck used to be fatal — permanently, since deletion does not respawn — so every
+        /// piece of geometry an NPC could wedge itself in slowly drained the teams for the rest of
+        /// the round. Getting stuck is a navigation failure, not a death: the fix is to pick the man
+        /// up and put him somewhere he can walk from.
+        ///
+        /// Health is deliberately NOT restored. This is a relocation, not a respawn, and a wounded
+        /// man who wedges himself should not come away healed.
+        /// </summary>
+        private void Relocate(ServerPlayer actor)
+        {
+            actor.Move = SpawnPlayerMove(actor.Team, useOverride: false);
+            actor.History.Clear();
+            actor.PendingMoves.Clear();
+            actor.LastIntent = Vector3.Zero;
+            actor.State = 0;
+
+            // The brain still believes everything it believed while wedged — where it was going,
+            // what it was fighting, that it was at cover. OnRespawn is exactly that wipe.
+            mobs.OnRespawn(actor);
+        }
+
+        /// <summary>
+        /// Closes wounds once an actor has been left alone long enough. Server-authoritative like
+        /// every other health change, so the client's red-out and heartbeat follow the same number
+        /// rather than predicting one of their own.
+        ///
+        /// The carry is what makes it work at all: the rate is 0.67 health per tick against a ushort
+        /// field, so rounding each tick independently would heal precisely nothing.
+        /// </summary>
+        private void RegenerateHealth(float dt)
+        {
+            foreach (var player in players.Values)
+            {
+                if (player.Status is not { } status
+                    || status.Health.Current == 0
+                    || status.Health.Current >= status.Health.Max
+                    || _Tick - player.LastDamagedTick < HealthConfig.RegenerationDelayTicks)
+                {
+                    player.RegenerationCarry = 0f;
+                    continue;
+                }
+
+                player.RegenerationCarry += HealthConfig.RegenerationPerSecond * dt;
+                int whole = (int)player.RegenerationCarry;
+                if (whole <= 0) continue;
+
+                player.RegenerationCarry -= whole;
+                status.Health.Current = (ushort)Math.Min(
+                    status.Health.Max,
+                    status.Health.Current + whole);
+                status.Dirty |= NetComponents.Health;
+            }
         }
 
         private void BroadcastPositions()

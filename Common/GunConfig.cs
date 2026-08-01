@@ -15,6 +15,24 @@ namespace Demiurge
         public const float PlayerCenterHeight = 0.5f;
 
         /// <summary>
+        /// How close a round has to pass for the man it missed to know about it. Deliberately wider
+        /// than the body: a round that misses by a metre is the definition of being shot at, and the
+        /// point of suppression is that it costs the target their composure whether or not it
+        /// connected. This is a distance from the projectile's PATH, so it is range-independent —
+        /// a near miss at four hundred metres reads exactly like one at ten.
+        /// </summary>
+        public const float NearMissRadius = 2.5f;
+
+        /// <summary>
+        /// How close a round has to STRIKE for the dirt it throws up to suppress. Separate from
+        /// <see cref="NearMissRadius"/>, and larger, because a round cracking past overhead is a
+        /// different experience from one hitting the parapet in front of you — and a shot aimed at
+        /// terrain near a man never passes near the man at all, so the fly-by test alone never
+        /// noticed it.
+        /// </summary>
+        public const float ImpactSuppressionRadius = 4f;
+
+        /// <summary>
         /// Height of the head above the feet. Used as an AI aim point, not as a damage multiplier —
         /// there is no headshot, only a part of the body that stays exposed behind low cover.
         /// </summary>

@@ -12,6 +12,7 @@ public class LocalPlayerController : SyncScript
 	public required WeaponMount Mount { get; init; }
 	public required LocalWeaponView WeaponView { get; init; }
 	public required ClientInputState InputState { get; init; }
+	public required SpawnReadiness Readiness { get; init; }
 
 	private bool primaryWasDown;
 	private uint? primedGrenadeId;
@@ -56,11 +57,17 @@ public class LocalPlayerController : SyncScript
 		}
 		local.LeaveDeath();
 
-		// The debug fly camera has the input; stand the player down. Note this keeps SENDING a
-		// zero-intent move every tick rather than going silent: when the server's move queue
-		// starves it re-steps with the last intent it saw, forever (GameWorld.Tick), so a player
-		// frozen mid-sprint would keep running server-side while the client stopped predicting.
-		if (InputState.TerminalOpen || CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
+		// Three reasons to stand the player down: the terminal has the keyboard, the fly camera has
+		// the input, or the ground under the spawn has not finished meshing and walking would mean
+		// walking through a world that is not there yet.
+		//
+		// All three keep SENDING a zero-intent move rather than going silent: when the server's move
+		// queue starves it re-steps with the last intent it saw, forever (GameWorld.Tick), so a
+		// player frozen mid-sprint would keep running server-side while the client stopped
+		// predicting.
+		if (InputState.TerminalOpen
+			|| !Readiness.Ready
+			|| CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
 		{
 			primaryWasDown = false;
 			primedGrenadeId = null;

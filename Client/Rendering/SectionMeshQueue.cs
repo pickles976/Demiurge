@@ -47,8 +47,19 @@ namespace Demiurge
         const float SkirtDepth = 2f;
 
         readonly ChunkMap map;
-        readonly BlockingCollection<LodSection> pending = new();
+        readonly BlockingCollection<(LodSection Section, bool Urgent)> pending = new();
         readonly ConcurrentQueue<SectionMeshResult> finished = new();
+
+        /// <summary>
+        /// Finished geometry for sections an EDIT dirtied, taken before <see cref="finished"/>.
+        ///
+        /// Prioritising the SUBMIT side alone was not enough, and the measurement said so plainly: a
+        /// dig waited about 26 ms for a worker and then up to 430 ms to be collected, because its
+        /// result joined one unordered output queue behind a streaming backlog and competed for the
+        /// main thread's per-frame upload budget. Meshing a dig costs well under a millisecond; the
+        /// delay between swinging and seeing the hole was almost entirely this queue.
+        /// </summary>
+        readonly ConcurrentQueue<SectionMeshResult> finishedUrgent = new();
         readonly CancellationTokenSource shutdown = new();
         readonly Thread[] workers;
 
@@ -72,16 +83,25 @@ namespace Demiurge
             }
         }
 
-        /// <summary>Main thread. Caller must have checked the neighbourhood is complete.</summary>
-        public void Submit(LodSection section)
+        /// <summary>
+        /// Main thread. Caller must have checked the neighbourhood is complete. <paramref name="urgent"/>
+        /// marks a section an edit touched, which jumps it to the front of the RESULT queue as well as
+        /// being submitted first.
+        /// </summary>
+        public void Submit(LodSection section, bool urgent = false)
         {
             if (shutdown.IsCancellationRequested) return;
 
-            pending.Add(section);
+            pending.Add((section, urgent));
         }
 
-        /// <summary>Main thread. Results come back in whatever order the workers finish.</summary>
-        public bool TryTakeResult(out SectionMeshResult result) => finished.TryDequeue(out result);
+        /// <summary>
+        /// Main thread. Edit results first, then whatever order the workers finished the rest in.
+        /// The urgent queue only ever holds the few sections around somebody's shovel, so draining it
+        /// first cannot starve streaming.
+        /// </summary>
+        public bool TryTakeResult(out SectionMeshResult result)
+            => finishedUrgent.TryDequeue(out result) || finished.TryDequeue(out result);
 
         void Work()
         {
@@ -91,11 +111,13 @@ namespace Demiurge
 
             try
             {
-                foreach (var section in pending.GetConsumingEnumerable(shutdown.Token))
+                foreach (var (section, urgent) in pending.GetConsumingEnumerable(shutdown.Token))
                 {
+                    var into = urgent ? finishedUrgent : finished;
+
                     if (!ChunkMesher.TryFillScratch(map, section, scratch))
                     {
-                        finished.Enqueue(new SectionMeshResult(section, MeshData.Empty, Ready: false));
+                        into.Enqueue(new SectionMeshResult(section, MeshData.Empty, Ready: false));
                         continue;
                     }
 
@@ -113,7 +135,7 @@ namespace Demiurge
                         if (section.Level > 0) mesh = ChunkMesher.AddSkirt(mesh, SkirtDepth);
                     }
 
-                    finished.Enqueue(new SectionMeshResult(section, mesh, Ready: true));
+                    into.Enqueue(new SectionMeshResult(section, mesh, Ready: true));
                 }
             }
             catch (OperationCanceledException)

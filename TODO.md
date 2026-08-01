@@ -5,6 +5,15 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
+
+NPCs are unable to dig out of their foxholes they just jump up and down instead of digging sideways. They should start by digging a 1x1 2-deep hole, but then expand it at varying depths so they can see out while standing at certain parts.
+
+AI still struggles somewhat with building up, sometimes just jumps at the wall, although it is better than before.
+
+It looks like only one squad member is digging at a time? Could multiple squad members contribute to digging rather than just 1?. Also if a single squad is stuck for a long period of time, perhaps each squad member could do their own pathfinding to dig out, so they aren't all bunched up in the same spot.
+
+Finally, NPCs can navigate over short bridges, but struggle with long ones. It appears to be non-deterministic.
+
 - [ ] PVP
     - [ ] add ppsh
     - [ ] add mosin-nagant
@@ -19,8 +28,6 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 - [ ] brick wall texture and block type
 - [ ] pain sound
-- [ ] bullet crack sound
-- [ ] camera shake
 
 - [ ] add trees
 - [ ] tree destruction

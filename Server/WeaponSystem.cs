@@ -142,6 +142,41 @@ namespace Demiurge.GameServer
             return true;
         }
 
+        /// <summary>
+        /// Rounds that strike near a man suppress him even though they never passed near him. The
+        /// fly-by test in TryHit measures distance from the projectile's PATH, so fire aimed at the
+        /// cover someone is behind — which is what suppressing fire IS — went entirely unnoticed by
+        /// the person being suppressed.
+        /// </summary>
+        private void SuppressNearImpact(
+            Projectile projectile,
+            Vector3 impact,
+            IEnumerable<ServerPlayer> actors,
+            uint tick)
+        {
+            foreach (var player in actors)
+            {
+                if (player == projectile.Shooter
+                    || player.Team == projectile.Shooter.Team
+                    || player.Status is not { Health.Current: > 0 })
+                    continue;
+
+                var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                if (Vector3.DistanceSquared(impact, center)
+                    > GunConfig.ImpactSuppressionRadius * GunConfig.ImpactSuppressionRadius)
+                    continue;
+
+                player.Spread.Suppress();
+                if (!projectile.SuppressedActors.Add(player.Id)) continue;
+                suppressions.Enqueue(new AcceptedSuppression(
+                    player.Id,
+                    projectile.Shooter.Id,
+                    projectile.Shooter.Team,
+                    projectile.Origin,
+                    tick));
+            }
+        }
+
         internal bool TryDequeueGunshot(out AcceptedGunshot gunshot)
             => gunshots.TryDequeue(out gunshot);
 
@@ -183,7 +218,10 @@ namespace Demiurge.GameServer
                             projectile.Shooter,
                             target,
                             actors.FirstOrDefault(actor => actor.Status == target),
-                            projectile.Damage);
+                            projectile.Damage,
+                            projectile.Origin,
+                            tick);
+                    SuppressNearImpact(projectile, step.End, actors, tick);
                     projectiles.RemoveAt(i);
                     continue;
                 }
@@ -248,7 +286,8 @@ namespace Demiurge.GameServer
                 var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
                 float along = Math.Clamp(Vector3.Dot(center - start, direction), 0f, length);
                 if (along < nearestT
-                    && Vector3.DistanceSquared(start + direction * along, center) <= 4f)
+                    && Vector3.DistanceSquared(start + direction * along, center)
+                        <= GunConfig.NearMissRadius * GunConfig.NearMissRadius)
                 {
                     player.Spread.Suppress();
                     if (player.Team != shooter.Team
@@ -275,8 +314,26 @@ namespace Demiurge.GameServer
             ServerPlayer shooter,
             ServerObject hit,
             ServerPlayer? victim,
-            ushort damage)
+            ushort damage,
+            Vector3 shotOrigin,
+            uint tick)
         {
+            // Being SHOT is the least ambiguous way to learn you are under fire, and it used to be
+            // the one way that told the victim nothing: only near misses raised a suppression, so an
+            // NPC hit squarely from four hundred metres took the damage and carried on walking. A
+            // hit is a suppression that connected, so it goes down the same path — same
+            // MarkUnderFire, same contact, same broadcast to the squad — rather than growing a
+            // parallel one. Range never enters into it: the test is the projectile, not a radius.
+            if (victim is not null && victim.Team != shooter.Team)
+                suppressions.Enqueue(new AcceptedSuppression(
+                    victim.Id,
+                    shooter.Id,
+                    shooter.Team,
+                    shotOrigin,
+                    tick));
+
+            if (victim is not null) victim.LastDamagedTick = tick;
+
             bool wasAlive = hit.Health.Current > 0;
             hit.Health.Current = hit.Health.Current > damage
                 ? (ushort)(hit.Health.Current - damage)

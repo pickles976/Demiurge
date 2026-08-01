@@ -258,6 +258,7 @@ namespace Demiurge
                     Thumbnails = thumbnails,
                     RespawnPanel = respawnPanel,
                     RespawnText = respawnText,
+                    Readiness = game.Services.GetService<SpawnReadiness>(),
                     ActivityPanel = activityPanel,
                     ActivityText = activityText,
                 },
@@ -485,6 +486,10 @@ namespace Demiurge
             private int _lastHealth = int.MinValue;
             private bool _lastVisible;
             private HotbarSlot _lastHotbar;
+            private bool _lastDeploying;
+
+            /// <summary>Null in configurations without a runtime session (the editor status HUD).</summary>
+            public SpawnReadiness? Readiness { get; set; }
             private uint _lastPrimaryId = uint.MaxValue;
             private uint _lastGrenadeId = uint.MaxValue;
             private int _lastGrenades = int.MinValue;
@@ -536,6 +541,7 @@ namespace Demiurge
                         : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
                 }
 
+                RefreshDeploying();
                 RefreshHotbar(local);
                 RefreshActivityFeed();
             }
@@ -593,6 +599,26 @@ namespace Demiurge
                 RespawnPanel.Visibility = dead ? Visibility.Visible : Visibility.Collapsed;
                 if (dead)
                     RespawnText.Text = $"KILLCAM\nRESPAWN WAVE IN {seconds}";
+            }
+
+            /// <summary>
+            /// Says why the player cannot move yet. Without it, being frozen on spawn reads as the
+            /// game being broken rather than as the game waiting for the ground to arrive.
+            /// </summary>
+            private void RefreshDeploying()
+            {
+                bool deploying = Readiness is { Ready: false };
+                if (deploying == _lastDeploying) return;
+
+                _lastDeploying = deploying;
+                if (!deploying)
+                {
+                    if (!_lastDead) RespawnPanel.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                RespawnPanel.Visibility = Visibility.Visible;
+                RespawnText.Text = "DEPLOYING\nPREPARING TERRAIN";
             }
 
             private void RefreshHotbar(LocalPlayer local)

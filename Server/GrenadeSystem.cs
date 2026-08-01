@@ -129,7 +129,7 @@ public sealed class GrenadeSystem
             var grenade = active[i];
             if (tick >= grenade.DetonateTick)
             {
-                Detonate(grenade, players);
+                Detonate(grenade, tick, players);
                 active.RemoveAt(i);
                 continue;
             }
@@ -224,11 +224,12 @@ public sealed class GrenadeSystem
              - normalVelocity * restitution;
     }
 
-    private void Detonate(ActiveGrenade grenade, IEnumerable<ServerPlayer> players)
+    private void Detonate(ActiveGrenade grenade, uint tick, IEnumerable<ServerPlayer> players)
     {
         ApplyBlastDamage(
             grenade.Position,
             players,
+            tick,
             victim => activityFeed?.ReportKill(grenade.Owner, victim));
 
         // Keep the readable 2x2 footprint, but apply each bite at half strength so the total
@@ -270,6 +271,7 @@ public sealed class GrenadeSystem
     internal static void ApplyBlastDamage(
         Vector3 origin,
         IEnumerable<ServerPlayer> players,
+        uint tick,
         Action<ServerPlayer>? killed = null)
     {
         foreach (var player in players)
@@ -296,6 +298,7 @@ public sealed class GrenadeSystem
                     ? (ushort)(status.Health.Current - damage)
                     : (ushort)0;
             }
+            player.LastDamagedTick = tick;
             status.Dirty |= NetComponents.Health;
             if (wasAlive && status.Health.Current == 0)
                 killed?.Invoke(player);

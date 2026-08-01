@@ -117,6 +117,52 @@ public class NavigationSystemTests
         Assert.True(navigation.SnapshotMetrics().SharedRouteReuses >= 1);
     }
 
+    /// <summary>
+    /// A start cell that has stopped being standable must fail the request, not kill the process.
+    ///
+    /// The start is captured on the MAIN thread when the request is enqueued and read later on a
+    /// worker, so a dig landing in between leaves the worker holding a cell that is now open air.
+    /// The shared route's own validity check does not cover this: it compares chunk revisions along
+    /// the ROUTE, and with a 24 m join radius the requesting mob can be standing outside that
+    /// corridor entirely. Passing an unstandable start directly is that exact state without the
+    /// race — NavSearch.Find already guards its start the same way, and NavSearch.Reconstruct
+    /// carries a comment about this precise crash.
+    /// </summary>
+    [Fact]
+    public void AStartCellThatStoppedBeingStandableFailsInsteadOfCrashingTheWorker()
+    {
+        var map = FlatTerrain();
+        var start = CellAt(map, -4, 0);
+        var target = CellAt(map, 7, 0);
+        using var navigation = new NavigationSystem(map);
+        const long squadRoute = 0x0001_0002_0000_0006;
+
+        // Seed the shared route the second request will try to join.
+        var seeded = WaitFor(
+            navigation,
+            navigation.Request(
+                mobId: 60_006,
+                start,
+                new GoalNear(target, 1f),
+                sharedRouteKey: squadRoute));
+        Assert.True(seeded.Path.ReachedGoal);
+
+        // Well above the surface: what the ground under a mob becomes once it is dug away.
+        var dugAway = start with { Y = start.Y + 8 };
+        Assert.False(NavTraversal.Standable(map, dugAway.X, dugAway.Y, dugAway.Z, out _));
+
+        var result = WaitFor(
+            navigation,
+            navigation.Request(
+                mobId: 60_007,
+                dugAway,
+                new GoalNear(target, 1f),
+                sharedRouteKey: squadRoute));
+
+        Assert.False(result.Path.ReachedGoal);
+        Assert.Empty(result.Path.Waypoints);
+    }
+
     private static NavigationSystem.PathResult WaitFor(
         NavigationSystem navigation,
         long requestId)

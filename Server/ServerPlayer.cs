@@ -42,6 +42,18 @@ namespace Demiurge.GameServer
         public WeaponSpreadState Spread;
 
         /// <summary>
+        /// When this actor was last wounded. Regeneration is gated on it, so every path that reduces
+        /// health has to stamp it — a damage source that forgets is one you can heal through.
+        /// </summary>
+        public uint LastDamagedTick { get; set; }
+
+        /// <summary>
+        /// Fractional health carried between ticks. HealthState.Current is a ushort and the rate is
+        /// 0.67 health per tick, so without this the truncation would heal nothing at all.
+        /// </summary>
+        public float RegenerationCarry;
+
+        /// <summary>
         /// Zero while alive; otherwise the global wave tick on which this actor will respawn.
         /// A wave is always strictly after the death tick, so a death on the boundary cannot
         /// disappear before clients observe the zero-health transition.

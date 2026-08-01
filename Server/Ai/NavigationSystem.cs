@@ -420,8 +420,17 @@ internal sealed class NavigationSystem : IDisposable
         NavPath? cachedRoute;
         lock (sharedRouteGate)
             sharedRoutes.TryGetValue(request.SharedRouteKey, out cachedRoute);
+        // The start cell was sampled on the main thread when this request was enqueued and is being
+        // read here, on a worker, some time later — a dig can have taken the ground out from under
+        // it in between. The route's own IsValid check does NOT cover that: it compares chunk
+        // revisions along the ROUTE, and SharedRouteJoinRadius lets the requester stand well
+        // outside that corridor. So the start is validated separately, and a stale one declines the
+        // shared route rather than throwing on a thread where an exception kills the process.
+        // NavSearch.Find guards its own start the same way, so the ordinary search below still
+        // answers this request — with a failure the agent re-issues next tick from a fresh cell.
         if (request.SharedRouteKey == 0
             || cachedRoute is not { } route
+            || !NavTraversal.TryPosition(terrain, request.Start, out var startPosition)
             || !NavPathTerrain.IsValid(terrain, route)
             || route.Waypoints.Count < 2
             || route.Waypoints.Any(waypoint => waypoint.Action == NavAction.Dig))
@@ -431,7 +440,6 @@ internal sealed class NavigationSystem : IDisposable
             && !TryExtendSharedRoute(request, route, out route))
             return false;
 
-        Vector3 startPosition = NavTraversal.Position(terrain, request.Start);
         int closest = -1;
         float closestDistanceSquared = SharedRouteJoinRadius * SharedRouteJoinRadius;
         for (int i = 0; i < route.Waypoints.Count; i++)

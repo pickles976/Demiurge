@@ -27,6 +27,7 @@ public sealed class RuntimeClientSession : IClientSession
     private readonly ModelLocators modelLocators;
     private readonly WeaponMount weaponMount;
     private readonly LocalWeaponView localWeaponView = new();
+    private readonly SpawnReadiness spawnReadiness = new();
     private readonly ClientInputState inputState;
     private readonly PlayerRegistry registry;
     private readonly ObjectRegistry objectRegistry;
@@ -40,6 +41,10 @@ public sealed class RuntimeClientSession : IClientSession
     private SoundManager? sound;
     private IPlayerStatus? playerStatus;
     private Entity? camera;
+
+    /// <summary>How much ground has to be meshed before the player is let loose. A little over one
+    /// chunk, so the hole they are standing in and the ones they can immediately walk to are real.</summary>
+    private const float SpawnPreloadRadius = 24f;
 
     public ClientSessionKind Kind => ClientSessionKind.Runtime;
     public NetworkManager Network => network;
@@ -90,6 +95,7 @@ public sealed class RuntimeClientSession : IClientSession
 
         game.Services.AddService(network);
         game.Services.AddService(registry);
+        game.Services.AddService(spawnReadiness);
         playerStatus = new PlayerStatus();
         game.Services.AddService<IPlayerStatus>(playerStatus);
 
@@ -101,8 +107,15 @@ public sealed class RuntimeClientSession : IClientSession
         Add(new Entity("TracerSystem")
         {
             new TracerSystem(),
-            new GrenadeExplosionScript { Objects = objectRegistry },
+            new GrenadeExplosionScript { Objects = objectRegistry, Players = registry },
             new NpcTrackerScript { Registry = registry },
+            new DamageFeedbackScript { Registry = registry },
+            new ActionSoundsScript
+            {
+                Registry = registry,
+                Objects = objectRegistry,
+                Terrain = terrainState,
+            },
         });
 
         camera = embedding?.Camera ?? game.Add3DCamera();
@@ -128,6 +141,7 @@ public sealed class RuntimeClientSession : IClientSession
             Mount = weaponMount,
             WeaponView = localWeaponView,
             InputState = inputState,
+            Readiness = spawnReadiness,
             Priority = 20,
         });
         camera.Add(new ReticleScript { Registry = registry, InputState = inputState, Priority = 30 });
@@ -163,6 +177,13 @@ public sealed class RuntimeClientSession : IClientSession
         terrainState.Drain();
         var lodFocus = registry.LocalPlayer?.Position ?? System.Numerics.Vector3.Zero;
         terrainView?.RebuildDirty(lodFocus);
+
+        // Hold the player still until the ground they are standing on exists. Spawning into a world
+        // that is still assembling itself is the one loading artefact a player cannot look away
+        // from, because it is underneath them. Latched: once deployed, a later streaming hitch must
+        // not freeze someone mid-firefight.
+        spawnReadiness.Ready |= registry.LocalPlayer is not null
+            && terrainView?.IsMeshedAround(lodFocus, SpawnPreloadRadius) == true;
     }
 
     public void Dispose()
@@ -192,6 +213,7 @@ public sealed class RuntimeClientSession : IClientSession
 
         if (sound is not null) game.Services.RemoveService(sound);
         if (playerStatus is not null) game.Services.RemoveService<IPlayerStatus>(playerStatus);
+        game.Services.RemoveService(spawnReadiness);
         game.Services.RemoveService(registry);
         game.Services.RemoveService(network);
 

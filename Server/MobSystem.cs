@@ -26,13 +26,6 @@ namespace Demiurge.GameServer
         private const float ObjectiveHoldRadius = FlagConfig.CaptureRadius - 0.35f;
         private const float GoldenAngle = 2.39996323f;
 
-        /// <summary>
-        /// How far below the surrounding grade an emergency fighting position may be cut. Deliberately
-        /// well under <see cref="PlayerMovement.JumpHeight"/> so an NPC can always jump back out of one
-        /// it dug itself, which is the failure this constant exists to prevent.
-        /// </summary>
-        private const float MaxFoxholeDepth = 1f;
-
         /// <summary>Far enough behind the digger to sample untouched ground rather than its own hole.</summary>
         private const float FoxholeGradeProbeDistance = 2.5f;
 
@@ -172,7 +165,7 @@ namespace Demiurge.GameServer
                         var squad = BoardFor(brain);
                         brain.Navigation.SetDestination(
                             squad.TryGetObjective(out var objective)
-                                ? ObjectiveDestination(result.MobId, objective.Position)
+                                ? ObjectiveDestination(result.MobId, objective.Position, squad)
                                 : RandomSurfacePoint(homes.GetValueOrDefault(result.MobId)));
                     }
                 }
@@ -209,13 +202,13 @@ namespace Demiurge.GameServer
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
                     hasObjective
-                        ? ObjectiveDestination(mob.Id, objective.Position)
+                        ? ObjectiveDestination(mob.Id, objective.Position, squad)
                         : RandomSurfacePoint(HomeOf(mob)));
             }
             if (!brain.Navigation.HasDestination)
                 brain.Navigation.SetDestination(
                     hasObjective
-                        ? ObjectiveDestination(mob.Id, objective.Position)
+                        ? ObjectiveDestination(mob.Id, objective.Position, squad)
                         : RandomSurfacePoint(HomeOf(mob)));
             Vector3 destination = brain.Navigation.Destination;
 
@@ -240,7 +233,7 @@ namespace Demiurge.GameServer
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
                     hasObjective
-                        ? ObjectiveDestination(mob.Id, objective.Position)
+                        ? ObjectiveDestination(mob.Id, objective.Position, squad)
                         : RandomSurfacePoint(HomeOf(mob)));
                 destination = brain.Navigation.Destination;
             }
@@ -318,9 +311,21 @@ namespace Demiurge.GameServer
                     && !bounding
                     && (mob.State.HasFlag(PlayerStateFlags.Reloading)
                         || ShouldCrouchAtCover(brain, tick));
+
+                // Run when the movement IS the job and shooting is not: bounding across open ground,
+                // closing on cover not yet reached, or holding a weapon the squad has not cleared
+                // you to use. Never while firing or tucked in — SprintingMoa and the post-sprint
+                // penalty mean a man who sprints and shoots does neither well, so the state flags
+                // that buy the speed also pay for it.
+                bool sprinting = combatIntent != Vector3.Zero
+                    && !crouching
+                    && !mob.State.HasFlag(PlayerStateFlags.Shooting)
+                    && (bounding || !brain.AtCover || !mayFire);
+
                 mob.State = mob.State
                     .With(PlayerStateFlags.Moving, combatIntent != Vector3.Zero)
                     .With(PlayerStateFlags.Jumping, combatJump)
+                    .With(PlayerStateFlags.Sprinting, sprinting)
                     .With(PlayerStateFlags.Crouching, crouching);
                 mob.LastIntent = combatIntent;
                 PlayerMovement.Step(
@@ -398,7 +403,7 @@ namespace Demiurge.GameServer
                         heardGunshot = false;
                         brain.Navigation.SetDestination(
                             hasObjective
-                                ? ObjectiveDestination(mob.Id, objective.Position)
+                                ? ObjectiveDestination(mob.Id, objective.Position, squad)
                                 : RandomSurfacePoint(HomeOf(mob)));
                         destination = brain.Navigation.Destination;
                         followState = PathFollowState.NeedsPath;
@@ -437,7 +442,7 @@ namespace Demiurge.GameServer
                     heardGunshot = false;
                     brain.Navigation.SetDestination(
                         hasObjective
-                            ? ObjectiveDestination(mob.Id, objective.Position)
+                            ? ObjectiveDestination(mob.Id, objective.Position, squad)
                             : RandomSurfacePoint(HomeOf(mob)));
                 }
                 else if (!requested && !hasObjective)
@@ -463,6 +468,9 @@ namespace Demiurge.GameServer
             mob.State = PlayerStateFlags.None
                 .With(PlayerStateFlags.Moving, intent != Vector3.Zero)
                 .With(PlayerStateFlags.Jumping, jump)
+                // NOT here. Sprinting belongs to the combat path, where there is something to run
+                // from or toward; a squad that runs everywhere reads as panicked rather than urgent,
+                // and arrives with PostSprintMoa still spoiling its first three seconds of fire.
                 // Shooting reads as "actuating the held item", which is what the client's view of a
                 // shovel swings on. Digging is the tool's version of pulling the trigger.
                 .With(PlayerStateFlags.Shooting, digging);
@@ -969,35 +977,18 @@ namespace Demiurge.GameServer
             if (toward.LengthSquared() > 1e-6f)
                 toward = Vector3.Normalize(toward);
 
-            // Stop at a fighting position rather than a pit. This was unbounded, so an NPC under
-            // sustained fire kept biting the same spot every TicksPerDig until it stood in a hole it
-            // could neither jump out of nor -- digging being off for combat paths -- excavate its way
-            // out of. Grade is measured behind it, outside its own excavation.
+            // Grade is measured BEHIND the actor, outside its own excavation. Measuring it where it
+            // stands means the hole defines its own grade and the digging never terminates -- an NPC
+            // under sustained fire used to bite the same spot until it stood in a pit it could
+            // neither jump out of nor, digging being off for combat paths, excavate its way out of.
             int gradeX = (int)MathF.Floor(mob.Position.X - toward.X * FoxholeGradeProbeDistance);
             int gradeZ = (int)MathF.Floor(mob.Position.Z - toward.Z * FoxholeGradeProbeDistance);
-            if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is { } grade
-                && grade - mob.Position.Y > MaxFoxholeDepth)
-                return;
+            if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is not { } grade) return;
 
-            Vector3 probe = mob.Position + toward * 0.55f + Vector3.UnitY * 0.6f;
-            if (TerrainRaycast.Cast(
-                    terrain,
-                    probe,
-                    -Vector3.UnitY,
-                    1.5f) is not { } ground)
-                return;
-
-            Vector3 target = Digging.TargetVoxel(ground.Point, ground.Normal);
-            if (!terrain.TryGetVoxel(
-                    (int)MathF.Round(target.X),
-                    (int)MathF.Round(target.Y),
-                    (int)MathF.Round(target.Z),
-                    out var voxel)
-                || voxel.Distance >= 0f
-                || voxel.Material is not (
-                    BlockType.BlockType_Dirt
-                    or BlockType.BlockType_Grass))
-                return;
+            // The SHAPE of the position lives in FoxholePlan -- hole first, then widen, never the
+            // parapet. This used to be a single probe half a metre in front, which cut a post-hole:
+            // deep enough to pass a depth check and too narrow to take cover in.
+            if (FoxholePlan.NextBite(terrain, mob.Position, toward, grade) is not { } target) return;
 
             mob.Hotbar = HotbarSlot.Shovel;
             mob.State |= PlayerStateFlags.Shooting;   // swings the shovel on every client's view
@@ -1197,12 +1188,33 @@ namespace Demiurge.GameServer
             return SurfaceQuery.SurfacePosition(terrain, center.X, center.Z);
         }
 
-        private Vector3 ObjectiveDestination(ushort mobId, Vector3 centre)
+        /// <summary>
+        /// Where one man walks on the way to his squad's objective — his slot in the wedge, not the
+        /// objective itself.
+        ///
+        /// This used to be a golden-angle ring around the destination, which spread the squad only
+        /// once it had ARRIVED: for the whole approach every man steered at the same point and they
+        /// travelled as a clump, which is one grenade for the squad. The wedge is oriented on the
+        /// approach, so it spreads them for the journey as well as the arrival.
+        /// </summary>
+        private Vector3 ObjectiveDestination(ushort mobId, Vector3 centre, SquadBlackboard squad)
         {
-            float angle = mobId * GoldenAngle;
-            float x = centre.X + MathF.Cos(angle) * ObjectiveFormationRadius;
-            float z = centre.Z + MathF.Sin(angle) * ObjectiveFormationRadius;
-            return SurfaceQuery.SurfacePosition(terrain, x, z);
+            int slot = -1;
+            for (int i = 0; i < squad.Roster.Count; i++)
+                if (squad.Roster[i] == mobId) { slot = i; break; }
+            if (slot < 0)
+            {
+                // Not on a roster yet — the ring is still the right answer for a lone man, and it
+                // keeps him off the exact objective point.
+                float angle = mobId * GoldenAngle;
+                return SurfaceQuery.SurfacePosition(
+                    terrain,
+                    centre.X + MathF.Cos(angle) * ObjectiveFormationRadius,
+                    centre.Z + MathF.Sin(angle) * ObjectiveFormationRadius);
+            }
+
+            var slotPosition = WedgeFormation.Slot(centre, squad.Centre, slot);
+            return SurfaceQuery.SurfacePosition(terrain, slotPosition.X, slotPosition.Z);
         }
 
         private static float HorizontalDistanceSquared(Vector3 a, Vector3 b)

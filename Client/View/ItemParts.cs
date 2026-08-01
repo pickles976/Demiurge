@@ -34,6 +34,7 @@ namespace Demiurge.GameClient
         private System.Numerics.Vector3 rest;
         private bool haveRest;
         private float elapsed = float.MaxValue;
+        private bool held;
 
         private MovingPart(string node, System.Numerics.Vector3 travel)
         {
@@ -56,6 +57,21 @@ namespace Demiurge.GameClient
         /// <summary>Starts one cycle, restarting it if one is already running.</summary>
         public void Cycle() => elapsed = 0f;
 
+        /// <summary>
+        /// Locks the part at the end of its travel — an SKS holds its bolt open while the magazine
+        /// is being filled, and a rifle that cycles briskly through a reload looks like it is
+        /// loading itself.
+        ///
+        /// Releasing hands over to the ordinary return leg rather than snapping, so the bolt runs
+        /// forward the same way it does after a shot.
+        /// </summary>
+        public void SetHeld(bool value)
+        {
+            if (value == held) return;
+            held = value;
+            if (!held) elapsed = TravelSeconds;
+        }
+
         public void Update(ModelComponent? model, float dt)
         {
             var skeleton = model?.Skeleton;
@@ -72,6 +88,12 @@ namespace Demiurge.GameClient
             {
                 rest = (System.Numerics.Vector3)transform.Position;
                 haveRest = true;
+            }
+
+            if (held)
+            {
+                transform.Position = (rest + travel).ToStride();
+                return;
             }
 
             if (elapsed > TravelSeconds + ReturnSeconds)

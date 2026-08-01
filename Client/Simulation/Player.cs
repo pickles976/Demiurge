@@ -17,6 +17,13 @@ public abstract class Player
     /// and the direction a shot travels; the BODY still only yaws.</summary>
     public float Pitch { get; set; }
 
+    /// <summary>
+    /// Standing on something. Replicated for everyone — the local player overrides it from its own
+    /// predicted move state, since a prediction that has already landed should not wait a round trip
+    /// to say so.
+    /// </summary>
+    public virtual bool Grounded { get; set; }
+
     public virtual bool IsDead => RespawnTick != 0;
 }
 
@@ -54,6 +61,12 @@ public class RemotePlayer : Player
     /// ends run identical code over identical voxel bytes so it should stay near zero regardless.
     /// </summary>
     private const float ReconcileWarnDistance = 0.01f;
+
+    public override bool Grounded
+    {
+        get => Move.Grounded;
+        set => Move.Grounded = value;
+    }
 
     public NetObject? Status {get; set;}
     public override bool IsDead => Status is { Health.Current: 0 } || base.IsDead;

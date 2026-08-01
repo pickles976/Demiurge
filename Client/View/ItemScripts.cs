@@ -67,6 +67,17 @@ public class ItemAttachScript : SyncScript
     /// only pivots reads as a wrist flick.</summary>
     private static readonly Vector3 SwingReach = new(0f, -0.10f, -0.16f);
 
+    // Sprint sway. Slower than the blend so the pose settles before the swing does, and split
+    // across two rates because one sine on every axis at once is a metronome rather than a run:
+    // the side-to-side is the stride and the rise-and-fall is the footfalls inside it, at double
+    // the rate. Everything scales by sprintBlend, which is what stops the weapon snapping into
+    // and out of the pose the frame Shift is pressed.
+    private const float SprintBlendSharpness = 9f;
+    private const float SwayHz = 1.25f;
+    private const float SwaySide = 0.035f;
+    private const float SwayRise = 0.018f;
+    private static readonly float SwayRoll = MathUtil.DegreesToRadians(5f);
+
     private Entity? owner;
     private string? linkedNode;
     private Vector3 viewGripOffset = WeaponMount.HipGripOffset;
@@ -77,6 +88,8 @@ public class ItemAttachScript : SyncScript
     private float recoilPitch;
     private MovingPart? bolt;
     private int shotsThisFrame;
+    private float sprintBlend;
+    private float swayPhase;
     private readonly SwingAnimation swing = new();
 
     public override void Start()
@@ -109,6 +122,11 @@ public class ItemAttachScript : SyncScript
         shotsThisFrame = ShotsSince(player);
         if (bolt is { } part)
         {
+            // The local player's reload is predicted and therefore a frame ahead of the replicated
+            // flag; everyone else's arrives on the movement stream.
+            part.SetHeld(IsSelected(player) && (player is LocalPlayer local
+                ? local.IsReloading
+                : player.State.HasFlag(PlayerStateFlags.Reloading)));
             if (shotsThisFrame > 0) part.Cycle();
             part.Update(model, dt);
         }
@@ -257,9 +275,24 @@ public class ItemAttachScript : SyncScript
         bool pullingGrenade = Object.Item.Type == ItemType.Grenade
             && local.State.HasFlag(PlayerStateFlags.Shooting);
         float modelScale = ItemCosmetics.FirstPersonScale(Object.Item.Type);
+
+        // Sprinting is just "Shift is down", so it has to be qualified: standing still with Shift
+        // held is not a run, and a sprint pose while aiming would fight the sight picture.
+        bool sprinting = local.State.HasFlag(PlayerStateFlags.Sprinting)
+                         && local.State.HasFlag(PlayerStateFlags.Moving)
+                         && !aiming
+                         && !pullingGrenade;
+        sprintBlend = MathUtil.Lerp(
+            sprintBlend,
+            sprinting ? 1f : 0f,
+            1f - MathF.Exp(-SprintBlendSharpness * dt));
+        if (sprintBlend > 0.001f)
+            swayPhase += dt * SwayHz * MathUtil.TwoPi;
+
         var targetGripOffset = pullingGrenade
             ? WeaponMount.GrenadePullbackGripOffset
-            : Mount.FirstPersonGripOffset(Object.Item.Type, aiming, modelScale);
+            : Mount.FirstPersonGripOffset(Object.Item.Type, aiming, modelScale)
+              + WeaponMount.SprintGripDelta * sprintBlend;
 
         if (firstViewFrame)
         {
@@ -278,17 +311,25 @@ public class ItemAttachScript : SyncScript
         var weaponRotation = WeaponMount.FirstPersonRotationFor(Object.Item.Type, swing.Angle);
         var modelOffset = Mount.FirstPersonModelOffset(Object.Item.Type, viewGripOffset, modelScale).ToStride();
         var muzzleOffset = Mount.FirstPersonMuzzleOffset(Object.Item.Type, viewGripOffset, modelScale).ToStride();
-        var recoilOffset = new Vector3(0f, recoilLift, recoilBack)
-            + SwingReach * MathF.Max(0f, swing.Angle);
-        var recoilRotation = Quaternion.RotationX(recoilPitch);
-        var recoiledModelOffset = modelOffset + recoilOffset;
-        var recoiledMuzzleOffset = recoiledModelOffset
-            + Vector3.Transform(muzzleOffset - modelOffset, recoilRotation);
+        // Everything that displaces the view model — recoil, the swing's reach, the sprint sway —
+        // is summed into ONE camera-space offset and ONE camera-space rotation, then applied to the
+        // model and to the muzzle delta alike. That is what keeps the shot leaving the barrel the
+        // player can see however many of them are running at once.
+        float sway = MathF.Sin(swayPhase);
+        var viewOffset = new Vector3(0f, recoilLift, recoilBack)
+            + SwingReach * MathF.Max(0f, swing.Angle)
+            + new Vector3(SwaySide * sway, SwayRise * MathF.Sin(swayPhase * 2f), 0f) * sprintBlend;
+        var viewRotation = Quaternion.RotationX(recoilPitch - WeaponMount.SprintPitch * sprintBlend)
+            * Quaternion.RotationZ(SwayRoll * sway * sprintBlend);
+
+        var displacedModelOffset = modelOffset + viewOffset;
+        var displacedMuzzleOffset = displacedModelOffset
+            + Vector3.Transform(muzzleOffset - modelOffset, viewRotation);
 
         Entity.Transform.Scale = new Vector3(modelScale);
         Entity.Transform.Position = CameraEntity.Transform.Position
-            + Vector3.Transform(recoiledModelOffset, cameraRotation);
-        Entity.Transform.Rotation = weaponRotation.ToStride() * recoilRotation * cameraRotation;
+            + Vector3.Transform(displacedModelOffset, cameraRotation);
+        Entity.Transform.Rotation = weaponRotation.ToStride() * viewRotation * cameraRotation;
 
         // Only a weapon supplies the sim's shot origin; a shovel has no muzzle to report.
         if (!Object.Has.HasFlag(NetComponents.Weapon))
@@ -299,7 +340,7 @@ public class ItemAttachScript : SyncScript
 
         WeaponView.MuzzleWorld = (System.Numerics.Vector3)(
             CameraEntity.Transform.Position
-            + Vector3.Transform(recoiledMuzzleOffset, cameraRotation));
+            + Vector3.Transform(displacedMuzzleOffset, cameraRotation));
         WeaponView.Weapon = Object.Item.Type;
         WeaponView.NetworkId = Object.NetworkId;
     }

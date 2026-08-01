@@ -95,8 +95,26 @@ public class ShotEffectsScript : SyncScript
     {
         if (subscribed is not { IsArmed: true } local) return;   // ShotFired implies armed, but be safe
         if (local.Weapon!.Item.Type == ItemType.Grenade) return; // replicated sphere is the visual
+
+        // Only YOUR shots shake YOUR camera. Firing is the one trauma source the player causes on
+        // purpose, so it is deliberately small: enough to punch, little enough to hold a burst on
+        // target, since the spread system already owns how accurate that burst is allowed to be.
+        CameraTrauma.Add(ShotTrauma(local.Weapon!.Item.Type));
         PlayEffects(origin, direction, local.Weapon!.Item.Type, Network.ClientId);
     }
+
+    /// <summary>
+    /// Trauma per shot. Read against CameraTrauma's squaring: 0.40 becomes a 0.16 shake, which is
+    /// about a degree of roll — a punch you feel without losing the target. Sustained fire stacks
+    /// toward the clamp faster than it decays, which is the point; hosing should cost you the sight
+    /// picture.
+    /// </summary>
+    private static float ShotTrauma(ItemType weapon) => weapon switch
+    {
+        ItemType.AWP => 0.75f,
+        ItemType.Glock => 0.26f,
+        _ => 0.40f,
+    };
 
     private void OnRemoteFired(PlayerFiredData data)
     {
@@ -133,7 +151,7 @@ public class ShotEffectsScript : SyncScript
 
         var fx = WeaponFx.Get(weapon);
         var start = origin.ToStride();
-        sound.PlayOneShotSpatial(WeaponFx.ShotSound(fx), start);
+        PlayShotReport(origin, start, fx);
         projectiles.Add(new VisualProjectile
         {
             Position = origin,
@@ -143,6 +161,51 @@ public class ShotEffectsScript : SyncScript
             Color = fx.TracerColor,
         });
     }
+
+    /// <summary>
+    /// The shot as the LISTENER hears it: the weapon's own crack up close, a distant report from far
+    /// off.
+    ///
+    /// A far report is played at a point projected back along the true bearing rather than at the
+    /// shooter, and that is deliberate. Distance in this engine buys two things — attenuation and
+    /// direction — and at five hundred metres the first has already reduced the sound to nothing
+    /// while the second is the only part worth having. The recording already SOUNDS distant; asking
+    /// the falloff curve to make it distant as well just makes it silent. So the bearing is kept and
+    /// the range is not.
+    /// </summary>
+    private void PlayShotReport(
+        System.Numerics.Vector3 origin,
+        Stride.Core.Mathematics.Vector3 start,
+        WeaponFx.Entry fx)
+    {
+        if (Registry.LocalPlayer is not { } local)
+        {
+            sound.PlayOneShotSpatial(WeaponFx.ShotSound(fx), start, falloff: SoundFalloff.Gunshot);
+            return;
+        }
+
+        var ear = Digging.Eye(local.Position);
+        var toShot = origin - ear;
+        float range = toShot.Length();
+
+        if (WeaponFx.DistantReportFor(range) is not { } report)
+        {
+            sound.PlayOneShotSpatial(WeaponFx.ShotSound(fx), start, falloff: SoundFalloff.Gunshot);
+            return;
+        }
+
+        var bearing = range > 1e-3f
+            ? System.Numerics.Vector3.Normalize(toShot)
+            : System.Numerics.Vector3.UnitZ;
+        sound.PlayOneShotSpatial(
+            report,
+            (ear + bearing * DistantReportRange).ToStride(),
+            falloff: SoundFalloff.DistantReport);
+    }
+
+    /// <summary>How far away a distant report is placed. Inside the audible range so it is heard at
+    /// all, far enough out that it is clearly not beside you.</summary>
+    private const float DistantReportRange = 30f;
 
     private void UpdateProjectiles(float dt)
     {
@@ -169,7 +232,9 @@ public class ShotEffectsScript : SyncScript
                     ImpactManager.Spawn(hit.Point.ToStride(), normal.ToStride(), ImpactColor);
                     // Ground is the only surface with a sample; a round into a crate or a tree
                     // stays silent rather than borrowing the wrong material's sound.
-                    if (hit.Ground) sound.PlayOneShotSpatial(DirtImpactSound, hit.Point.ToStride());
+                    if (hit.Ground)
+                        sound.PlayOneShotSpatial(
+                            DirtImpactSound, hit.Point.ToStride(), falloff: SoundFalloff.Impact);
                 }
                 projectiles.RemoveAt(i);
                 continue;
@@ -263,7 +328,8 @@ public class ShotEffectsScript : SyncScript
         sound.PlayOneShotSpatial(
             WhizSounds[Random.Shared.Next(WhizSounds.Length)],
             ear.ToStride(),
-            volume: 1f - missDistance / WhizRadius);
+            volume: 1f - missDistance / WhizRadius,
+            falloff: SoundFalloff.Impact);
     }
 
     private static void DrawSegment(

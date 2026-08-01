@@ -18,6 +18,7 @@ public class GrenadeSystemTests
         GrenadeSystem.ApplyBlastDamage(
             Vector3.Zero,
             [thrower, friendly, mob, outside],
+            tick: 0,
             victim => killed.Add(victim.Id));
 
         Assert.Equal(0, thrower.Status!.Health.Current);

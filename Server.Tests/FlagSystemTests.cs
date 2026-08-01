@@ -151,6 +151,54 @@ public class FlagSystemTests
         Assert.Equal(near.NetworkId, teamTwo.FlagId);
     }
 
+    /// <summary>
+    /// Reinforcements go in at the front. Before this, controlled flags were cycled by network id,
+    /// so a man was as likely to appear at the flag furthest from the fighting as the nearest one
+    /// and then had to cross the map to matter.
+    /// </summary>
+    [Fact]
+    public void ReinforcementsSpawnAtTheControlledFlagNearestWhatIsLeftToTake()
+    {
+        var objects = new ObjectReplication(new Server());
+        var flags = new FlagSystem(objects);
+
+        // A line of flags. Team 1 holds the two on the left; the contested ground is on the right.
+        var home = new Vector3(0f, 0f, 0f);
+        var front = new Vector3(100f, 0f, 0f);
+        var objective = new Vector3(160f, 0f, 0f);
+        Capture(flags, flags.Spawn(home), team: 1, home);
+        Capture(flags, flags.Spawn(front), team: 1, front);
+        Capture(flags, flags.Spawn(objective), team: 2, objective);
+
+        for (int i = 0; i < 8; i++)
+        {
+            Assert.True(flags.TrySpawnPosition(1, out var spawn));
+            Assert.True(
+                Vector3.Distance(spawn, front) <= FlagConfig.SpawnRadius,
+                $"spawn {i} landed at {spawn}, wanted the front flag at {front}");
+        }
+    }
+
+    /// <summary>With nothing left to take there is no front, so this must still answer rather than
+    /// dividing by a nonexistent objective.</summary>
+    [Fact]
+    public void HoldingEveryFlagStillProducesASpawn()
+    {
+        var objects = new ObjectReplication(new Server());
+        var flags = new FlagSystem(objects);
+        var only = new Vector3(12f, 0f, -4f);
+        Capture(flags, flags.Spawn(only), team: 1, only);
+
+        Assert.True(flags.TrySpawnPosition(1, out var spawn));
+        Assert.True(Vector3.Distance(spawn, only) <= FlagConfig.SpawnRadius);
+    }
+
+    private static void Capture(FlagSystem flags, ServerObject flag, int team, Vector3 position)
+    {
+        flags.Tick(FlagConfig.CaptureSeconds, [PlayerAt((ushort)(100 + team), team, position)]);
+        Assert.Equal(team, flag.Team.Value);
+    }
+
     private static ServerPlayer PlayerAt(ushort id, int team, Vector3 position)
         => new()
         {

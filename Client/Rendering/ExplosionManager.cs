@@ -1,3 +1,4 @@
+using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
@@ -118,8 +119,39 @@ public static class ExplosionManager
 public sealed class GrenadeExplosionScript : SyncScript
 {
     public required ObjectRegistry Objects { get; init; }
+    public required PlayerRegistry Players { get; init; }
 
-    public override void Start() => Objects.ObjectDespawned += OnObjectDespawned;
+    private const string ExplosionSound = "assets/sfx/grenade_explosion.wav";
+
+    /// <summary>Past WeaponFx.DistantReportMetres a blast is a rumble from elsewhere, and gets its
+    /// own recording for the same reason distant rifle fire does.</summary>
+    private const string DistantExplosionSound = "assets/sfx/grenade_far_off_300m.wav";
+
+    /// <summary>Where a far-off blast is placed: along the true bearing, at a range it can be heard
+    /// from. The recording already sounds distant — see PlayShotReport for the full reasoning.</summary>
+    private const float DistantExplosionRange = 30f;
+
+    /// <summary>
+    /// Trauma from a grenade at your feet. Full, because there is nothing worse to save the top of
+    /// the range for.
+    /// </summary>
+    private const float MaximumTrauma = 1f;
+
+    /// <summary>
+    /// How far out a blast is still felt. Wider than GrenadeConfig.DamageRadius on purpose — one
+    /// that lands just outside its damage radius should still rattle you, and a shake that stops
+    /// exactly where the damage stops tells the player precisely how safe they were.
+    /// </summary>
+    private const float ShakeRadius = GrenadeConfig.DamageRadius * 1.6f;
+
+    private SoundManager sound = null!;
+
+    public override void Start()
+    {
+        sound = Services.GetSafeServiceAs<SoundManager>();
+        Objects.ObjectDespawned += OnObjectDespawned;
+    }
+
     public override void Update() { }
 
     public override void Cancel()
@@ -128,9 +160,42 @@ public sealed class GrenadeExplosionScript : SyncScript
         ExplosionManager.Clear();
     }
 
-    private static void OnObjectDespawned(NetObject obj)
+    private void OnObjectDespawned(NetObject obj)
     {
-        if (obj.Type == ObjectType.Grenade)
-            ExplosionManager.Spawn(obj.Transform.Position.ToStride());
+        if (obj.Type != ObjectType.Grenade) return;
+
+        var position = obj.Transform.Position;
+        ExplosionManager.Spawn(position.ToStride());
+
+        if (Players.LocalPlayer is not { IsDead: false } local)
+        {
+            sound.PlayOneShotSpatial(ExplosionSound, position.ToStride(), falloff: SoundFalloff.Explosion);
+            return;
+        }
+
+        var ear = Digging.Eye(local.Position);
+        var toBlast = position - ear;
+        float range = toBlast.Length();
+        if (range >= WeaponFx.DistantReportMetres)
+        {
+            var bearing = range > 1e-3f
+                ? System.Numerics.Vector3.Normalize(toBlast)
+                : System.Numerics.Vector3.UnitZ;
+            sound.PlayOneShotSpatial(
+                DistantExplosionSound,
+                (ear + bearing * DistantExplosionRange).ToStride(),
+                falloff: SoundFalloff.DistantReport);
+        }
+        else
+        {
+            sound.PlayOneShotSpatial(ExplosionSound, position.ToStride(), falloff: SoundFalloff.Explosion);
+        }
+
+        // LINEAR in distance, deliberately. CameraTrauma already squares trauma to get its shake,
+        // so squaring the proximity here as well cubes the falloff: a blast twelve metres away came
+        // out at two hundredths of a degree, which is nothing. Distance is to the eye rather than
+        // the feet, because that is where the camera being shaken actually is.
+        float closeness = 1f - MathUtil.Clamp(range / ShakeRadius, 0f, 1f);
+        CameraTrauma.Add(MaximumTrauma * closeness);
     }
 }

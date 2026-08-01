@@ -490,6 +490,74 @@ public class NavigationTests
                 $"Path left the bridge at {waypoint.Position}"));
     }
 
+    /// <summary>
+    /// The map the NPCs actually walk on: a fifteen-metre trench with one narrow bridge, searched
+    /// under the budget the GAME uses rather than the two-second one the other bridge cases get.
+    ///
+    /// A GUARD, NOT A REPRODUCTION — worth being explicit, because it was written while chasing
+    /// ISSUES.md #7 and it does not reproduce it. It passes against the code as it was before
+    /// VoxelCursor and before MinimumPartialDistance started measuring progress. Whatever puts NPCs
+    /// in the trenches on the real map is not captured here.
+    ///
+    /// What it does pin is worth keeping: no waypoint ever descends into the trench, and repeated
+    /// requests converge on the far bank. One 100 ms search does not cross a trench this wide (it
+    /// needs about 527 expansions and gets roughly half that), and it does not have to — the
+    /// follower re-requests continuously, so what matters is that each answer starts the next one
+    /// closer. Asserting a single-shot crossing would test an idealisation the game never performs.
+    /// </summary>
+    [Fact]
+    public void WideTrenchWithABridgeIsCrossedByRepeatedRequestsAndNeverDescendsIntoIt()
+    {
+        const float trenchHalfWidth = 7.5f;     // a 15 m spherical brush, as the test map is dug
+        const float trenchFloor = 2.5f;
+        const float bridgeHalfWidth = 1.5f;
+        const float ground = SyntheticTerrain.GroundHeight;
+
+        var map = SyntheticTerrain.Build(
+            (x, y, z) =>
+            {
+                float field = y - ground;
+                // Subtract the trench, then add the bridge back across it: max for a cut and min
+                // for a fill, the same way TerrainEdits composes a real brush.
+                float trench = MathF.Max(MathF.Abs(z) - trenchHalfWidth, trenchFloor - y);
+                field = MathF.Max(field, -trench);
+                float bridge = MathF.Max(MathF.Abs(x) - bridgeHalfWidth, y - ground);
+                return MathF.Min(field, bridge);
+            },
+            chunkRadius: 2);
+
+        // Well off to one side, so the bridge is nowhere near the straight line to the goal.
+        var start = CellAt(map, 10, -12, aroundY: (int)ground);
+        var target = CellAt(map, 10, 12, aroundY: (int)ground);
+        var goal = new GoalPosition(target);
+        var cache = new NavTraversalCache();
+
+        var at = start;
+        bool arrived = false;
+        for (int request = 0; request < 6 && !arrived; request++)
+        {
+            var path = NavSearch.Find(
+                map, at, goal, NavSearchOptions.Default, sharedTraversalCache: cache);
+
+            Assert.All(
+                path.Waypoints,
+                waypoint => Assert.True(
+                    waypoint.Position.Y > ground - 2f,
+                    $"Request {request} descended into the trench at {waypoint.Position}"));
+
+            Assert.True(
+                path.Waypoints.Count >= 2,
+                $"Request {request} from {at} produced no route at all");
+
+            var next = path.Waypoints[^1].Cell;
+            Assert.True(next != at, $"Request {request} from {at} made no progress");
+            at = next;
+            arrived = path.ReachedGoal;
+        }
+
+        Assert.True(arrived, $"Never reached the far bank; got as far as {at}");
+    }
+
     [Fact]
     public void SolidStartFailsImmediately()
     {

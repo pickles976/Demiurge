@@ -4,6 +4,17 @@ using System.Numerics;
 
 namespace Demiurge;
 
+/// <param name="MinimumPartialDistance">
+/// How much closer to the goal a partial answer has to get, in metres, before the search is allowed
+/// to stop at <paramref name="PrimaryBudget"/> instead of running on to
+/// <paramref name="FailureBudget"/>.
+///
+/// PROGRESS, not travel. It used to measure how far the best node had got from the START, which a
+/// search can satisfy while going nowhere useful: pacing sideways along a trench lip covers the
+/// distance without ever getting closer to the far bank, so the search declared a useful partial
+/// answer and stopped — pointing the actor at the lip it had been pacing. Measuring the reduction in
+/// the goal's own heuristic instead means "useful" means what it says.
+/// </param>
 public readonly record struct NavSearchOptions(
     TimeSpan PrimaryBudget,
     TimeSpan FailureBudget,
@@ -366,6 +377,7 @@ public static class NavSearch
         open.EnqueueOrDecrease(start.Key, startNode.Heuristic);
 
         Node best = startNode;
+        float startHeuristic = startNode.Heuristic;
         DigCandidate? bestDig = null;
         int expanded = 0;
         long started = Stopwatch.GetTimestamp();
@@ -407,8 +419,14 @@ public static class NavSearch
                 if (cancellationRequested?.Invoke() == true)
                     return NavPath.Failed(expanded) with { CacheHits = traversal.Hits };
                 long elapsed = Stopwatch.GetTimestamp() - started;
+
+                // Heuristics are in SECONDS (distance / MaxSpeed), so the reduction converts back to
+                // metres before it is compared. Using the goal's own heuristic rather than a
+                // straight-line distance keeps this meaningful for every goal kind, including
+                // GoalAwayFrom, where "closer" means the opposite direction.
                 bool usefulPartial =
-                    GoalPosition.Distance(start, best.Cell) >= options.MinimumPartialDistance;
+                    (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
+                        >= options.MinimumPartialDistance;
                 if (elapsed >= failureTicks || elapsed >= primaryTicks && usefulPartial)
                 {
                     exhaustedReachable = false;

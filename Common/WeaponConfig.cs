@@ -41,7 +41,12 @@ namespace Demiurge
             // Same damage and ballistics as the AK; the differences are the ten-round magazine and
             // the trigger. TicksPerShot 3 at 30 Hz is the requested 10 rounds/second ceiling — the
             // cap a fast finger runs into, not the cadence a held button pays out at.
-            ItemType.Sks => new WeaponStats(MagazineCapacity: 10, TicksPerShot: 3, ReloadTicks: 45, Damage: 30, BallisticsProfile: WeaponBallisticsProfile.Carbine, FireMode: FireMode.SemiAutomatic),
+            //
+            // ReloadTicks 54 is 1.8 s, three tenths longer than the others: stripper-clipping ten
+            // rounds into a fixed magazine takes longer than swapping one, and the reload sample is
+            // that length. Ticks rather than seconds so client prediction and server enforcement
+            // count the same clock.
+            ItemType.Sks => new WeaponStats(MagazineCapacity: 10, TicksPerShot: 3, ReloadTicks: 54, Damage: 30, BallisticsProfile: WeaponBallisticsProfile.Carbine, FireMode: FireMode.SemiAutomatic),
             ItemType.AWP => new WeaponStats(MagazineCapacity: 5, TicksPerShot: 60, ReloadTicks: 45, Damage: 75, BallisticsProfile: WeaponBallisticsProfile.SniperRifle),
             ItemType.Glock => new WeaponStats(MagazineCapacity: 15, TicksPerShot: 7, ReloadTicks: 20, Damage: 5, BallisticsProfile: WeaponBallisticsProfile.Pistol),
             // A grenade stack uses ammo as its remaining count. Each throw automatically cycles

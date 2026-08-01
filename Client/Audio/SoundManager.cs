@@ -45,10 +45,20 @@ namespace Demiurge
         private int _next;
         private readonly HashSet<uint> _continuous = new(); // dedicated sources, freed on stop
 
-        /// <summary>World distance at which a spatial sound is at full volume; falloff scales from here.</summary>
-        public float SpatialReferenceDistance = 10f;
-        /// <summary>How quickly spatial sounds attenuate past the reference distance.</summary>
-        public float SpatialRolloffFactor = 1f;
+        /// <summary>Falloff for callers that do not name one. See <see cref="SoundFalloff"/> for why
+        /// a single global curve cannot serve both a rifle and a footstep.</summary>
+        public SoundFalloff DefaultFalloff = SoundFalloff.Default;
+
+        /// <summary>
+        /// Master gain on POSITIONED sound only, so the world can be pushed away without touching
+        /// sounds that belong to the player's own body.
+        ///
+        /// This is the honest substitute for a low-pass filter, and it is worth being clear that it
+        /// is not one: muffling is a frequency effect and OpenAL does it through EFX, which lives in
+        /// Silk.NET.OpenAL.Extensions.Creative — a package this project does not reference. Until it
+        /// does, the world gets quieter rather than duller.
+        /// </summary>
+        public float WorldGain = 1f;
 
         public SoundManager(Entity? listener = null, int voices = 32)
         {
@@ -72,15 +82,22 @@ namespace Demiurge
         public void PlayOneShot(string wavPath, float volume = 1f)
             => OneShot(wavPath, null, volume);
 
-        public void PlayOneShotSpatial(string wavPath, SVector3 position, float volume = 1f)
-            => OneShot(wavPath, position, volume);
+        public void PlayOneShotSpatial(
+            string wavPath,
+            SVector3 position,
+            float volume = 1f,
+            SoundFalloff? falloff = null)
+            => OneShot(wavPath, position, volume, falloff);
 
-        private void OneShot(string wavPath, SVector3? pos, float volume)
+        private void OneShot(string wavPath, SVector3? pos, float volume, SoundFalloff? falloff = null)
         {
+            var curve = falloff ?? DefaultFalloff;
+            if (pos is { } world && !IsAudible(world, curve.MaxDistance)) return;
+
             EnsureContext();
             uint source = _oneShots[_next];
             _next = (_next + 1) % _oneShots.Length;
-            Configure(source, GetBuffer(wavPath, mono: pos.HasValue), pos, volume, looping: false);
+            Configure(source, GetBuffer(wavPath, mono: pos.HasValue), pos, volume, looping: false, curve);
             _al.SourcePlay(source);
         }
 
@@ -97,7 +114,7 @@ namespace Demiurge
             EnsureContext();
             uint source = _al.GenSource();
             _continuous.Add(source);
-            Configure(source, GetBuffer(wavPath, mono: pos.HasValue), pos, volume, looping: true);
+            Configure(source, GetBuffer(wavPath, mono: pos.HasValue), pos, volume, looping: true, DefaultFalloff);
             _al.SourcePlay(source);
             return new SoundHandle(source);
         }
@@ -118,21 +135,41 @@ namespace Demiurge
             _al.SetSourceProperty(handle.Source, SourceVector3.Position, position.X, position.Y, position.Z);
         }
 
+        /// <summary>Whether a positioned sound is close enough to the listener to be worth a voice.</summary>
+        private bool IsAudible(SVector3 position, float maxDistance)
+        {
+            if (_listener is null) return true;
+
+            var transform = _listener.Transform;
+            transform.UpdateWorldMatrix();
+            return SVector3.DistanceSquared(transform.WorldMatrix.TranslationVector, position)
+                <= maxDistance * maxDistance;
+        }
+
         // ---- internals ----
 
-        private void Configure(uint source, uint buffer, SVector3? worldPos, float volume, bool looping)
+        private void Configure(
+            uint source,
+            uint buffer,
+            SVector3? worldPos,
+            float volume,
+            bool looping,
+            SoundFalloff falloff)
         {
             _al.SourceStop(source); // lets us (re)assign the buffer; restarts a recycled voice
             _al.SetSourceProperty(source, SourceInteger.Buffer, (int)buffer);
-            _al.SetSourceProperty(source, SourceFloat.Gain, volume);
+            _al.SetSourceProperty(
+                source,
+                SourceFloat.Gain,
+                worldPos is null ? volume : volume * Math.Clamp(WorldGain, 0f, 1f));
             _al.SetSourceProperty(source, SourceBoolean.Looping, looping);
 
             if (worldPos is { } p)
             {
                 UpdateListener();
                 _al.SetSourceProperty(source, SourceBoolean.SourceRelative, false);
-                _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, SpatialReferenceDistance);
-                _al.SetSourceProperty(source, SourceFloat.RolloffFactor, SpatialRolloffFactor);
+                _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, falloff.ReferenceDistance);
+                _al.SetSourceProperty(source, SourceFloat.RolloffFactor, falloff.RolloffFactor);
                 _al.SetSourceProperty(source, SourceVector3.Position, p.X, p.Y, p.Z);
             }
             else

@@ -1,0 +1,37 @@
+// How being hurt looks. A colour transform rather than a UI overlay, because desaturation is not
+// something you can achieve by drawing a rectangle on top of the frame — it has to read the pixel
+// underneath. The red is done here too so the two stay one effect with one ordering.
+//
+// Parameters are declared as plain shader members, which is the form ColorTransformGroup composes:
+// it folds every transform into one shader and copies each transform's Parameters across by name.
+// An explicit `cbuffer` with `stage` members does not take part in that copy, so the values never
+// arrive and the effect silently does nothing — which looks exactly like the effect not being
+// attached at all. Match Vignetting/ToneMap and it works.
+shader DamageVisionShader : ColorTransformShader
+{
+    // 0 = unhurt, 1 = as bad as it gets. Driven from HealthConfig on the CPU side, so the shader
+    // holds no policy of its own — only the look.
+    float Desaturation;
+    float RedWash;
+
+    override float4 Compute(float4 color)
+    {
+        float3 rgb = color.rgb;
+
+        // Rec. 709 luma. Averaging the channels instead is the classic mistake: it makes skies and
+        // foliage collapse to the same grey and the drained world stops being readable.
+        float grey = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+        rgb = lerp(rgb, float3(grey, grey, grey), saturate(Desaturation));
+
+        // Applied AFTER the desaturation so a badly hurt player still sees red rather than a red
+        // that was itself greyed out. Multiplicative on green and blue rather than additive on red:
+        // adding blows out bright pixels into a flat wash, while pulling the other channels down
+        // darkens and reddens together, which is what tunnelling vision actually looks like.
+        float wash = saturate(RedWash);
+        rgb.g *= 1.0 - wash * 0.75;
+        rgb.b *= 1.0 - wash * 0.85;
+        rgb.r = lerp(rgb.r, min(1.0, rgb.r * 1.15 + 0.06), wash);
+
+        return float4(rgb, color.a);
+    }
+};

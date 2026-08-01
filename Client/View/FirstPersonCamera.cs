@@ -72,6 +72,11 @@ namespace Demiurge
 
 		public override void Update()
 		{
+			// Every path below can bail out before the camera is posed; trauma has to keep bleeding
+			// regardless, or a grenade that went off while the terminal was open is still waiting at
+			// full strength when it closes.
+			CameraTrauma.Decay((float)Game.UpdateTime.Elapsed.TotalSeconds);
+
 			if (InputState.TerminalOpen)
 			{
 				if (mouseLocked) Input.UnlockMousePosition();
@@ -114,7 +119,11 @@ namespace Demiurge
 			orbit -= look.X * sensitivity;
 			pitch = MathUtil.Clamp(pitch - look.Y * sensitivity, -PitchLimit, PitchLimit);
 
-			var rotation = Quaternion.RotationX(pitch) * Quaternion.RotationY(orbit);
+			// Shake is applied to the RENDERED rotation only. Yaw/Pitch below are read back by the
+			// controller as where the player is aiming, and a shot that landed where the shake threw
+			// the camera rather than where the player pointed it would feel like the game cheating.
+			var aim = Quaternion.RotationX(pitch) * Quaternion.RotationY(orbit);
+			var rotation = CameraTrauma.Update((float)Game.UpdateTime.Elapsed.TotalSeconds) * aim;
 
 			var feet = local.Position.ToStride();
 			float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
@@ -135,7 +144,7 @@ namespace Demiurge
 			Entity.Transform.Position = followed + Vector3.UnitY * eyeHeight;
 			Entity.Transform.Rotation = rotation;
 
-			var forward = Vector3.Transform(-Vector3.UnitZ, rotation);
+			var forward = Vector3.Transform(-Vector3.UnitZ, aim);
 			Yaw = MathF.Atan2(forward.X, forward.Z);
 
 			if (camera != null)

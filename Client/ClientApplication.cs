@@ -92,17 +92,33 @@ public sealed class ClientApplication : IDisposable
         return SessionRequest.Join(NetworkConfig.ServerHost);
     }
 
+    /// <summary>
+    /// The hurt-vision colour transform. Owned by the process, not by a session: it lives in the
+    /// graphics compositor, which ConfigureRendering builds once.
+    /// </summary>
+    private readonly DamageVision damageVision = new();
+
     private void ConfigureRendering()
     {
         var compositor = game.AddGraphicsCompositor();
         compositor.AddCleanUIStage();
         compositor.AddSceneRenderer(new LineSceneRenderer());
 
+        // Registered whether or not the compositor accepts the transform, so the feedback script
+        // always has something to talk to and a missing post-effect chain degrades to "no tint"
+        // rather than to a silent null it can never recover from.
+        game.Services.AddService(damageVision);
+
         if (((ForwardRenderer)compositor.SingleView).PostEffects is PostProcessingEffects postFx)
         {
             postFx.AmbientOcclusion.Enabled = false;
             postFx.LocalReflections.Enabled = false;
             postFx.Antialiasing.Enabled = false;
+
+            // Rendering is composed here, at the root, and outlives any one session — so the damage
+            // transform is created once and handed to whichever session is running rather than
+            // being added and removed with the scene.
+            postFx.ColorTransforms.Transforms.Add(damageVision);
         }
     }
 

@@ -105,6 +105,19 @@ namespace Demiurge.GameClient
         public static readonly Vector3 ToolGripOffset = new(0.42f, -0.49f, -0.55f);
 
         /// <summary>
+        /// Where a held item moves to while sprinting, as a delta on whatever its resting position
+        /// is rather than an absolute. A delta because the shovel is already carried much lower
+        /// than a rifle, and "drop it out of the way and pull it in" is the same gesture for both —
+        /// an absolute sprint pose would have to be re-tuned for every item that gets its own
+        /// carry position.
+        /// </summary>
+        public static readonly Vector3 SprintGripDelta = new(0.02f, -0.16f, 0.06f);
+
+        /// <summary>How far the muzzle drops while sprinting, radians, applied about the CAMERA's
+        /// right axis so it composes with recoil and reaches the muzzle origin too.</summary>
+        public const float SprintPitch = 0.42f;
+
+        /// <summary>
         /// Camera-relative grip position while hip-firing. ADS goes through
         /// <see cref="FirstPersonGripOffset(ItemType, bool, float)"/>, which prefers a weapon's own
         /// sights when it has them.
