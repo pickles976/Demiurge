@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 using System.Numerics;
 
 namespace Demiurge.GameServer
@@ -33,7 +33,7 @@ namespace Demiurge.GameServer
             public HashSet<ushort> SuppressedActors { get; } = [];
         }
 
-        private readonly Server server;
+        private readonly INetServer server;
         private readonly ObjectReplication objects;
         private readonly ChunkMap terrain;
         private readonly ActivityFeedSystem? activityFeed;
@@ -42,7 +42,7 @@ namespace Demiurge.GameServer
         private readonly Queue<AcceptedSuppression> suppressions = new();
 
         public WeaponSystem(
-            Server server,
+            INetServer server,
             ObjectReplication objects,
             ChunkMap terrain,
             ActivityFeedSystem? activityFeed = null)

@@ -1,14 +1,14 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge.GameServer;
 
 /// <summary>Publishes authoritative match events as reliable, short-lived client UI messages.</summary>
 public sealed class ActivityFeedSystem
 {
-    private readonly Server server;
+    private readonly INetServer server;
 
-    public ActivityFeedSystem(Server server) => this.server = server;
+    public ActivityFeedSystem(INetServer server) => this.server = server;
 
     public void ReportKill(ServerPlayer killer, ServerPlayer victim)
         => Broadcast($"{ActorName(killer)} killed {ActorName(victim)}");

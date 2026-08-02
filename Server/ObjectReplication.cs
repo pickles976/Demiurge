@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 using System.Numerics;
 
 namespace Demiurge.GameServer
@@ -9,13 +9,13 @@ namespace Demiurge.GameServer
     /// Spawn/Despawn/TryGet/All and mark changes via ServerObject.Dirty.</summary>
     public class ObjectReplication
     {
-        private readonly Server server;
+        private readonly INetServer server;
         private readonly Dictionary<uint, ServerObject> objects = new();
         private uint nextNetworkId = 1; // 0 reserved as no object
 
         private const NetComponents StreamedComponents = NetComponents.Transform;
 
-        public ObjectReplication(Server server) => this.server = server;
+        public ObjectReplication(INetServer server) => this.server = server;
 
         public IEnumerable<ServerObject> All => objects.Values;
 

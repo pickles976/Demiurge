@@ -1,6 +1,6 @@
 using System.Numerics;
 using Demiurge.GameServer;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge.ServerTests;
 
@@ -10,7 +10,7 @@ internal sealed class MobIntegrationHarness : IDisposable
     public MobIntegrationHarness(ChunkMap terrain, int seed)
     {
         Terrain = terrain;
-        Server = new Server();
+        Server = new NullNetServer();
         Objects = new ObjectReplication(Server);
         Items = new ItemSystem(Objects);
         TerrainEdits = new TerrainSystem(Server, terrain);
@@ -21,7 +21,7 @@ internal sealed class MobIntegrationHarness : IDisposable
     }
 
     public ChunkMap Terrain { get; }
-    public Server Server { get; }
+    public INetServer Server { get; }
     public ObjectReplication Objects { get; }
     public ItemSystem Items { get; }
     public TerrainSystem TerrainEdits { get; }

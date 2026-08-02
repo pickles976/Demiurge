@@ -26,6 +26,10 @@ public sealed class EditorClientSession : IClientSession
     public ClientSessionKind Kind => ClientSessionKind.Editor;
     public bool IsPlaytesting => playtest is not null;
     public NetworkManager? PlaytestNetwork => playtest?.Network;
+
+    /// <summary>The playtest's in-process transport, for <c>net seed</c> / <c>net log</c>. A playtest
+    /// hosts its own server, so this is non-null whenever one is running.</summary>
+    public Demiurge.Net.InProcessNetwork? PlaytestInProcessTransport => playtest?.InProcessTransport;
     public EditorSession Editor { get; }
     public EditorToolSettings Settings { get; }
     public EditorStructureState Structures { get; }

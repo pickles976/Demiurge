@@ -1,9 +1,22 @@
 using System.Numerics;
+using Demiurge.Net;
 
 namespace Demiurge.GameServer;
 
 public sealed record ServerOptions
 {
+    /// <summary>
+    /// Transport this server listens on. Null means real UDP via Riptide, which is what a dedicated
+    /// server and a normal host both want.
+    /// </summary>
+    /// <remarks>
+    /// This is the runtime selection point, and it has to be runtime rather than compile time because
+    /// one binary must both host singleplayer and <c>session join</c> a remote server. Singleplayer
+    /// passes the server end of an <see cref="InProcessNetwork"/> pair here and hands the client end to
+    /// <c>NetworkManager</c>; nothing else in the server knows the difference.
+    /// </remarks>
+    public INetServer? Transport { get; init; }
+
     public bool AllowCheats { get; init; }
     public string? MapPath { get; init; }
     public RuntimeMap? RuntimeMap { get; init; }

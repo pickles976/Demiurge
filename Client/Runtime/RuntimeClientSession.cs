@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Demiurge.GameClient;
 using Demiurge.GameServer;
+using Demiurge.Net;
 using Stride.CommunityToolkit.Engine;
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -23,6 +24,15 @@ public sealed class RuntimeClientSession : IClientSession
     private readonly RuntimeClientEmbedding? embedding;
 
     private readonly NetworkManager network;
+
+    /// <summary>
+    /// Non-null only when this session hosts its own server. Singleplayer talks to it instead of a
+    /// loopback socket, which is what lets the server stop sharing Riptide's unsynchronised static
+    /// pools with the client — and, deliberately, what makes singleplayer a continuous fuzz test.
+    /// See <see cref="Demiurge.Net.TransportHostility"/>.
+    /// </summary>
+    private readonly InProcessNetwork? inProcessNetwork;
+
     private readonly TerrainState terrainState;
     private readonly ChunkTcpClient? chunkStream;
     private readonly ModelLocators modelLocators;
@@ -32,10 +42,18 @@ public sealed class RuntimeClientSession : IClientSession
     private FrameBreakdown frame;
 
     /// <summary>
-    /// Where the client's own Update goes, once a second. Everything here runs on the MAIN thread,
-    /// and in singleplayer that includes the whole server tick — which is the point: the 16.6 ms
-    /// frame budget has to cover both, so a server cost is a frame cost.
+    /// Where the client's own Update goes, once a second. Everything here runs on the MAIN thread.
     /// </summary>
+    /// <remarks>
+    /// The `server` slot used to be the whole server tick, because singleplayer stepped it from here.
+    /// It now runs on its own thread and this reads ~0. That is the fix, not a broken counter: a
+    /// measured frame spent 214 ms of 216 ms blocked in the server tick while the client's own work —
+    /// net, drain, terrain — came to 2 ms.
+    /// <para>
+    /// The slot is deliberately kept rather than deleted. A change that puts server work back on this
+    /// thread should show up here as a non-zero reading, not hide inside another bucket.
+    /// </para>
+    /// </remarks>
     private struct FrameBreakdown
     {
         private static readonly Stride.Core.Diagnostics.Logger Log =
@@ -95,6 +113,10 @@ public sealed class RuntimeClientSession : IClientSession
     public ClientSessionKind Kind => ClientSessionKind.Runtime;
     public NetworkManager Network => network;
 
+    /// <summary>The in-process transport, when this session hosts its own server. Null when talking to a
+    /// remote server over Riptide. Exposed so <c>net seed</c> / <c>net log</c> can report on it.</summary>
+    public InProcessNetwork? InProcessTransport => inProcessNetwork;
+
     public RuntimeClientSession(
         Game game,
         ClientInputState inputState,
@@ -105,10 +127,25 @@ public sealed class RuntimeClientSession : IClientSession
         this.game = game;
         this.inputState = inputState;
         this.host = host ?? NetworkConfig.ServerHost;
-        this.localServerOptions = localServerOptions;
         this.embedding = embedding;
         terrainState = embedding?.Terrain ?? new TerrainState();
-        network = new NetworkManager(this.host);
+
+        if (localServerOptions is not null)
+        {
+            // Hosting our own server: skip the socket entirely and wire the two ends together in
+            // process. Seeded per session and reported, because the delivery misbehaviour is real and a
+            // glitch report without the seed is much harder to act on.
+            inProcessNetwork = new InProcessNetwork(Environment.TickCount);
+            this.localServerOptions = localServerOptions with { Transport = inProcessNetwork.Server };
+            network = new NetworkManager(this.host, inProcessNetwork.Client);
+            Console.WriteLine($"[Net] In-process transport, delivery seed {inProcessNetwork.Seed}");
+        }
+        else
+        {
+            this.localServerOptions = null;
+            network = new NetworkManager(this.host);
+        }
+
         modelLocators = ModelLocators.Load();
         weaponMount = new WeaponMount(modelLocators, ItemCosmetics.Model);
         registry = new PlayerRegistry(network, terrainState, weaponMount);
@@ -136,7 +173,7 @@ public sealed class RuntimeClientSession : IClientSession
         if (localServerOptions is not null)
         {
             localServer = new ServerHost(localServerOptions);
-            localServer.Start();
+            localServer.StartOnOwnThread();
         }
 
         game.Services.AddService(network);
@@ -219,7 +256,9 @@ public sealed class RuntimeClientSession : IClientSession
     public void Update(GameTime time)
     {
         long t0 = Stopwatch.GetTimestamp();
-        localServer?.Step();
+        // The local server runs on its own thread; nothing to pump here. The slot is kept so the
+        // frame log keeps its shape and so a regression that puts server work back on this thread
+        // shows up as a non-zero `server` reading instead of hiding inside `net`.
         long t1 = Stopwatch.GetTimestamp();
         network.Update();
         long t2 = Stopwatch.GetTimestamp();
@@ -257,6 +296,7 @@ public sealed class RuntimeClientSession : IClientSession
         objectRegistry.Dispose();
         registry.Dispose();
         network.Dispose();
+        inProcessNetwork?.Dispose();
 
         if (embedding is not null && camera is not null) RemoveRuntimeCameraScripts(camera);
         foreach (var entity in ownedEntities.ToArray()) entity.Scene = null;

@@ -41,6 +41,14 @@ AI
 
 # AI
 
+The weapon-behavior items above (PPSH sprinting, SKS entrenching, more mobile tactics) are symptoms of
+one missing system, not three features. Per-unit arbitration branches on weapon identity, so each
+behavior has to be written and no two candidate actions can be ranked against each other. Prefer
+pricing every available action in one currency and letting weapon behavior fall out of parameters —
+the way route choice fell out of movement seconds. The currency itself is the unsolved part; see the
+design-method section in `../CLAUDE.md` and the AI-layers note in `ARCHITECTURE.md` before adding
+another per-weapon branch.
+
 - [ ] Connected foxhole/trench construction
 - [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches. Needs a
   `PathFollowState.Digging` case in the bound follower first; a digging man gives up his aim

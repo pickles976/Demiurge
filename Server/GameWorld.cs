@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 using System.Diagnostics;
 using System.Numerics;
 
@@ -19,7 +19,7 @@ namespace Demiurge.GameServer
         private readonly ActivityFeedSystem activityFeed;
         private readonly ChunkTcpServer chunks;
 
-        private readonly Server server;
+        private readonly INetServer server;
 
         private uint _Tick = 0;
         private readonly Dictionary<int, int> npcSpawnOrdinalsByTeam = [];
@@ -95,7 +95,7 @@ namespace Demiurge.GameServer
         private readonly ChunkMap terrain;
 
         public GameWorld(
-            Server server,
+            INetServer server,
             RuntimeMap? runtimeMap = null,
             Vector3? spawnOverride = null,
             int? initialPlayerTeam = null,

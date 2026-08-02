@@ -29,6 +29,7 @@ spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
 ai stats
 ai track [off|on|beacons|facing|clustering]
+net <seed|log>
 ```
 
 Examples:
@@ -47,6 +48,27 @@ components prefixed by `~` are relative to the issuer. Y always comes from the s
 terrain surface. Mob and player IDs share one actor-ID space; a successful mob spawn prints the ID to
 use with `equip`, for example `actor ID @60000`. A pickup spawn prints a distinct replicated object
 ID such as `object ID #1`; `equip` accepts actor IDs, not object IDs.
+
+### `net` — in-process transport diagnostics
+
+Answered on the client like `ai track`, and only meaningful when this session hosts its own server
+(singleplayer, `session host`, or a playtest). Against a remote server the delivery decisions are
+Riptide's, not ours, and the command says so rather than inventing an answer.
+
+```text
+net seed    the delivery seed for this session
+net log     the last 256 delivery decisions, newest first
+```
+
+Singleplayer runs a deliberately hostile transport: the unreliable channel drops, reorders and
+duplicates; the reliable channel reorders but never drops. This is not a bug to be tuned out. A
+localhost socket essentially never misbehaves, so without it singleplayer cannot catch an ordering or
+duplication assumption at all — it would simply pass, and the failure would surface later against a
+real server. See `docs/superpowers/specs/2026-08-02-transport-parity-design.md`.
+
+Quote **both** values when reporting a glitch. The seed fixes the delivery *policy*, not the traffic:
+the message sequence depends on frame-to-frame input timing, so the seed alone will not replay a
+session.
 
 ### `ai track` — NPC debug overlay
 

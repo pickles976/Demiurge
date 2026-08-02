@@ -1,6 +1,6 @@
 using System.Numerics;
 using Demiurge.GameServer;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge.ServerTests;
 
@@ -9,7 +9,7 @@ public class FlagSystemTests
     [Fact]
     public void FlagStartsNeutralCapturesOnTimerAndBecomesTeamSpawn()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var position = new Vector3(5f, 2f, 7f);
         var flag = flags.Spawn(position);
@@ -45,7 +45,7 @@ public class FlagSystemTests
     [Fact]
     public void ContestedFlagPausesCaptureProgress()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var flag = flags.Spawn(Vector3.Zero);
         var teamOne = PlayerAt(1, 1, new Vector3(1f, 0f, 0f));
@@ -67,7 +67,7 @@ public class FlagSystemTests
     [Fact]
     public void EnemyMustNeutralizeOwnedFlagBeforeCapturingIt()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var flag = flags.Spawn(Vector3.Zero);
         var teamOne = PlayerAt(1, 1, Vector3.Zero);
@@ -101,7 +101,7 @@ public class FlagSystemTests
     [Fact]
     public void AdditionalTeammatesAccelerateCaptureUpToConfiguredCap()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var flag = flags.Spawn(Vector3.Zero);
         var first = PlayerAt(1, 3, Vector3.Zero);
@@ -116,7 +116,7 @@ public class FlagSystemTests
     [Fact]
     public void SquadObjectiveChoosesNearestFlagThatIsNotSecurelyFriendly()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var nearPosition = new Vector3(5f, 0f, 0f);
         var farPosition = new Vector3(25f, 0f, 0f);
@@ -162,7 +162,7 @@ public class FlagSystemTests
     [Fact]
     public void ReinforcementsSpawnAtTheControlledFlagNearestWhatIsLeftToTake()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
 
         // A line of flags. Team 1 holds the two on the left; the contested ground is on the right.
@@ -187,7 +187,7 @@ public class FlagSystemTests
     [Fact]
     public void HoldingEveryFlagStillProducesASpawn()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var only = new Vector3(12f, 0f, -4f);
         Capture(flags, flags.Spawn(only), team: 1, only);
@@ -204,7 +204,7 @@ public class FlagSystemTests
     [Fact]
     public void AFlagWithAnEnemyOnItIsNotUsedAsASpawn()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
 
         var front = new Vector3(100f, 0f, 0f);
@@ -232,7 +232,7 @@ public class FlagSystemTests
     [Fact]
     public void EveryControlledFlagContestedProducesNoFlagSpawn()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var only = new Vector3(20f, 0f, 0f);
         Capture(flags, flags.Spawn(only), team: 1, only);

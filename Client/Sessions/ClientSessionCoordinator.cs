@@ -1,5 +1,6 @@
 using Demiurge.Editor;
 using Demiurge.GameServer;
+using Demiurge.Net;
 using Stride.Engine;
 using Stride.Games;
 
@@ -77,6 +78,11 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 && tokens[1].Equals("track", StringComparison.OrdinalIgnoreCase))
                 return ExecuteAiTrack(tokens);
 
+            // Transport diagnostics describe the client's own connection, so like `ai track` they are
+            // answered here rather than sent to the server.
+            if (tokens[0].Equals("net", StringComparison.OrdinalIgnoreCase))
+                return ExecuteNet(tokens);
+
             if (current is RuntimeClientSession runtime)
             {
                 runtime.Network.SendCommand(commandLine);
@@ -117,6 +123,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 lines.Add("equip <@s|@actor-id> <item>");
                 lines.Add("ai stats");
                 lines.Add("ai track <off|on|beacons|facing|clustering>");
+                lines.Add("net <seed|log>");
             }
             else
             {
@@ -130,6 +137,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             lines.Add("equip <@s|@actor-id> <item>");
             lines.Add("ai stats");
             lines.Add("ai track <off|on|beacons|facing|clustering>");
+            lines.Add("net <seed|log>");
         }
         lines.Add("Type 'help <command>' for details. Press Tab to complete names and IDs.");
         return lines;
@@ -176,9 +184,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         if (tokenIndex == 0)
             return current is EditorClientSession activeEditor
                 ? activeEditor.IsPlaytesting
-                    ? ["spawn", "equip", "ai", "map", "session", "clear", "help"]
+                    ? ["spawn", "equip", "ai", "net", "map", "session", "clear", "help"]
                     : ["editor", "map", "session", "clear", "help"]
-                : ["spawn", "equip", "ai", "map", "session", "clear", "help"];
+                : ["spawn", "equip", "ai", "net", "map", "session", "clear", "help"];
 
         if (tokens.Length == 0) return [];
         string root = tokens[0].ToLowerInvariant();
@@ -245,10 +253,12 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
         if (root == "session" && tokenIndex == 1)
             return ["status", "editor", "host", "join", "playtest", "playtest-networked"];
+        if (root == "net") return ["seed", "log"];
+
         if (root == "help")
         {
             if (tokenIndex == 1)
-                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "ai"];
+                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "ai", "net"];
             if (tokenIndex == 2 && tokens.Length > 1
                 && tokens[1].Equals("editor", StringComparison.OrdinalIgnoreCase))
                 return ["terrain", "block", "object"];
@@ -341,6 +351,18 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
                 "Runtime equipment changes last for the current session only; map save does not record them.",
             ],
+            "net" =>
+            [
+                "Transport diagnostics (in-process transport only):",
+                "  net seed   the delivery seed for this session",
+                "  net log    the last delivery decisions, newest first",
+                "Singleplayer runs a deliberately hostile in-process transport: the unreliable",
+                "channel drops, reorders and duplicates, and the reliable channel reorders. That",
+                "is intentional - a localhost socket never misbehaves, so without it singleplayer",
+                "cannot catch an ordering or duplication assumption before a real playtest does.",
+                "The seed fixes the delivery policy but NOT the traffic, so quote both when",
+                "reporting a glitch.",
+            ],
             "ai" =>
             [
                 "AI diagnostics:",
@@ -353,6 +375,39 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "The overlay is client-side only and never reaches the server.",
             ],
             _ => [$"No help topic named '{topics[0]}'. Type 'help' to list commands."],
+        };
+    }
+
+    /// <summary>
+    /// <c>net seed</c> and <c>net log</c> — the two things you need to act on a delivery glitch.
+    /// </summary>
+    /// <remarks>
+    /// Both are required rather than nice to have. The seed alone does NOT reproduce a session: it fixes
+    /// the delivery policy, not the traffic, because the message sequence depends on frame-to-frame input
+    /// timing. The log is what tells you what the policy actually did.
+    /// </remarks>
+    private TerminalOutput ExecuteNet(string[] tokens)
+    {
+        InProcessNetwork? transport = (current as RuntimeClientSession)?.InProcessTransport
+            ?? (current as EditorClientSession)?.PlaytestInProcessTransport;
+
+        if (transport is null)
+            return TerminalOutputFor(
+                false,
+                "No in-process transport. This session talks to a real server over Riptide, "
+                + "whose delivery decisions we do not make and cannot report.");
+
+        if (tokens.Length < 2)
+            return TerminalOutputFor(false, "net <seed|log>");
+
+        return tokens[1].ToLowerInvariant() switch
+        {
+            "seed" => TerminalOutputFor(true, $"Delivery seed {transport.Seed}"),
+            "log" => TerminalOutputFor(
+                true,
+                $"Delivery seed {transport.Seed}, last {TransportHostility.DeliveryLogCapacity} decisions "
+                + $"(newest first):{Environment.NewLine}{transport.Log.Dump()}"),
+            _ => TerminalOutputFor(false, "net <seed|log>"),
         };
     }
 

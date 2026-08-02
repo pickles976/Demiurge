@@ -1,6 +1,6 @@
 using System.Numerics;
 using Demiurge.GameServer;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge.ServerTests;
 
@@ -9,7 +9,7 @@ public class CommanderAiTests
     [Fact]
     public void CommanderDistributesThenReinforcesAThreatenedFriendlyFlag()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var west = flags.Spawn(new Vector3(-20f, 0f, 0f));
         var east = flags.Spawn(new Vector3(20f, 0f, 0f));

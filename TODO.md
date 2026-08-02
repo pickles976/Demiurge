@@ -5,17 +5,15 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-Server/Client split
-- replace Riptide for singleplayer mode
-
 AI 
-- Tell CLAUDE.md to not use hacks like if statements but to use behavior trees and robust systems. Use Baritone pathfinding as an anecdote.
+- Remember not to myopically solve a single problem with solutions like if statements, but to use behavior trees and robust systems. Use Baritone pathfinding as an anecdote.
 
 - Sometimes NPCs just stand at the flagpost doing nothing
 - NPCs should always be doing something
 
 - better tactics
-  -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance either by sprinting, or by digging.
+  -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance by sprinting.
+  - Digging is *defensive*. Movement is *offensive*
 
 - [ ] PVP
     - [ ] add mosin-nagant
@@ -44,9 +42,6 @@ AI
 # AI
 
 - [ ] Connected foxhole/trench construction
-- [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches. Needs a
-  `PathFollowState.Digging` case in the bound follower first; a digging man gives up his aim
-- [ ] Raise the global cover-query budget once measured; at 1/tick a squad is slow to go set
 - [ ] Commander fortification and crew-weapon objectives
   grenade reservations
 - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics

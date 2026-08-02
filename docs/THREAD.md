@@ -1,5 +1,50 @@
 # Running the server on its own thread
 
+> **Implemented, 2026-08-02.** Steps 1–4 are done; step 5 (re-measure) is what remains.
+>
+> Steps 1–3 are specified in
+> [2026-08-02-transport-parity-design.md](superpowers/specs/2026-08-02-transport-parity-design.md),
+> which also corrects one thing this document assumes: Riptide's **unreliable** channel is never
+> sequenced, so it can *duplicate* as well as drop and reorder.
+>
+> Step 4 landed as `ServerHost.StartOnOwnThread`. The measurement that motivated it: one frame spent
+> **214 ms of 216 ms** inside `ServerHost.Step()`, running up to `MaxCatchUpTicks` ticks inline, while
+> the client's own work totalled 2 ms — 5 fps decided entirely by thread ownership.
+>
+> Two notes this document predicted and which held. `MaxCatchUpTicks` did need re-reading: its
+> rationale was about a slow *caller*, and it now bounds the server against its own over-budget tick
+> instead. And singleplayer has stopped being the combined-budget stress case, so the CLAUDE.md
+> performance-targets section was revised rather than left to quietly become false.
+>
+> **Step 5, measured on the same conquest scenario:**
+>
+> | | Before | After |
+> | --- | --- | --- |
+> | Frame rate | 4–7 fps | 53–117 fps |
+> | `server` slot in the frame log | 214 ms | 0.00 ms |
+> | Client session total | 216 ms | 0.22–1.46 ms |
+> | Worst frame | 312 ms | 4.5–16 ms |
+> | Server tick rate | 16–20 TPS | 30–31 TPS |
+> | Server tick total | 50–60 ms | 12–25 ms |
+>
+> The `server` collapse to zero is what this document predicted. The tick getting **cheaper** is not,
+> and it is the more interesting result: `actors` fell from 50 ms to 10–21 ms and `follow` from 37 ms
+> to 10–20 ms on identical code. The work did not get cheaper, the contention did. The main thread had
+> been running four catch-up ticks inline while eight path workers and the renderer competed for the
+> same six cores and the same DDR4 the iGPU uses. Pacing the server removed the thrash, so the 30 TPS
+> target is now met rather than merely unblocked.
+>
+> Read that as a caution as much as a win: a measurement taken while the machine is thrashing
+> attributes cost to whatever happens to be holding the thread, not to whatever is actually expensive.
+> The pre-threading numbers overstated `follow` and `cover` by roughly 2x for that reason.
+>
+> **What remains.** Navigation is now the binding constraint, and it is queue-bound rather than
+> frame-bound: `queue p50/p95` climbed to 362/488 ms per path against BARITONE.md's 500 ms ceiling,
+> with `0 full / 39 partial` routes and `shared routes 0`. Every NPC gets a partial answer, re-requests,
+> and keeps eight workers saturated at ~34 ms each per tick. `search p50/p95` of 153/342 ms also sits
+> well past the 25 ms prefix and 100 ms failure budgets those searches are supposed to respect — a
+> wall-clock budget checked every 64 expansions does not hold when the thread is descheduled.
+
 **Goal:** in singleplayer, stop the server tick from blocking the client frame.
 
 **Multiplayer is the canonical implementation.** A dedicated server and a remote client keep using

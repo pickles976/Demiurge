@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 using System.Numerics;
 
 namespace Demiurge.GameServer
@@ -14,7 +14,7 @@ namespace Demiurge.GameServer
     /// </summary>
     public class TerrainSystem
     {
-        private readonly Server server;
+        private readonly INetServer server;
         private readonly ChunkMap terrain;
 
         /// <summary>
@@ -24,7 +24,7 @@ namespace Demiurge.GameServer
         /// </summary>
         private const uint TicksPerDig = Digging.TicksPerDig;
 
-        public TerrainSystem(Server server, ChunkMap terrain)
+        public TerrainSystem(INetServer server, ChunkMap terrain)
         {
             this.server = server;
             this.terrain = terrain;

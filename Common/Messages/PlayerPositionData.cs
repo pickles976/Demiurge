@@ -1,5 +1,5 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge
 {

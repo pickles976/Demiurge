@@ -188,3 +188,36 @@ Final conquest and excavation corrections:
 - after making partial routes actor-local, the 32-NPC benchmark completed in 469 ms wall time with
   queue p50/p95 of 177.8/382.2 ms, 192,941 traversal-cache hits, and 6,528 expanded nodes. The p95
   remains below the 500 ms ceiling.
+
+## Retrospective: what actually generalized
+
+Recorded because the method transfers further than this instance of it.
+
+The prior implementation failed by accumulating terrain-shape classifiers — highest ground within N
+metres, a fixed escape direction, a pre-follower ramp branch. Each was written to satisfy one observed
+failure, and no two of them could be compared against each other, so every interaction between them
+had to be adjudicated by hand. That is what made the fixes oscillate: each new branch satisfied its own
+scenario and broke a neighbour. Effort went into the test cases rather than into the thing that would
+have made the test cases redundant.
+
+What replaced them was not primarily A*. It was **denominating every movement in estimated execution
+seconds**. Once walking, jumping, falling, and excavation are commensurable, routing through an exit,
+crossing a bridge, and cutting a staircase are not behaviors anyone implements — they are whichever
+number was smaller. The search only pays off because the things it compares share a unit; the same
+search over incommensurable costs would have generalized nothing.
+
+The stage-4 test list above is written to match, and should stay that way: each entry asserts a
+*property of the cost model* rather than a trace through an implementation. Tests written against a
+heuristic encode that heuristic's special cases and then obstruct the general system that would have
+replaced it.
+
+Two things this does not demonstrate:
+
+- generality was not bought with compute and could not have been. The budgets in stages 1 and 5 are
+  the binding constraint, not a detail, and a version of this that found better routes by starving the
+  tick would not have shipped;
+- it was not free. The corrections above are real, and the goal-rise gate is a special case bolted to
+  the side of the search. The method moved the residue from "more branches" to "annealing a cost
+  model", which is the win — it did not remove the residue.
+
+The general rule lives in the design-method section of `../CLAUDE.md`.

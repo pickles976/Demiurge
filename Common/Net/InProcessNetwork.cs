@@ -1,0 +1,300 @@
+namespace Demiurge.Net
+{
+    /// <summary>
+    /// A connected server/client pair living in one process, used by singleplayer instead of a loopback
+    /// socket.
+    /// </summary>
+    /// <remarks>
+    /// Two things this is NOT, both of which it would be easy and wrong to make it:
+    /// <list type="number">
+    /// <item><b>It is not a shortcut.</b> Every message is serialized to bytes and read back, exactly as
+    /// the socket path does, so a type that fails to round-trip fails here too. Handing objects across a
+    /// queue would make singleplayer pass where a real server fails.</item>
+    /// <item><b>It is not a faithful imitation of Riptide.</b> It is deliberately WORSE — see
+    /// <see cref="TransportHostility"/>. A localhost socket essentially never reorders and never drops,
+    /// so today's singleplayer cannot catch an ordering assumption at all. This one can.</item>
+    /// </list>
+    /// <para>
+    /// There is no transport to write here in the usual sense: no UDP, no reliability, no retransmission,
+    /// no congestion control, no fragmentation, no connection negotiation. Two peers in one address space
+    /// need a queue. The interesting code is all in the misbehaviour.
+    /// </para>
+    /// </remarks>
+    public sealed class InProcessNetwork : IDisposable
+    {
+        /// <summary>The one client id this transport hands out. Singleplayer has exactly one player.</summary>
+        internal const ushort SingleClientId = 1;
+
+        private readonly InProcessNetServer server;
+        private readonly InProcessNetClient client;
+
+        public InProcessNetwork(int seed)
+        {
+            Seed = seed;
+            Log = new DeliveryLog();
+
+            // Separate generators per direction so that traffic in one direction cannot shift the
+            // delivery decisions made in the other. Without this, a replay at the same seed diverges as
+            // soon as the two directions interleave differently.
+            var toServer = new DeliveryQueue(new Random(seed), Log, toServer: true);
+            var toClient = new DeliveryQueue(new Random(seed ^ unchecked((int)0x9E3779B9)), Log, toServer: false);
+
+            server = new InProcessNetServer(toServer, toClient);
+            client = new InProcessNetClient(toServer, toClient, server);
+        }
+
+        /// <summary>Seed for this session's delivery decisions. Print it; a bug report without it is much
+        /// harder to act on.</summary>
+        public int Seed { get; }
+
+        public DeliveryLog Log { get; }
+
+        public INetServer Server => server;
+
+        public INetClient Client => client;
+
+        public void Dispose()
+        {
+            client.Dispose();
+            server.Dispose();
+        }
+    }
+
+    /// <summary>One direction of travel, and all of the deliberate misbehaviour.</summary>
+    internal sealed class DeliveryQueue
+    {
+        private readonly record struct Pending(ushort Id, MessageSendMode Mode, byte[] Payload, double DueAt);
+
+        private static double Now
+            => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+
+        private readonly Random rng;
+        private readonly DeliveryLog log;
+        private readonly bool toServer;
+        private readonly List<Pending> pending = [];
+        private readonly object gate = new();
+        private long sequence;
+
+        internal DeliveryQueue(Random rng, DeliveryLog log, bool toServer)
+        {
+            this.rng = rng;
+            this.log = log;
+            this.toServer = toServer;
+        }
+
+        internal void Send(Message message)
+        {
+            // Serialize NOW, into bytes we own. This is the round trip that keeps singleplayer honest.
+            byte[] payload = message.Payload.ToArray();
+
+            if (payload.Length > Message.MaxPayloadBytes)
+                throw new MessageTooLargeException(message.Id, payload.Length, Message.MaxPayloadBytes);
+
+            lock (gate)
+            {
+                long seq = sequence++;
+
+                double dropRate = message.SendMode == MessageSendMode.Reliable
+                    ? TransportHostility.ReliableDropRate
+                    : TransportHostility.UnreliableDropRate;
+
+                if (rng.NextDouble() < dropRate)
+                {
+                    log.Record(new DeliveryRecord(seq, message.Id, message.SendMode, DeliveryVerdict.Dropped, toServer));
+                    return;
+                }
+
+                Enqueue(message.Id, message.SendMode, payload);
+                log.Record(new DeliveryRecord(seq, message.Id, message.SendMode, DeliveryVerdict.Delivered, toServer));
+
+                // Riptide's unreliable channel assigns no sequence id, so nothing filters a duplicate out.
+                if (message.SendMode == MessageSendMode.Unreliable
+                    && rng.NextDouble() < TransportHostility.UnreliableDuplicateRate)
+                {
+                    Enqueue(message.Id, message.SendMode, payload);
+                    log.Record(new DeliveryRecord(seq, message.Id, message.SendMode, DeliveryVerdict.Duplicated, toServer));
+                }
+            }
+        }
+
+        private void Enqueue(ushort id, MessageSendMode mode, byte[] payload)
+        {
+            double due = Now;
+            if (NetworkConfig.SimulatedLatencySeconds > 0f)
+            {
+                due += NetworkConfig.SimulatedLatencySeconds
+                       + (rng.NextDouble() * 2.0 - 1.0) * NetworkConfig.SimulatedJitterSeconds;
+            }
+
+            pending.Add(new Pending(id, mode, payload, due));
+        }
+
+        /// <summary>Delivers everything currently due, in a locally shuffled order.</summary>
+        internal void Drain(Action<ushort, MessageSendMode, byte[]> deliver)
+        {
+            List<Pending> due;
+            lock (gate)
+            {
+                if (pending.Count == 0) return;
+
+                double now = Now;
+                due = new List<Pending>(pending.Count);
+                for (int i = pending.Count - 1; i >= 0; i--)
+                {
+                    if (pending[i].DueAt > now) continue;
+                    due.Add(pending[i]);
+                    pending.RemoveAt(i);
+                }
+                due.Reverse();   // back into send order before shuffling
+
+                // Bounded shuffle. Each message gets a delivery key of (send position + jitter), where
+                // jitter is in [0, ReorderWindow), and we stable-sort by that key.
+                //
+                // This gives a provable bound rather than an approximate one: if message i is delivered
+                // after message j where j > i, then i + jitter_i > j + jitter_j, so j - i < jitter_i,
+                // which is less than ReorderWindow. In words — NO MESSAGE IS EVER OVERTAKEN BY ONE SENT
+                // MORE THAN ReorderWindow POSITIONS LATER.
+                //
+                // Repeated random swaps look equivalent and are not: they let a message migrate later
+                // again on each pass, so displacement grows without limit and the transport starts
+                // manufacturing orderings no real network can produce.
+                due = due
+                    .Select((item, index) => (item, key: index + rng.Next(TransportHostility.ReorderWindow)))
+                    .OrderBy(entry => entry.key)   // LINQ OrderBy is stable, so equal keys keep send order
+                    .Select(entry => entry.item)
+                    .ToList();
+            }
+
+            foreach (Pending item in due)
+                deliver(item.Id, item.Mode, item.Payload);
+        }
+    }
+
+    internal sealed class InProcessNetServer : INetServer
+    {
+        private readonly DeliveryQueue inbound;
+        private readonly DeliveryQueue outbound;
+        private bool connected;
+
+        internal InProcessNetServer(DeliveryQueue inbound, DeliveryQueue outbound)
+        {
+            this.inbound = inbound;
+            this.outbound = outbound;
+        }
+
+        public event EventHandler<NetMessageReceivedEventArgs>? MessageReceived;
+        public event EventHandler<NetClientConnectedEventArgs>? ClientConnected;
+        public event EventHandler<NetClientDisconnectedEventArgs>? ClientDisconnected;
+
+        public void Start(ushort port, int maxClientCount) { }
+
+        public void Stop()
+        {
+            if (!connected) return;
+            connected = false;
+            ClientDisconnected?.Invoke(this, new NetClientDisconnectedEventArgs(InProcessNetwork.SingleClientId));
+        }
+
+        public void Update() => inbound.Drain(Deliver);
+
+        public void Send(Message message, ushort clientId)
+        {
+            outbound.Send(message);
+            message.Release();
+        }
+
+        public void SendToAll(Message message)
+        {
+            outbound.Send(message);
+            message.Release();
+        }
+
+        public void Dispose() => Stop();
+
+        internal void AcceptClient()
+        {
+            connected = true;
+            ClientConnected?.Invoke(this, new NetClientConnectedEventArgs(InProcessNetwork.SingleClientId));
+        }
+
+        internal void DropClient()
+        {
+            if (!connected) return;
+            connected = false;
+            ClientDisconnected?.Invoke(this, new NetClientDisconnectedEventArgs(InProcessNetwork.SingleClientId));
+        }
+
+        private void Deliver(ushort id, MessageSendMode mode, byte[] payload)
+        {
+            Message message = Message.CreateForRead(mode, id, payload);
+            try
+            {
+                MessageReceived?.Invoke(
+                    this,
+                    new NetMessageReceivedEventArgs(InProcessNetwork.SingleClientId, id, message));
+            }
+            finally
+            {
+                message.Release();
+            }
+        }
+    }
+
+    internal sealed class InProcessNetClient : INetClient
+    {
+        private readonly DeliveryQueue outbound;
+        private readonly DeliveryQueue inbound;
+        private readonly InProcessNetServer server;
+
+        internal InProcessNetClient(DeliveryQueue outbound, DeliveryQueue inbound, InProcessNetServer server)
+        {
+            this.outbound = outbound;
+            this.inbound = inbound;
+            this.server = server;
+        }
+
+        public event EventHandler<NetMessageReceivedEventArgs>? MessageReceived;
+        public event EventHandler? Connected;
+
+        public ushort Id { get; private set; }
+
+        public void Connect(string hostAndPort)
+        {
+            Id = InProcessNetwork.SingleClientId;
+
+            // Order matches the socket path: the server sees the connection first, so whatever it sends
+            // in response to ClientConnected is already queued when the client starts pumping.
+            server.AcceptClient();
+            Connected?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void Disconnect()
+        {
+            server.DropClient();
+            Id = 0;
+        }
+
+        public void Update() => inbound.Drain(Deliver);
+
+        public void Send(Message message)
+        {
+            outbound.Send(message);
+            message.Release();
+        }
+
+        public void Dispose() => Disconnect();
+
+        private void Deliver(ushort id, MessageSendMode mode, byte[] payload)
+        {
+            Message message = Message.CreateForRead(mode, id, payload);
+            try
+            {
+                MessageReceived?.Invoke(this, new NetMessageReceivedEventArgs(0, id, message));
+            }
+            finally
+            {
+                message.Release();
+            }
+        }
+    }
+}

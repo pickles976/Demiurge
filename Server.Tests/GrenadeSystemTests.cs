@@ -1,6 +1,6 @@
 using System.Numerics;
 using Demiurge.GameServer;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge.ServerTests;
 
@@ -35,7 +35,7 @@ public class GrenadeSystemTests
     [Fact]
     public void GrenadeStackCyclesForOneAndAHalfSecondsBetweenThrows()
     {
-        var server = new Server();
+        var server = new NullNetServer();
         var terrain = new ChunkMap();
         var objects = new ObjectReplication(server);
         var items = new ItemSystem(objects);
@@ -81,7 +81,7 @@ public class GrenadeSystemTests
     [Fact]
     public void FuseStartsAtReleaseAndDetonatesEvenWithoutTerrainContact()
     {
-        var server = new Server();
+        var server = new NullNetServer();
         var terrain = new ChunkMap();
         var objects = new ObjectReplication(server);
         var items = new ItemSystem(objects);

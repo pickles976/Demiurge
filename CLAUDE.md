@@ -79,11 +79,27 @@ bandwidth the CPU and GPU **share**, at 15–25 W sustained. Three consequences:
   DDR4. This is why the `TerrainCollision` fetch pattern below matters more here than it would on a
   discrete-GPU box.
 
-The binding case is **singleplayer**, where `ServerHost` is stepped from the client's `Update()`
-(see the Riptide pooling note under Netcode for why it cannot have its own thread). The server tick
-therefore shares the client's 16.6 ms frame budget rather than having 33 ms to itself. Design
-against that number; a dedicated server having the whole machine is the easy case and never the one
-that breaks.
+**Singleplayer's server runs on its own thread** (`ServerHost.StartOnOwnThread`), so the server tick
+no longer shares the client's 16.6 ms frame budget. It used to, and the cost was not subtle: a
+measured frame spent **214 ms of 216 ms** blocked inside `ServerHost.Step()` — up to
+`MaxCatchUpTicks` ticks inline — while the client's own net, drain, and terrain work came to 2 ms.
+That is 5 fps caused entirely by who owned the thread.
+
+Both targets are currently met on the conquest scenario: **53–117 fps and 30–31 TPS**, with the tick
+at 12–25 ms inside its 33 ms budget.
+
+Threading also made the tick itself cheaper — `actors` 50 ms to 10–21 ms on identical code — because
+the main thread had been running four catch-up ticks inline while eight path workers and the renderer
+fought for the same cores and the same DDR4 the iGPU uses. **A measurement taken while the machine is
+thrashing attributes cost to whoever holds the thread, not to whatever is expensive.** Fix the
+contention before believing a profile.
+
+This means **singleplayer is no longer the combined-budget stress case** it used to be, and that makes
+the targets *harder* to monitor rather than easier. The two budgets are now independent: the client
+owes 16.6 ms per frame, the server owes 33 ms per tick. A server tick over budget no longer announces
+itself as a frame drop — it shows up as `[ServerTick] total` exceeding 33 and the tick count settling
+below 30, which is quieter and easy to miss. Read `frame:` and `server tick:` together; neither alone
+tells you whether the machine is keeping up.
 
 The consequence that actually shapes code: **nothing expensive runs every tick for every entity.**
 Per-entity per-tick work is scheduled, amortized across ticks, shared between entities, or made
@@ -99,6 +115,51 @@ AI equally.
 
 Measure before optimizing, and measure again after. Per-system tick timing belongs in the developer
 terminal, not in a one-off harness.
+
+## Design method: complete systems, not special cases
+
+**Prefer a system whose completeness produces the behavior as a side effect, over a branch that
+produces the behavior directly.** The navigation rewrite is the worked example and the reason this
+section exists. A run of NPC movement bugs was each fixed by another terrain-shape classifier —
+highest ground within N metres, a fixed escape direction, a pre-follower ramp branch — and every fix
+satisfied one scenario while breaking a neighbouring one, because no two of those classifiers could
+be compared against each other. Adopting Baritone's contract deleted all of them at once, and the
+scenarios they had been patching passed without anyone writing code aimed at them.
+
+**The part that generalizes is the common currency, not the search.** A* was the cheap half. What
+made it work is that walking, jumping, falling, and excavation are all priced in *estimated execution
+seconds*, so "route through the exit", "cross the bridge", and "cut a staircase" stop being behaviors
+anybody implements and become whichever number was smaller. A complete search over incommensurable
+costs generalizes nothing. When reaching for this method, the design work is finding the unit the
+alternatives can be honestly priced in — the algorithm that then compares them is usually off the
+shelf.
+
+It shapes tests too: assert a **property of the model** ("crossed without excavation when the bridge
+is cheaper", "stone never produces a dig route"), not a trace through an implementation. A test
+written against a heuristic encodes that heuristic's special cases and then obstructs the general
+system that would have replaced it. The stage-4 list in `docs/BARITONE.md` is written this way
+deliberately.
+
+Two limits, because the method has its own failure mode:
+
+- **Generality cannot be bought with compute here.** Sutton's bitter lesson bets on search and
+  learning scaling as compute gets cheaper; the SER5 and the 16.6 ms singleplayer frame mean we do
+  not get that bet. Generality has to come from the model being right, not from being allowed to
+  think longer — which is why `docs/BARITONE.md` is full of node ceilings and p95 gates. A general
+  system that wins by starving the tick is not a win.
+- **A complete search over the wrong state space is worse than a pile of heuristics**, because it
+  generalizes confidently in the wrong direction and leaves no single branch to point at. Baritone
+  had already done the modelling for us; the next problem will not arrive with that done. Derive the
+  state space and the cost unit *before* writing the search.
+
+And it was not free. That execution record ends in roughly eight corrections, and the goal-rise gate
+in particular is a special case bolted to the side of the search. That is the expected shape — the
+method moves the residue from "more branches" to "annealing a cost model" — but filing it as a clean
+sweep would set up the next adoption to be a surprise.
+
+Unclaimed today: per-unit AI arbitration still selects behavior from role and weapon type rather than
+pricing every available action in one currency. See the closing note under AI layers in
+`docs/ARCHITECTURE.md`.
 
 ## Architecture
 
@@ -224,11 +285,13 @@ Two Riptide facts that cost real debugging time:
   the example here; it now has its own ordered TCP stream — see below.)
 - **`Message` and `PendingMessage` pool into unsynchronised static `List<>`s** —
   `if (pool.Count > 0) { pool[0]; pool.RemoveAt(0); }` with no lock. Safe for one peer on one
-  thread; corrupts instantly with a server and a client creating messages concurrently. This is
-  why `ServerHost` is **stepped from the client's `Update()`** in singleplayer rather than given a
-  background thread. Symptoms were a truncated read on the far end ("N unread bits") and
-  `ArgumentOutOfRangeException` inside `RetrieveFromPool`. Do not "optimize" that back onto a
-  thread without patching Riptide.
+  thread; corrupts instantly with a server and a client creating messages concurrently. Symptoms were
+  a truncated read on the far end ("N unread bits") and `ArgumentOutOfRangeException` inside
+  `RetrieveFromPool`. **This is why singleplayer does not use Riptide at all.** It runs on
+  `Common/Net`'s in-process transport, whose queues are locked and whose `Message` pool is
+  `[ThreadStatic]`, which is what let `ServerHost` move onto its own thread. A remote client still
+  uses Riptide, but then the two peers are in separate processes and share no pool. Never put a
+  Riptide server and a Riptide client on separate threads of one process.
 - `NetworkManager.Dispatch` runs handlers **on the network thread** when
   `SimulatedLatencySeconds` is 0. Anything it writes that the main thread also reads needs
   marshalling — `TerrainState` queues and drains in `Update()` for this reason.

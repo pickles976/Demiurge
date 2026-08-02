@@ -36,10 +36,19 @@ runtime/editor ownership to `ClientSessionCoordinator`.
 - Normal singleplayer hosts the authored `conquest` source map, reserves a team-1 spawn for the
   player, and creates 16 NPCs per team around authored team spawn clusters.
 
-Singleplayer still uses the normal server, messages, registries, and replication paths. The embedded
-server is stepped from the client update thread because Riptide's static message pools are not
-thread-safe. Computational workers may run in parallel, but they must return plain data to the main
-thread; they may not create Riptide messages or mutate authoritative gameplay state.
+Singleplayer still uses the normal server, messages, registries, and replication paths, but it does
+not use Riptide: it runs on the in-process transport in `Common/Net`, and the embedded server has its
+own thread (`ServerHost.StartOnOwnThread`). The client no longer steps it.
+
+Riptide's static message pools remain thread-unsafe; the constraint did not go away, the singleplayer
+path stopped depending on it. Computational workers may still run in parallel and must still return
+plain data — they may not mutate authoritative gameplay state, and they may not create messages on
+the Riptide path.
+
+The in-process transport is deliberately hostile: it drops, duplicates and reorders traffic within
+the bounds a real network could produce, so singleplayer exercises delivery assumptions that a
+loopback socket never would. See
+[the transport parity spec](superpowers/specs/2026-08-02-transport-parity-design.md).
 
 ## Authority and data flow
 
@@ -102,6 +111,19 @@ CommanderAi (team, 1 Hz)
 - Accepted enemy gunshots within 60 m create investigation goals. A projectile passing within 2 m
   creates a two-second incoming-fire stimulus at the firing position, prompting cover selection or
   emergency dirt digging without continuously tracking the live shooter.
+
+Per-unit arbitration is the least general layer in this stack, and knowingly so. A weapon's tactical
+character is currently expressed as branches on its identity — `CombatBehavior.MaxEngagementRangeFor`
+and `PrefersToHoldFire` test `ItemType.Sks` and `ItemType.Ppsh` directly, and `MobSystem` does the
+same for sprint and engagement decisions — so each weapon's behavior has to be written rather than
+derived, and no two candidate actions can be ranked against each other. The generalized form prices
+every available action (advance, suppress, entrench, bound, grenade, relocate) in one currency, so
+"the PPSH man closes and the SKS man digs in" falls out of weapon parameters the way route choice
+falls out of movement seconds. See the design-method section in [../CLAUDE.md](../CLAUDE.md).
+
+Deliberately not built yet, because the currency is the open question: seconds worked for movement
+because execution time is a movement's honest cost, and combat has no equally obvious equivalent.
+Picking that unit is the design work, not the arbitration code around it.
 
 ## Navigation boundary
 

@@ -3,10 +3,12 @@
 Start with:
 
 - [README](../README.md): build, launch, editor workflow, project layout
-- [CLAUDE](../CLAUDE.md): architecture invariants, performance targets, and implementation guidance
+- [CLAUDE](../CLAUDE.md): architecture invariants, performance targets, design method, and
+  implementation guidance
 - [Architecture](ARCHITECTURE.md): runtime boundaries, authority, AI layers, and threading
 - [NPC navigation](NAVIGATION.md): traversal, path workers, reuse, recovery, and diagnostics
-- [Time-costed pathfinding](BARITONE.md): A* traversal design, performance budgets, and rollout plan
+- [Time-costed pathfinding](BARITONE.md): A* traversal design, performance budgets, rollout plan, and
+  the retrospective on why a single cost currency generalized where heuristics did not
 - [Recipes](RECIPES.md): append-only checklists for extending gameplay and replication
 - [Editor](EDITOR.md): source/runtime map formats and editor lifecycle
 - [Commands](COMMANDS.md): developer, server, map, and editor commands

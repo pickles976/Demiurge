@@ -1,5 +1,5 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 using Stride.Core.Diagnostics;
 
 namespace Demiurge.GameClient
@@ -13,7 +13,7 @@ namespace Demiurge.GameClient
 
 
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
-        private readonly Client client = new();
+        private readonly INetClient client;
         private readonly string host;
 
         /// The id of this client that was assigned by the server during this session
@@ -45,9 +45,14 @@ namespace Demiurge.GameClient
 
         private uint nextCommandRequestId;
 
-        public NetworkManager(string? host = null)
+        /// <param name="transport">
+        /// Null means real UDP via Riptide. Singleplayer passes the client end of an
+        /// <see cref="InProcessNetwork"/> pair, whose server end goes to <c>ServerOptions.Transport</c>.
+        /// </param>
+        public NetworkManager(string? host = null, INetClient? transport = null)
         {
             this.host = host ?? NetworkConfig.ServerHost;
+            client = transport ?? new RiptideNetClient();
         }
 
         private void Dispatch(Action deliver)
@@ -65,7 +70,7 @@ namespace Demiurge.GameClient
         {
             client.MessageReceived += OnMessageReceived;
             client.Connected += (_, _) => Log.Info("Connected to server");
-            client.Connect($"{host}:{NetworkConfig.Port}", useMessageHandlers: false);
+            client.Connect($"{host}:{NetworkConfig.Port}");
         }
 
         public void Dispose()
@@ -131,9 +136,9 @@ namespace Demiurge.GameClient
         }
 
 
-        private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
+        private void OnMessageReceived(object? sender, NetMessageReceivedEventArgs e)
         {
-            // Decode NOW (Riptide reuses the Message after this returns), deliver
+            // Decode NOW (the transport reuses the Message after this returns), deliver
             // through Dispatch — immediately, or late when fake latency is on.
             switch ((ServerToClientId)e.MessageId)
             {

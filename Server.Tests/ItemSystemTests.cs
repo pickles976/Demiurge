@@ -1,6 +1,6 @@
 using System.Numerics;
 using Demiurge.GameServer;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge.ServerTests;
 
@@ -9,7 +9,7 @@ public class ItemSystemTests
     [Fact]
     public void AdministrativeEquipDespawnsReplacedItem()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
         var actor = new ServerPlayer { Id = 60000 };
 
@@ -27,7 +27,7 @@ public class ItemSystemTests
     [Fact]
     public void PickupGetsTraitsFromCatalogType()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
 
         var pickup = items.SpawnPickup(ItemType.BodyArmor, new Vector3(1, 2, 3));
@@ -43,7 +43,7 @@ public class ItemSystemTests
     [Fact]
     public void HotbarGrenadeStackStartsWithFour()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
         var actor = new ServerPlayer { Id = 7 };
         var grenade = items.SpawnHotbar(actor, ItemType.Grenade, HotbarSlot.Grenade);
@@ -57,7 +57,7 @@ public class ItemSystemTests
     [Fact]
     public void InfantryLoadoutStartsWithDefaultRifleShovelAndFourGrenades()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
         var npc = new ServerPlayer { Id = 60000, IsMob = true };
 
@@ -88,7 +88,7 @@ public class ItemSystemTests
     [Fact]
     public void PlayerLoadoutStartsWithPpsh()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
         var player = new ServerPlayer { Id = 7 };
 
@@ -102,7 +102,7 @@ public class ItemSystemTests
     [Fact]
     public void RespawnRefillsEquippedPrimaryAndRecreatesConsumedGrenades()
     {
-        var objects = new ObjectReplication(new Server());
+        var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
         var actor = new ServerPlayer { Id = 7 };
         items.SpawnInfantryLoadout(actor);

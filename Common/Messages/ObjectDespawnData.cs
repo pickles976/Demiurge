@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge
 {

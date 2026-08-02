@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using Demiurge.GameServer;
-using Riptide;
+using Demiurge.Net;
 using Xunit.Abstractions;
 
 namespace Demiurge.ServerTests;
@@ -24,7 +24,7 @@ public sealed class MobDigEscapeIntegrationTests(ITestOutputHelper output)
         Vector3 bottom = SurfaceQuery.SurfacePosition(terrain, 0.5f, 0.5f);
         Assert.True(bottom.Y < Ground - 2f, $"test pit was only {Ground - bottom.Y:0.00} m deep");
 
-        var server = new Server();
+        var server = new NullNetServer();
         var objects = new ObjectReplication(server);
         var items = new ItemSystem(objects);
         var terrainEdits = new TerrainSystem(server, terrain);
