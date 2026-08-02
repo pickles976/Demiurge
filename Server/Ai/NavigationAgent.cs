@@ -20,12 +20,8 @@ internal sealed class NavigationAgent
 
     private PendingRequest? pending;
     private long? blockedCellKey;
-    private int blockedReplansRemaining;
     private NavCell? digSite;
     private uint digSiteTick;
-    private (int X, int Z)? escapeDirection;
-    private float escapeGrade;
-    private Vector2? escapeTread;
 
     public PathFollower Path { get; } = new();
     public NavigationProgressWatch Progress { get; } = new();
@@ -42,6 +38,8 @@ internal sealed class NavigationAgent
 
     public bool HasPending(bool forCover)
         => pending is { } request && request.ForCover == forCover;
+
+    public bool HasAnyPending => pending is not null;
 
     public void RecordRequest(long requestId, bool forCover)
         => pending = new PendingRequest(requestId, forCover);
@@ -88,63 +86,19 @@ internal sealed class NavigationAgent
 
     public void ForgetDigSite() => digSite = null;
 
-    public bool TryGetEscape(out int dx, out int dz, out float grade)
-    {
-        if (escapeDirection is not { } direction)
-        {
-            dx = dz = 0;
-            grade = 0f;
-            return false;
-        }
-        dx = direction.X;
-        dz = direction.Z;
-        grade = escapeGrade;
-        return true;
-    }
-
-    public void StartEscape(int dx, int dz, float grade)
-    {
-        escapeDirection = (dx, dz);
-        escapeGrade = grade;
-        Path.Clear();
-    }
-
-    public void SetEscapeTread(NavCell? cell)
-        => escapeTread = cell is { } tread ? tread.CentreXZ : null;
-
-    public bool TryGetEscapeTread(out Vector2 tread)
-    {
-        tread = escapeTread.GetValueOrDefault();
-        return escapeTread.HasValue;
-    }
-
-    public void StopEscape()
-    {
-        escapeDirection = null;
-        escapeGrade = 0f;
-        escapeTread = null;
-    }
-
     public void ResetBlocked()
     {
         blockedCellKey = null;
-        blockedReplansRemaining = 0;
     }
 
     public void RememberBlocked(NavCell? blockedCell)
     {
         if (blockedCell is not { } cell) return;
         blockedCellKey = cell.Key;
-        blockedReplansRemaining = 3;
     }
 
     public long? TakeAvoidedCell()
-    {
-        if (blockedCellKey is not { } key || blockedReplansRemaining <= 0)
-            return null;
-        blockedReplansRemaining--;
-        return key;
-    }
+        => blockedCellKey;
 
     public void Clear()
     {
@@ -153,7 +107,6 @@ internal sealed class NavigationAgent
         pending = null;
         ResetBlocked();
         ForgetDigSite();
-        StopEscape();
         Destination = default;
         HasDestination = false;
     }

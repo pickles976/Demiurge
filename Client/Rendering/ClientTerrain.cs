@@ -240,13 +240,37 @@ namespace Demiurge
             var anchor = ChunkTransforms.ChunkAt(playerPosition);
             if (lodAnchor is { } previous && previous.Equals(anchor)) return;
 
+            long refreshStart = Stopwatch.GetTimestamp();
+
             lodAnchor = anchor;
             TerrainLod.CollectDesired(playerPosition, desired);
 
-            // Ask for anything newly wanted. Already-live boxes are skipped, so crossing a boundary only
-            // costs the ring that actually changed level.
+            // Forget boxes the player has walked away from. Two things depend on this, and the second
+            // is the reason it happens HERE rather than opportunistically:
+            //
+            //  - it bounds the set, which otherwise accumulates every box ever meshed and so grows with
+            //    distance walked rather than with view distance;
+            //  - it makes "resolved" mean "meshed while continuously wanted", which is exactly the
+            //    condition under which an edit is guaranteed to have been marked dirty. EnqueueDirty
+            //    drops marks for boxes that are not currently desired, so a box that left the set and
+            //    came back may have missed one — dropping it on the way out forces a re-mesh on the way
+            //    back in, instead of trusting a mesh that predates the dig.
+            resolved.IntersectWith(desired);
+
+            // Ask for anything newly wanted. Already-settled boxes are skipped, so crossing a boundary
+            // only costs the ring that actually changed level.
+            //
+            // The test is RESOLVED, not `entities`, and the difference is the whole cost of walking.
+            // Most desired boxes are open air and mesh to nothing, so they never produce an entity —
+            // measured at roughly 3,000 of 4,000. Asking "do I have geometry for this?" therefore
+            // answers "no" for all of them at every single chunk boundary, and re-queues the empty
+            // three quarters of the world every 16 metres walked: 2,800 sections re-meshed per
+            // crossing, eight workers pinned, thousands of empty results drained on the main thread,
+            // and the urgent dig lane starved behind all of it. `resolved` is the set that already
+            // records "this box has been meshed, whatever the answer was" — see its own comment, which
+            // makes precisely this point about the retirement path.
             foreach (var wanted in desired)
-                if (!entities.ContainsKey(wanted) && !inFlight.Contains(wanted)) EnqueueDirty(wanted);
+                if (!resolved.Contains(wanted) && !inFlight.Contains(wanted)) EnqueueDirty(wanted);
 
             // Mark what is now at the wrong level, but do NOT detach it yet — record which desired boxes
             // have to arrive first. Retiring immediately is what opened a hole at every LOD transition.
@@ -261,6 +285,8 @@ namespace Demiurge
 
                 superseded.Add((live, replacements));
             }
+
+            stats.LodRefresh(Stopwatch.GetTimestamp() - refreshStart);
         }
 
         void Dispatch()
@@ -361,7 +387,8 @@ namespace Demiurge
                 dirtyQueue.Count,
                 inFlight.Count,
                 urgentQueue.Count,
-                urgentQueue.Count > 0 && inFlight.Count >= MaxInFlight);
+                urgentQueue.Count > 0 && inFlight.Count >= MaxInFlight,
+                new Residency(entities.Count, desired.Count, superseded.Count, resolved.Count));
             return applied;
         }
 
@@ -486,6 +513,15 @@ namespace Demiurge
         Diagnostics stats;
 
         /// <summary>
+        /// What the LOD bookkeeping is currently holding. Reported because the counts that matter are
+        /// the ones that should be BOUNDED by how far you can see, not by how far you have walked: live
+        /// entities, boxes waiting to be retired, and the resolved set. A number here that only ever
+        /// climbs is a leak, and a leak here costs a scene entity, a draw, and a share of a GPU buffer
+        /// that cannot be freed until the last section using it is detached.
+        /// </summary>
+        readonly record struct Residency(int Entities, int Desired, int Superseded, int Resolved);
+
+        /// <summary>
         /// Where terrain load time actually goes. Kept in the build rather than bolted on when needed:
         /// this pipeline has had its bottleneck mis-identified three times by reasoning about it, and
         /// every one of those would have been settled in a minute by these six numbers.
@@ -534,7 +570,22 @@ namespace Demiurge
                 editWorstTicks = Math.Max(editWorstTicks, waitTicks + workTicks);
             }
 
-            public void EndFrame(int dirtyDepth, int inFlightCount, int urgentDepth, bool urgentStarved)
+            // Chunk-boundary LOD reconciliation, which is the one part of this pipeline whose cost is
+            // superlinear in what it is holding: it walks live entities against the superseded list and
+            // the desired set. A hitch that grows as you walk shows up here first.
+            int lodRefreshes;
+            long lodRefreshTicks;
+            long lodRefreshWorstTicks;
+
+            public void LodRefresh(long ticks)
+            {
+                lodRefreshes++;
+                lodRefreshTicks += ticks;
+                lodRefreshWorstTicks = Math.Max(lodRefreshWorstTicks, ticks);
+            }
+
+            public void EndFrame(
+                int dirtyDepth, int inFlightCount, int urgentDepth, bool urgentStarved, Residency residency)
             {
                 frames++;
                 if (urgentStarved) urgentBlocked++;
@@ -545,11 +596,21 @@ namespace Demiurge
                 double elapsed = (now - windowStart) / (double)Stopwatch.Frequency;
                 if (elapsed < 1.0) return;
 
+                double Ms(long t) => t * 1000.0 / Stopwatch.Frequency;
+
+                // Residency is reported even when the pipeline is idle, because the failure it exists to
+                // catch — counts that grow with distance walked rather than with view distance — is
+                // invisible in a quiet window by definition.
+                if (residency.Superseded > 0 || lodRefreshes > 0 || dirtyDepth > 0 || inFlightCount > 0)
+                    Log.Info(
+                        $"terrain lod: live {residency.Entities} | desired {residency.Desired} "
+                      + $"| awaiting retire {residency.Superseded} | resolved {residency.Resolved} "
+                      + $"| refresh {lodRefreshes}x avg {Ms(lodRefreshTicks) / Math.Max(lodRefreshes, 1):F2} ms "
+                      + $"worst {Ms(lodRefreshWorstTicks):F2} ms");
+
                 // Nothing outstanding: stay quiet rather than logging zeroes forever.
                 if (uploads + empties > 0 || dirtyDepth > 0 || inFlightCount > 0)
                 {
-                    double Ms(long t) => t * 1000.0 / Stopwatch.Frequency;
-
                     Log.Info(
                         $"terrain: {frames} frames | {uploads} sections in {batches} batches "
                       + $"@ {Ms(uploadTicks) / Math.Max(batches, 1):F2} ms/batch "
@@ -572,6 +633,8 @@ namespace Demiurge
                 editSections = 0;
                 editWaitTicks = editWorkTicks = editWorstTicks = 0;
                 uploadTicks = emptyTicks = gpuTicks = 0;
+                lodRefreshes = 0;
+                lodRefreshTicks = lodRefreshWorstTicks = 0;
             }
         }
 

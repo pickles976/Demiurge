@@ -137,16 +137,19 @@ namespace Demiurge
 
         private void PlayReload(Player player)
         {
-            if (ReloadSoundFor(player) is not { } path) return;
+            if (ReloadSoundFor(player) is not { } reload) return;
 
             // Your own reload is not a thing happening somewhere in the world, it is a thing
             // happening in your hands — so it plays flat rather than positioned, and stays audible
             // however muffled the world has become.
             if (player is LocalPlayer)
-                sound.PlayOneShot(path);
+                sound.PlayOneShot(reload.Path, reload.Volume);
             else
                 sound.PlayOneShotSpatial(
-                    path, Digging.Eye(player.Position).ToStride(), falloff: SoundFalloff.Reload);
+                    reload.Path,
+                    Digging.Eye(player.Position).ToStride(),
+                    reload.Volume,
+                    SoundFalloff.Reload);
         }
 
         /// <summary>
@@ -154,10 +157,10 @@ namespace Demiurge
         /// weapon directly; for anyone else it has to be looked up from the replicated items, which
         /// is a scan — affordable because it runs once per reload, not once per frame.
         /// </summary>
-        private string? ReloadSoundFor(Player player)
+        private (string Path, float Volume)? ReloadSoundFor(Player player)
         {
             if (player is LocalPlayer local)
-                return local.Weapon is { } weapon ? WeaponFx.Get(weapon.Item.Type).ReloadSoundPath : null;
+                return local.Weapon is { } weapon ? Reload(WeaponFx.Get(weapon.Item.Type)) : null;
 
             foreach (var obj in Objects.Objects)
             {
@@ -167,10 +170,13 @@ namespace Demiurge
                 if (HotbarConfig.TryFromStorageSlot(obj.Attachment.Slot, out var slot)
                     && player.Hotbar != slot)
                     continue;
-                return WeaponFx.Get(obj.Item.Type).ReloadSoundPath;
+                return Reload(WeaponFx.Get(obj.Item.Type));
             }
 
             return null;
+
+            static (string, float)? Reload(in WeaponFx.Entry fx)
+                => fx.ReloadSoundPath is { } path ? (path, fx.ReloadVolume) : null;
         }
 
         private void OnRegionEdited(System.Numerics.Vector3 min, System.Numerics.Vector3 max)

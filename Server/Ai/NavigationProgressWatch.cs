@@ -54,6 +54,12 @@ internal sealed class NavigationProgressWatch
         sinceTick = 0;
     }
 
+    public bool HasStalledFor(Vector3 position, uint tick, uint minimumTicks)
+        => active
+           && tick >= sinceTick
+           && tick - sinceTick >= minimumTicks
+           && HorizontalDistanceSquared(position, anchor) < MeaningfulDistanceSquared;
+
     private static float HorizontalDistanceSquared(Vector3 a, Vector3 b)
     {
         float dx = a.X - b.X;

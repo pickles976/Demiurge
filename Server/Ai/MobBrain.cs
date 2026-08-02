@@ -33,6 +33,10 @@ internal sealed class MobBrain
     /// </summary>
     public bool IsSet => AtCover;
     public uint ObjectiveRevision { get; set; }
+    /// <summary>True only after this actor's own path reaches its formation slot. Proximity to the
+    /// shared flag is insufficient: a relocated flank member can respawn inside the capture radius
+    /// while still being many metres from its assigned slot.</summary>
+    public bool ObjectiveReached { get; set; }
     public NavigationAgent Navigation { get; } = new();
     public ContactMemory Contacts { get; } = new();
     public int PerceptionCursor { get; set; }
@@ -63,6 +67,14 @@ internal sealed class MobBrain
     public long CoverTerrainVersion { get; set; }
     public uint NextCoverQueryTick { get; set; }
     public uint CoverArrivedTick { get; set; }
+    public bool Entrenching { get; private set; }
+    public bool Entrenched { get; set; }
+    /// <summary>Persists after leaving the first fighting position so an assault unit does not
+    /// mistake every subsequent bound for its initial entrenchment requirement.</summary>
+    public bool HasCompletedInitialEntrenchment { get; private set; }
+    public Vector3 EntrenchOrigin { get; private set; }
+    public Vector3 EntrenchToward { get; private set; }
+    public float EntrenchGrade { get; private set; }
     public ushort HeardActorId { get; set; }
     public Vector3 HeardPosition { get; set; }
     public uint HeardTick { get; set; }
@@ -102,7 +114,36 @@ internal sealed class MobBrain
         CoverThreatPosition = default;
         CoverTerrainVersion = 0;
         CoverArrivedTick = 0;
+        ClearEntrenchment();
         Navigation.Path.Clear();
+    }
+
+    public void BeginEntrenchment(Vector3 origin, Vector3 toward, float grade)
+    {
+        Entrenching = true;
+        Entrenched = false;
+        EntrenchOrigin = origin;
+        EntrenchToward = toward;
+        EntrenchGrade = grade;
+    }
+
+    public void CompleteEntrenchment()
+    {
+        Entrenching = false;
+        Entrenched = true;
+        HasCompletedInitialEntrenchment = true;
+    }
+
+    public void ResetEntrenchmentHistory()
+        => HasCompletedInitialEntrenchment = false;
+
+    public void ClearEntrenchment()
+    {
+        Entrenching = false;
+        Entrenched = false;
+        EntrenchOrigin = default;
+        EntrenchToward = default;
+        EntrenchGrade = 0f;
     }
 
     public bool HasRecentGunshot(uint tick)

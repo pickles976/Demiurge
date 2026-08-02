@@ -41,12 +41,15 @@ public class CombatBehaviorTests
 
         Assert.True(close > medium);
         Assert.True(medium > far);
+        Assert.Equal(720f, close);
+        Assert.Equal(180f, far);
         Assert.Equal(far, CombatBehavior.AimMoaForRange(200f));
     }
 
     [Theory]
-    [InlineData(ItemType.Ppsh, 55f, true)]
-    [InlineData(ItemType.Ppsh, 50f, false)]
+    [InlineData(ItemType.Ppsh, 76f, true)]
+    [InlineData(ItemType.Ppsh, 75f, false)]
+    [InlineData(ItemType.Ppsh, 55f, false)]
     [InlineData(ItemType.Ppsh, 40f, false)]
     [InlineData(ItemType.Ppsh, 20f, false)]
     [InlineData(ItemType.Sks, 40f, false)]
@@ -58,7 +61,7 @@ public class CombatBehaviorTests
 
     [Theory]
     [InlineData(ItemType.Sks, 100f)]
-    [InlineData(ItemType.Ppsh, 70f)]
+    [InlineData(ItemType.Ppsh, 75f)]
     [InlineData(ItemType.Ak47, 70f)]
     public void EngagementCeilingIsWeaponSpecific(ItemType weapon, float expected)
         => Assert.Equal(expected, CombatBehavior.MaxEngagementRangeFor(weapon));

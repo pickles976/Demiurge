@@ -284,6 +284,37 @@ public class PathFollowerTests
     }
 
     [Fact]
+    public void StalledOneMetreStaircaseTreadJumpsBeforeDiscardingThePath()
+    {
+        var follower = new PathFollower();
+        follower.SetPath(
+            new NavPath(
+                [
+                    new NavWaypoint(new NavCell(0, 12, 0), Vector3.Zero),
+                    new NavWaypoint(
+                        new NavCell(1, 13, 0),
+                        new Vector3(1f, 1f, 0f)),
+                ],
+                ReachedGoal: true,
+                Cost: 1f,
+                ExpandedNodes: 2),
+            version: 2);
+
+        bool jumped = false;
+        for (int tick = 0; tick < NetworkConfig.TickRate && !jumped; tick++)
+            _ = follower.Update(
+                Vector3.Zero,
+                grounded: true,
+                currentTerrainVersion: 2,
+                out _,
+                out jumped,
+                out _,
+                out _);
+
+        Assert.True(jumped);
+    }
+
+    [Fact]
     public void StalledLevelWalkReplansWithoutJumping()
     {
         var follower = new PathFollower();
@@ -387,5 +418,36 @@ public class PathFollowerTests
                 out _));
         Assert.True(intent.X > 0.99f);
         Assert.True(follower.ShouldRefreshPath);
+    }
+
+    [Fact]
+    public void ReplacementPathDoesNotSkipAnUnreachedBridgeEntrance()
+    {
+        var follower = new PathFollower();
+        follower.SetPath(
+            new NavPath(
+                [
+                    new NavWaypoint(new NavCell(-2, 12, 0), new Vector3(-2f, 12f, 0f)),
+                    new NavWaypoint(new NavCell(0, 12, 0), new Vector3(0f, 12f, 0f)),
+                    new NavWaypoint(new NavCell(0, 12, 1), new Vector3(0f, 12f, 1f)),
+                ],
+                ReachedGoal: false,
+                Cost: 1f,
+                ExpandedNodes: 3),
+            version: 3,
+            currentPosition: new Vector3(-0.6f, 12f, 0f));
+
+        Assert.Equal(
+            PathFollowState.Following,
+            follower.Update(
+                new Vector3(-0.6f, 12f, 0f),
+                grounded: true,
+                currentTerrainVersion: 3,
+                out var intent,
+                out _,
+                out _,
+                out _));
+        Assert.True(intent.X > 0.99f);
+        Assert.InRange(MathF.Abs(intent.Z), 0f, 0.01f);
     }
 }

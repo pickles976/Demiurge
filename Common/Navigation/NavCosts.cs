@@ -14,11 +14,12 @@ public static class NavCosts
     /// modest detour.
     /// </summary>
     public const float DigPenaltyMultiplier = 4f;
-    public const float DigOneVoxel =
+    public const float DigExecutionSeconds =
         Digging.ClicksPerVoxel
         * Digging.TicksPerDig
-        / (float)NetworkConfig.TickRate
-        * DigPenaltyMultiplier;
+        / (float)NetworkConfig.TickRate;
+    public const float DigOneVoxel = DigExecutionSeconds * DigPenaltyMultiplier;
+    public const float DigTunnelPenalty = DigExecutionSeconds;
 
     public static float Fall(float height)
         => height <= 0f ? 0f : MathF.Sqrt(2f * height / PlayerMovement.Gravity);

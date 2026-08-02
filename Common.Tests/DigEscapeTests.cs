@@ -48,6 +48,23 @@ public class DigEscapeTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void PitFrontierProducesADigPlanWithinTheDefaultBudget()
+    {
+        var map = Pit();
+        Assert.True(
+            NavTraversal.TryFindStandable(map, 5, 0, (int)PitFloor, 4, 4, out var at, out _));
+        var target = CellAt(map, 20, 0);
+
+        var path = NavSearch.Find(
+            map,
+            at,
+            new GoalNear(target, 1.5f),
+            NavSearchOptions.Default with { AllowDig = true, AllowJump = true });
+
+        Assert.Contains(path.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+    }
+
+    [Fact]
     public void ActorAtTheBottomOfAPitDigsItsWayOut()
     {
         var map = Pit();

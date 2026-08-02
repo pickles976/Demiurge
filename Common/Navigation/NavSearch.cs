@@ -40,12 +40,14 @@ public sealed class NavTraversalCache
     internal readonly record struct StandableResult(bool Found, NavCell Cell);
     internal readonly record struct CostResult(bool Found, float Cost);
     internal readonly record struct JumpResult(bool Found, NavCell Landing, float Cost);
+    internal readonly record struct DigResult(bool Found, Vector3 Target, float Cost);
 
     private readonly object generationGate = new();
     private readonly ConcurrentDictionary<(int X, int Z, int AroundY), StandableResult>
         standable = [];
     private readonly ConcurrentDictionary<(long From, long To), CostResult> steps = [];
     private readonly ConcurrentDictionary<(long From, int Dx, int Dz), JumpResult> jumps = [];
+    private readonly ConcurrentDictionary<(long From, int Dx, int Dz), DigResult> digs = [];
     private readonly ConcurrentDictionary<(long From, long To), bool> walkEdges = [];
     private long generation = long.MinValue;
 
@@ -59,6 +61,7 @@ public sealed class NavTraversalCache
             standable.Clear();
             steps.Clear();
             jumps.Clear();
+            digs.Clear();
             walkEdges.Clear();
             Volatile.Write(ref generation, terrainVersion);
             return terrainVersion;
@@ -122,6 +125,25 @@ public sealed class NavTraversalCache
             jumps.TryAdd(key, result);
     }
 
+    internal bool TryGetDig(
+        long expectedGeneration,
+        (long From, int Dx, int Dz) key,
+        out DigResult result)
+    {
+        result = default;
+        return Volatile.Read(ref generation) == expectedGeneration
+            && digs.TryGetValue(key, out result);
+    }
+
+    internal void StoreDig(
+        long expectedGeneration,
+        (long From, int Dx, int Dz) key,
+        DigResult result)
+    {
+        if (Volatile.Read(ref generation) == expectedGeneration)
+            digs.TryAdd(key, result);
+    }
+
     internal bool TryGetWalkEdge(
         long expectedGeneration,
         (long From, long To) key,
@@ -155,6 +177,7 @@ public static class NavSearch
         private readonly Dictionary<(int X, int Z, int AroundY), NavCell?> standable = [];
         private readonly Dictionary<(long From, long To), float?> steps = [];
         private readonly Dictionary<(long From, int Dx, int Dz), (NavCell Landing, float Cost)?> jumps = [];
+        private readonly Dictionary<(long From, int Dx, int Dz), (Vector3 Target, float Cost)?> digs = [];
         private readonly Dictionary<(long From, long To), bool> walkEdges = [];
 
         public TraversalCache(NavTraversalCache? shared, long sharedGeneration)
@@ -293,6 +316,43 @@ public static class NavSearch
             shared?.StoreWalkEdge(sharedGeneration, key, valid);
             return valid;
         }
+
+        public bool TryDig(
+            ChunkMap map,
+            NavCell from,
+            int dx,
+            int dz,
+            out Vector3 target,
+            out float cost)
+        {
+            var key = (from.Key, dx, dz);
+            if (digs.TryGetValue(key, out var cached))
+            {
+                Hits++;
+                target = cached?.Target ?? default;
+                cost = cached?.Cost ?? NavCosts.Inf;
+                return cached.HasValue;
+            }
+            if (shared is not null
+                && shared.TryGetDig(sharedGeneration, key, out var sharedResult))
+            {
+                Hits++;
+                digs[key] = sharedResult.Found
+                    ? (sharedResult.Target, sharedResult.Cost)
+                    : null;
+                target = sharedResult.Target;
+                cost = sharedResult.Cost;
+                return sharedResult.Found;
+            }
+
+            bool found = NavTraversal.TryDig(map, from, dx, dz, out target, out cost);
+            digs[key] = found ? (target, cost) : null;
+            shared?.StoreDig(
+                sharedGeneration,
+                key,
+                new NavTraversalCache.DigResult(found, target, cost));
+            return found;
+        }
     }
 
     private sealed class Node
@@ -313,6 +373,19 @@ public static class NavSearch
         float Cost,
         float Score);
 
+    private readonly record struct DigFrontier(
+        Node From,
+        NavCell BlockedCell,
+        int Dx,
+        int Dz,
+        float LowerScore,
+        bool VerticalRecovery);
+
+    // Geometry probing is substantially dearer than recording a blocked edge. Resolve only the
+    // cheapest frontier candidates after ordinary expansion, with a hard per-search ceiling.
+    private const int MaximumDigProbes = 64;
+    private const float MinimumAirProgressBeforeFallback = 0.5f;
+
     private static readonly (int X, int Z)[] Directions =
     [
         (0, 1),
@@ -326,24 +399,13 @@ public static class NavSearch
     ];
 
     /// <summary>
-    /// Whether an air-only result justifies paying for a second, dig-allowed search. Exhausting the
-    /// reachable region without reaching the goal is the test, not distance covered: a bounded prefix
-    /// of a good long route is exactly what the budget is supposed to return and must not escalate,
-    /// while an actor pacing a trench floor it cannot climb out of covers ground while getting
-    /// nowhere and empties its open set doing it.
-    /// </summary>
-    public static bool NeedsDigEscalation(NavPath airOnly)
-        => !airOnly.ReachedGoal
-           && (airOnly.Waypoints.Count == 0 || airOnly.ExhaustedReachable);
-
-    /// <summary>
     /// How far from an established excavation a dig frontier still counts as the same site, and how
     /// many seconds of score continuing that site is worth. Without this an NPC took one or two bites
     /// and wandered off to start a fresh hole elsewhere: every bite changes the terrain, which
     /// invalidates the path and forces a fresh search whose best frontier is recomputed from scratch,
     /// so a marginally better cut somewhere else won each time and nothing ever got finished.
     /// </summary>
-    public const float DigSiteRadius = 1.1f;
+    public const float DigSiteRadius = 3f;
     public static readonly float DigSiteCommitmentSeconds = 2f * NavCosts.DigOneVoxel;
 
     public static NavPath Find(
@@ -377,8 +439,11 @@ public static class NavSearch
         open.EnqueueOrDecrease(start.Key, startNode.Heuristic);
 
         Node best = startNode;
+        Node furthest = startNode;
+        float furthestDistanceSquared = 0f;
         float startHeuristic = startNode.Heuristic;
-        DigCandidate? bestDig = null;
+        var digFrontiers = new PriorityQueue<DigFrontier, float>();
+        var seenDigFrontiers = new HashSet<(long From, int Dx, int Dz)>();
         int expanded = 0;
         long started = Stopwatch.GetTimestamp();
         long primaryTicks = BudgetTicks(options.PrimaryBudget);
@@ -397,6 +462,20 @@ public static class NavSearch
             expanded++;
 
             if (goal.IsInGoal(current.Cell))
+            {
+                // Dig probes are lazy macro edges: their score estimates the next locally useful
+                // clearance action, while execution commits only one authoritative shovel bite.
+                // A complete ordinary route therefore wins whenever it is cheaper in seconds.
+                var goalDig = ResolveBestDig(
+                    map,
+                    goal,
+                    preferredDigSite,
+                    traversal,
+                    digFrontiers,
+                    current.Cost);
+                if (goalDig is { } cheaperDig)
+                    return ReconstructDig(map, nodes, cheaperDig, expanded, traversal.Hits)
+                        with { ExhaustedReachable = false };
                 return Reconstruct(
                     map,
                     nodes,
@@ -404,15 +483,45 @@ public static class NavSearch
                     reachedGoal: true,
                     expanded,
                     traversal.Hits);
+            }
 
             if (current.Heuristic < best.Heuristic)
                 best = current;
+            float fromStartDistanceSquared = CellDistanceSquared(current.Cell, start);
+            if (fromStartDistanceSquared > furthestDistanceSquared
+                || fromStartDistanceSquared == furthestDistanceSquared
+                    && current.Heuristic < furthest.Heuristic)
+            {
+                furthest = current;
+                furthestDistanceSquared = fromStartDistanceSquared;
+            }
 
             if (expanded >= options.MaximumExpandedNodes)
             {
                 exhaustedReachable = false;
                 break;
             }
+
+            // After an authoritative bite, receding-horizon execution should finish the same local
+            // macro without spending the full failure budget rediscovering the entire reachable
+            // region. Site commitment is already represented in candidate cost; resolve it after a
+            // small local expansion, and only return when soil is still executable there.
+            if (preferredDigSite is not null
+                && (expanded & 3) == 0
+                && ResolveBestDig(
+                    map,
+                    goal,
+                    preferredDigSite,
+                    traversal,
+                    digFrontiers,
+                    NavCosts.Inf) is { } committedDig)
+                return ReconstructDig(
+                    map,
+                    nodes,
+                    committedDig,
+                    expanded,
+                    traversal.Hits)
+                    with { ExhaustedReachable = false };
 
             if ((expanded & 63) == 0)
             {
@@ -448,21 +557,53 @@ public static class NavSearch
                     traversal,
                     nodes,
                     open,
-                    ref bestDig);
+                    digFrontiers,
+                    seenDigFrontiers);
         }
 
-        // Reaching the goal already returned above, so getting here with digging enabled means walking
-        // cannot finish the route and the best bite is the answer. A dig deliberately does NOT compete
-        // on f: it is a single frontier bite, so it costs seconds while buying at most a metre of
-        // heuristic, and no cost comparison would ever choose one. Whether digging is on the table at
-        // all is decided one layer up by NeedsDigEscalation, which only escalates once an air-only
-        // pass has exhausted every cell ordinary movement can reach. Score still ranks bites against
-        // each other: cheapest to walk to, closest to the goal once cut.
+        // An exhausted ordinary region has no air route, so its best executable dig frontier wins.
+        // When the wall-clock/node budget produced a useful air prefix instead, compare the two in
+        // estimated execution seconds. This preserves bounded long-route progress and avoids the old
+        // unconditional second A* pass.
+        float bestAirScore = best.Cost + best.Heuristic;
+        bool usefulAirProgress =
+            (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
+                >= options.MinimumPartialDistance;
+        bool madeAirProgress =
+            (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
+                >= MinimumAirProgressBeforeFallback;
+        if (options.AllowDig)
+            RecordGoalDirectedDig(
+                goal,
+                best,
+                preferredDigSite,
+                digFrontiers,
+                seenDigFrontiers);
+        var bestDig = ResolveBestDig(
+            map,
+            goal,
+            preferredDigSite,
+            traversal,
+            digFrontiers,
+            // A live follower has already disproved the blocked idealized edge. An incomplete
+            // prefix toward that same edge is not a competing route; resolve an executable macro
+            // frontier now instead of returning the same stall forever.
+            exhaustedReachable || blockedCellKey is not null || !madeAirProgress
+                ? NavCosts.Inf
+                : bestAirScore);
         if (bestDig is { } dig)
             return ReconstructDig(map, nodes, dig, expanded, traversal.Hits)
                 with { ExhaustedReachable = exhaustedReachable };
 
-        return best.Cell == start
+        // A detour around a long obstacle can initially move no closer to the goal. If the bounded
+        // search found neither measurable heuristic improvement nor executable soil, return its
+        // furthest explored air prefix so the next search starts beyond this local minimum. The dig
+        // decision above prevents this fallback from turning a diggable trench floor into endless
+        // lateral pacing.
+        Node partialBest = !madeAirProgress && furthest.Cell != start
+            ? furthest
+            : best;
+        return partialBest.Cell == start
             ? NavPath.Failed(expanded) with
             {
                 CacheHits = traversal.Hits,
@@ -471,7 +612,7 @@ public static class NavSearch
             : Reconstruct(
                 map,
                 nodes,
-                best,
+                partialBest,
                 reachedGoal: false,
                 expanded,
                 traversal.Hits)
@@ -491,7 +632,8 @@ public static class NavSearch
         TraversalCache traversal,
         Dictionary<long, Node> nodes,
         NavHeap open,
-        ref DigCandidate? bestDig)
+        PriorityQueue<DigFrontier, float> digFrontiers,
+        HashSet<(long From, int Dx, int Dz)> seenDigFrontiers)
     {
         int x = current.Cell.X + dx;
         int z = current.Cell.Z + dz;
@@ -506,8 +648,20 @@ public static class NavSearch
 
         if (traversable)
         {
-            if (next.Key == blockedCellKey)
+            if (IsAvoided(next, blockedCellKey))
+            {
+                if (allowDig && (dx == 0 || dz == 0))
+                    RecordDigFrontier(
+                        goal,
+                        current,
+                        next,
+                        dx,
+                        dz,
+                        preferredDigSite,
+                        digFrontiers,
+                        seenDigFrontiers);
                 return;
+            }
             if (dx != 0 && dz != 0
                 && (!CardinalClear(map, current.Cell, dx, 0, traversal)
                     || !CardinalClear(map, current.Cell, 0, dz, traversal))
@@ -534,6 +688,16 @@ public static class NavSearch
                         NavAction.Jump,
                         nodes,
                         open);
+                if (allowDig && (dx == 0 || dz == 0))
+                    RecordDigFrontier(
+                        goal,
+                        current,
+                        next,
+                        dx,
+                        dz,
+                        preferredDigSite,
+                        digFrontiers,
+                        seenDigFrontiers);
                 return;
             }
 
@@ -551,29 +715,42 @@ public static class NavSearch
                 out next,
                 out edgeCost))
         {
-            if (next.Key == blockedCellKey)
+            if (IsAvoided(next, blockedCellKey))
                 return;
             Relax(goal, current, next, edgeCost, NavAction.Jump, nodes, open);
             return;
         }
 
-        if (!allowDig
-            || dx != 0 && dz != 0
-            || !NavTraversal.TryDig(
-                map,
-                current.Cell,
-                dx,
-                dz,
-                out var target,
-                out edgeCost))
+        if (!allowDig || dx != 0 && dz != 0)
             return;
 
         var blocked = new NavCell(
             current.Cell.X + dx,
             current.Cell.Y,
             current.Cell.Z + dz);
-        float candidateCost = current.Cost + edgeCost;
-        float score = candidateCost + goal.Heuristic(blocked);
+        RecordDigFrontier(
+            goal,
+            current,
+            blocked,
+            dx,
+            dz,
+            preferredDigSite,
+            digFrontiers,
+            seenDigFrontiers);
+    }
+
+    private static void RecordDigFrontier(
+        INavGoal goal,
+        Node current,
+        NavCell blocked,
+        int dx,
+        int dz,
+        NavCell? preferredDigSite,
+        PriorityQueue<DigFrontier, float> digFrontiers,
+        HashSet<(long From, int Dx, int Dz)> seenDigFrontiers,
+        bool verticalRecovery = false)
+    {
+        float score = current.Cost + NavCosts.DigOneVoxel + goal.Heuristic(blocked);
         // Finishing a cut already started beats opening a better-scoring one somewhere else. The
         // frontier cell itself moves as the cut advances, so commitment is to the SITE, not the cell.
         // An excavation site is a horizontal cut, not one particular Y sample. Staircase digging
@@ -584,8 +761,136 @@ public static class NavSearch
         if (preferredDigSite is { } site
             && HorizontalDistanceSquared(blocked, site) <= DigSiteRadius * DigSiteRadius)
             score -= DigSiteCommitmentSeconds;
-        if (bestDig is null || score < bestDig.Value.Score)
-            bestDig = new DigCandidate(current, blocked, target, candidateCost, score);
+        if (seenDigFrontiers.Add((current.Cell.Key, dx, dz)) || verticalRecovery)
+            digFrontiers.Enqueue(
+                new DigFrontier(current, blocked, dx, dz, score, verticalRecovery),
+                score);
+    }
+
+    private static void RecordGoalDirectedDig(
+        INavGoal goal,
+        Node from,
+        NavCell? preferredDigSite,
+        PriorityQueue<DigFrontier, float> digFrontiers,
+        HashSet<(long From, int Dx, int Dz)> seenDigFrontiers)
+    {
+        NavCell target = goal switch
+        {
+            GoalPosition position => position.Target,
+            GoalNear near => near.Target,
+            _ => default,
+        };
+        if (goal is not GoalPosition && goal is not GoalNear) return;
+
+        int deltaX = target.X - from.Cell.X;
+        int deltaZ = target.Z - from.Cell.Z;
+        int deltaY = target.Y - from.Cell.Y;
+        if (deltaY > 0
+            && deltaY * deltaY > deltaX * deltaX + deltaZ * deltaZ)
+        {
+            RecordVerticalDigFrontiers();
+            return;
+        }
+        int dx;
+        int dz;
+        if (Math.Abs(deltaX) > Math.Abs(deltaZ))
+        {
+            dx = Math.Sign(deltaX);
+            dz = 0;
+        }
+        else
+        {
+            dx = 0;
+            dz = Math.Sign(deltaZ);
+        }
+        if (dx == 0 && dz == 0)
+        {
+            if (target.Y <= from.Cell.Y) return;
+            // The actor can arrive horizontally beneath a raised goal while still inside its cut.
+            // Excavation is cardinal, so expose all four local upward/staircase macros and let their
+            // executable time costs choose; otherwise a zero X/Z delta leaves no successor at all.
+            RecordVerticalDigFrontiers();
+            return;
+        }
+        RecordDigFrontier(
+            goal,
+            from,
+            new NavCell(from.Cell.X + dx, from.Cell.Y, from.Cell.Z + dz),
+            dx,
+            dz,
+            preferredDigSite,
+            digFrontiers,
+            seenDigFrontiers);
+
+        void RecordVerticalDigFrontiers()
+        {
+            foreach (var (verticalDx, verticalDz) in (ReadOnlySpan<(int X, int Z)>)[
+                         (0, 1), (1, 0), (0, -1), (-1, 0)])
+                RecordDigFrontier(
+                    goal,
+                    from,
+                    new NavCell(
+                        from.Cell.X + verticalDx,
+                        from.Cell.Y,
+                        from.Cell.Z + verticalDz),
+                    verticalDx,
+                    verticalDz,
+                    preferredDigSite,
+                    digFrontiers,
+                    seenDigFrontiers,
+                    verticalRecovery: true);
+        }
+    }
+
+    private static DigCandidate? ResolveBestDig(
+        ChunkMap map,
+        INavGoal goal,
+        NavCell? preferredDigSite,
+        TraversalCache traversal,
+        PriorityQueue<DigFrontier, float> frontiers,
+        float scoreCeiling)
+    {
+        DigCandidate? best = null;
+        int probes = 0;
+        while (probes < MaximumDigProbes
+               && frontiers.TryPeek(out _, out float lowerScore)
+               && lowerScore < (best?.Score ?? scoreCeiling))
+        {
+            var frontier = frontiers.Dequeue();
+            probes++;
+            bool found = traversal.TryDig(
+                    map,
+                    frontier.From.Cell,
+                    frontier.Dx,
+                    frontier.Dz,
+                    out var target,
+                    out float edgeCost);
+            if (!found && frontier.VerticalRecovery)
+            {
+                Vector3 feet = NavTraversal.Position(map, frontier.From.Cell);
+                Vector3 nextFeet = feet + new Vector3(frontier.Dx, 0f, frontier.Dz);
+                found = NavTraversal.TryDigClearance(
+                        map,
+                        nextFeet,
+                        frontier.Dx,
+                        frontier.Dz,
+                        out target)
+                    && Digging.InReach(feet, target);
+                edgeCost = NavCosts.DigOneVoxel + NavCosts.DigTunnelPenalty;
+            }
+            if (!found)
+                continue;
+
+            float cost = frontier.From.Cost + edgeCost;
+            float score = cost + goal.Heuristic(frontier.BlockedCell);
+            if (preferredDigSite is { } site
+                && HorizontalDistanceSquared(frontier.BlockedCell, site)
+                    <= DigSiteRadius * DigSiteRadius)
+                score -= DigSiteCommitmentSeconds;
+            if (score < (best?.Score ?? scoreCeiling))
+                best = new DigCandidate(frontier.From, frontier.BlockedCell, target, cost, score);
+        }
+        return best;
     }
 
     private static float HorizontalDistanceSquared(NavCell a, NavCell b)
@@ -593,6 +898,27 @@ public static class NavSearch
         float dx = a.X - b.X;
         float dz = a.Z - b.Z;
         return dx * dx + dz * dz;
+    }
+
+    private static float CellDistanceSquared(NavCell a, NavCell b)
+    {
+        float dx = a.X - b.X;
+        float dy = a.Y - b.Y;
+        float dz = a.Z - b.Z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static bool IsAvoided(NavCell cell, long? blockedCellKey)
+    {
+        if (blockedCellKey is not { } key) return false;
+        NavCell blocked = NavCell.FromKey(key);
+        // The live capsule disproves a small landing neighbourhood, not only one quantized centre.
+        // Without this, consecutive replans alternate between adjacent samples of the same SDF lip
+        // and never expose the dig frontier. One cell matches the capsule diameter while preserving
+        // nearby authored exits and bridge approaches.
+        return Math.Abs(cell.X - blocked.X) <= 1
+            && Math.Abs(cell.Y - blocked.Y) <= 1
+            && Math.Abs(cell.Z - blocked.Z) <= 1;
     }
 
     private static void Relax(

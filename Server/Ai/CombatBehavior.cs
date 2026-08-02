@@ -12,8 +12,8 @@ internal sealed class CombatBehavior
     // Four enemies can focus one exposed player in the demo. This intentionally represents an
     // unsettled combat shooter rather than bench accuracy: about 22% centre-mass chance at 40 m
     // before recoil, while close-range fire remains dangerous.
-    private const float AiAimMoa = 360f;
-    private const float LongRangeAimMoa = 90f;
+    private const float AiAimMoa = 720f;
+    private const float LongRangeAimMoa = 180f;
     private const float LongRangeStart = 30f;
     private const float LongRangeFullAccuracy = 70f;
     private const float AimToleranceDegrees = 7f;
@@ -25,9 +25,9 @@ internal sealed class CombatBehavior
     private const int BurstPauseTicks = 3 * NetworkConfig.TickRate / 4;
     private const int PrecisionShotIntervalTicks = 6 * NetworkConfig.TickRate / 5;
     internal const float PreferredEngagementRange = 25f;
-    // The assault gun opens fire at 50 m, but its low hit probability outside the preferred 25 m
+    // The assault gun opens fire at 75 m, but its low hit probability outside the preferred 25 m
     // standoff still leaves ShouldCloseDistance set while it fires.
-    internal const float PpshEffectiveRange = 50f;
+    internal const float PpshEffectiveRange = 75f;
 
     /// <summary>
     /// Past this, a believed contact is known about but not engaged. Without the gate any contact the
@@ -238,7 +238,9 @@ internal sealed class CombatBehavior
     internal static float MaxEngagementRangeFor(ItemType weapon)
         => weapon == ItemType.Sks
             ? SksMaxEngagementRange
-            : DefaultMaxEngagementRange;
+            : weapon == ItemType.Ppsh
+                ? PpshEffectiveRange
+                : DefaultMaxEngagementRange;
 
     internal static float AimMoaForRange(float range)
     {

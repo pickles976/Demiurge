@@ -314,62 +314,6 @@ public class NavigationTests
     }
 
     [Fact]
-    public void PacingATrenchEscalatesToADigSearchButABoundedPrefixDoesNot()
-    {
-        // The gate that decides whether to pay for a second, dig-allowed search. Both cases below
-        // return an incomplete path with waypoints, which is why "did the air-only pass come back
-        // empty" could not tell them apart and left AllowDig dead for anything but a sealed actor.
-        const float trenchBottom = 8.5f;
-        const float rim = 12.5f;
-        const float halfWidth = 1.5f;
-        var trench = SyntheticTerrain.Build((x, y, z) =>
-            y - (MathF.Abs(x - z) * 0.70710678f <= halfWidth ? trenchBottom : rim));
-        var trenchStart = CellAt(trench, 0, 0, aroundY: (int)trenchBottom);
-        var acrossTheWall = CellAt(trench, 10, -10, aroundY: (int)rim);
-        var goal = new GoalNear(acrossTheWall, 1f);
-
-        var pacing = NavSearch.Find(
-            trench,
-            trenchStart,
-            goal,
-            CompleteSearch with { AllowDig = false });
-
-        Assert.False(pacing.ReachedGoal);
-        Assert.NotEmpty(pacing.Waypoints);
-        Assert.True(
-            NavSearch.NeedsDigEscalation(pacing),
-            "A diagonal trench the actor cannot climb out of must escalate to a dig search");
-
-        RepaintSolid(trench, BlockType.BlockType_Dirt);
-        var escalated = NavSearch.Find(
-            trench,
-            trenchStart,
-            goal,
-            CompleteSearch with { AllowDig = true });
-        Assert.Contains(escalated.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
-
-        var open = SyntheticTerrain.Flat();
-        var openStart = CellAt(open, -14, 0);
-        var openTarget = CellAt(open, 24, 0);
-        var openGoal = new GoalPosition(openTarget);
-        var prefix = NavSearch.Find(
-            open,
-            openStart,
-            openGoal,
-            new NavSearchOptions(
-                TimeSpan.FromSeconds(1),
-                TimeSpan.FromSeconds(1),
-                MaximumExpandedNodes: 60,
-                MinimumPartialDistance: 0f));
-
-        Assert.False(prefix.ReachedGoal);
-        Assert.NotEmpty(prefix.Waypoints);
-        Assert.False(
-            NavSearch.NeedsDigEscalation(prefix),
-            "A bounded prefix of a good open route must not pay for a second search");
-    }
-
-    [Fact]
     public void WalkableRouteIsStillPreferredOverDiggingThroughAWall()
     {
         // The other half of the same decision: a finite wall with open ground around it must not
@@ -434,6 +378,28 @@ public class NavigationTests
         Assert.True(
             target.Y > feet.Y + 0.5f,
             $"Expected a rising exit bite above feet {feet.Y:0.00}, got {target.Y:0.00}");
+    }
+
+    [Fact]
+    public void SteepSoilSlopeFrontierProducesADigAction()
+    {
+        const float degrees = PlayerMovement.MaxSlopeDegrees + 7f;
+        float rise = MathF.Tan(degrees * MathF.PI / 180f);
+        var map = SyntheticTerrain.Build((x, y, _) =>
+            y - (x <= 0f
+                ? SyntheticTerrain.GroundHeight
+                : SyntheticTerrain.GroundHeight + rise * MathF.Min(x, 3f)));
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, -1, 0);
+        var target = CellAt(map, 7, 0, aroundY: (int)(SyntheticTerrain.GroundHeight + rise * 3f));
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            NavSearchOptions.Default with { AllowDig = true, AllowJump = true });
+
+        Assert.Contains(path.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
     }
 
     [Fact]
@@ -776,6 +742,34 @@ public class NavigationTests
 
         Assert.True(repeated.ReachedGoal);
         Assert.True(repeated.CacheHits > 0);
+    }
+
+    [Fact]
+    public void IndependentDigSearchesReuseTheSharedTraversalCache()
+    {
+        var map = SyntheticTerrain.Wall(0f);
+        RepaintSolid(map, BlockType.BlockType_Dirt);
+        var start = CellAt(map, -2, 0);
+        var target = new NavCell(2, start.Y, 0);
+        var cache = new NavTraversalCache();
+        var options = CompleteSearch with { AllowDig = true };
+
+        var first = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            options,
+            sharedTraversalCache: cache);
+        var repeated = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            options,
+            sharedTraversalCache: cache);
+
+        Assert.Contains(first.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+        Assert.Contains(repeated.Waypoints, waypoint => waypoint.Action == NavAction.Dig);
+        Assert.True(repeated.CacheHits > first.CacheHits);
     }
 
     [Fact]

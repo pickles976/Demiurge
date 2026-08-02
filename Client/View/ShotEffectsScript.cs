@@ -89,7 +89,70 @@ public class ShotEffectsScript : SyncScript
             if (subscribed != null) subscribed.ShotFired += OnLocalShot;
         }
 
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
         UpdateProjectiles((float)Game.UpdateTime.Elapsed.TotalSeconds);
+        stats.EndFrame(System.Diagnostics.Stopwatch.GetTimestamp() - start, projectiles.Count, castsThisFrame);
+        castsThisFrame = 0;
+    }
+
+    // ---- Diagnostics ----
+
+    private int castsThisFrame;
+    private Diagnostics stats;
+
+    /// <summary>
+    /// What in-flight visual rounds cost the main thread.
+    ///
+    /// This is view-only work that scales with the number of bullets ALIVE, not with what is on
+    /// screen: every accepted shot in the match becomes a projectile here, including ones fired
+    /// hundreds of metres away by people the player cannot see, and each one sphere-traces the voxel
+    /// field once per frame plus a linear scan of every replicated object and player. The three
+    /// numbers below are the ones that decide whether that is the reason a firefight costs frames —
+    /// `live` is the multiplier, `casts` is what it is multiplied by, and `ms` is the answer.
+    ///
+    /// Quiet unless something is in flight, like the terrain diagnostics.
+    /// </summary>
+    private struct Diagnostics
+    {
+        private static readonly Stride.Core.Diagnostics.Logger Log =
+            Stride.Core.Diagnostics.GlobalLogger.GetLogger("Shots");
+
+        private long windowStart;
+        private int frames;
+        private long ticks;
+        private double worstMs;
+        private int peakLive;
+        private long liveSum;
+        private long casts;
+
+        public void EndFrame(long elapsed, int live, int terrainCasts)
+        {
+            frames++;
+            ticks += elapsed;
+            liveSum += live;
+            casts += terrainCasts;
+            peakLive = Math.Max(peakLive, live);
+            worstMs = Math.Max(worstMs, elapsed * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (windowStart == 0) windowStart = now;
+            if ((now - windowStart) / (double)System.Diagnostics.Stopwatch.Frequency < 1.0) return;
+
+            if (peakLive > 0)
+                Log.Info(
+                    $"shots: {frames} frames | live avg {liveSum / (double)frames:F0} peak {peakLive} "
+                  + $"| terrain casts {casts} ({casts / (double)frames:F0}/frame) "
+                  + $"| {ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / frames:F2} ms/frame "
+                  + $"worst {worstMs:F1} ms");
+
+            windowStart = now;
+            frames = 0;
+            ticks = 0;
+            worstMs = 0;
+            peakLive = 0;
+            liveSum = 0;
+            casts = 0;
+        }
     }
 
     private void OnLocalShot(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction)
@@ -268,6 +331,7 @@ public class ShotEffectsScript : SyncScript
         var direction = segment / length;
 
         float nearest = float.MaxValue;
+        castsThisFrame++;
         if (TerrainRaycast.Cast(Terrain.Map, start, direction, length) is { } ground)
         {
             nearest = ground.Distance;

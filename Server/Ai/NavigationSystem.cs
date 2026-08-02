@@ -257,25 +257,7 @@ internal sealed class NavigationSystem : IDisposable
                 searchOptions with
                 {
                     AllowJump = request.AllowJump,
-                    AllowDig = false,
-                },
-                request.BlockedCellKey,
-                () => IsSuperseded(request),
-                traversalCache);
-
-        // The ordinary search owns the common case and can return useful partial paths. Only pay for
-        // the solid-volume probes when air-only movement is not closing on the goal. Gating this on
-        // an empty result meant the pass only ever ran for an actor sealed in on every side, so a
-        // trench with steep walls returned a pacing path forever and nothing ever dug its way out.
-        if (request.AllowDig && NavSearch.NeedsDigEscalation(path))
-            path = NavSearch.Find(
-                terrain,
-                request.Start,
-                request.Goal,
-                searchOptions with
-                {
-                    AllowJump = request.AllowJump,
-                    AllowDig = true,
+                    AllowDig = request.AllowDig,
                 },
                 request.BlockedCellKey,
                 () => IsSuperseded(request),
@@ -429,6 +411,11 @@ internal sealed class NavigationSystem : IDisposable
         // NavSearch.Find guards its own start the same way, so the ordinary search below still
         // answers this request — with a failure the agent re-issues next tick from a fresh cell.
         if (request.SharedRouteKey == 0
+            // Shared trunks contain only ordinary movement. Once the live executor disproves an
+            // edge or has begun an excavation, this actor needs its own dig-enabled decision rather
+            // than another connector to the same stale air prefix.
+            || request.BlockedCellKey is not null
+            || request.PreferredDigSite is not null
             || cachedRoute is not { } route
             || !NavTraversal.TryPosition(terrain, request.Start, out var startPosition)
             || !NavPathTerrain.IsValid(terrain, route)
@@ -436,7 +423,7 @@ internal sealed class NavigationSystem : IDisposable
             || route.Waypoints.Any(waypoint => waypoint.Action == NavAction.Dig))
             return false;
         if (!route.ReachedGoal
-            && request.Priority == NavigationPriority.Prefetch
+            && request.Priority is NavigationPriority.Prefetch or NavigationPriority.MissingPath
             && !TryExtendSharedRoute(request, route, out route))
             return false;
 
@@ -554,12 +541,16 @@ internal sealed class NavigationSystem : IDisposable
             searchOptions with
             {
                 AllowJump = request.AllowJump,
-                AllowDig = false,
+                AllowDig = request.AllowDig,
             },
             request.BlockedCellKey,
             () => IsSuperseded(request),
             traversalCache);
-        if (IsSuperseded(request) || segment.Waypoints.Count < 2)
+        if (IsSuperseded(request)
+            || segment.Waypoints.Count < 2
+            // A dig route is deliberately actor-local. Decline the shared extension so Process
+            // runs the normal request and returns that macro only to its executor.
+            || segment.Waypoints.Any(waypoint => waypoint.Action == NavAction.Dig))
             return false;
 
         var combined = route.Waypoints.ToList();

@@ -88,7 +88,7 @@ public class FoxholePlanTests(ITestOutputHelper output)
                && FoxholePlan.NextBite(map, feet, toward, Ground) is { } target)
         {
             var square = ((int)MathF.Round(target.X), (int)MathF.Round(target.Z));
-            if (square != (0, 0))
+            if (square is not ((0 or 1), (0 or 1)))
                 break;
             TerrainEdits.ApplyBox(
                 map, target, Digging.Bite, EditMode.SubtractSoil,
@@ -96,7 +96,8 @@ public class FoxholePlanTests(ITestOutputHelper output)
             centreBites++;
         }
 
-        float centre = SurfaceQuery.HighestSurfaceY(map, 0, 0) ?? Ground;
+        Assert.True(NavTraversal.TryFindStandable(
+            map, 0, 0, (int)Ground, 5, 1, out _, out float centre));
         Assert.True(centreBites > 0);
         Assert.True(
             centre <= Ground - FoxholePlan.Depth + 0.35f,
@@ -111,11 +112,27 @@ public class FoxholePlanTests(ITestOutputHelper output)
 
         _ = Excavate(map, feet, Vector3.UnitZ);
 
-        float centre = SurfaceQuery.HighestSurfaceY(map, 0, 0) ?? Ground;
-        float rear = SurfaceQuery.HighestSurfaceY(map, 0, -1) ?? Ground;
-        float left = SurfaceQuery.HighestSurfaceY(map, -1, 0) ?? Ground;
-        float right = SurfaceQuery.HighestSurfaceY(map, 1, 0) ?? Ground;
-        Assert.True(rear > centre + 0.15f, $"rear {rear:0.00}, centre {centre:0.00}");
+        bool centreOk = NavTraversal.TryFindStandable(
+            map, 0, 0, (int)Ground, 5, 1, out _, out float centre);
+        bool rearLeftOk = NavTraversal.TryFindStandable(
+            map, -1, -1, (int)Ground, 5, 1, out _, out float rearLeft);
+        bool rearRightOk = NavTraversal.TryFindStandable(
+            map, 1, -1, (int)Ground, 5, 1, out _, out float rearRight);
+        bool leftOk = NavTraversal.TryFindStandable(
+            map, -2, 0, (int)Ground, 5, 1, out _, out float left);
+        bool rightOk = NavTraversal.TryFindStandable(
+            map, 2, 0, (int)Ground, 5, 1, out _, out float right);
+        output.WriteLine(
+            $"centre {centreOk} {centre:0.00}; rear L/R {rearLeftOk}/{rearRightOk} "
+          + $"{rearLeft:0.00}/{rearRight:0.00}; left {leftOk} {left:0.00}; "
+          + $"right {rightOk} {right:0.00}");
+        Assert.True(centreOk);
+        Assert.True(rearLeftOk);
+        Assert.True(rearRightOk);
+        Assert.True(leftOk);
+        Assert.True(rightOk);
+        Assert.True(rearLeft > centre + 0.15f, $"rear {rearLeft:0.00}, centre {centre:0.00}");
+        Assert.True(rearRight > centre + 0.15f, $"rear {rearRight:0.00}, centre {centre:0.00}");
         Assert.True(left > centre + 0.35f, $"left {left:0.00}, centre {centre:0.00}");
         Assert.True(right > centre + 0.35f, $"right {right:0.00}, centre {centre:0.00}");
     }

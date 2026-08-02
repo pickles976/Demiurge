@@ -35,12 +35,18 @@ internal sealed class PathFollower
     private int jumpTakeoffTicks;
     private Vector3 jumpIntent;
     private bool staleDigIssued;
+    private bool pathHasDig;
     private Vector3 lastPosition;
     private bool hasLastPosition;
 
     public bool ReachedGoal => path?.ReachedGoal == true;
+    public bool HasPath => path is not null;
     public bool ShouldRefreshPath =>
         path is { ReachedGoal: false }
+        // A dig is already the receding-horizon decision. Prefetching the same terrain generation
+        // repeatedly resets stall recovery on its walk prefix and can prevent the actor from ever
+        // reaching or revising that excavation frontier.
+        && !pathHasDig
         && RemainingPathMetres() <= PartialRefreshDistance;
 
     public void SetPath(
@@ -63,6 +69,7 @@ internal sealed class PathFollower
         jumpTakeoffTicks = 0;
         jumpIntent = Vector3.Zero;
         staleDigIssued = false;
+        pathHasDig = value.Waypoints.Any(waypoint => waypoint.Action == NavAction.Dig);
         if (currentPosition is { } joinedPosition)
         {
             lastPosition = joinedPosition;
@@ -92,9 +99,12 @@ internal sealed class PathFollower
             closestDistance = distance;
         }
 
-        // The closest ordinary waypoint is normally the stale request origin or a point the actor
-        // has just passed. Joining at its successor preserves forward motion.
-        return Math.Min(closest + 1, value.Waypoints.Count);
+        // Do not assume the closest point has already been passed. On a replacement route the next
+        // centre-line anchor may be a bridge entrance or the foot of a staircase; skipping it while
+        // still outside the normal arrival radius makes the follower cut the corner into open air
+        // or push diagonally into the riser. Update consumes it immediately when the actor really is
+        // close enough, so retaining the point does not introduce a pause.
+        return closest;
     }
 
     public void Clear()
@@ -110,6 +120,7 @@ internal sealed class PathFollower
         jumpTakeoffTicks = 0;
         jumpIntent = Vector3.Zero;
         staleDigIssued = false;
+        pathHasDig = false;
         lastPosition = default;
         hasLastPosition = false;
     }
@@ -257,7 +268,8 @@ internal sealed class PathFollower
                  && grounded
                  && stalledTicks >= UphillRecoveryTicks
                  && uphillRecoveryAttempts < MaxUphillRecoveryAttempts
-                 && path.Waypoints[waypoint].Position.Y - position.Y >= UphillRecoveryRise)
+                 && path.Waypoints[waypoint].Position.Y - position.Y is var rise
+                 && rise >= UphillRecoveryRise)
         {
             // A sampled bridge lip can occasionally pass the navigation walk validation while the
             // authoritative capsule catches on its edge. Recover locally before throwing away an

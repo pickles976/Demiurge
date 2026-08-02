@@ -133,8 +133,6 @@ public static class NavTraversal
             > MaximumRisePerMetre * horizontal + PlayerMovement.GroundSnapDistance)
             return false;
 
-        // The midpoint is a half-cell offset rather than a cell, so it cannot go through the memo;
-        // it is one probe against the two-to-sixteen this call would otherwise have repeated.
         float middleX = (from.X + to.X + 1f) * 0.5f;
         float middleZ = (from.Z + to.Z + 1f) * 0.5f;
         int middleCellY = (int)MathF.Floor((fromY + toY) * 0.5f);
@@ -147,11 +145,11 @@ public static class NavTraversal
                 out float middleY))
             return false;
 
-        float firstRise = MathF.Abs(middleY - fromY);
-        float secondRise = MathF.Abs(toY - middleY);
         float halfHorizontal = horizontal * 0.5f;
-        if (firstRise > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance
-            || secondRise > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance)
+        if (MathF.Abs(middleY - fromY)
+                > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance
+            || MathF.Abs(toY - middleY)
+                > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance)
             return false;
 
         float distance = MathF.Sqrt(horizontal * horizontal + (toY - fromY) * (toY - fromY));
@@ -283,6 +281,86 @@ public static class NavTraversal
     }
 
     /// <summary>
+    /// Resolves a destination to the physically nearest capsule-valid surface. Unlike actor-start
+    /// resolution, a goal must not bind to a newly excavated floor directly below the authored
+    /// point when intact grade beside the cut is closer in three dimensions.
+    /// </summary>
+    public static bool TryFindNearestStandableGoal(
+        ChunkMap map,
+        Vector3 position,
+        int horizontalRadius,
+        out NavCell cell)
+    {
+        if (horizontalRadius < 0)
+            throw new ArgumentOutOfRangeException(nameof(horizontalRadius));
+
+        int centreX = (int)MathF.Floor(position.X);
+        int centreZ = (int)MathF.Floor(position.Z);
+        int centreY = (int)MathF.Floor(position.Y);
+        bool found = false;
+        float bestDistanceSquared = float.PositiveInfinity;
+        NavCell bestCell = default;
+        for (int radius = 0; radius <= horizontalRadius; radius++)
+        {
+            // Every cell on this and later rings is at least radius - 0.5 metres away
+            // horizontally. Once that lower bound cannot beat the best capsule-valid surface in
+            // three dimensions, the remaining rings cannot change the answer. This normally keeps
+            // actor/spawn resolution to the centre cell while still avoiding a freshly excavated
+            // floor directly below an intact requested destination.
+            float ringLowerBound = MathF.Max(0f, radius - 0.5f);
+            if (found && ringLowerBound * ringLowerBound >= bestDistanceSquared)
+                break;
+
+            for (int dz = -radius; dz <= radius; dz++)
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                        continue;
+                    int x = centreX + dx;
+                    int z = centreZ + dz;
+                    if (TryFindStandable(
+                            map,
+                            x,
+                            z,
+                            centreY,
+                            below: 6,
+                            above: 6,
+                            out var nearby,
+                            out float nearbyY))
+                        Consider(nearby, nearbyY);
+
+                    if (SurfaceQuery.HighestSurfaceY(map, x, z) is not { } surfaceY
+                        || !TryFindStandable(
+                            map,
+                            x,
+                            z,
+                            (int)MathF.Floor(surfaceY),
+                            below: 2,
+                            above: 2,
+                            out var highest,
+                            out float highestY))
+                        continue;
+                    Consider(highest, highestY);
+                }
+        }
+
+        cell = bestCell;
+        return found;
+
+        void Consider(NavCell candidate, float surfaceY)
+        {
+            float deltaX = candidate.X + 0.5f - position.X;
+            float deltaY = surfaceY - position.Y;
+            float deltaZ = candidate.Z + 0.5f - position.Z;
+            float distanceSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+            if (distanceSquared >= bestDistanceSquared) return;
+            found = true;
+            bestDistanceSquared = distanceSquared;
+            bestCell = candidate;
+        }
+    }
+
+    /// <summary>
     /// A continuous walk edge between adjacent columns. Midpoint validation rejects narrow gaps and
     /// endpoint slope limits reject ledges steeper than the movement solver can climb.
     /// </summary>
@@ -330,11 +408,11 @@ public static class NavTraversal
                 out float middleY))
             return false;
 
-        float firstRise = MathF.Abs(middleY - fromY);
-        float secondRise = MathF.Abs(toY - middleY);
         float halfHorizontal = horizontal * 0.5f;
-        if (firstRise > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance
-            || secondRise > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance)
+        if (MathF.Abs(middleY - fromY)
+                > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance
+            || MathF.Abs(toY - middleY)
+                > MaximumRisePerMetre * halfHorizontal + PlayerMovement.GroundSnapDistance)
             return false;
 
         float distance = MathF.Sqrt(horizontal * horizontal + (toY - fromY) * (toY - fromY));
@@ -555,23 +633,71 @@ public static class NavTraversal
             // And if no step can be cut, cut NOTHING from here rather than falling through to the
             // level bite below. The two branches were digging against each other: the forward dig
             // drives straight through the tread the stair depends on, and the hole always won.
-            if (!TryStaircaseTarget(map, from, dx, dz, wallSteps, out target)) return false;
+            if (!TryStaircaseTarget(
+                    map,
+                    from,
+                    dx,
+                    dz,
+                    wallSteps,
+                    out target,
+                    out int workLayers))
+                return false;
             treadCell = new NavCell(
                 from.X + dx * wallSteps,
                 from.Y + 1,
                 from.Z + dz * wallSteps);
-            cost = NavCosts.DigOneVoxel;
+            // A spherical bite influences the adjacent samples on one clearance layer. Count
+            // unresolved height layers rather than grid points, which avoids making the estimate
+            // depend on which side of a voxel boundary an otherwise symmetric wall occupies.
+            int estimatedBites = Math.Max(1, workLayers);
+            cost = NavCosts.DigOneVoxel
+                 + (estimatedBites - 1) * NavCosts.DigExecutionSeconds;
             return true;
         }
 
         // Probe the capsule axis, low to high. Removing the lowest blocker first avoids carving a
-        // decorative hole above an obstruction the actor still cannot walk through.
+        // decorative hole above an obstruction the actor still cannot walk through. Dedicated
+        // low-clearance recovery below sweeps the sphere boundary; generic frontier excavation
+        // deliberately stays on-axis so it does not nibble away a staircase tread from above.
+        Span<Vector3> targets = stackalloc Vector3[CapsuleBody.SampleCount];
+        int targetCount = 0;
         for (int i = 0; i < CapsuleBody.SampleCount; i++)
         {
             Vector3 origin = PlayerMovement.Body.SampleCenter(feet, i);
-            if (!TryDigTargetAlongRay(map, origin, direction, direction, out target))
+            if (!TryDigTargetAlongRay(map, origin, direction, direction, out var sampleTarget))
                 continue;
-            cost = NavCosts.DigOneVoxel;
+            bool duplicate = false;
+            for (int j = 0; j < targetCount; j++)
+                duplicate |= targets[j] == sampleTarget;
+            if (duplicate) continue;
+            targets[targetCount++] = sampleTarget;
+        }
+
+        if (targetCount > 0)
+        {
+            target = targets[0];
+            cost = NavCosts.DigOneVoxel
+                 + NavCosts.DigTunnelPenalty
+                 + (targetCount - 1) * NavCosts.DigExecutionSeconds;
+            return true;
+        }
+
+        // A continuous low roof has no vertical face for the actor's current horizontal rays once
+        // the entrance bite is open. Probe the capsule at the intended result cell; this finds the
+        // next overlapping lintel sample while retaining TryDigClearance's floor protection. The
+        // action is accepted only when the current actor can legally reach the returned bite.
+        Vector3 nextFeet = feet + direction;
+        if (TryDigClearance(
+                map,
+                nextFeet,
+                dx,
+                dz,
+                out target,
+                maximumForward: 1,
+                lateralRadius: 2)
+            && Digging.InReach(feet, target))
+        {
+            cost = NavCosts.DigOneVoxel + NavCosts.DigTunnelPenalty;
             return true;
         }
 
@@ -604,6 +730,145 @@ public static class NavTraversal
             upper = found;
             return true;
         }
+    }
+
+    /// <summary>
+    /// Clears a low entrance around an actor whose current position is not capsule-standable. This
+    /// deliberately does not require a NavCell: resolving an unrelated surface above a cramped
+    /// tunnel as the actor's cell is the bug this recovery exists to avoid.
+    /// </summary>
+    public static bool TryDigClearance(
+        ChunkMap map,
+        Vector3 feet,
+        int dx,
+        int dz,
+        out Vector3 target,
+        int maximumForward = 2,
+        int lateralRadius = 3)
+    {
+        target = default;
+        if (Math.Abs(dx) + Math.Abs(dz) != 1) return false;
+        Vector3 direction = Vector3.Normalize(new Vector3(dx, 0f, dz));
+
+        // Head first. A low lintel can leave the feet path visually open while the capsule's upper
+        // samples collide; clearing the lowest sample first would turn that into a crawl-height
+        // tunnel the standing movement model can never use.
+        for (int i = CapsuleBody.SampleCount - 1; i >= 0; i--)
+        {
+            Vector3 origin = PlayerMovement.Body.SampleCenter(feet, i);
+            if (TryDigTargetForCapsuleSample(map, origin, direction, out target))
+                return true;
+        }
+
+        // Once the actor has edged under a lintel there may be no forward surface left for a ray
+        // to cross: the head sphere already overlaps the ceiling. Resolve that actual capsule
+        // contact into the soil sample behind it instead of waiting forever for a NavCell that
+        // cannot exist until the overlap is removed.
+        // Match navigation's conservative rest/snap envelope, not only hard collision. A capsule
+        // can be 0.1 m from a jagged CSG ceiling and technically non-penetrating while no stable
+        // standable sample exists for the planner.
+        float requiredClearance = PlayerMovement.Body.Radius
+                                + PlayerMovement.SkinWidth
+                                + PlayerMovement.GroundSnapDistance;
+        for (int i = CapsuleBody.SampleCount - 1; i >= 0; i--)
+        {
+            Vector3 centre = PlayerMovement.Body.SampleCenter(feet, i);
+            if (!TerrainCollision.TrySample(map, centre, out var contact)
+                || contact.Distance >= requiredClearance
+                // Upward-facing contact is the floor supporting the actor. Clearance recovery may
+                // cut a ceiling or wall, never the tread out from under its own feet.
+                || contact.Normal.Y > 0.25f)
+                continue;
+            Vector3 surface = centre - contact.Normal * contact.Distance;
+            Vector3 candidate = Digging.TargetVoxel(surface, contact.Normal);
+            if (IsSolidSoil(map, candidate))
+            {
+                target = candidate;
+                return true;
+            }
+            for (int depth = 1; depth <= 2; depth++)
+            {
+                Vector3 deeper = candidate - contact.Normal * depth;
+                deeper = new Vector3(
+                    MathF.Round(deeper.X),
+                    MathF.Round(deeper.Y),
+                    MathF.Round(deeper.Z));
+                if (!IsSolidSoil(map, deeper)) continue;
+                target = deeper;
+                return true;
+            }
+        }
+
+        // CSG cuts can make the local gradient point diagonally away from the last remaining roof
+        // sample, so the contact projection above may legitimately find only air. Sweep the small
+        // headroom lattice around the current and next cell as the final recovery. This is bounded
+        // to capsule height and soil, so it cannot turn into downward floor excavation.
+        int baseX = (int)MathF.Floor(feet.X);
+        int baseZ = (int)MathF.Floor(feet.Z);
+        int firstHeadY = (int)MathF.Floor(feet.Y + PlayerMovement.Body.Height);
+        for (int y = firstHeadY; y <= firstHeadY + 2; y++)
+            for (int forward = 0; forward <= maximumForward; forward++)
+                for (int lateral = -lateralRadius; lateral <= lateralRadius; lateral++)
+                {
+                    int x = baseX + dx * forward - dz * lateral;
+                    int z = baseZ + dz * forward + dx * lateral;
+                    var candidate = new Vector3(x, y, z);
+                    if (!TryVoxel(map, candidate, out var voxel)
+                        || voxel.Distance >= StaircaseClearedDistance
+                        || voxel.Distance < 0f && !IsSoil(voxel)
+                        // A positive near-surface sample can be a valid brush centre, but only if
+                        // the brush actually overlaps mutable soil. Otherwise a stone lintel would
+                        // masquerade as an air-labelled dig target and replan forever.
+                        || !HasSoilWithinBite(map, candidate))
+                        continue;
+                    target = candidate;
+                    return true;
+                }
+        return false;
+    }
+
+    private static bool HasSoilWithinBite(ChunkMap map, Vector3 centre)
+    {
+        foreach (var offset in (ReadOnlySpan<Vector3>)[
+                     Vector3.Zero,
+                     Vector3.UnitX, -Vector3.UnitX,
+                     Vector3.UnitY, -Vector3.UnitY,
+                     Vector3.UnitZ, -Vector3.UnitZ])
+            if (TryVoxel(map, centre + offset, out var voxel)
+                && voxel.Distance < 0f
+                && IsSoil(voxel))
+                return true;
+        return false;
+    }
+
+    private static bool TryDigTargetForCapsuleSample(
+        ChunkMap map,
+        Vector3 centre,
+        Vector3 direction,
+        out Vector3 target)
+    {
+        Vector3 right = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, direction));
+        float radius = PlayerMovement.Body.Radius;
+        foreach (var offset in (ReadOnlySpan<Vector3>)[
+                     Vector3.UnitY * radius,
+                     right * radius,
+                     -right * radius,
+                     Vector3.Zero])
+        {
+            Vector3 inward = offset == Vector3.Zero
+                ? direction
+                : Vector3.Normalize(direction + offset / radius);
+            if (TryDigTargetAlongRay(
+                    map,
+                    centre + offset,
+                    direction,
+                    inward,
+                    out target))
+                return true;
+        }
+
+        target = default;
+        return false;
     }
 
     /// <summary>
@@ -644,9 +909,12 @@ public static class NavTraversal
         int dx,
         int dz,
         int wallSteps,
-        out Vector3 target)
+        out Vector3 target,
+        out int workSamples)
     {
         target = default;
+        workSamples = 0;
+        int workLayers = 0;
 
         int x = from.X + dx * wallSteps;
         int z = from.Z + dz * wallSteps;
@@ -676,9 +944,15 @@ public static class NavTraversal
                     // cut the rest of it. SubtractSoil would refuse this sample anyway.
                     if (voxel.Distance < 0f && !IsSoil(voxel)) continue;
 
-                    target = sample;
-                    return true;
+                    if (workLayers == 0) target = sample;
+                    workLayers |= 1 << (y - tread - 1);
                 }
+
+        if (workLayers != 0)
+        {
+            workSamples = BitOperations.PopCount((uint)workLayers);
+            return true;
+        }
 
         var treadCell = new NavCell(x, tread, z);
         if (Standable(map, treadCell.X, treadCell.Y, treadCell.Z, out _))
@@ -698,11 +972,12 @@ public static class NavTraversal
                     if (!TryVoxel(map, sample, out var voxel)) return false;
                     if (voxel.Distance >= StaircaseClearedDistance) continue;
                     if (voxel.Distance < 0f && !IsSoil(voxel)) continue;
-                    target = sample;
-                    return true;
+                    if (workLayers == 0) target = sample;
+                    workLayers |= 1 << (y - tread - 1);
                 }
 
-        return false;
+        workSamples = BitOperations.PopCount((uint)workLayers);
+        return workSamples > 0;
     }
 
     private static bool TryDigTargetAlongRay(
@@ -713,7 +988,10 @@ public static class NavTraversal
         out Vector3 target)
     {
         target = default;
-        if (TerrainRaycast.Cast(map, origin, rayDirection, 1.75f) is not { } hit)
+        // The navigation cell is at the actor centre while collision stops the capsule radius plus
+        // skin before a low entrance. A 1.75 m ray could therefore end just short of a legally
+        // reachable lintel and leave both search and execution waiting forever at its mouth.
+        if (TerrainRaycast.Cast(map, origin, rayDirection, 2.5f) is not { } hit)
             return false;
 
         Vector3 voxelTarget = Digging.TargetVoxel(hit.Point, hit.Normal);

@@ -5,21 +5,12 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-AI Improvements: 
+Pathfinding
+- PPSH units digging way too fucking much
+- still not all units make it to the flags
+- 
 
-When NPCs are relocated due to being stuck, when they respawn, they just rotate and scan. 
-
-NPCs also still try to walk up slopes that they can't, and struggle to dig/pathfind out of deep pits. Make a full integration test for this as well.
-
-NPCs also will sometimes dig a foxhole, but not actually enter it. They need to physically enter the foxhole and ensure they are covered before engaging the enemy if they are choosing to entrench themselves. Write an integration fuzz test to test this.
-
-NPCs should use digging for movement. If there is no good way to approach the enemy, make them dig towards the enemy. Several members of a squad can dig while the others engage the enemy and keep them pinned down. They can dig a 2m deep trench that will keep them totally safe from gunfire while crouched.
-
-NPCs also should have to switch to the shovel when they dig. 
-
-Client performance issues. 
-FPS drops off a cliff early in the game once we walk far enough away from our starting location. 
-FPS reliably drops off a cliff once combat starts.
+Server/Client split
 
 - [ ] PVP
     - [ ] add mosin-nagant

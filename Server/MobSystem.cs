@@ -28,6 +28,7 @@ namespace Demiurge.GameServer
 
         /// <summary>Far enough behind the digger to sample untouched ground rather than its own hole.</summary>
         private const float FoxholeGradeProbeDistance = 2.5f;
+        private const uint ClearanceRecoveryTicks = 3 * NetworkConfig.TickRate;
 
         private const float IdleScanRadiansPerSecond = 45f * MathF.PI / 180f;
 
@@ -70,6 +71,38 @@ namespace Demiurge.GameServer
         private int timingTicks;
         private int timingAgentSamples;
         private long timingMovementStopwatchTicks;
+
+        /// <summary>
+        /// The share of <see cref="timingMovementStopwatchTicks"/> that is the collision solver.
+        ///
+        /// The `movement` figure wraps the WHOLE per-mob tick — `GameWorld` times `MobSystem.Step`,
+        /// which is brain, perception bookkeeping, path following, entrenchment and digging as well
+        /// as `PlayerMovement.Step`. Reading it as "movement is expensive" sent one optimization pass
+        /// at the voxel sampler on the strength of a number that never measured it. This splits the
+        /// one part that is unambiguously the solver, so the remainder is attributable.
+        /// </summary>
+        private long timingSolverStopwatchTicks;
+
+        /// <summary>
+        /// Phases of the per-mob tick, so the `brain` remainder is attributable. It measured 3.5
+        /// ms/tick climbing to 12 while the solver stayed flat at 1.2, and nothing said where it
+        /// went. These wrap the two top-level decision branches of <see cref="Step"/>; whatever is
+        /// left over after them and the solver is path following and bookkeeping.
+        ///
+        /// Inclusive of any <see cref="StepSolver"/> call made inside them — the solver total is
+        /// reported separately and is the cross-cutting figure, not a fourth slice.
+        /// </summary>
+        private long timingCombatStopwatchTicks;
+        private long timingEntrenchStopwatchTicks;
+
+        /// <summary>
+        /// Inside `follow`, which turned out to be ~100% of the AI cost once combat (4 us) and
+        /// entrenchment (1 us) were measured and cleared. Three recovery probes run in an if/else-if
+        /// chain ahead of the path follower, so each one is paid by every NPC that the previous one
+        /// declined — and in the common case all three decline before the follower even runs.
+        /// </summary>
+        private long timingHeadroomStopwatchTicks;
+        private long timingFollowerStopwatchTicks;
         private long timingPerceptionStopwatchTicks;
         private long timingCoverStopwatchTicks;
         private int timingCoverQueries;
@@ -200,6 +233,7 @@ namespace Demiurge.GameServer
             if (brain.ObjectiveRevision != squad.ObjectiveRevision)
             {
                 brain.ObjectiveRevision = squad.ObjectiveRevision;
+                brain.ObjectiveReached = false;
                 brain.Navigation.Path.Clear();
                 brain.Navigation.ResetBlocked();
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
@@ -220,6 +254,7 @@ namespace Demiurge.GameServer
                 && brain.AppliedHeardRevision != brain.HeardRevision)
             {
                 brain.AppliedHeardRevision = brain.HeardRevision;
+                brain.ObjectiveReached = false;
                 brain.Navigation.Path.Clear();
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
@@ -232,6 +267,7 @@ namespace Demiurge.GameServer
             else if (!heardGunshot && brain.AppliedHeardRevision != 0)
             {
                 brain.ClearGunshot();
+                brain.ObjectiveReached = false;
                 brain.Navigation.Path.Clear();
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
@@ -246,15 +282,14 @@ namespace Demiurge.GameServer
                 brain.Navigation.Progress.Reset();
                 mob.State = PlayerStateFlags.Shooting;
                 mob.LastIntent = Vector3.Zero;
-                PlayerMovement.Step(
-                    terrain,
-                    ref mob.Move,
-                    Vector3.Zero,
-                    mob.State,
-                    dt);
+                StepSolver(mob, Vector3.Zero, dt);
                 return;
             }
             mob.Hotbar = HotbarSlot.Primary;
+            // Shooting means actuating the CURRENT item. Do not carry a shovel swing through the
+            // hotbar transition and make it look like the newly equipped primary fired before
+            // CombatBehavior authorized a shot this tick.
+            mob.State &= ~PlayerStateFlags.Shooting;
 
             bool hasOrder = squad.TryGetOrder(mob.Id, out var order);
             bool bounding = hasOrder && order.Role == SquadRole.Bound;
@@ -271,25 +306,38 @@ namespace Demiurge.GameServer
                 && CombatBehavior.PrefersToHoldFire(
                     ItemType.Ppsh,
                     HorizontalDistance(mob.Position, nearestContact.Position));
+            bool mustEntrench = assault
+                && !brain.HasCompletedInitialEntrenchment
+                && !brain.Entrenched;
+            bool readyAtEntrenchPeek = !brain.Entrenched
+                || (!ShouldCrouchAtCover(brain, tick)
+                    && HorizontalDistanceSquared(mob.Position, brain.CoverPeekPosition)
+                        <= CoverArrivalDistance * CoverArrivalDistance);
             bool mayFire = !holdingForEffectiveRange
+                && !mustEntrench
+                && readyAtEntrenchPeek
                 && squad.TryAcquireEngagement(mob.Id, tick);
             if (holdingForEffectiveRange)
                 squad.ReleaseEngagement(mob.Id);
             bool underFire =
                 brain.IsUnderFire(tick)
                 || mob.Spread.SuppressionMoa > 1f;
-            if (combat.Tick(
-                    mob,
-                    brain,
-                    tick,
-                    dt,
-                    mayFire && !underFire,
-                    suppressing && mayFire))
+            long combatStarted = Stopwatch.GetTimestamp();
+            bool combatOwnsTick = combat.Tick(
+                mob,
+                brain,
+                tick,
+                dt,
+                mayFire && !underFire,
+                suppressing && mayFire);
+            timingCombatStopwatchTicks += Stopwatch.GetTimestamp() - combatStarted;
+
+            if (combatOwnsTick)
             {
                 brain.Navigation.Progress.Reset();
                 Vector3 combatIntent;
                 bool combatJump;
-                if (bounding)
+                if (bounding && !mustEntrench)
                 {
                     UpdateBoundMovement(
                         mob,
@@ -347,14 +395,77 @@ namespace Demiurge.GameServer
                     .With(PlayerStateFlags.Sprinting, sprinting)
                     .With(PlayerStateFlags.Crouching, crouching);
                 mob.LastIntent = combatIntent;
-                PlayerMovement.Step(
-                    terrain,
-                    ref mob.Move,
-                    combatIntent,
-                    mob.State,
-                    dt);
+                StepSolver(mob, combatIntent, dt);
                 return;
             }
+
+            // Digging a fighting position outlasts direct sight: once the actor drops below grade,
+            // the parapet itself hides the target for several seconds. Abandoning on contact expiry
+            // made a half-dug hole and sent the NPC roaming. Finish the fixed plan, then cycle from
+            // its protected centre to the peek station so perception can reacquire naturally.
+            long entrenchStarted = Stopwatch.GetTimestamp();
+            if (brain.Entrenching)
+            {
+                var rememberedThreat = new AiContact(
+                    brain.CoverThreatId,
+                    brain.CoverThreatPosition,
+                    tick,
+                    1f);
+                _ = UpdateEntrenchment(
+                    mob,
+                    brain,
+                    squad,
+                    rememberedThreat,
+                    tick,
+                    out var entrenchIntent,
+                    out bool entrenchJump);
+                bool entrenchCrouch = brain.Entrenched
+                    && ShouldCrouchAtCover(brain, tick);
+                mob.State = mob.State
+                    .With(PlayerStateFlags.Moving, entrenchIntent != Vector3.Zero)
+                    .With(PlayerStateFlags.Jumping, entrenchJump)
+                    .With(PlayerStateFlags.Sprinting, false)
+                    .With(PlayerStateFlags.Crouching, entrenchCrouch);
+                mob.LastIntent = entrenchIntent;
+                StepSolver(mob, entrenchIntent, dt);
+                return;
+            }
+            if (brain.Entrenched)
+            {
+                bool tucked = ShouldCrouchAtCover(brain, tick);
+                Vector3 desired = tucked
+                    ? brain.CoverDestination
+                    : brain.CoverPeekPosition;
+                Vector3 delta = desired - mob.Position;
+                bool move = HorizontalDistanceSquared(desired, mob.Position)
+                    > CornerArrivalDistance * CornerArrivalDistance;
+                Vector3 coverIntent = Vector3.Zero;
+                if (move)
+                {
+                    delta.Y = 0f;
+                    if (delta.LengthSquared() > 1e-6f)
+                        coverIntent = Vector3.Normalize(delta);
+                }
+                bool coverJump = !tucked
+                    && desired.Y > mob.Position.Y + 0.2f
+                    && mob.Move.Grounded;
+                if (!tucked
+                    && HorizontalDistanceSquared(mob.Position, brain.CoverPeekPosition)
+                        <= CoverArrivalDistance * CoverArrivalDistance)
+                    brain.Contacts.Observe(
+                        brain.CoverThreatId,
+                        brain.CoverThreatPosition,
+                        tick);
+                mob.State = PlayerStateFlags.None
+                    .With(PlayerStateFlags.Moving, coverIntent != Vector3.Zero)
+                    .With(PlayerStateFlags.Jumping, coverJump)
+                    .With(PlayerStateFlags.Crouching, tucked);
+                mob.LastIntent = coverIntent;
+                StepSolver(mob, coverIntent, dt);
+                return;
+            }
+            timingEntrenchStopwatchTicks += Stopwatch.GetTimestamp() - entrenchStarted;
+
             squad.ReleaseEngagement(mob.Id);
             squad.ReleaseAdvance(mob.Id);
             if (brain.HasCoverDestination)
@@ -365,6 +476,7 @@ namespace Demiurge.GameServer
             var follower = brain.Navigation.Path;
             bool holdingObjective =
                 hasObjective
+                && brain.ObjectiveReached
                 && !heardGunshot
                 && HorizontalDistanceSquared(mob.Position, objective.Position)
                     <= ObjectiveHoldRadius * ObjectiveHoldRadius;
@@ -373,6 +485,7 @@ namespace Demiurge.GameServer
             bool jump;
             bool digging = false;
             bool terrainProgress = false;
+            bool replacePendingPath = false;
             if (holdingObjective)
             {
                 follower.Clear();
@@ -383,7 +496,7 @@ namespace Demiurge.GameServer
             }
             else
             {
-                if (TryEscapeRamp(
+                if (TimedClearNavigationHeadroom(
                         mob,
                         brain,
                         destination,
@@ -397,6 +510,7 @@ namespace Demiurge.GameServer
                 }
                 else
                 {
+                    long followerStarted = Stopwatch.GetTimestamp();
                     followState = follower.Update(
                         mob.Position,
                         mob.Move.Grounded,
@@ -405,7 +519,9 @@ namespace Demiurge.GameServer
                         out jump,
                         out var digTarget,
                         out var blockedCell);
+                    timingFollowerStopwatchTicks += Stopwatch.GetTimestamp() - followerStarted;
                     brain.Navigation.RememberBlocked(blockedCell);
+                    replacePendingPath = blockedCell is not null;
                     if (followState == PathFollowState.Digging)
                     {
                         digging = true;
@@ -424,7 +540,12 @@ namespace Demiurge.GameServer
                             tick);
                         terrainProgress = terrain.EditVersion != versionBeforeDig;
                         if (terrainProgress)
+                        {
                             brain.Navigation.RememberDigSite(digTarget, tick);
+                            // The edit invalidates the executor's old collision evidence. Let the
+                            // next authoritative search reconsider the changed edge from scratch.
+                            brain.Navigation.ResetBlocked();
+                        }
                     }
                     if (followState == PathFollowState.Complete)
                     {
@@ -443,12 +564,18 @@ namespace Demiurge.GameServer
                         }
                         else if (reachedGoal && hasObjective)
                         {
+                            brain.ObjectiveReached = true;
                             followState = PathFollowState.Following;
                         }
                         else
                         {
+                            // A prefetch was queued from an older point on this partial corridor.
+                            // Once the actor consumes the prefix, replace that stale request from
+                            // the actual frontier so excavation and newly visible detours compete.
+                            replacePendingPath = !reachedGoal;
                             if (reachedGoal)
                             {
+                                brain.ObjectiveReached = false;
                                 brain.Navigation.SetDestination(
                                     RandomSurfacePoint(HomeOf(mob)));
                                 destination = brain.Navigation.Destination;
@@ -468,6 +595,7 @@ namespace Demiurge.GameServer
                     destination,
                     tick,
                     forCover: false,
+                    replacePending: replacePendingPath,
                     allowDig: true,
                     priority: NavigationPriority.MissingPath);
                 if (!requested && heardGunshot)
@@ -522,7 +650,7 @@ namespace Demiurge.GameServer
                 mob.Pitch = 0f;
             mob.LastIntent = intent;
 
-            PlayerMovement.Step(terrain, ref mob.Move, intent, mob.State, dt);
+            StepSolver(mob, intent, dt);
             if (brain.Navigation.Progress.Update(
                     mob.Position,
                     tick,
@@ -531,14 +659,7 @@ namespace Demiurge.GameServer
                 stuckMobs.Enqueue(mob.Id);
         }
 
-        /// <summary>
-        /// Owns one cardinal ramp until a trapped actor reaches the surrounding grade. Generic A*
-        /// is free to reconsider every frontier after every terrain edit; inside a small pit that
-        /// produces several disconnected alcoves instead of one staircase. Escape is the case where
-        /// commitment is more important than global optimality: cut the next tread, move onto it,
-        /// and repeat in the objective's direction.
-        /// </summary>
-        private bool TryEscapeRamp(
+        private bool TryClearNavigationHeadroom(
             ServerPlayer mob,
             MobBrain brain,
             Vector3 destination,
@@ -552,85 +673,70 @@ namespace Demiurge.GameServer
             jump = false;
             digging = false;
             terrainProgress = false;
-
-            if (!brain.Navigation.TryGetEscape(out int dx, out int dz, out float grade))
-            {
-                // Only an open depression starts escape mode. A cave has unrelated terrain above
-                // the actor in its own column and remains ordinary navigation terrain.
-                int atX = (int)MathF.Floor(mob.Position.X);
-                int atZ = (int)MathF.Floor(mob.Position.Z);
-                if (SurfaceQuery.HighestSurfaceY(terrain, atX, atZ) is not { } localFloor
-                    || MathF.Abs(localFloor - mob.Position.Y) > 0.75f)
-                    return false;
-
-                grade = localFloor;
-                for (int z = atZ - 4; z <= atZ + 4; z++)
-                    for (int x = atX - 4; x <= atX + 4; x++)
-                        if (SurfaceQuery.HighestSurfaceY(terrain, x, z) is { } surface)
-                            grade = MathF.Max(grade, surface);
-                if (grade - mob.Position.Y < 1.5f)
-                    return false;
-
-                Vector3 toward = destination - mob.Position;
-                if (MathF.Abs(toward.X) > MathF.Abs(toward.Z))
-                {
-                    dx = toward.X < 0f ? -1 : 1;
-                    dz = 0;
-                }
-                else
-                {
-                    dx = 0;
-                    dz = toward.Z < 0f ? -1 : 1;
-                }
-                CancelPending(mob.Id, brain.Navigation);
-                brain.Navigation.StartEscape(dx, dz, grade);
-            }
-
-            if (mob.Position.Y >= grade - 0.35f)
-            {
-                brain.Navigation.StopEscape();
+            bool hasActorCell = TryActorCell(mob.Position, out _);
+            if (!hasActorCell
+                && (brain.Navigation.Path.HasPath || brain.Navigation.HasAnyPending))
                 return false;
-            }
-            if (!TryCellAt(mob.Position, out var from))
-                return true;
+            if (hasActorCell
+                && !brain.Navigation.Progress.HasStalledFor(
+                    mob.Position,
+                    tick,
+                    ClearanceRecoveryTicks))
+                return false;
 
-            if (NavTraversal.TryDig(
-                    terrain,
-                    from,
-                    dx,
-                    dz,
-                    out var target,
-                    out _,
-                    out var tread))
+            Vector3 toward = destination - mob.Position;
+            int dx;
+            int dz;
+            if (MathF.Abs(toward.X) > MathF.Abs(toward.Z))
             {
-                brain.Navigation.SetEscapeTread(tread);
-                digging = true;
-                long version = terrain.EditVersion;
-                PerformNavigationDig(mob, brain, target, tick);
-                terrainProgress = terrain.EditVersion != version;
-                return true;
-            }
-
-            Vector3 movementTarget;
-            if (brain.Navigation.TryGetEscapeTread(out var treadPosition))
-            {
-                movementTarget = new Vector3(treadPosition.X, mob.Position.Y, treadPosition.Y);
-                Vector3 delta = movementTarget - mob.Position;
-                delta.Y = 0f;
-                if (delta.LengthSquared() <= 0.25f * 0.25f)
-                {
-                    brain.Navigation.SetEscapeTread(null);
-                    return true;
-                }
-                intent = Vector3.Normalize(delta);
+                dx = toward.X < 0f ? -1 : 1;
+                dz = 0;
             }
             else
             {
-                intent = Vector3.Normalize(new Vector3(dx, 0f, dz));
+                dx = 0;
+                dz = toward.Z < 0f ? -1 : 1;
             }
-            // This tread was cut for this actor, but the capsule can be off-centre when it becomes
-            // usable. Keep pressing toward it and pulse jump while grounded until it settles.
-            jump = mob.Move.Grounded;
+            bool found = NavTraversal.TryDigClearance(
+                terrain,
+                mob.Position,
+                dx,
+                dz,
+                out var target);
+            if (!found)
+            {
+                Vector3 nextFeet = mob.Position + new Vector3(dx, 0f, dz);
+                found = NavTraversal.TryDigClearance(
+                        terrain,
+                        nextFeet,
+                        dx,
+                        dz,
+                        out target)
+                    && Digging.InReach(mob.Position, target);
+            }
+            if (!found
+                && toward.Y > MathF.Sqrt(toward.X * toward.X + toward.Z * toward.Z))
+                foreach (var (verticalDx, verticalDz) in (ReadOnlySpan<(int X, int Z)>)[
+                             (0, 1), (1, 0), (0, -1), (-1, 0)])
+                {
+                    Vector3 nextFeet = mob.Position + new Vector3(verticalDx, 0f, verticalDz);
+                    if (!NavTraversal.TryDigClearance(
+                            terrain,
+                            nextFeet,
+                            verticalDx,
+                            verticalDz,
+                            out target)
+                        || !Digging.InReach(mob.Position, target))
+                        continue;
+                    found = true;
+                    break;
+                }
+            if (!found) return false;
+
+            digging = true;
+            long version = terrain.EditVersion;
+            PerformNavigationDig(mob, brain, target, tick);
+            terrainProgress = terrain.EditVersion != version;
             return true;
         }
 
@@ -653,8 +759,10 @@ namespace Demiurge.GameServer
             brain.Contacts.Forget();
             brain.FlankSide = FlankSide.None;
             brain.BoundIndex = 0;
+            brain.ResetEntrenchmentHistory();
             brain.AssaultDashActive = false;
             brain.NextCoverQueryTick = 0;
+            brain.ObjectiveReached = false;
             // Cancel by actor as well as clearing the agent's bookkeeping. Cover and objective
             // requests can replace one another, so the worker's latest generation is the authority;
             // cancelling only the request the agent happened to remember could leave a pre-
@@ -875,7 +983,7 @@ namespace Demiurge.GameServer
             }
 
             squad.RefreshClaim(mob.Id, tick);
-            if (TryEscapeRamp(
+            if (TryClearNavigationHeadroom(
                     mob,
                     brain,
                     brain.CoverDestination,
@@ -976,13 +1084,21 @@ namespace Demiurge.GameServer
             if (!brain.Contacts.TryGet(brain.CombatTargetId, tick, out var primaryThreat))
                 return;
 
-            // PPSH carriers make their first cover instead of racing rifles to whatever natural
-            // position the scorer finds. Once the foxhole is complete, the normal query recognizes
-            // it as a fighting position and marks the unit set for the squad planner.
-            if (assault
-                && baseOfFire
-                && !brain.AtCover
-                && DigEmergencyCover(mob, primaryThreat.Position, tick))
+            // Assault base-of-fire units finish one position and physically occupy it before they
+            // engage. The origin and grade are fixed when digging begins; deriving either from the
+            // falling actor made the excavation migrate downward with him.
+            if (((assault
+                        && !brain.HasCompletedInitialEntrenchment
+                        && !brain.Entrenched)
+                    || brain.Entrenching)
+                && UpdateEntrenchment(
+                    mob,
+                    brain,
+                    squad,
+                    primaryThreat,
+                    tick,
+                    out intent,
+                    out jump))
                 return;
 
             bool invalidated =
@@ -992,7 +1108,7 @@ namespace Demiurge.GameServer
                         brain.CoverThreatPosition,
                         primaryThreat.Position)
                     > CoverThreatRequeryDistance * CoverThreatRequeryDistance
-                    || brain.CoverTerrainVersion != terrain.EditVersion
+                    || !brain.Entrenched && brain.CoverTerrainVersion != terrain.EditVersion
                     || brain.CoverKind == CoverKind.Advance && !closingDistance);
             if (invalidated)
             {
@@ -1118,16 +1234,17 @@ namespace Demiurge.GameServer
                         ? brain.CoverDestination
                         : brain.CoverPeekPosition;
                     Vector3 delta = desired - mob.Position;
+                    jump = desired.Y > mob.Position.Y + 0.2f && mob.Move.Grounded;
                     delta.Y = 0f;
                     if (delta.LengthSquared() > CornerArrivalDistance * CornerArrivalDistance)
                         intent = Vector3.Normalize(delta);
                 }
                 return;
             }
-            if (!mayAdvance)
+            if (!mayAdvance && brain.CoverKind == CoverKind.Advance)
                 return;
 
-            if (TryEscapeRamp(
+            if (TryClearNavigationHeadroom(
                     mob,
                     brain,
                     brain.CoverDestination,
@@ -1137,7 +1254,6 @@ namespace Demiurge.GameServer
                     out _,
                     out _))
                 return;
-
             var followState = brain.Navigation.Path.Update(
                 mob.Position,
                 mob.Move.Grounded,
@@ -1185,6 +1301,181 @@ namespace Demiurge.GameServer
                     forCover: true,
                     allowDig: true);
             }
+        }
+
+        private bool UpdateEntrenchment(
+            ServerPlayer mob,
+            MobBrain brain,
+            SquadBlackboard squad,
+            AiContact threat,
+            uint tick,
+            out Vector3 intent,
+            out bool jump)
+        {
+            intent = Vector3.Zero;
+            jump = false;
+            if (!brain.Entrenching)
+            {
+                Vector3 toward = threat.Position - mob.Position;
+                toward.Y = 0f;
+                if (toward.LengthSquared() <= 1e-6f) return false;
+                toward = Vector3.Normalize(toward);
+                int gradeX = (int)MathF.Floor(
+                    mob.Position.X - toward.X * FoxholeGradeProbeDistance);
+                int gradeZ = (int)MathF.Floor(
+                    mob.Position.Z - toward.Z * FoxholeGradeProbeDistance);
+                if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is not { } grade)
+                    return false;
+
+                ClearCover(mob.Id, brain, squad);
+                if (!squad.TryClaim(mob.Id, mob.Position, tick)) return false;
+                brain.BeginEntrenchment(mob.Position, toward, grade);
+                brain.CoverThreatId = threat.ActorId;
+                brain.CoverThreatPosition = threat.Position;
+                CancelPending(mob.Id, brain.Navigation, forCover: true);
+                brain.Navigation.Path.Clear();
+            }
+
+            squad.RefreshClaim(mob.Id, tick);
+            if (FoxholePlan.NextBite(
+                    terrain,
+                    brain.EntrenchOrigin,
+                    brain.EntrenchToward,
+                    brain.EntrenchGrade) is { } target)
+            {
+                PerformNavigationDig(mob, brain, target, tick);
+                return true;
+            }
+
+            int centreX = (int)MathF.Floor(brain.EntrenchOrigin.X);
+            int centreZ = (int)MathF.Floor(brain.EntrenchOrigin.Z);
+            if (!NavTraversal.TryFindStandable(
+                    terrain,
+                    centreX,
+                    centreZ,
+                    (int)MathF.Floor(brain.EntrenchGrade),
+                    below: 5,
+                    above: 1,
+                    out var centreCell,
+                    out _)
+                || !NavTraversal.TryPosition(terrain, centreCell, out var centre))
+                return true;
+
+            if (!brain.HasCoverDestination)
+            {
+                brain.HasCoverDestination = true;
+                brain.CoverDestination = centre;
+                brain.CoverPeekPosition = TryEntrenchmentPeek(brain, centre, out var peek)
+                    ? peek
+                    : centre;
+                brain.CoverKind = CoverKind.CornerFightingPosition;
+                brain.CoverThreatId = threat.ActorId;
+                brain.CoverThreatPosition = threat.Position;
+                brain.CoverTerrainVersion = terrain.EditVersion;
+            }
+
+            Vector3 toCentre = centre - mob.Position;
+            float horizontalDistanceSquared = toCentre.X * toCentre.X + toCentre.Z * toCentre.Z;
+            bool physicallyInside = horizontalDistanceSquared
+                    <= CornerArrivalDistance * CornerArrivalDistance
+                && MathF.Abs(mob.Position.Y - centre.Y) <= 0.75f
+                && mob.Position.Y <= brain.EntrenchOrigin.Y - 1.25f;
+            if (physicallyInside && ProtectedFrom(threat.Position, mob.Position))
+            {
+                brain.AtCover = true;
+                brain.CoverArrivedTick = tick;
+                brain.CoverTerrainVersion = terrain.EditVersion;
+                brain.CompleteEntrenchment();
+                return true;
+            }
+
+            if (horizontalDistanceSquared > CornerArrivalDistance * CornerArrivalDistance)
+            {
+                toCentre.Y = 0f;
+                intent = Vector3.Normalize(toCentre);
+                jump = centre.Y > mob.Position.Y + 0.2f && mob.Move.Grounded;
+            }
+            return true;
+        }
+
+        private bool TryEntrenchmentPeek(
+            MobBrain brain,
+            Vector3 centre,
+            out Vector3 peek)
+        {
+            int forwardX;
+            int forwardZ;
+            if (MathF.Abs(brain.EntrenchToward.X) > MathF.Abs(brain.EntrenchToward.Z))
+            {
+                forwardX = brain.EntrenchToward.X < 0f ? -1 : 1;
+                forwardZ = 0;
+            }
+            else
+            {
+                forwardX = 0;
+                forwardZ = brain.EntrenchToward.Z < 0f ? -1 : 1;
+            }
+            int rightX = forwardZ;
+            int rightZ = -forwardX;
+            int originX = (int)MathF.Floor(brain.EntrenchOrigin.X);
+            int originZ = (int)MathF.Floor(brain.EntrenchOrigin.Z);
+            Vector3? fallback = null;
+            float fallbackDistanceSquared = float.PositiveInfinity;
+            foreach (var (right, back) in (ReadOnlySpan<(int Right, int Back)>)[
+                         (-2, 0), (2, 0), (-1, 1), (1, 1), (0, 1)])
+            {
+                int x = originX + rightX * right - forwardX * back;
+                int z = originZ + rightZ * right - forwardZ * back;
+                if (!NavTraversal.TryFindStandable(
+                        terrain,
+                        x,
+                        z,
+                        (int)MathF.Floor(brain.EntrenchGrade),
+                        below: 4,
+                        above: 1,
+                        out var cell,
+                        out float surfaceY)
+                    || surfaceY <= centre.Y + 0.15f
+                    || !NavTraversal.TryPosition(terrain, cell, out peek))
+                    continue;
+                float candidateDistanceSquared = HorizontalDistanceSquared(peek, centre);
+                if (candidateDistanceSquared < fallbackDistanceSquared)
+                {
+                    fallback = peek;
+                    fallbackDistanceSquared = candidateDistanceSquared;
+                }
+                Vector3 eye = peek + Vector3.UnitY * Digging.EyeHeight;
+                foreach (float aimHeight in GunConfig.AimHeights)
+                {
+                    Vector3 aim = brain.CoverThreatPosition + Vector3.UnitY * aimHeight;
+                    Vector3 ray = aim - eye;
+                    float distance = ray.Length();
+                    if (distance <= 1e-5f) continue;
+                    if (TerrainRaycast.Cast(terrain, eye, ray / distance, distance) is { } hit
+                        && hit.Distance < distance - 0.1f)
+                        continue;
+                    return true;
+                }
+            }
+
+            peek = fallback.GetValueOrDefault();
+            return fallback.HasValue;
+        }
+
+        private bool ProtectedFrom(Vector3 threatFeet, Vector3 actorFeet)
+        {
+            Vector3 origin = threatFeet + Vector3.UnitY * Digging.EyeHeight;
+            foreach (float height in GunConfig.AimHeights)
+            {
+                Vector3 target = actorFeet + Vector3.UnitY * height;
+                Vector3 delta = target - origin;
+                float distance = delta.Length();
+                if (distance <= 1e-5f) return false;
+                var hit = TerrainRaycast.Cast(terrain, origin, delta / distance, distance);
+                if (hit is null || hit.Value.Distance >= distance - 0.1f)
+                    return false;
+            }
+            return true;
         }
 
         private void PerformNavigationDig(
@@ -1257,6 +1548,42 @@ namespace Demiurge.GameServer
             return true;
         }
 
+        /// <summary>
+        /// The one movement authority for mobs, timed. Every mob intent goes through here so the
+        /// solver's share of the tick is measured rather than inferred — see
+        /// <see cref="timingSolverStopwatchTicks"/> for why that distinction cost real work.
+        /// </summary>
+        private bool TimedClearNavigationHeadroom(
+            ServerPlayer mob,
+            MobBrain brain,
+            Vector3 destination,
+            uint tick,
+            out Vector3 intent,
+            out bool jump,
+            out bool digging,
+            out bool terrainProgress)
+        {
+            long started = Stopwatch.GetTimestamp();
+            bool recovered = TryClearNavigationHeadroom(
+                mob,
+                brain,
+                destination,
+                tick,
+                out intent,
+                out jump,
+                out digging,
+                out terrainProgress);
+            timingHeadroomStopwatchTicks += Stopwatch.GetTimestamp() - started;
+            return recovered;
+        }
+
+        private void StepSolver(ServerPlayer mob, Vector3 intent, float dt)
+        {
+            long started = Stopwatch.GetTimestamp();
+            PlayerMovement.Step(terrain, ref mob.Move, intent, mob.State, dt);
+            timingSolverStopwatchTicks += Stopwatch.GetTimestamp() - started;
+        }
+
         public void RecordTick(long movementStopwatchTicks, int agentCount)
         {
             if (timingTicks == 0)
@@ -1287,6 +1614,15 @@ namespace Demiurge.GameServer
                 nav.SharedRouteReuses - timingNavigationStart.SharedRouteReuses;
             double movementUsPerTick =
                 timingMovementStopwatchTicks * 1_000_000d / Stopwatch.Frequency / timingTicks;
+            double solverUsPerTick =
+                timingSolverStopwatchTicks * 1_000_000d / Stopwatch.Frequency / timingTicks;
+            double combatUsPerTick =
+                timingCombatStopwatchTicks * 1_000_000d / Stopwatch.Frequency / timingTicks;
+            double entrenchUsPerTick =
+                timingEntrenchStopwatchTicks * 1_000_000d / Stopwatch.Frequency / timingTicks;
+            double Us(long ticks) => ticks * 1_000_000d / Stopwatch.Frequency / timingTicks;
+            double headroomUs = Us(timingHeadroomStopwatchTicks);
+            double followerUs = Us(timingFollowerStopwatchTicks);
             double perceptionUsPerTick =
                 timingPerceptionStopwatchTicks * 1_000_000d / Stopwatch.Frequency / timingTicks;
             double coverUsPerTick =
@@ -1303,11 +1639,16 @@ namespace Demiurge.GameServer
             double agents = timingAgentSamples / (double)timingTicks;
 
             latestStats = FormattableString.Invariant(
-                $"AI 1s avg: agents {agents:0.0}; movement {movementUsPerTick:0.0} us/tick; perception {perceptionUsPerTick:0.0} us/tick; cover {coverUsPerTick:0.0} us/tick ({timingCoverQueries} queries); {navigation.WorkerCount} path workers {pathUsPerTick:0.0} aggregate us/tick off-thread; paths {requests} requested, {completed} completed ({complete} full/{partial} partial), queue {queueUsPerPath:0} us/path p50/p95 {queueP50}/{queueP95} us, search p50/p95 {searchP50}/{searchP95} us, {nodesPerPath:0} nodes/path, {metresPerPath:0.0} m/path, traversal cache {cacheHits} hits, shared routes {sharedReuses}, {cancelled} cancelled, {invalidated} spatially invalidated");
+                $"AI 1s avg: agents {agents:0.0}; movement {movementUsPerTick:0.0} us/tick (solver {solverUsPerTick:0.0} | combat {combatUsPerTick:0.0}, entrench {entrenchUsPerTick:0.0}, follow {movementUsPerTick - combatUsPerTick - entrenchUsPerTick:0.0} [headroom {headroomUs:0.0}, path {followerUs:0.0}]); perception {perceptionUsPerTick:0.0} us/tick; cover {coverUsPerTick:0.0} us/tick ({timingCoverQueries} queries); {navigation.WorkerCount} path workers {pathUsPerTick:0.0} aggregate us/tick off-thread; paths {requests} requested, {completed} completed ({complete} full/{partial} partial), queue {queueUsPerPath:0} us/path p50/p95 {queueP50}/{queueP95} us, search p50/p95 {searchP50}/{searchP95} us, {nodesPerPath:0} nodes/path, {metresPerPath:0.0} m/path, traversal cache {cacheHits} hits, shared routes {sharedReuses}, {cancelled} cancelled, {invalidated} spatially invalidated");
 
             timingTicks = 0;
             timingAgentSamples = 0;
             timingMovementStopwatchTicks = 0;
+            timingSolverStopwatchTicks = 0;
+            timingCombatStopwatchTicks = 0;
+            timingEntrenchStopwatchTicks = 0;
+            timingHeadroomStopwatchTicks = 0;
+            timingFollowerStopwatchTicks = 0;
             timingPerceptionStopwatchTicks = 0;
             timingCoverStopwatchTicks = 0;
             timingCoverQueries = 0;
@@ -1386,8 +1727,21 @@ namespace Demiurge.GameServer
             var navigationAgent = brains[mob.Id].Navigation;
             if (navigationAgent.HasPending(forCover) && !replacePending)
                 return true;
+            // A grounded capsule can straddle a trench lip, wall foot, or authored spawn edge while
+            // its centre's exact X/Z column is not itself standable. Ordinary navigation must recover
+            // from the nearest capsule-valid cell as it did before; requiring the exact actor column
+            // here leaves the follower with no way to replan precisely when it reaches an obstacle.
+            // TryActorCell remains the intentionally strict test for clearance/escape excavation,
+            // where borrowing an unrelated nearby or overhead surface would target the wrong soil.
             if (!TryCellAt(mob.Position, out var start)
-                || !TryCellAt(destination, out var target))
+                // Excavation can remove the exact formation/flag sample. Resolve the destination
+                // over a wider local ring so the actor routes to intact grade beside its cut rather
+                // than becoming pathless directly underneath the original point.
+                || !NavTraversal.TryFindNearestStandableGoal(
+                    terrain,
+                    destination,
+                    horizontalRadius: 8,
+                    out var target))
                 return false;
             long? blockedCellKey = navigationAgent.TakeAvoidedCell();
             NavCell? preferredDigSite = navigationAgent.PreferredDigSite(tick);
@@ -1430,12 +1784,32 @@ namespace Demiurge.GameServer
             return requestId != 0;
         }
 
-        private bool TryCellAt(Vector3 position, out NavCell cell)
+        private bool TryCellAt(
+            Vector3 position,
+            out NavCell cell,
+            int horizontalRadius = 3)
             => NavTraversal.TryFindNearestStandable(
                 terrain,
                 position,
-                horizontalRadius: 3,
+                horizontalRadius,
                 out cell);
+
+        private bool TryActorCell(Vector3 position, out NavCell cell)
+        {
+            int x = (int)MathF.Floor(position.X);
+            int z = (int)MathF.Floor(position.Z);
+            if (!NavTraversal.TryFindStandable(
+                    terrain,
+                    x,
+                    z,
+                    (int)MathF.Floor(position.Y),
+                    below: 3,
+                    above: 3,
+                    out cell,
+                    out float surfaceY))
+                return false;
+            return MathF.Abs(surfaceY - position.Y) <= 0.75f;
+        }
 
         private Vector3 RandomSurfacePoint(Vector3 center)
         {

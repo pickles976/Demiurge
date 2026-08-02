@@ -32,19 +32,30 @@ namespace Demiurge
         public const float FiringShelfDepth = 1f;
 
         /// <summary>
-        /// Offsets from the actor, in metres, as (right, forward) with forward pointing AT the
-        /// threat. Ordered by priority, and the order is the tactic — the actor's own square comes
-        /// first and the parapet square (positive forward) never appears.
+        /// Physical-cell offsets from the actor as (right, forward), with forward pointing AT the
+        /// threat. A terrain cell has four SDF corner samples; all four must be cleared or a nominal
+        /// one-metre hole is only a narrow bowl that the 0.8 m player capsule cannot occupy.
+        /// Ordered by priority, and the order is the tactic — the actor's own cell comes first and
+        /// the parapet cell (positive forward) never appears.
         /// </summary>
-        private static readonly (float Right, float Forward, float Depth)[] Pattern =
+        private static readonly (int Right, int Forward, float Depth)[] Pattern =
         [
             // This entry is deliberately first and deepest. NextBite does not advance to another
             // entry until its requested depth is complete, so the initial position really is a
             // 1x1, two-deep hole rather than four shallow bowls dug in rotation.
-            (0f, 0f, Depth),
-            (0f, -1f, RearShelfDepth),
-            (-1f, 0f, FiringShelfDepth),
-            (1f, 0f, FiringShelfDepth),
+            (0, 0, Depth),
+            (0, -1, RearShelfDepth),
+            (-1, -1, RearShelfDepth),
+            (1, -1, RearShelfDepth),
+            (-1, 0, FiringShelfDepth),
+            (-2, 0, FiringShelfDepth),
+            (1, 0, FiringShelfDepth),
+            (2, 0, FiringShelfDepth),
+        ];
+
+        private static readonly (int X, int Z)[] CellCorners =
+        [
+            (0, 0), (1, 0), (0, 1), (1, 1),
         ];
 
         /// <summary>
@@ -62,11 +73,38 @@ namespace Demiurge
         {
             if (toward.LengthSquared() < 1e-6f) return null;
             toward = Vector3.Normalize(new Vector3(toward.X, 0f, toward.Z));
-            var right = new Vector3(toward.Z, 0f, -toward.X);
+
+            // Terrain cells are axis aligned. Snap the threat bearing to the dominant cardinal so
+            // the protected centre remains one complete physical cell even for diagonal contacts.
+            int forwardX;
+            int forwardZ;
+            if (MathF.Abs(toward.X) > MathF.Abs(toward.Z))
+            {
+                forwardX = toward.X < 0f ? -1 : 1;
+                forwardZ = 0;
+            }
+            else
+            {
+                forwardX = 0;
+                forwardZ = toward.Z < 0f ? -1 : 1;
+            }
+            int rightX = forwardZ;
+            int rightZ = -forwardX;
+            int originX = (int)MathF.Floor(feet.X);
+            int originZ = (int)MathF.Floor(feet.Z);
+
             foreach (var (offsetRight, offsetForward, depth) in Pattern)
             {
-                var spot = feet + right * offsetRight + toward * offsetForward;
-                if (TryBiteAt(map, spot, gradeY, depth) is { } target) return target;
+                int cellX = originX + rightX * offsetRight + forwardX * offsetForward;
+                int cellZ = originZ + rightZ * offsetRight + forwardZ * offsetForward;
+                foreach (var (cornerX, cornerZ) in CellCorners)
+                    if (TryBiteAt(
+                            map,
+                            cellX + cornerX,
+                            cellZ + cornerZ,
+                            gradeY,
+                            depth) is { } target)
+                        return target;
             }
 
             return null;
@@ -74,12 +112,11 @@ namespace Demiurge
 
         private static Vector3? TryBiteAt(
             ChunkMap map,
-            Vector3 spot,
+            int x,
+            int z,
             float gradeY,
             float depth)
         {
-            int x = (int)MathF.Floor(spot.X);
-            int z = (int)MathF.Floor(spot.Z);
             int top = (int)MathF.Floor(gradeY);
             int layers = Math.Max(1, (int)MathF.Ceiling(depth));
             for (int layer = 0; layer < layers; layer++)

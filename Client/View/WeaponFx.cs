@@ -12,18 +12,26 @@ public static class WeaponFx
     /// second turns into a machine-gun buzz that stops reading as separate shots. Pick one per
     /// shot via <see cref="ShotSound"/>; a single-entry list behaves exactly as before.
     /// </summary>
+    /// <summary>
+    /// <paramref name="ReloadVolume"/> trims one weapon's reload against the others. It is per
+    /// weapon rather than a constant on the reload path because the samples are recordings at
+    /// whatever level they were captured at, and evening them out is a property of the recording,
+    /// not of what a reload should sound like.
+    /// </summary>
     public readonly record struct Entry(
         IReadOnlyList<string> ShotSoundPaths,
         Color TracerColor,
         string? ReloadSoundPath = null,
-        string? DistantReportSoundPath = null)
+        string? DistantReportSoundPath = null,
+        float ReloadVolume = 1f)
     {
         public Entry(
             string shotSoundPath,
             Color tracerColor,
             string? reloadSoundPath = null,
-            string? distantReportSoundPath = null)
-            : this([shotSoundPath], tracerColor, reloadSoundPath, distantReportSoundPath) { }
+            string? distantReportSoundPath = null,
+            float reloadVolume = 1f)
+            : this([shotSoundPath], tracerColor, reloadSoundPath, distantReportSoundPath, reloadVolume) { }
     }
 
     public static Entry Get(ItemType type) => type switch
@@ -44,7 +52,8 @@ public static class WeaponFx
             ],
             Color.Yellow,
             ReloadSoundPath: "assets/sfx/ppsh_reload.wav",
-            DistantReportSoundPath: "assets/sfx/ppsh_report_far_off_200m.wav"),
+            DistantReportSoundPath: "assets/sfx/ppsh_report_far_off_200m.wav",
+            ReloadVolume: 0.6f),
         ItemType.AWP => new("assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.Glock => new("assets/sfx/ak47_shot.wav", Color.Yellow),
 
