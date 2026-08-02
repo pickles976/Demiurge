@@ -364,6 +364,7 @@ public static class NavSearch
         public NavAction ActionFromParent;
         public bool HasParent;
         public bool Closed;
+        public bool HasUncommittedDeepDescent;
     }
 
     private readonly record struct DigCandidate(
@@ -384,7 +385,9 @@ public static class NavSearch
     // Geometry probing is substantially dearer than recording a blocked edge. Resolve only the
     // cheapest frontier candidates after ordinary expansion, with a hard per-search ceiling.
     private const int MaximumDigProbes = 64;
-    private const float MinimumAirProgressBeforeFallback = 0.5f;
+    private const float MinimumAirProgressBeforeFallback = 4f;
+    private const int MaximumCommittedPartialDropCells = 2;
+    private const float MinimumGoalRisePerHorizontalMetreForRecovery = 0.5f;
 
     private static readonly (int X, int Z)[] Directions =
     [
@@ -472,7 +475,8 @@ public static class NavSearch
                     preferredDigSite,
                     traversal,
                     digFrontiers,
-                    current.Cost);
+                    current.Cost,
+                    allowUncommittedDeepDescent: false);
                 if (goalDig is { } cheaperDig)
                     return ReconstructDig(map, nodes, cheaperDig, expanded, traversal.Hits)
                         with { ExhaustedReachable = false };
@@ -485,12 +489,14 @@ public static class NavSearch
                     traversal.Hits);
             }
 
-            if (current.Heuristic < best.Heuristic)
+            if (!current.HasUncommittedDeepDescent
+                && current.Heuristic < best.Heuristic)
                 best = current;
             float fromStartDistanceSquared = CellDistanceSquared(current.Cell, start);
-            if (fromStartDistanceSquared > furthestDistanceSquared
+            if (!current.HasUncommittedDeepDescent
+                && (fromStartDistanceSquared > furthestDistanceSquared
                 || fromStartDistanceSquared == furthestDistanceSquared
-                    && current.Heuristic < furthest.Heuristic)
+                    && current.Heuristic < furthest.Heuristic))
             {
                 furthest = current;
                 furthestDistanceSquared = fromStartDistanceSquared;
@@ -514,7 +520,8 @@ public static class NavSearch
                     preferredDigSite,
                     traversal,
                     digFrontiers,
-                    NavCosts.Inf) is { } committedDig)
+                    NavCosts.Inf,
+                    allowUncommittedDeepDescent: false) is { } committedDig)
                 return ReconstructDig(
                     map,
                     nodes,
@@ -566,12 +573,11 @@ public static class NavSearch
         // estimated execution seconds. This preserves bounded long-route progress and avoids the old
         // unconditional second A* pass.
         float bestAirScore = best.Cost + best.Heuristic;
-        bool usefulAirProgress =
-            (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
-                >= options.MinimumPartialDistance;
         bool madeAirProgress =
             (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
-                >= MinimumAirProgressBeforeFallback;
+                >= MathF.Max(
+                    MinimumAirProgressBeforeFallback,
+                    options.MinimumPartialDistance);
         if (options.AllowDig)
             RecordGoalDirectedDig(
                 goal,
@@ -588,9 +594,13 @@ public static class NavSearch
             // A live follower has already disproved the blocked idealized edge. An incomplete
             // prefix toward that same edge is not a competing route; resolve an executable macro
             // frontier now instead of returning the same stall forever.
-            exhaustedReachable || blockedCellKey is not null || !madeAirProgress
+            exhaustedReachable || blockedCellKey is not null
+                || (!madeAirProgress && GoalNeedsUpwardRecovery(goal, start))
                 ? NavCosts.Inf
-                : bestAirScore);
+                : !madeAirProgress && furthest.Cell != start
+                    ? furthest.Cost + furthest.Heuristic
+                    : bestAirScore,
+            allowUncommittedDeepDescent: exhaustedReachable);
         if (bestDig is { } dig)
             return ReconstructDig(map, nodes, dig, expanded, traversal.Hits)
                 with { ExhaustedReachable = exhaustedReachable };
@@ -785,8 +795,7 @@ public static class NavSearch
         int deltaX = target.X - from.Cell.X;
         int deltaZ = target.Z - from.Cell.Z;
         int deltaY = target.Y - from.Cell.Y;
-        if (deltaY > 0
-            && deltaY * deltaY > deltaX * deltaX + deltaZ * deltaZ)
+        if (NeedsUpwardRecovery(deltaX, deltaY, deltaZ))
         {
             RecordVerticalDigFrontiers();
             return;
@@ -842,13 +851,37 @@ public static class NavSearch
         }
     }
 
+    private static bool GoalNeedsUpwardRecovery(INavGoal goal, NavCell from)
+    {
+        NavCell target = goal switch
+        {
+            GoalPosition position => position.Target,
+            GoalNear near => near.Target,
+            _ => default,
+        };
+        return (goal is GoalPosition || goal is GoalNear)
+            && NeedsUpwardRecovery(
+                target.X - from.X,
+                target.Y - from.Y,
+                target.Z - from.Z);
+    }
+
+    private static bool NeedsUpwardRecovery(int deltaX, int deltaY, int deltaZ)
+    {
+        if (deltaY <= 0) return false;
+        float horizontalSquared = deltaX * deltaX + deltaZ * deltaZ;
+        float minimumRise = MinimumGoalRisePerHorizontalMetreForRecovery;
+        return deltaY * deltaY > minimumRise * minimumRise * horizontalSquared;
+    }
+
     private static DigCandidate? ResolveBestDig(
         ChunkMap map,
         INavGoal goal,
         NavCell? preferredDigSite,
         TraversalCache traversal,
         PriorityQueue<DigFrontier, float> frontiers,
-        float scoreCeiling)
+        float scoreCeiling,
+        bool allowUncommittedDeepDescent)
     {
         DigCandidate? best = null;
         int probes = 0;
@@ -858,6 +891,9 @@ public static class NavSearch
         {
             var frontier = frontiers.Dequeue();
             probes++;
+            if (frontier.From.HasUncommittedDeepDescent
+                && !allowUncommittedDeepDescent)
+                continue;
             bool found = traversal.TryDig(
                     map,
                     frontier.From.Cell,
@@ -947,6 +983,10 @@ public static class NavSearch
         node.Parent = current.Cell.Key;
         node.ActionFromParent = action;
         node.HasParent = true;
+        node.HasUncommittedDeepDescent =
+            current.HasUncommittedDeepDescent
+            || action == NavAction.Jump
+                && current.Cell.Y - next.Y > MaximumCommittedPartialDropCells;
         open.EnqueueOrDecrease(next.Key, node.Cost + node.Heuristic);
     }
 

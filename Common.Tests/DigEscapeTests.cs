@@ -209,6 +209,49 @@ public class DigEscapeTests(ITestOutputHelper output)
             $"the cell between the actor and the stair ({wallX - 1}) is still unreachable");
     }
 
+    [Fact]
+    public void StaircaseDigTargetsStayInsideOneMetreCorridor()
+    {
+        var map = Pit();
+        Assert.True(
+            NavTraversal.TryFindStandable(map, 5, 0, (int)PitFloor, 4, 4, out var at, out _));
+
+        const int wallX = 7;
+        int treadY = at.Y + 1;
+        var lateralSamples = new HashSet<int>();
+        for (int bite = 0; bite < 64; bite++)
+        {
+            if (NavTraversal.Standable(map, wallX, treadY, 0, out _)) break;
+
+            Assert.True(
+                NavTraversal.TryDig(
+                    map,
+                    at,
+                    dx: 1,
+                    dz: 0,
+                    out var target,
+                    out _,
+                    out var treadCell),
+                $"staircase stopped producing work after {bite} bites");
+            Assert.Equal(new NavCell(wallX, treadY, 0), treadCell);
+            lateralSamples.Add((int)target.Z);
+            Assert.InRange(target.Z, 0f, 1f);
+            Assert.True(target.Y > treadY, $"staircase cut its tread at {target}");
+
+            TerrainEdits.ApplyBox(
+                map,
+                target,
+                Digging.Bite,
+                EditMode.SubtractSoil,
+                BlockType.BlockType_Air,
+                EditShape.Sphere,
+                Digging.BiteStrength);
+        }
+
+        Assert.True(NavTraversal.Standable(map, wallX, treadY, 0, out _));
+        Assert.InRange(lateralSamples.Count, 1, 2);
+    }
+
     private static NavCell CellAt(ChunkMap map, int x, int z)
     {
         Assert.True(

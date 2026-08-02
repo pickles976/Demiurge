@@ -15,7 +15,7 @@ first.
 **How to read this.** The first section is a *concept* — surface nets and dual contouring are
 one algorithm — and it applies to the first line of mesher code you write. "Known limitations"
 is recorded hazard, not a checklist: every item in it is a problem you get *after* a working
-single-LOD mesher, and none of it should shape the first version. `TODO.md` scopes the next step.
+single-LOD mesher, and none of it should shape the first version. [TODO.md](../TODO.md) scopes the next step.
 
 ## Surface nets and dual contouring are one algorithm
 

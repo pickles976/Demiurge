@@ -8,14 +8,12 @@ For weapons, need to model sights and add anchors for camera to figure out where
 Server/Client split
 - replace Riptide for singleplayer mode
 
-AI 
-- Tell CLAUDE.md to not use hacks like if statements but to use behavior trees and robust systems. Use Baritone pathfinding as an anecdote.
-
-- Sometimes NPCs just stand at the flagpost doing nothing
-- NPCs should always be doing something
-
+AI
 - better tactics
-  -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance either by sprinting, or by digging.
+  -  be ore mobile
+- PPSH units dont do shit rn
+  - PPSH units sprint
+- SKS units dig in and engage
 
 - [ ] PVP
     - [ ] add mosin-nagant

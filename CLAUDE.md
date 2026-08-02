@@ -70,7 +70,7 @@ bandwidth the CPU and GPU **share**, at 15–25 W sustained. Three consequences:
 - **Do not infer the bottleneck from resolution alone.** The measured 1920x1080 regression was an
   SDL fullscreen resize/device-reset loop, not GPU load; forcing the RTX 4060 did not improve it.
   Terrain rendering/streaming remains a likely steady-state cost, but profile before choosing a
-  CPU, GPU, or allocation fix. See `PERFORMANCE.md`.
+  CPU, GPU, or allocation fix.
 - **There are cores to spare.** Pushing work onto a worker is the preferred fix over micro-optimizing
   it on the main thread — but only *computation* moves. Anything that creates a Riptide `Message` or
   mutates world state stays on the main thread and hands results back through a queue, exactly as
@@ -95,14 +95,14 @@ a `ConcurrentDictionary` lookup **per voxel**, and `TerrainCollision.TrySample` 
 (8 corners for the cell, 48 more for the smoothed gradient stencil). `TryDeepestContact` triples
 that. Every sample point inside one `TrySample` lies within ±0.5, so the whole thing fits in one
 3×3×3 block fetched once — an unclaimed order of magnitude, bit-identical, benefiting players and
-AI equally. `AI_IMPLEMENTATION.md` carries the full analysis.
+AI equally.
 
 Measure before optimizing, and measure again after. Per-system tick timing belongs in the developer
 terminal, not in a one-off harness.
 
 ## Architecture
 
-**Read `RECIPES.md` before changing gameplay code.** It is the map, not a tutorial:
+**Read `docs/RECIPES.md` before changing gameplay code.** It is the map, not a tutorial:
 Common is the wire, Server is truth, Client is Netcode → Sim → View with a strict
 one-way flow, and Program.cs wires it all. It also carries step-by-step recipes for
 adding a replicated component, an equippable item, a weapon, or a new trait — each one
@@ -112,9 +112,9 @@ steps that are easy to forget are exactly the ones that shipped bugs before.
 Wire rule worth repeating here: enum values and the `ComponentBundle` if-chain order
 ARE the protocol. Append, never reorder, never delete — clients desync silently.
 
-`docs/ARCHITECTURE.md` is the current subsystem map. `AI_IMPLEMENTATION.md` keeps the staged AI
-design and implemented/deferred status; `docs/NAVIGATION.md` documents the live navigation lifecycle,
-worker scheduling, recovery, metrics, and tests.
+`docs/ARCHITECTURE.md` is the current subsystem map and AI overview;
+`docs/NAVIGATION.md` documents the live navigation lifecycle, worker scheduling, recovery, metrics,
+and tests.
 
 `ClientApplication` is the process composition root. It owns Stride, global rendering and lighting,
 the persistent terminal, and `ClientSessionCoordinator`. `RuntimeClientSession` owns networking,
@@ -123,7 +123,7 @@ registries, terrain streaming, views, gameplay scripts, and an optional in-proce
 Both sessions must release entities, services, event handlers, sockets, and GPU terrain resources in
 `Dispose()`. In runtime updates, terrain `Drain()` must still run before `RebuildDirty()`: Drain is
 the only writer of chunk voxels, and dispatch only hands out chunks Drain has finished. More detail
-is in `stride_docs/code-only-runtime-and-assets.md` and root `EDITOR.md`.
+is in `docs/stride/code-only-runtime-and-assets.md` and `docs/EDITOR.md`.
 
 Editor placements store a stable GUID and an integer anchor cell, not a raw world transform.
 `EditorPlacementPosition` is the one conversion to world space: X/Z come from the cell center and Y
@@ -192,7 +192,7 @@ optimistic worker read.
 Client display configuration is also a composition-root invariant. Set the 1920x1080 back buffer
 before `game.Run`, leave `Game.AutoLoadDefaultSettings` disabled, and use borderless desktop
 fullscreen on SDL. Calling `ApplyChanges` from the post-device start callback can recreate the
-resize/device-reset loop in `PERFORMANCE.md`.
+resize/device-reset loop described under Performance targets above.
 
 Design specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`,
 loose notes in `docs/scratchpad/`. `docs/networking/` explains the object replication,
@@ -235,7 +235,7 @@ Two Riptide facts that cost real debugging time:
 
 ## Terrain / chunks (in progress)
 
-The current work, tracked in `TODO.md`. Code sits in `Common/Voxel/`, with no Stride dependency,
+The current work is tracked in `docs/TODO.md`. Code sits in `Common/Voxel/`, with no Stride dependency,
 so both ends share it.
 
 **The server owns terrain and streams it; the client never generates any.** `WorldGen.Generate`
@@ -263,7 +263,7 @@ creates GPU buffers, and off-thread resource creation is not worth gambling on t
 **Uploads are batched and buffers are reference counted**, and both are load-bearing rather than tidy:
 one `Buffer.New` per section meant ~3,468 Vulkan allocations whose cost climbed to 11 ms each, and
 nothing freed them because `Scene = null` doesn't release GPU memory. That was the real reason terrain
-took 32 s to appear — see `stride_docs/code-only-runtime-and-assets.md` for the full measurement, and
+took 32 s to appear — see `docs/stride/code-only-runtime-and-assets.md` for the full measurement, and
 note the residual growth is still unexplained.
 
 The Bevy/Rust project at `/home/sebas/Projects/Demiurge` is the working reference this was
@@ -320,7 +320,7 @@ spec for the coordinate transforms.
   pushout normal and an exact cell-local surface normal; contacts above 45 degrees use the latter
   for the 55-degree standability check so saturated neighboring samples cannot make cliffs walkable.
 - Human terrain docs are in `docs/voxel/`; keep them terse and put implementation-heavy notes here
-  or in `stride_docs/`.
+  or in `docs/stride/`.
 
 `docs/voxel/` has four docs, one per layer: **DATA_MODEL** (what a voxel is, and the wire format
 derived from it), **GENERATION** (seed to height), **MESHING** (field to triangles), **COLLISION**
@@ -382,9 +382,9 @@ deliberately bypassing Stride's audio, whose native layer deadlocks on this plat
 (`docs/scratchpad/AUDIO.md`). Don't reintroduce `Stride.Audio`. The camera entity is the 3D
 listener, resolved from services.
 
-## Stride engine reference — check `stride_docs/` first
+## Stride engine reference — check `docs/stride/` first
 
-`stride_docs/` is our own Stride reference, written from the decompiled 4.3.0.2507
+`docs/stride/` is our own Stride reference, written from the decompiled 4.3.0.2507
 assemblies and cross-checked against this repo. **Look there before decompiling the
 engine or searching the web** — it exists specifically to kill that cold-start cost.
 
@@ -469,6 +469,6 @@ failure modes to actively avoid are **cognitive overload** and **premature optim
 - Don't answer a concept question with a system design. ("What chunk size and data structure?"
   wants a concept, not sections + cache analysis + a meshing strategy.)
 - Don't optimize a step he has scoped as scaffolding or throwaway.
-- When design must run ahead of code, mark plainly which parts belong to a later step. `TODO.md`
+- When design must run ahead of code, mark plainly which parts belong to a later step. `docs/TODO.md`
   does this by ending each step with what is *deliberately not* in it; that marking is what lets
   a blueprint run ahead without reading as a to-do list.

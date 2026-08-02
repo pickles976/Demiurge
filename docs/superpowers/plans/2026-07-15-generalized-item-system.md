@@ -2,7 +2,7 @@
 
 > **Historical plan:** The component/slot architecture was implemented, but concrete signatures in
 > this document predate projectile ballistics, grenades, and later wire additions. Use the current
-> [recipes](../../../RECIPES.md), [architecture](../../ARCHITECTURE.md), and source for extension
+> [recipes](../../RECIPES.md), [architecture](../../ARCHITECTURE.md), and source for extension
 > work.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -972,7 +972,7 @@ Armor placement reads correctly on the wearer from the other client's view (reme
 
 - [ ] **Step 3: Update `README.md`**
 
-Under `- [ ] add wearables`, check off `- [x] add armor` (leave `add helmet` unchecked — it's now a data-row exercise; see RECIPES.md "Add an equippable item").
+Under `- [ ] add wearables`, check off `- [x] add armor` (leave `add helmet` unchecked — it's now a data-row exercise; see [RECIPES.md](../../RECIPES.md) "Add an equippable item").
 
 - [ ] **Step 4: Commit**
 

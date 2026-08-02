@@ -5,7 +5,7 @@
 
 > **Historical design record:** The component-driven identity/trait/slot decisions remain current,
 > but concrete weapon fields and message inventory have since evolved. Use the current
-> [recipes](../../../RECIPES.md) and [architecture](../../ARCHITECTURE.md) for the live extension
+> [recipes](../../RECIPES.md) and [architecture](../../ARCHITECTURE.md) for the live extension
 > rules.
 
 ## Problem

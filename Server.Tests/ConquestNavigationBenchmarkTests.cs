@@ -76,7 +76,10 @@ public sealed class ConquestNavigationBenchmarkTests(ITestOutputHelper output)
             + $"{metrics.CacheHits} traversal-cache hits; "
             + $"{metrics.ExpandedNodes} expanded nodes");
 
-        Assert.True(metrics.SharedRouteReuses >= 16);
+        // Long conquest routes deliberately return actor-local bounded prefixes: sharing an
+        // unproved trunk made whole squads converge on the same trench-wall local minimum. The
+        // expensive traversal geometry remains shared and is the performance mechanism here.
+        Assert.True(metrics.CacheHits > 0);
         Assert.True(p95 < 500_000, $"Queue p95 was {p95 / 1000f:0.0} ms");
     }
 

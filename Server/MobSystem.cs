@@ -179,14 +179,21 @@ namespace Demiurge.GameServer
                 if (result.Path.Waypoints.Count > 0
                     && NavPathTerrain.IsValid(terrain, result.Path))
                 {
-                    Vector3? currentPosition = actors
-                        .FirstOrDefault(actor => actor.Id == result.MobId)
-                        ?.Position;
-                    brain.Navigation.Path.SetPath(
-                        result.Path,
-                        result.TerrainVersion,
-                        currentPosition,
-                        terrain);
+                    // A jump path's intent was proved as one continuous movement. A prefetch can
+                    // finish after takeoff; installing it then resets the jump executor while the
+                    // actor is airborne and is enough to drop a capsule off a narrow bridge.
+                    // Discard that stale prefix and let the landed actor request from truth.
+                    if (brain.Navigation.Path.CanReplacePath)
+                    {
+                        Vector3? currentPosition = actors
+                            .FirstOrDefault(actor => actor.Id == result.MobId)
+                            ?.Position;
+                        brain.Navigation.Path.SetPath(
+                            result.Path,
+                            result.TerrainVersion,
+                            currentPosition,
+                            terrain);
+                    }
                 }
                 else
                 {

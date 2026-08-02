@@ -14,6 +14,7 @@ internal enum PathFollowState
 internal sealed class PathFollower
 {
     private const float ArrivalRadius = 0.55f;
+    private const float JumpTakeoffArrivalRadius = 0.15f;
     private const float ProgressEpsilon = 0.025f;
     private const float UphillRecoveryRise = 0.2f;
     private const int UphillRecoveryTicks = NetworkConfig.TickRate / 4;
@@ -22,6 +23,7 @@ internal sealed class PathFollower
     private const float JumpLandingTolerance = 1.5f;
     private const int StallTicks = 3 * NetworkConfig.TickRate / 4;
     private const float PartialRefreshDistance = 12f;
+    private const float ForwardJoinSlack = 1f;
 
     private NavPath? path;
     private int waypoint;
@@ -41,12 +43,16 @@ internal sealed class PathFollower
 
     public bool ReachedGoal => path?.ReachedGoal == true;
     public bool HasPath => path is not null;
+    public bool CanReplacePath => !jumpIssued;
     public bool ShouldRefreshPath =>
         path is { ReachedGoal: false }
         // A dig is already the receding-horizon decision. Prefetching the same terrain generation
         // repeatedly resets stall recovery on its walk prefix and can prevent the actor from ever
         // reaching or revising that excavation frontier.
         && !pathHasDig
+        // A planned jump is one atomic movement. Replacing its landing corridor in mid-air drops
+        // the executor's proven intent and can steer the actor off a one-metre bridge.
+        && !jumpIssued
         && RemainingPathMetres() <= PartialRefreshDistance;
 
     public void SetPath(
@@ -86,8 +92,21 @@ internal sealed class PathFollower
     {
         int closest = 0;
         float closestDistance = float.PositiveInfinity;
+        float actorDisplacement = MathF.Sqrt(HorizontalDistanceSquared(
+            position,
+            value.Waypoints[0].Position));
+        float maximumRouteMetres = actorDisplacement + ForwardJoinSlack;
+        float routeMetres = 0f;
         for (int i = 0; i < value.Waypoints.Count; i++)
         {
+            if (i > 0)
+            {
+                routeMetres += MathF.Sqrt(HorizontalDistanceSquared(
+                    value.Waypoints[i - 1].Position,
+                    value.Waypoints[i].Position));
+                if (routeMetres > maximumRouteMetres)
+                    break;
+            }
             // Never skip a planned jump or dig just because an asynchronously moving actor is
             // horizontally close to its destination when the replacement path arrives.
             if (value.Waypoints[i].Action != NavAction.Walk)
@@ -216,7 +235,7 @@ internal sealed class PathFollower
         while (waypoint < path.Waypoints.Count
                && path.Waypoints[waypoint].Action != NavAction.Dig
                && HorizontalDistanceSquared(position, path.Waypoints[waypoint].Position)
-                   <= ArrivalRadius * ArrivalRadius)
+                   <= ArrivalRadiusSquaredFor(waypoint))
         {
             waypoint++;
             stalledTicks = 0;
@@ -287,6 +306,15 @@ internal sealed class PathFollower
             return PathFollowState.NeedsPath;
         }
         return PathFollowState.Following;
+    }
+
+    private float ArrivalRadiusSquaredFor(int index)
+    {
+        float radius = index + 1 < path!.Waypoints.Count
+                       && path.Waypoints[index + 1].Action == NavAction.Jump
+            ? JumpTakeoffArrivalRadius
+            : ArrivalRadius;
+        return radius * radius;
     }
 
     private int NextActionableWaypoint(Vector3 position)

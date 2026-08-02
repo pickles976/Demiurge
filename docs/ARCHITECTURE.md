@@ -1,8 +1,6 @@
 # Architecture
 
-This document describes the current runtime architecture. `AI_IMPLEMENTATION.md` retains the
-incremental AI design history; this file is the shorter guide to the boundaries that are now in
-code.
+This document describes the current runtime architecture and the boundaries that are now in code.
 
 ## Project boundaries
 
@@ -105,8 +103,6 @@ CommanderAi (team, 1 Hz)
   creates a two-second incoming-fire stimulus at the firing position, prompting cover selection or
   emergency dirt digging without continuously tracking the live shooter.
 
-See [AI_IMPLEMENTATION.md](../AI_IMPLEMENTATION.md) for implemented behavior and deferred work.
-
 ## Navigation boundary
 
 `Common/Navigation` is deterministic, synchronous, and world-agnostic beyond `ChunkMap`.
@@ -137,7 +133,7 @@ line effects and impact/explosion placeholders from appearing through terrain.
 The client owns its display configuration in code. It disables generated `GameSettings`, requests a
 1920x1080 back buffer before `game.Run`, and uses SDL borderless desktop fullscreen. Changing
 fullscreen/back-buffer state from the post-device start callback can reintroduce the SDL
-resize/device-reset loop documented in [PERFORMANCE.md](../PERFORMANCE.md).
+resize/device-reset loop documented in [CLAUDE.md](../CLAUDE.md#performance-targets).
 
 ## Verification boundaries
 

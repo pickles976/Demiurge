@@ -586,6 +586,12 @@ internal sealed class NavigationSystem : IDisposable
     private void StoreSharedRoute(PathRequest request, NavPath path)
     {
         if (request.SharedRouteKey == 0
+            // A bounded prefix has not proved its continuation around the obstacle that stopped
+            // the search. Sharing it makes an entire squad converge on the same trench-wall local
+            // minimum; each actor then keeps reconnecting to that trunk instead of consuming the
+            // actor-local lateral/dig prefix that would leave it. Complete routes remain safe to
+            // share, while traversal geometry is still cached across every independent search.
+            || !path.ReachedGoal
             || path.Waypoints.Count < 2
             || path.Waypoints.Any(waypoint => waypoint.Action == NavAction.Dig))
             return;

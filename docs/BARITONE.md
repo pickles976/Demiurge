@@ -164,3 +164,27 @@ Follow-up live execution corrections:
   replanning NPC from skipping a bridge entrance and steering diagonally toward the next turn;
 - the six-metre live pit scenario now reaches the rim in 120 terrain edits instead of 300, while the
   offset bridge still crosses with zero edits and the shallow-depression controls remain walk-only.
+
+Final conquest and excavation corrections:
+
+- bounded prefixes are actor-local. Only complete, dig-free objective routes are shared between
+  squad members; sharing an unproved prefix made every member reconnect to the same trench-wall
+  local minimum. Traversal geometry remains shared between all searches;
+- partial answers do not commit a deep descent until the search has proved its continuation. An
+  actor already at the bottom may still choose a time-costed staircase, while an actor on the rim
+  keeps searching for a bridge;
+- an explicit goal-rise gate lets an unwalkably steep uphill objective choose staircase excavation
+  when lateral air prefixes make no useful progress. This uses start/goal geometry, not a scan for
+  the highest nearby terrain;
+- generic clearance recovery now samples only the 2x2 SDF footprint of each one-metre route cell.
+  Staircase shoulder recovery removes the capsule's actual collision contact instead of sweeping a
+  4x4 apron. `StaircaseDigTargetsStayInsideOneMetreCorridor` pins the one-metre lateral footprint;
+- planned bridge jumps align to a 0.15 m takeoff anchor and execute atomically. A worker result that
+  completes after takeoff is discarded rather than replacing the landing corridor in mid-air;
+- the real-map acceptance integration runs one complete 16-NPC team at a time, disables stuck
+  relocation, and requires both central flag objects to be fully captured. Team 1 captured both in
+  6,845 ticks with 0 terrain edits; team 2 captured both in 4,399 ticks with 3 edits. Neither team
+  emitted a stuck event, and the test rejects more than 64 terrain edits;
+- after making partial routes actor-local, the 32-NPC benchmark completed in 469 ms wall time with
+  queue p50/p95 of 177.8/382.2 ms, 192,941 traversal-cache hits, and 6,528 expanded nodes. The p95
+  remains below the 500 ms ceiling.

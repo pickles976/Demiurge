@@ -693,8 +693,7 @@ public static class NavTraversal
                 dx,
                 dz,
                 out target,
-                maximumForward: 1,
-                lateralRadius: 2)
+                maximumForward: 1)
             && Digging.InReach(feet, target))
         {
             cost = NavCosts.DigOneVoxel + NavCosts.DigTunnelPenalty;
@@ -743,8 +742,7 @@ public static class NavTraversal
         int dx,
         int dz,
         out Vector3 target,
-        int maximumForward = 2,
-        int lateralRadius = 3)
+        int maximumForward = 2)
     {
         target = default;
         if (Math.Abs(dx) + Math.Abs(dz) != 1) return false;
@@ -800,18 +798,19 @@ public static class NavTraversal
         }
 
         // CSG cuts can make the local gradient point diagonally away from the last remaining roof
-        // sample, so the contact projection above may legitimately find only air. Sweep the small
-        // headroom lattice around the current and next cell as the final recovery. This is bounded
-        // to capsule height and soil, so it cannot turn into downward floor excavation.
+        // sample, so the contact projection above may legitimately find only air. Sweep only the
+        // 2x2 sample footprint of each one-metre route cell. The old lateral-radius sweep reached
+        // three metres to either side and turned a missed lintel sample into a broad excavation.
         int baseX = (int)MathF.Floor(feet.X);
         int baseZ = (int)MathF.Floor(feet.Z);
         int firstHeadY = (int)MathF.Floor(feet.Y + PlayerMovement.Body.Height);
         for (int y = firstHeadY; y <= firstHeadY + 2; y++)
             for (int forward = 0; forward <= maximumForward; forward++)
-                for (int lateral = -lateralRadius; lateral <= lateralRadius; lateral++)
+                for (int sampleZ = 0; sampleZ <= 1; sampleZ++)
+                for (int sampleX = 0; sampleX <= 1; sampleX++)
                 {
-                    int x = baseX + dx * forward - dz * lateral;
-                    int z = baseZ + dz * forward + dx * lateral;
+                    int x = baseX + dx * forward + sampleX;
+                    int z = baseZ + dz * forward + sampleZ;
                     var candidate = new Vector3(x, y, z);
                     if (!TryVoxel(map, candidate, out var voxel)
                         || voxel.Distance >= StaircaseClearedDistance
@@ -958,26 +957,60 @@ public static class NavTraversal
         if (Standable(map, treadCell.X, treadCell.Y, treadCell.Z, out _))
             return false;
 
-        // The SDF brush rounds the nominal 2x2 aperture. On a sharp excavated wall those rounded
-        // shoulders can still intersect the authoritative capsule even though every centre sample
-        // above the tread is clear. Do not call the stair finished until the same Standable query
-        // used by A* agrees; widen only the surrounding apron, keeping all bites above the tread so
-        // the floor itself survives.
-        for (int y = tread + 1; y <= tread + StaircaseHeadroomCells; y++)
-            for (int stepZ = -1; stepZ <= 2; stepZ++)
-                for (int stepX = -1; stepX <= 2; stepX++)
-                {
-                    if (stepX is 0 or 1 && stepZ is 0 or 1) continue;
-                    var sample = new Vector3(x + stepX, y, z + stepZ);
-                    if (!TryVoxel(map, sample, out var voxel)) return false;
-                    if (voxel.Distance >= StaircaseClearedDistance) continue;
-                    if (voxel.Distance < 0f && !IsSoil(voxel)) continue;
-                    if (workLayers == 0) target = sample;
-                    workLayers |= 1 << (y - tread - 1);
-                }
+        // If interpolation still leaves a rounded shoulder against the capsule, remove the actual
+        // contact rather than sweeping a 4x4 apron. This keeps every staircase one route cell wide:
+        // extra work follows the body's boundary instead of opening a room around it.
+        return TryStaircaseShoulderTarget(map, treadCell, out target, out workSamples);
+    }
 
-        workSamples = BitOperations.PopCount((uint)workLayers);
-        return workSamples > 0;
+    private static bool TryStaircaseShoulderTarget(
+        ChunkMap map,
+        NavCell treadCell,
+        out Vector3 target,
+        out int workSamples)
+    {
+        target = default;
+        workSamples = 0;
+        var centre = new Vector3(treadCell.X + 0.5f, treadCell.Y, treadCell.Z + 0.5f);
+        if (!TerrainCollision.TrySampleRaw(map, centre, out float below)
+            || !TerrainCollision.TrySampleRaw(map, centre + Vector3.UnitY, out float above)
+            || below >= -SurfaceEpsilon
+            || above < 0f)
+            return false;
+
+        float denominator = above - below;
+        if (denominator <= SurfaceEpsilon) return false;
+        float surfaceY = treadCell.Y + Math.Clamp(-below / denominator, 0f, 1f);
+        Vector3 feet = centre with { Y = surfaceY };
+        float requiredClearance = PlayerMovement.Body.Radius
+                                + PlayerMovement.SkinWidth
+                                + PlayerMovement.GroundSnapDistance;
+
+        for (int i = CapsuleBody.SampleCount - 1; i >= 0; i--)
+        {
+            Vector3 sampleCentre = PlayerMovement.Body.SampleCenter(feet, i);
+            if (!TerrainCollision.TrySample(map, sampleCentre, out var contact)
+                || contact.Distance >= requiredClearance
+                || contact.Normal.Y > 0.25f)
+                continue;
+
+            Vector3 surface = sampleCentre - contact.Normal * contact.Distance;
+            Vector3 candidate = Digging.TargetVoxel(surface, contact.Normal);
+            for (int depth = 0; depth <= 2; depth++)
+            {
+                Vector3 deeper = candidate - contact.Normal * depth;
+                deeper = new Vector3(
+                    MathF.Round(deeper.X),
+                    MathF.Round(deeper.Y),
+                    MathF.Round(deeper.Z));
+                if (deeper.Y <= treadCell.Y || !IsSolidSoil(map, deeper)) continue;
+                target = deeper;
+                workSamples = 1;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryDigTargetAlongRay(

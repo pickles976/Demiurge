@@ -36,7 +36,7 @@ public class NavigationSystemTests
     }
 
     [Fact]
-    public void NearbySquadMemberCanReuseAPartialObjectiveTrunk()
+    public void NearbySquadMemberDoesNotReuseAnUnprovedPartialObjectiveTrunk()
     {
         var map = FlatTerrain();
         var firstStart = CellAt(map, -10, 0);
@@ -73,11 +73,11 @@ public class NavigationSystemTests
 
         Assert.False(second.Path.ReachedGoal);
         Assert.True(second.Path.Waypoints.Count >= 2);
-        Assert.True(navigation.SnapshotMetrics().SharedRouteReuses >= 1);
+        Assert.Equal(0, navigation.SnapshotMetrics().SharedRouteReuses);
     }
 
     [Fact]
-    public void SquadPrefetchExtendsTheSharedPartialTrunk()
+    public void SquadPrefetchKeepsPartialTrunksActorLocal()
     {
         var map = FlatTerrain();
         var start = CellAt(map, -10, 0);
@@ -111,10 +111,8 @@ public class NavigationSystemTests
                 sharedRouteKey: squadRoute,
                 priority: NavigationPriority.Prefetch));
 
-        Assert.True(
-            GoalPosition.Distance(extended.Path.Waypoints[^1].Cell, target)
-            < GoalPosition.Distance(firstEnd, target));
-        Assert.True(navigation.SnapshotMetrics().SharedRouteReuses >= 1);
+        Assert.Equal(firstEnd, extended.Path.Waypoints[^1].Cell);
+        Assert.Equal(0, navigation.SnapshotMetrics().SharedRouteReuses);
     }
 
     /// <summary>

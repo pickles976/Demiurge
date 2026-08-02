@@ -80,4 +80,5 @@ A squad's base of fire additionally shoots in a **suppressing** mode: at the con
 position, on a slower cadence, without waiting for the target to reappear. Ordinary fire requires
 current visibility, which made suppression impossible against precisely the target it exists for — one
 with its head down. The receiving half of that loop is item 5 above, so a suppressing NPC now applies
-real `Spread.Suppress` pressure and buys its squadmate a bound. See `AI_IMPLEMENTATION.md` step 11.
+real `Spread.Suppress` pressure and buys its squadmate a bound. See the AI layers in
+[ARCHITECTURE.md](../ARCHITECTURE.md#ai-layers).

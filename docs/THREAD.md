@@ -131,7 +131,7 @@ singleplayer's `ServerHost` at `Run()` on its own thread instead of `Step()` fro
 
 - **This does not reduce the AI tick cost.** It stops the client *blocking* on it. A dedicated
   server pays exactly the same per-tick cost today and will after. The 30 TPS budget is a separate
-  problem, tracked in `ISSUES.md` and `OPTIMIZATION.md`.
+  problem governed by the [performance targets](../CLAUDE.md#performance-targets).
 - **It removes singleplayer's value as a combined-budget stress case.** `CLAUDE.md` currently calls
   singleplayer the binding case *because* the server tick shares the client's 16.6 ms frame. After
   this, it no longer does, and that note needs revising rather than silently becoming false.

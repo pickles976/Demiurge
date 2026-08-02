@@ -109,7 +109,7 @@ Biggest *feel* win on lossy links. **Today:** one lost input packet forces the
 server onto `LastIntent` (`Server/GameWorld.Tick`, starved branch) and the
 client into a visible reconciliation correction. **Change:** each
 `PlayerInputData` carries the last ~3 moves; the server applies any sequences it
-hasn't seen. Append-only wire change, per the wire rules in RECIPES.md.
+hasn't seen. Append-only wire change, per the wire rules in [RECIPES.md](../RECIPES.md).
 
 ## 10. Clamp lag-comp rewind per client
 

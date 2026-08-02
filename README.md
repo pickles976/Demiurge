@@ -211,17 +211,17 @@ logic remains headless and testable.
 
 ## Further Reading
 
+- [docs/README.md](docs/README.md): complete documentation index
 - [CLAUDE.md](CLAUDE.md): architecture invariants and implementation guidance
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): current process, authority, AI, and data-flow boundaries
-- [AI_IMPLEMENTATION.md](AI_IMPLEMENTATION.md): implemented tactical AI and staged design history
 - [docs/NAVIGATION.md](docs/NAVIGATION.md): navigation model, workers, recovery, diagnostics, and tests
-- [PERFORMANCE.md](PERFORMANCE.md): measured fullscreen and AI/navigation performance findings
-- [RECIPES.md](RECIPES.md): checklists for adding replicated gameplay features
-- [EDITOR.md](EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
+- [docs/BARITONE.md](docs/BARITONE.md): time-costed pathfinding plan and performance constraints
+- [docs/RECIPES.md](docs/RECIPES.md): checklists for adding replicated gameplay features
+- [docs/EDITOR.md](docs/EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
 - [docs/COMMANDS.md](docs/COMMANDS.md): terminal command reference
 - [docs/voxel/](docs/voxel/): voxel data, generation, meshing, and collision
 - [docs/networking/](docs/networking/): replication and gameplay message flows
-- [stride_docs/](stride_docs/): Stride-specific runtime and rendering findings
+- [docs/stride/](docs/stride/): Stride-specific runtime and rendering findings
 
 The code-only Stride setup follows the
 [Stride Community Toolkit guide](https://stride3d.github.io/stride-community-toolkit/manual/code-only/create-project.html#example-code).

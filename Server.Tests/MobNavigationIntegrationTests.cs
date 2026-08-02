@@ -56,7 +56,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
     [Trait("Category", "Integration")]
     [InlineData(1)]
     [InlineData(2)]
-    public void EachConquestTeamReachesBothCentralFlagsAcrossTheDitch(int team)
+    public void EachConquestTeamCapturesBothCentralFlagsWithoutStuckRelocation(int team)
     {
         string root = FindRepositoryRoot();
         var map = RuntimeMapSerializer.Load(
@@ -69,17 +69,15 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
             .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
             .ToArray();
         Assert.Equal(4, flags.Length);
+        using var world = new MobIntegrationHarness(map.Terrain, seed: 0xD17C + team);
         var centralFlags = flags
-            .OrderBy(flag => flag.Position.X * flag.Position.X
-                           + flag.Position.Z * flag.Position.Z)
+            .Select(flag => (Placement: flag, Object: world.Flags.Spawn(flag.Position)))
+            .OrderBy(flag => flag.Placement.Position.X * flag.Placement.Position.X
+                           + flag.Placement.Position.Z * flag.Placement.Position.Z)
             .Take(2)
             .ToArray();
 
-        using var world = new MobIntegrationHarness(map.Terrain, seed: 0xD17C + team);
-        foreach (var flag in flags)
-            world.Flags.Spawn(flag.Position);
-
-        ushort id = (ushort)(60_000 + team * 100);
+        ushort id = 60_000;
         foreach (var spawn in plan.NpcSpawns.Where(spawn => spawn.Team == team))
         {
             Vector3 position = NavTraversal.TryFindNearestStandable(
@@ -89,49 +87,68 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
                     out var spawnCell)
                 ? NavTraversal.Position(map.Terrain, spawnCell)
                 : spawn.Position;
-            _ = world.AddMob(id++, position, team);
+            _ = world.AddMob(id++, position, spawn.Team);
         }
         Assert.Equal(16, world.Actors.Count(actor => actor.IsMob && actor.Team == team));
 
-        var reached = new bool[centralFlags.Length];
-        var closestSquared = Enumerable.Repeat(float.PositiveInfinity, centralFlags.Length).ToArray();
+        var captured = new bool[centralFlags.Length];
+        var capturedBy = new int[centralFlags.Length];
+        var stuckEvents = new Dictionary<ushort, (uint Tick, int Team, Vector3 Position)>();
         uint completedTick = 0;
-        const uint maximumTicks = 240 * NetworkConfig.TickRate;
-        float captureRadiusSquared = FlagConfig.CaptureRadius * FlagConfig.CaptureRadius;
+        const uint maximumTicks = 300 * NetworkConfig.TickRate;
         for (uint tick = 0; tick < maximumTicks; tick++)
         {
             world.Step(tick, wallClockDelayMs: 2);
-            for (int flagIndex = 0; flagIndex < centralFlags.Length; flagIndex++)
-                foreach (var mob in world.Actors.Where(actor => actor.IsMob && actor.Team == team))
-                {
-                    float distanceSquared = Vector3.DistanceSquared(
-                        mob.Position,
-                        centralFlags[flagIndex].Position);
-                    closestSquared[flagIndex] = MathF.Min(
-                        closestSquared[flagIndex],
-                        distanceSquared);
-                    reached[flagIndex] |= distanceSquared <= captureRadiusSquared;
-                }
+            // Match GameWorld's ordering: actors move, stuck actors would be relocated, then flags
+            // capture. This test deliberately replaces relocation with an immediate failure so a
+            // teleport can never satisfy the central-objective assertion.
+            while (world.Mobs.TryDequeueStuckMob(out ushort stuckMobId))
+            {
+                var stuck = world.Actors.Single(actor => actor.Id == stuckMobId);
+                stuckEvents.TryAdd(stuckMobId, (tick, stuck.Team, stuck.Position));
+            }
+            world.Flags.Tick(NetworkConfig.FixedDt, world.Actors);
 
-            if (!reached.All(value => value)) continue;
+            for (int flagIndex = 0; flagIndex < centralFlags.Length; flagIndex++)
+            {
+                ref var state = ref centralFlags[flagIndex].Object.Team;
+                if (state.Value == FlagConfig.NeutralTeam || state.Progress < 0.999f)
+                    continue;
+                captured[flagIndex] = true;
+                capturedBy[flagIndex] = state.Value;
+            }
+
+            if (!captured.All(value => value)) continue;
             completedTick = tick;
             break;
         }
 
         for (int flagIndex = 0; flagIndex < centralFlags.Length; flagIndex++)
             output.WriteLine(
-                $"team {team} central flag {centralFlags[flagIndex].Position}: "
-              + $"reached {reached[flagIndex]}, closest {MathF.Sqrt(closestSquared[flagIndex]):0.0} m");
+                $"central flag {centralFlags[flagIndex].Placement.Position}: "
+              + $"captured {captured[flagIndex]} by team {capturedBy[flagIndex]}, "
+              + $"final owner {centralFlags[flagIndex].Object.Team.Value}, "
+              + $"progress {centralFlags[flagIndex].Object.Team.Progress:0.00}");
         output.WriteLine(
-            $"team {team} reached both central flags at tick {completedTick}/{maximumTicks}");
+            $"team {team} captured both central flags at tick {completedTick}/{maximumTicks}; "
+          + $"terrain edits {map.Terrain.EditVersion}");
+        foreach (var (mobId, stuck) in stuckEvents)
+            output.WriteLine(
+                $"STUCK team {stuck.Team} mob {mobId} at tick {stuck.Tick}: {stuck.Position}");
 
+        Assert.Empty(stuckEvents);
         Assert.All(
             Enumerable.Range(0, centralFlags.Length),
             flagIndex => Assert.True(
-                reached[flagIndex],
-                $"team {team} never reached central flag {centralFlags[flagIndex].Position}; "
-              + $"closest approach was {MathF.Sqrt(closestSquared[flagIndex]):0.0} m"));
+                captured[flagIndex],
+                $"central flag {centralFlags[flagIndex].Placement.Position} was never captured; "
+              + $"final owner {centralFlags[flagIndex].Object.Team.Value}, "
+              + $"progress {centralFlags[flagIndex].Object.Team.Progress:0.00}"));
         Assert.NotEqual(0u, completedTick);
+        Assert.InRange(
+            map.Terrain.EditVersion,
+            0,
+            64);
     }
 
     [Fact]

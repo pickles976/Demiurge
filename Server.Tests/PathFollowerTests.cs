@@ -450,4 +450,101 @@ public class PathFollowerTests
         Assert.True(intent.X > 0.99f);
         Assert.InRange(MathF.Abs(intent.Z), 0f, 0.01f);
     }
+
+    [Fact]
+    public void ReplacementPathCannotJoinTheFarBankAcrossABridgeDetour()
+    {
+        var follower = new PathFollower();
+        follower.SetPath(
+            new NavPath(
+                [
+                    new NavWaypoint(new NavCell(0, 12, 0), new Vector3(0f, 12f, 0f)),
+                    new NavWaypoint(new NavCell(2, 12, 0), new Vector3(2f, 12f, 0f)),
+                    new NavWaypoint(new NavCell(2, 12, 1), new Vector3(2f, 12f, 1f)),
+                    new NavWaypoint(new NavCell(0, 12, 1), new Vector3(0f, 12f, 1f)),
+                ],
+                ReachedGoal: false,
+                Cost: 6f,
+                ExpandedNodes: 40),
+            version: 3,
+            // The far-bank waypoint is only one metre away in world space, but reaching it along
+            // this route requires walking the full bridge detour.
+            currentPosition: new Vector3(0f, 12f, 0.8f));
+
+        Assert.Equal(
+            PathFollowState.Following,
+            follower.Update(
+                new Vector3(0f, 12f, 0.8f),
+                grounded: true,
+                currentTerrainVersion: 3,
+                out var intent,
+                out _,
+                out _,
+                out _));
+        Assert.True(intent.Z < -0.99f, $"joined across the ditch with intent {intent}");
+    }
+
+    [Fact]
+    public void PlannedBridgeJumpCentersOnItsTakeoffBeforeLaunching()
+    {
+        var follower = new PathFollower();
+        follower.SetPath(
+            new NavPath(
+                [
+                    new NavWaypoint(new NavCell(0, 12, 0), new Vector3(0.5f, 12f, 0.5f)),
+                    new NavWaypoint(
+                        new NavCell(0, 12, 3),
+                        new Vector3(0.5f, 12f, 3.5f),
+                        NavAction.Jump),
+                ],
+                ReachedGoal: false,
+                Cost: 1f,
+                ExpandedNodes: 2),
+            version: 3);
+
+        Assert.Equal(
+            PathFollowState.Following,
+            follower.Update(
+                new Vector3(0.85f, 12f, 0.5f),
+                grounded: true,
+                currentTerrainVersion: 3,
+                out var intent,
+                out bool jump,
+                out _,
+                out _));
+        Assert.False(jump);
+        Assert.True(intent.X < -0.99f, $"launched off-centre with intent {intent}");
+        Assert.InRange(MathF.Abs(intent.Z), 0f, 0.01f);
+    }
+
+    [Fact]
+    public void PlannedJumpCannotBeReplacedOrPrefetchedInFlight()
+    {
+        var follower = new PathFollower();
+        follower.SetPath(
+            new NavPath(
+                [
+                    new NavWaypoint(
+                        new NavCell(0, 12, 3),
+                        new Vector3(0.5f, 12f, 3.5f),
+                        NavAction.Jump),
+                ],
+                ReachedGoal: false,
+                Cost: 1f,
+                ExpandedNodes: 1),
+            version: 3);
+
+        _ = follower.Update(
+            new Vector3(0.5f, 12f, 0.5f),
+            grounded: true,
+            currentTerrainVersion: 3,
+            out _,
+            out bool jump,
+            out _,
+            out _);
+
+        Assert.True(jump);
+        Assert.False(follower.CanReplacePath);
+        Assert.False(follower.ShouldRefreshPath);
+    }
 }
