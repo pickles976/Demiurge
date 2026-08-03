@@ -45,7 +45,8 @@ internal sealed class NavigationSystem : IDisposable
         long CompletePaths,
         long Cancelled,
         long SpatialInvalidations,
-        long SharedRouteReuses);
+        long SharedRouteReuses,
+        long CoalescedTraversalFills);
 
     private sealed record PathRequest(
         ushort MobId,
@@ -94,6 +95,25 @@ internal sealed class NavigationSystem : IDisposable
     private long sharedRouteReuses;
     private long enqueueSequence;
 
+    /// <summary>
+    /// How many search threads the pool runs by default.
+    ///
+    /// Half the logical processors, capped at eight. Cutting it to a quarter capped at four was
+    /// tried, on the reasoning that the pool wants 118 ms of CPU per 33 ms tick at p50 and 199 ms at
+    /// peak on the conquest scenario, and that a six-core reference machine cannot give navigation
+    /// the whole box while a tick and a renderer hold the hard deadlines.
+    ///
+    /// It measured WORSE, and unambiguously: the conquest capture scenarios pass 4 runs of 4 at eight
+    /// workers and fail 3 of 4 at four. The pool is not over-provisioned, it is under-served — a
+    /// search is expensive enough that eight threads barely keep thirty-two NPCs supplied, and
+    /// starving them shows up as NPCs that never reach their objective.
+    ///
+    /// So this number cannot come down until a search is cheaper or rarer. It is a symptom of
+    /// expansion cost, not a lever on it.
+    /// </summary>
+    public static int DefaultWorkerCount { get; } =
+        Math.Min(8, Math.Max(1, Environment.ProcessorCount / 2));
+
     public NavigationSystem(
         ChunkMap terrain,
         NavSearchOptions? searchOptions = null,
@@ -101,8 +121,7 @@ internal sealed class NavigationSystem : IDisposable
     {
         this.terrain = terrain;
         this.searchOptions = searchOptions ?? NavSearchOptions.Default;
-        int count = workerCount
-            ?? Math.Min(8, Math.Max(1, Environment.ProcessorCount / 2));
+        int count = workerCount ?? DefaultWorkerCount;
         if (count <= 0)
             throw new ArgumentOutOfRangeException(nameof(workerCount));
         workers = new Thread[count];
@@ -201,7 +220,8 @@ internal sealed class NavigationSystem : IDisposable
             Interlocked.Read(ref completePaths),
             Interlocked.Read(ref cancelledCount),
             Interlocked.Read(ref spatialInvalidations),
-            Interlocked.Read(ref sharedRouteReuses));
+            Interlocked.Read(ref sharedRouteReuses),
+            traversalCache.CoalescedFills);
 
     public void Dispose()
     {

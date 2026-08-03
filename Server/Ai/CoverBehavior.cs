@@ -13,7 +13,8 @@ internal sealed class CoverBehavior
         Vector3 PeekPosition,
         CoverKind Kind,
         float Score,
-        long TerrainVersion);
+        long TerrainVersion,
+        ChunkIndex[] DependencyChunks);
 
     private const float NearRadius = 4f;
     private const float FarRadius = 8f;
@@ -39,8 +40,8 @@ internal sealed class CoverBehavior
     private readonly ChunkMap terrain;
 
     /// <summary>
-    /// Reset at the start of every query and never held across one — see <see cref="NavProbeCache"/>
-    /// for why the window is exactly that long.
+    /// Kept across queries while the terrain version is stable, then reset as one unit. See
+    /// <see cref="NavProbeCache"/> for the per-cell memoization contract.
     ///
     /// A query evaluates thirteen candidate positions and, for each one that qualifies, counts
     /// escape routes over its eight neighbours. The candidates overlap, the neighbours overlap, and
@@ -51,10 +52,99 @@ internal sealed class CoverBehavior
     /// </summary>
     private readonly NavProbeCache probes;
 
+    /// <summary>
+    /// The terrain revision the fast local tier in <see cref="probes"/> holds answers for.
+    /// Standability is a pure function of the field, so answers stay valid until the field changes
+    /// — which makes the natural local-cache lifetime the EDIT VERSION rather than the query.
+    ///
+    /// It used to reset per query, and that threw the memo away between squadmates standing metres
+    /// apart asking about overlapping cells, ~25 queries a second across a platoon. Keying on the
+    /// version keeps every one of those hits and still cannot serve a stale answer. The shared
+    /// chunk-revision tier retains cells that were not close to the edit, so one shovel bite no
+    /// longer makes every squad's next cover query start cold.
+    /// </summary>
+    private long probeTerrainVersion = -1;
+
     public CoverBehavior(ChunkMap terrain)
     {
         this.terrain = terrain;
-        probes = new NavProbeCache(terrain);
+        // The local probe memo is fastest while terrain is unchanged. Its shared second tier is
+        // what preserves unaffected cells when a shovel bite elsewhere advances EditVersion and
+        // forces the local tier to reset.
+        probes = new NavProbeCache(terrain, new NavStandabilityCache());
+    }
+
+    /// <summary>
+    /// Rechecks the small set of facts that must remain true for an existing cover destination.
+    /// This deliberately does not generate or score thirteen alternatives: an edit creating a
+    /// slightly better position is not a reason to abandon one that is still safe.
+    /// </summary>
+    public bool TryRevalidate(
+        Vector3 position,
+        Vector3 peekPosition,
+        CoverKind kind,
+        IReadOnlyList<AiContact> believedThreats,
+        out Choice choice)
+    {
+        choice = default;
+        if (kind == CoverKind.None || believedThreats.Count == 0) return false;
+        RefreshProbes();
+
+        Span<AiContact> threats = stackalloc AiContact[MaximumThreats];
+        int threatCount = SelectNearestThreats(position, believedThreats, threats);
+        if (threatCount == 0
+            || !TryCellAt(position.X, position.Z, position.Y, out var cell, out var refreshed)
+            || HorizontalDistance(position, refreshed) > 0.75f
+            || MathF.Abs(position.Y - refreshed.Y) > 0.75f)
+            return false;
+
+        // Advance is a navigation waypoint rather than protection. Its only local promise is that
+        // the destination remains standable; the path's own chunk revisions protect the route.
+        Vector3 refreshedPeek = refreshed;
+        if (kind != CoverKind.Advance)
+        {
+            var crouchedEye = refreshed + Vector3.UnitY
+                * (Digging.EyeHeight - PlayerMovement.CrouchEyeDrop);
+            for (int i = 0; i < threatCount; i++)
+                if (HasLineOfSight(
+                        crouchedEye,
+                        threats[i].Position + Vector3.UnitY * GunConfig.PlayerCenterHeight))
+                    return false;
+
+            // Runtime terrain edits only subtract soil (shovels and grenades). Subtraction can
+            // expose a crouched actor or remove footing, both checked here, but it cannot block a
+            // standing/peek line that was clear when the choice was made. Recasting those rays was
+            // almost half of successful revalidation. Corner cover still needs a usable peek cell;
+            // if its footing disappeared, fall back to a full search rather than guessing.
+            if (kind == CoverKind.CornerFightingPosition)
+            {
+                if (!TryCellAt(
+                        peekPosition.X,
+                        peekPosition.Z,
+                        peekPosition.Y,
+                        out var peekCell,
+                        out var candidate)
+                    || peekCell == cell
+                    || !WalkableEdge(cell, peekCell))
+                    return false;
+                refreshedPeek = candidate;
+            }
+        }
+
+        Span<Vector3> dependencyThreats = stackalloc Vector3[MaximumThreats];
+        for (int i = 0; i < threatCount; i++)
+            dependencyThreats[i] = threats[i].Position;
+        choice = new Choice(
+            refreshed,
+            refreshedPeek,
+            kind,
+            0f,
+            terrain.EditVersion,
+            CoverTerrainDependency.Capture(
+                refreshed,
+                refreshedPeek,
+                dependencyThreats[..threatCount]));
+        return true;
     }
 
     public bool TryChoose(
@@ -67,7 +157,7 @@ internal sealed class CoverBehavior
         choice = default;
         if (believedThreats.Count == 0) return false;
 
-        probes.Reset(terrain);
+        RefreshProbes();
 
         var threats = new AiContact[MaximumThreats];
         int threatCount = SelectNearestThreats(
@@ -85,8 +175,19 @@ internal sealed class CoverBehavior
         EvaluateAt(mob.Position.X, mob.Position.Z);
         EvaluateRing(NearRadius, NearSamples, angleOffset);
         EvaluateRing(FarRadius, FarSamples, angleOffset + MathF.PI / FarSamples);
-        choice = bestChoice;
-        return found;
+        if (!found) return false;
+
+        Span<Vector3> dependencyThreats = stackalloc Vector3[MaximumThreats];
+        for (int i = 0; i < threatCount; i++)
+            dependencyThreats[i] = threats[i].Position;
+        choice = bestChoice with
+        {
+            DependencyChunks = CoverTerrainDependency.Capture(
+                bestChoice.Position,
+                bestChoice.PeekPosition,
+                dependencyThreats[..threatCount]),
+        };
+        return true;
 
         void EvaluateRing(float radius, int samples, float offset)
         {
@@ -161,7 +262,8 @@ internal sealed class CoverBehavior
                 peekPosition,
                 rating.Kind,
                 rating.Score,
-                terrain.EditVersion);
+                terrain.EditVersion,
+                []);
             found = true;
         }
     }
@@ -327,6 +429,13 @@ internal sealed class CoverBehavior
         float dx = a.X - b.X;
         float dz = a.Z - b.Z;
         return MathF.Sqrt(dx * dx + dz * dz);
+    }
+
+    private void RefreshProbes()
+    {
+        if (probeTerrainVersion == terrain.EditVersion) return;
+        probes.Reset(terrain);
+        probeTerrainVersion = terrain.EditVersion;
     }
 
     private static float DeterministicAngle(ushort actorId)

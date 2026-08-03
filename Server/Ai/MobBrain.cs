@@ -65,6 +65,7 @@ internal sealed class MobBrain
     public ushort CoverThreatId { get; set; }
     public Vector3 CoverThreatPosition { get; set; }
     public long CoverTerrainVersion { get; set; }
+    public ChunkIndex[] CoverDependencyChunks { get; set; } = [];
     public uint NextCoverQueryTick { get; set; }
     public uint CoverArrivedTick { get; set; }
     public bool Entrenching { get; private set; }
@@ -113,6 +114,7 @@ internal sealed class MobBrain
         CoverThreatId = 0;
         CoverThreatPosition = default;
         CoverTerrainVersion = 0;
+        CoverDependencyChunks = [];
         CoverArrivedTick = 0;
         ClearEntrenchment();
         Navigation.Path.Clear();

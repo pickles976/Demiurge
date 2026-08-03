@@ -11,6 +11,12 @@ internal sealed class NavigationAgent
 {
     private readonly record struct PendingRequest(long RequestId, bool ForCover);
 
+    // Short bounded results can arrive already inside PathFollower's 12 m refresh distance. Without
+    // a cadence, installing one immediately queues its successor and makes worker throughput—not
+    // actor movement—the replan rate. Half a second still starts the next segment several seconds
+    // before an ordinary 12 m walk prefix is consumed, while capping speculative churn at 2 Hz.
+    private const uint PrefetchCadenceTicks = NetworkConfig.TickRate / 2;
+
     /// <summary>
     /// How long an excavation stays the committed site after the last bite landed. Long enough to
     /// survive the replan each bite forces, short enough that abandoning a cut is still possible when
@@ -22,6 +28,7 @@ internal sealed class NavigationAgent
     private long? blockedCellKey;
     private NavCell? digSite;
     private uint digSiteTick;
+    private uint nextPrefetchTick;
 
     public PathFollower Path { get; } = new();
     public NavigationProgressWatch Progress { get; } = new();
@@ -40,6 +47,11 @@ internal sealed class NavigationAgent
         => pending is { } request && request.ForCover == forCover;
 
     public bool HasAnyPending => pending is not null;
+
+    public bool CanPrefetch(uint tick) => tick >= nextPrefetchTick;
+
+    public void RecordPrefetch(uint tick)
+        => nextPrefetchTick = tick + PrefetchCadenceTicks;
 
     public void RecordRequest(long requestId, bool forCover)
         => pending = new PendingRequest(requestId, forCover);
@@ -107,6 +119,7 @@ internal sealed class NavigationAgent
         pending = null;
         ResetBlocked();
         ForgetDigSite();
+        nextPrefetchTick = 0;
         Destination = default;
         HasDestination = false;
     }

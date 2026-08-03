@@ -6,11 +6,12 @@ For weapons, need to model sights and add anchors for camera to figure out where
 # PVP Mechanics
 
 AI 
-- Remember not to myopically solve a single problem with solutions like if statements, but to use behavior trees and robust systems. Use Baritone pathfinding as an anecdote.
 
 - Sometimes NPCs just stand at the flagpost doing nothing
 - NPCs should always be doing something
 - NPCs are aimlessly digging big holes while defending the flag even when inside a castle. NPCs should know when there is sufficient cover nearby and not need to dig.
+- NPCs still dig giant blobby holes instead of thin 1-wide 2-deep trenches, or 1-wide staircases. 
+- NPCs are behaving in a way I would expect if they are constantly repathing, *especially* when digging out of a giant trench.
 
 - better tactics
   -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance by sprinting.

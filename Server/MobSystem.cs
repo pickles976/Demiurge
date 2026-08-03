@@ -106,6 +106,8 @@ namespace Demiurge.GameServer
         private long timingPerceptionStopwatchTicks;
         private long timingCoverStopwatchTicks;
         private int timingCoverQueries;
+        private int timingCoverRevalidations;
+        private int timingCoverRevalidationsKept;
         private NavigationSystem.Metrics timingNavigationStart;
         private readonly List<long> timingNavigationQueueUs = [];
         private readonly List<long> timingNavigationSearchUs = [];
@@ -1108,15 +1110,79 @@ namespace Demiurge.GameServer
                     out jump))
                 return;
 
-            bool invalidated =
-                brain.HasCoverDestination
-                && (brain.CoverThreatId != primaryThreat.ActorId
+            bool invalidated = false;
+            bool needsRevalidation = false;
+            if (brain.HasCoverDestination)
+            {
+                bool threatChanged =
+                    brain.CoverThreatId != primaryThreat.ActorId
                     || Vector3.DistanceSquared(
                         brain.CoverThreatPosition,
                         primaryThreat.Position)
-                    > CoverThreatRequeryDistance * CoverThreatRequeryDistance
-                    || !brain.Entrenched && brain.CoverTerrainVersion != terrain.EditVersion
-                    || brain.CoverKind == CoverKind.Advance && !closingDistance);
+                        > CoverThreatRequeryDistance * CoverThreatRequeryDistance;
+                invalidated = brain.CoverKind == CoverKind.Advance && !closingDistance;
+                needsRevalidation = !invalidated && threatChanged;
+
+                if (!invalidated
+                    && !brain.Entrenched
+                    && brain.CoverTerrainVersion != terrain.EditVersion)
+                {
+                    if (terrain.GlobalInvalidationVersion > brain.CoverTerrainVersion)
+                    {
+                        // Reset can replace terrain rather than merely subtract it, so the
+                        // monotonic cheap-revalidation argument does not apply.
+                        invalidated = true;
+                    }
+                    else
+                    {
+                        bool relevantTerrainChanged = CoverTerrainDependency.ChangedSince(
+                            terrain,
+                            brain.CoverDependencyChunks,
+                            brain.CoverTerrainVersion);
+                        needsRevalidation |= relevantTerrainChanged;
+                        if (!relevantTerrainChanged)
+                        {
+                            // The edit was unrelated to this choice. Promote the generation so the
+                            // dependency list is checked once per edit, not once per subsequent tick.
+                            brain.CoverTerrainVersion = terrain.EditVersion;
+                        }
+                    }
+                }
+
+                // Revalidation shares the one-per-tick cover-work budget. A terrain edit can touch
+                // several NPC sightlines at once; running all their rays in the editing tick would
+                // replace query churn with a larger p99 spike. Unchecked brains retain the old
+                // generation and naturally take their turn on following ticks.
+                if (needsRevalidation && coverQueriesRemaining > 0)
+                {
+                    coverQueriesRemaining--;
+                    var contacts = brain.Contacts.Snapshot(tick);
+                    long coverStarted = Stopwatch.GetTimestamp();
+                    bool kept = cover.TryRevalidate(
+                        brain.CoverDestination,
+                        brain.CoverPeekPosition,
+                        brain.CoverKind,
+                        contacts,
+                        out var refreshed);
+                    timingCoverStopwatchTicks += Stopwatch.GetTimestamp() - coverStarted;
+                    timingCoverRevalidations++;
+                    if (kept)
+                    {
+                        brain.CoverDestination = refreshed.Position;
+                        brain.CoverPeekPosition = refreshed.PeekPosition;
+                        brain.CoverTerrainVersion = refreshed.TerrainVersion;
+                        brain.CoverDependencyChunks = refreshed.DependencyChunks;
+                        brain.CoverThreatId = primaryThreat.ActorId;
+                        brain.CoverThreatPosition = primaryThreat.Position;
+                        timingCoverRevalidationsKept++;
+                        needsRevalidation = false;
+                    }
+                    else
+                    {
+                        invalidated = true;
+                    }
+                }
+            }
             if (invalidated)
             {
                 ClearCover(mob.Id, brain, squad);
@@ -1165,6 +1231,7 @@ namespace Demiurge.GameServer
                     brain.CoverThreatId = primaryThreat.ActorId;
                     brain.CoverThreatPosition = primaryThreat.Position;
                     brain.CoverTerrainVersion = choice.TerrainVersion;
+                    brain.CoverDependencyChunks = choice.DependencyChunks;
                     brain.NextCoverQueryTick = tick + (uint)(choice.Kind == CoverKind.Concealment
                         ? ConcealmentRequeryTicks
                         : CoverRetryTicks);
@@ -1205,6 +1272,10 @@ namespace Demiurge.GameServer
                     brain.CoverThreatId = primaryThreat.ActorId;
                     brain.CoverThreatPosition = primaryThreat.Position;
                     brain.CoverTerrainVersion = terrain.EditVersion;
+                    brain.CoverDependencyChunks = CoverTerrainDependency.Capture(
+                        advance,
+                        advance,
+                        primaryThreat.Position);
                     brain.NextCoverQueryTick = tick + CoverRetryTicks;
                     RequestPath(
                         mob,
@@ -1646,7 +1717,7 @@ namespace Demiurge.GameServer
             double agents = timingAgentSamples / (double)timingTicks;
 
             latestStats = FormattableString.Invariant(
-                $"AI 1s avg: agents {agents:0.0}; movement {movementUsPerTick:0.0} us/tick (solver {solverUsPerTick:0.0} | combat {combatUsPerTick:0.0}, entrench {entrenchUsPerTick:0.0}, follow {movementUsPerTick - combatUsPerTick - entrenchUsPerTick:0.0} [headroom {headroomUs:0.0}, path {followerUs:0.0}]); perception {perceptionUsPerTick:0.0} us/tick; cover {coverUsPerTick:0.0} us/tick ({timingCoverQueries} queries); {navigation.WorkerCount} path workers {pathUsPerTick:0.0} aggregate us/tick off-thread; paths {requests} requested, {completed} completed ({complete} full/{partial} partial), queue {queueUsPerPath:0} us/path p50/p95 {queueP50}/{queueP95} us, search p50/p95 {searchP50}/{searchP95} us, {nodesPerPath:0} nodes/path, {metresPerPath:0.0} m/path, traversal cache {cacheHits} hits, shared routes {sharedReuses}, {cancelled} cancelled, {invalidated} spatially invalidated");
+                $"AI 1s avg: agents {agents:0.0}; movement {movementUsPerTick:0.0} us/tick (solver {solverUsPerTick:0.0} | combat {combatUsPerTick:0.0}, entrench {entrenchUsPerTick:0.0}, follow {movementUsPerTick - combatUsPerTick - entrenchUsPerTick:0.0} [headroom {headroomUs:0.0}, path {followerUs:0.0}]); perception {perceptionUsPerTick:0.0} us/tick; cover {coverUsPerTick:0.0} us/tick ({timingCoverQueries} searches; revalidate {timingCoverRevalidationsKept}/{timingCoverRevalidations} kept); {navigation.WorkerCount} path workers {pathUsPerTick:0.0} aggregate us/tick off-thread; paths {requests} requested, {completed} completed ({complete} full/{partial} partial), queue {queueUsPerPath:0} us/path p50/p95 {queueP50}/{queueP95} us, search p50/p95 {searchP50}/{searchP95} us, {nodesPerPath:0} nodes/path, {metresPerPath:0.0} m/path, traversal cache {cacheHits} hits, shared routes {sharedReuses}, {cancelled} cancelled, {invalidated} spatially invalidated");
 
             timingTicks = 0;
             timingAgentSamples = 0;
@@ -1659,6 +1730,8 @@ namespace Demiurge.GameServer
             timingPerceptionStopwatchTicks = 0;
             timingCoverStopwatchTicks = 0;
             timingCoverQueries = 0;
+            timingCoverRevalidations = 0;
+            timingCoverRevalidationsKept = 0;
             timingNavigationQueueUs.Clear();
             timingNavigationSearchUs.Clear();
         }
@@ -1734,6 +1807,9 @@ namespace Demiurge.GameServer
             var navigationAgent = brains[mob.Id].Navigation;
             if (navigationAgent.HasPending(forCover) && !replacePending)
                 return true;
+            if (priority == NavigationPriority.Prefetch
+                && !navigationAgent.CanPrefetch(tick))
+                return true;
             // A grounded capsule can straddle a trench lip, wall foot, or authored spawn edge while
             // its centre's exact X/Z column is not itself standable. Ordinary navigation must recover
             // from the nearest capsule-valid cell as it did before; requiring the exact actor column
@@ -1787,7 +1863,11 @@ namespace Demiurge.GameServer
                 priority: forCover ? NavigationPriority.Combat : priority,
                 preferredDigSite: preferredDigSite);
             if (requestId != 0)
+            {
                 navigationAgent.RecordRequest(requestId, forCover);
+                if (priority == NavigationPriority.Prefetch)
+                    navigationAgent.RecordPrefetch(tick);
+            }
             return requestId != 0;
         }
 

@@ -74,6 +74,8 @@ public sealed class ConquestNavigationBenchmarkTests(ITestOutputHelper output)
             + $"queue p50/p95 {p50 / 1000f:0.0}/{p95 / 1000f:0.0} ms; "
             + $"{metrics.SharedRouteReuses} shared-route reuses; "
             + $"{metrics.CacheHits} traversal-cache hits; "
+            + $"{metrics.CoalescedTraversalFills} coalesced fills; "
+            + $"{metrics.ReturnedPathMetres / 32f:0.0} m/path; "
             + $"{metrics.ExpandedNodes} expanded nodes");
 
         // Long conquest routes deliberately return actor-local bounded prefixes: sharing an

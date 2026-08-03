@@ -25,13 +25,29 @@ public sealed class NavProbeCache
     internal VoxelCursor Cursor;
     private readonly Dictionary<long, (bool Standable, float SurfaceY)> standable = [];
 
-    public NavProbeCache(ChunkMap map) => Cursor = new VoxelCursor(map);
+    /// <summary>
+    /// Optional second tier that OUTLIVES the query — see <see cref="NavStandabilityCache"/>. The
+    /// per-query memo above still exists in front of it, because a local dictionary hit beats a
+    /// concurrent one plus a nine-chunk revision check, and one query re-asks the same handful of
+    /// cells many times over.
+    /// </summary>
+    private readonly NavStandabilityCache? shared;
+    private ChunkMap map;
+
+    public NavProbeCache(ChunkMap map, NavStandabilityCache? shared = null)
+    {
+        Cursor = new VoxelCursor(map);
+        this.map = map;
+        this.shared = shared;
+    }
 
     /// <summary>Drops every remembered answer and rebinds to the current terrain. Call at the start
-    /// of each query, never in the middle of one.</summary>
+    /// of each query, never in the middle of one. The shared tier is not dropped: it invalidates per
+    /// chunk revision rather than per query, which is the whole reason it exists.</summary>
     public void Reset(ChunkMap map)
     {
         Cursor = new VoxelCursor(map);
+        this.map = map;
         standable.Clear();
     }
 
@@ -43,13 +59,21 @@ public sealed class NavProbeCache
             surfaceY = cached.SurfaceY;
             return true;
         }
+        if (shared is not null && shared.TryGet(map, x, y, z, out result, out surfaceY))
+        {
+            standable[Key(x, y, z)] = (result, surfaceY);
+            return true;
+        }
         result = false;
         surfaceY = 0f;
         return false;
     }
 
     internal void Store(int x, int y, int z, bool result, float surfaceY)
-        => standable[Key(x, y, z)] = (result, surfaceY);
+    {
+        standable[Key(x, y, z)] = (result, surfaceY);
+        shared?.Store(map, x, y, z, result, surfaceY);
+    }
 
     /// <summary>
     /// Cell coordinates packed into one long. X and Z get 21 bits of signed range each — a million

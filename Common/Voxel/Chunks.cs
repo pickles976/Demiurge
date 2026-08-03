@@ -95,6 +95,7 @@ namespace Demiurge
     public class ChunkMap
     {
         private long editVersion;
+        private long globalInvalidationVersion;
         private readonly ConcurrentDictionary<ChunkIndex, long> chunkEditVersions = new();
 
         /// <summary>
@@ -102,6 +103,13 @@ namespace Demiurge
         /// may read the mutable voxel field optimistically, then reject their result if this changed.
         /// </summary>
         public long EditVersion => Interlocked.Read(ref editVersion);
+
+        /// <summary>
+        /// Last generation that invalidated the complete map rather than a bounded chunk range.
+        /// Caches that normally validate spatially use this to recognize <see cref="Reset"/>, whose
+        /// cleared chunk-revision table cannot describe which old chunks disappeared.
+        /// </summary>
+        public long GlobalInvalidationVersion => Interlocked.Read(ref globalInvalidationVersion);
 
         /// <summary>
         /// Last global edit generation that touched this terrain chunk. Zero means the chunk has
@@ -135,7 +143,11 @@ namespace Demiurge
             MarkEdited();
         }
 
-        internal void MarkEdited() => Interlocked.Increment(ref editVersion);
+        internal void MarkEdited()
+        {
+            long version = Interlocked.Increment(ref editVersion);
+            Interlocked.Exchange(ref globalInvalidationVersion, version);
+        }
 
         internal void MarkEdited(ChunkIndex first, ChunkIndex last)
         {

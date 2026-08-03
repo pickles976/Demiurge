@@ -24,16 +24,18 @@ namespace Demiurge
     public struct VoxelCursor
     {
         private readonly ChunkMap map;
-        private ChunkIndex index;
         private TerrainChunk? chunk;
         private bool resolved;
+        private int originX;
+        private int originZ;
 
         public VoxelCursor(ChunkMap map)
         {
             this.map = map;
-            index = default;
             chunk = null;
             resolved = false;
+            originX = 0;
+            originZ = 0;
         }
 
         /// <summary>As <see cref="ChunkMap.TryGetVoxel"/>, reusing the previously resolved chunk
@@ -45,19 +47,25 @@ namespace Demiurge
             if (worldY < ChunkConstants.WorldMinY) { voxel = Voxel.OutsideBelow; return true; }
             if (worldY >= ChunkConstants.WorldMaxY) { voxel = Voxel.OutsideAbove; return true; }
 
-            var wanted = ChunkTransforms.ChunkAt(worldX, worldZ);
-            if (!resolved || !wanted.Equals(index))
+            if (!resolved
+                || (uint)(worldX - originX) >= ChunkConstants.ChunkWidth
+                || (uint)(worldZ - originZ) >= ChunkConstants.ChunkWidth)
             {
+                var wanted = ChunkTransforms.ChunkAt(worldX, worldZ);
                 chunk = map.Get(wanted);
-                index = wanted;
                 resolved = true;
+                originX = wanted.x * ChunkConstants.ChunkWidth;
+                originZ = wanted.z * ChunkConstants.ChunkWidth;
             }
 
             // A missing chunk is remembered as missing too: a stencil hanging off the loaded world
             // would otherwise re-miss the dictionary once per corner.
             if (chunk is null) return false;
 
-            voxel = chunk[ChunkTransforms.WorldVoxelIndex(worldX, worldY, worldZ)];
+            voxel = chunk[ChunkTransforms.LocalVoxelIndex(
+                worldX - originX,
+                worldY - ChunkConstants.WorldMinY,
+                worldZ - originZ)];
             return true;
         }
     }

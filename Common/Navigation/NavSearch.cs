@@ -23,11 +23,43 @@ public readonly record struct NavSearchOptions(
     bool AllowJump = true,
     bool AllowDig = false)
 {
+    /// <summary>
+    /// Production search budgets. Expansion counts, not wall clock — see
+    /// <see cref="PrimaryExpansionBudget"/> for why, and read the calibration below before changing
+    /// the numbers, because they are not free parameters.
+    /// </summary>
+    /// <remarks>
+    /// The TimeSpans are retained and IGNORED while the expansion budgets are set. They stay because
+    /// they record what the budget was originally meant to buy, and because any options built without
+    /// expansion counts still fall back to them.
+    /// <para>
+    /// Calibrated from measurement rather than picked. On the conquest scenario the pool spends about
+    /// 3.5 cores of CPU per tick to complete ~102 searches per second averaging ~45 expansions, which
+    /// is roughly 0.8 ms of CPU PER EXPANSION — dominated by walk and jump validation, which run the
+    /// real movement solver 15 and 40 times respectively. At that price the old 25 ms primary budget
+    /// bought about 32 expansions and the 100 ms failure budget about 127, before descheduling
+    /// overshoot. 64 and 256 are the same ceilings with room to spare, so switching the mechanism does
+    /// not quietly shorten routes as well.
+    /// </para>
+    /// <para>
+    /// Both are multiples of 64 on purpose: the budget is only observed at
+    /// <c>(expanded &amp; 63) == 0</c>, so a budget that is not a multiple of the check interval is
+    /// rounded up to one anyway, and writing it down honestly beats discovering it later.
+    /// </para>
+    /// <para>
+    /// This does NOT make navigation cheaper — it makes the cost predictable, and route quality stop
+    /// depending on how busy the machine was. Cheaper needs the expansion itself to cost less.
+    /// </para>
+    /// </remarks>
     public static NavSearchOptions Default => new(
         TimeSpan.FromMilliseconds(25),
         TimeSpan.FromMilliseconds(100),
         100_000,
-        16f);
+        16f)
+    {
+        PrimaryExpansionBudget = 64,
+        FailureExpansionBudget = 256,
+    };
 
     /// <summary>
     /// Expansion counts that REPLACE the wall-clock budgets when set.
@@ -40,15 +72,34 @@ public readonly record struct NavSearchOptions(
     /// docs/TODO.md) and it makes navigation TESTS non-deterministic, which is worse than it sounds: a
     /// suite that fails one run in five cannot tell a regression from noise.
     /// <para>
-    /// Counting expansions instead removes the machine from the answer entirely. Set these in tests so
-    /// a scenario either passes or fails on its merits. Production still runs on the wall clock,
-    /// because switching it changes NPC behaviour and is a design decision rather than a test fix.
+    /// Counting expansions instead removes the machine from the answer entirely, which is why
+    /// <see cref="Default"/> now sets them and production no longer reads the clock at all. Tests that
+    /// want a different ceiling than production's use <see cref="Deterministic"/>.
     /// </para>
     /// </remarks>
     public int? PrimaryExpansionBudget { get; init; }
 
     /// <inheritdoc cref="PrimaryExpansionBudget"/>
     public int? FailureExpansionBudget { get; init; }
+
+    /// <summary>
+    /// How greedy the search is: the frontier is ordered by <c>g + w*h</c>.
+    /// </summary>
+    /// <remarks>
+    /// 1 is ordinary A* and returns the cheapest route the graph allows. Above 1 the search commits
+    /// toward the goal sooner and expands fewer nodes, at the price of a route up to w times the
+    /// optimal cost — the standard weighted-A* trade, and an attractive one here because the budget
+    /// is 256 expansions and an expansion costs about 0.8 ms, so a search that wanders is a search
+    /// that returns a stump.
+    /// <para>
+    /// Kept at 1 by default. The heuristic was quietly deflated by 1.5x until recently (it divided
+    /// distance by sprint speed while every edge is priced at walk speed, see
+    /// <see cref="NavCosts.HeuristicSpeed"/>), so the search has only just started behaving like real
+    /// A*; inflating on top of that is a second change and wants its own measurement rather than
+    /// being bundled into this one.
+    /// </para>
+    /// </remarks>
+    public float HeuristicWeight { get; init; } = 1f;
 
     /// <summary>Budgets by expansion count, so the result does not depend on machine load.</summary>
     public static NavSearchOptions Deterministic(
@@ -64,136 +115,262 @@ public readonly record struct NavSearchOptions(
 }
 
 /// <summary>
-/// Reuses authoritative traversal answers across independent A* calls. A terrain edit advances the
-/// generation and clears the cache; paths still use chunk-scoped corridor validation, so cache
-/// invalidation affects search cost rather than stopping unrelated actors.
+/// Reuses authoritative traversal answers across independent A* calls. Each answer is stamped with
+/// the terrain generation at which it was computed and remains valid while its 3x3 chunk
+/// neighbourhood is unchanged. A shovel bite therefore invalidates nearby traversal without making
+/// every navigation worker cold. Paths still use chunk-scoped corridor validation before execution.
 /// </summary>
 public sealed class NavTraversalCache
 {
+    // One production search expands at most 256 nodes and normally touches several answers per
+    // node. Starting at ConcurrentDictionary's tiny default table made every cold generation grow
+    // all five tables while eight workers were trying to publish the same neighbouring edges. A
+    // 4k table covers the usual between-edit working set without reserving session-scale storage.
+    private const int InitialCapacity = 4_096;
+    private const int FillGateCount = 1_024;
+    private const int MaximumEntries = 600_000;
+
     internal readonly record struct StandableResult(bool Found, NavCell Cell);
     internal readonly record struct CostResult(bool Found, float Cost);
     internal readonly record struct JumpResult(bool Found, NavCell Landing, float Cost);
     internal readonly record struct DigResult(bool Found, Vector3 Target, float Cost);
+    private readonly record struct Entry<T>(T Result, long Generation);
+    private readonly record struct NeighbourhoodState(long MapVersion, long LastEdit);
 
-    private readonly object generationGate = new();
-    private readonly ConcurrentDictionary<(int X, int Z, int AroundY), StandableResult>
-        standable = [];
-    private readonly ConcurrentDictionary<(long From, long To), CostResult> steps = [];
-    private readonly ConcurrentDictionary<(long From, int Dx, int Dz), JumpResult> jumps = [];
-    private readonly ConcurrentDictionary<(long From, int Dx, int Dz), DigResult> digs = [];
-    private readonly ConcurrentDictionary<(long From, long To), bool> walkEdges = [];
-    private long generation = long.MinValue;
+    private readonly object capacityGate = new();
+    private readonly object[] fillGates = CreateFillGates();
+    private readonly ConcurrentDictionary<(int X, int Z, int AroundY), Entry<StandableResult>>
+        standable = new(Environment.ProcessorCount, InitialCapacity);
+    private readonly ConcurrentDictionary<(long From, long To), Entry<CostResult>> steps =
+        new(Environment.ProcessorCount, InitialCapacity);
+    private readonly ConcurrentDictionary<(long From, int Dx, int Dz), Entry<JumpResult>> jumps =
+        new(Environment.ProcessorCount, InitialCapacity);
+    private readonly ConcurrentDictionary<(long From, int Dx, int Dz), Entry<DigResult>> digs =
+        new(Environment.ProcessorCount, InitialCapacity);
+    private readonly ConcurrentDictionary<(long From, long To), Entry<bool>> walkEdges =
+        new(Environment.ProcessorCount, InitialCapacity);
+    private readonly ConcurrentDictionary<ChunkIndex, NeighbourhoodState> neighbourhoodEdits = new();
+    private int entryCount;
+    private long coalescedFills;
 
-    internal long Begin(long terrainVersion)
+    public long CoalescedFills => Interlocked.Read(ref coalescedFills);
+
+    internal object FillGate(int operation, int keyHash)
+        => fillGates[HashCode.Combine(operation, keyHash) & (FillGateCount - 1)];
+
+    internal void RecordCoalescedFill() => Interlocked.Increment(ref coalescedFills);
+
+    internal static long Begin(ChunkMap map) => map.EditVersion;
+
+    internal bool TryGetStandable(
+        ChunkMap map,
+        (int X, int Z, int AroundY) key,
+        out StandableResult result)
     {
-        if (Volatile.Read(ref generation) == terrainVersion)
-            return terrainVersion;
-        lock (generationGate)
+        result = default;
+        if (!standable.TryGetValue(key, out var entry)
+            || !IsValid(map, entry.Generation, key.X, key.Z, out long validatedGeneration))
+            return false;
+        result = entry.Result;
+        Promote(standable, key, entry, validatedGeneration);
+        return true;
+    }
+
+    internal void StoreStandable(
+        ChunkMap map,
+        long startedGeneration,
+        (int X, int Z, int AroundY) key,
+        StandableResult result)
+    {
+        if (IsValid(map, startedGeneration, key.X, key.Z, out _))
+            Publish(standable, key, new Entry<StandableResult>(result, startedGeneration));
+    }
+
+    internal bool TryGetStep(
+        ChunkMap map,
+        (long From, long To) key,
+        out CostResult result)
+    {
+        result = default;
+        var from = NavCell.FromKey(key.From);
+        if (!steps.TryGetValue(key, out var entry)
+            || !IsValid(map, entry.Generation, from.X, from.Z, out long validatedGeneration))
+            return false;
+        result = entry.Result;
+        Promote(steps, key, entry, validatedGeneration);
+        return true;
+    }
+
+    internal void StoreStep(
+        ChunkMap map,
+        long startedGeneration,
+        (long From, long To) key,
+        CostResult result)
+    {
+        var from = NavCell.FromKey(key.From);
+        if (IsValid(map, startedGeneration, from.X, from.Z, out _))
+            Publish(steps, key, new Entry<CostResult>(result, startedGeneration));
+    }
+
+    internal bool TryGetJump(
+        ChunkMap map,
+        (long From, int Dx, int Dz) key,
+        out JumpResult result)
+    {
+        result = default;
+        var from = NavCell.FromKey(key.From);
+        if (!jumps.TryGetValue(key, out var entry)
+            || !IsValid(map, entry.Generation, from.X, from.Z, out long validatedGeneration))
+            return false;
+        result = entry.Result;
+        Promote(jumps, key, entry, validatedGeneration);
+        return true;
+    }
+
+    internal void StoreJump(
+        ChunkMap map,
+        long startedGeneration,
+        (long From, int Dx, int Dz) key,
+        JumpResult result)
+    {
+        var from = NavCell.FromKey(key.From);
+        if (IsValid(map, startedGeneration, from.X, from.Z, out _))
+            Publish(jumps, key, new Entry<JumpResult>(result, startedGeneration));
+    }
+
+    internal bool TryGetDig(
+        ChunkMap map,
+        (long From, int Dx, int Dz) key,
+        out DigResult result)
+    {
+        result = default;
+        var from = NavCell.FromKey(key.From);
+        if (!digs.TryGetValue(key, out var entry)
+            || !IsValid(map, entry.Generation, from.X, from.Z, out long validatedGeneration))
+            return false;
+        result = entry.Result;
+        Promote(digs, key, entry, validatedGeneration);
+        return true;
+    }
+
+    internal void StoreDig(
+        ChunkMap map,
+        long startedGeneration,
+        (long From, int Dx, int Dz) key,
+        DigResult result)
+    {
+        var from = NavCell.FromKey(key.From);
+        if (IsValid(map, startedGeneration, from.X, from.Z, out _))
+            Publish(digs, key, new Entry<DigResult>(result, startedGeneration));
+    }
+
+    internal bool TryGetWalkEdge(
+        ChunkMap map,
+        (long From, long To) key,
+        out bool result)
+    {
+        result = default;
+        var from = NavCell.FromKey(key.From);
+        if (!walkEdges.TryGetValue(key, out var entry)
+            || !IsValid(map, entry.Generation, from.X, from.Z, out long validatedGeneration))
+            return false;
+        result = entry.Result;
+        Promote(walkEdges, key, entry, validatedGeneration);
+        return true;
+    }
+
+    internal void StoreWalkEdge(
+        ChunkMap map,
+        long startedGeneration,
+        (long From, long To) key,
+        bool result)
+    {
+        var from = NavCell.FromKey(key.From);
+        if (IsValid(map, startedGeneration, from.X, from.Z, out _))
+            Publish(walkEdges, key, new Entry<bool>(result, startedGeneration));
+    }
+
+    /// <summary>
+    /// Publishes a fill or replaces the same key's spatially stale generation. Normal search calls
+    /// arrive here under that key's striped fill gate; the concurrent operation also keeps direct
+    /// test callers and terrain-edit races safe. The combined table is bounded because chunk-scoped
+    /// invalidation no longer periodically clears it for us.
+    /// </summary>
+    private void Publish<TKey, TValue>(
+        ConcurrentDictionary<TKey, TValue> cache,
+        TKey key,
+        TValue value)
+        where TKey : notnull
+    {
+        if (!cache.TryAdd(key, value))
         {
-            if (generation == terrainVersion) return terrainVersion;
+            cache[key] = value;
+            return;
+        }
+
+        if (Interlocked.Increment(ref entryCount) < MaximumEntries) return;
+        lock (capacityGate)
+        {
+            if (Volatile.Read(ref entryCount) < MaximumEntries) return;
             standable.Clear();
             steps.Clear();
             jumps.Clear();
             digs.Clear();
             walkEdges.Clear();
-            Volatile.Write(ref generation, terrainVersion);
-            return terrainVersion;
+            Interlocked.Exchange(ref entryCount, 0);
         }
     }
 
-    internal bool TryGetStandable(
-        long expectedGeneration,
-        (int X, int Z, int AroundY) key,
-        out StandableResult result)
+    private bool IsValid(
+        ChunkMap map,
+        long generation,
+        int x,
+        int z,
+        out long validatedGeneration)
     {
-        result = default;
-        return Volatile.Read(ref generation) == expectedGeneration
-            && standable.TryGetValue(key, out result);
+        long mapVersion = map.EditVersion;
+        validatedGeneration = mapVersion;
+        // This is the overwhelmingly common path, and intentionally does no chunk dictionary work.
+        if (mapVersion == generation) return true;
+
+        var centre = ChunkTransforms.ChunkAt(x, z);
+        if (neighbourhoodEdits.TryGetValue(centre, out var cached)
+            && cached.MapVersion == mapVersion)
+            return cached.LastEdit <= generation;
+
+        // Traversal probes range only a few cells (including a simulated jump), while a chunk is
+        // sixteen cells wide. One chunk of apron on every side covers the capsule/SDF stencil and
+        // every intermediate movement sample, including operations that begin at a chunk border.
+        long lastEdit = map.GlobalInvalidationVersion;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                lastEdit = Math.Max(
+                    lastEdit,
+                    map.ChunkEditVersion(
+                        new ChunkIndex { x = centre.x + dx, z = centre.z + dz }));
+        neighbourhoodEdits[centre] = new NeighbourhoodState(mapVersion, lastEdit);
+        return lastEdit <= generation;
     }
 
-    internal void StoreStandable(
-        long expectedGeneration,
-        (int X, int Z, int AroundY) key,
-        StandableResult result)
+    private static void Promote<TKey, TValue>(
+        ConcurrentDictionary<TKey, Entry<TValue>> cache,
+        TKey key,
+        Entry<TValue> entry,
+        long currentGeneration)
+        where TKey : notnull
     {
-        if (Volatile.Read(ref generation) == expectedGeneration)
-            standable.TryAdd(key, result);
+        if (entry.Generation != currentGeneration)
+            cache.TryUpdate(
+                key,
+                new Entry<TValue>(entry.Result, currentGeneration),
+                entry);
     }
 
-    internal bool TryGetStep(
-        long expectedGeneration,
-        (long From, long To) key,
-        out CostResult result)
+    private static object[] CreateFillGates()
     {
-        result = default;
-        return Volatile.Read(ref generation) == expectedGeneration
-            && steps.TryGetValue(key, out result);
-    }
-
-    internal void StoreStep(
-        long expectedGeneration,
-        (long From, long To) key,
-        CostResult result)
-    {
-        if (Volatile.Read(ref generation) == expectedGeneration)
-            steps.TryAdd(key, result);
-    }
-
-    internal bool TryGetJump(
-        long expectedGeneration,
-        (long From, int Dx, int Dz) key,
-        out JumpResult result)
-    {
-        result = default;
-        return Volatile.Read(ref generation) == expectedGeneration
-            && jumps.TryGetValue(key, out result);
-    }
-
-    internal void StoreJump(
-        long expectedGeneration,
-        (long From, int Dx, int Dz) key,
-        JumpResult result)
-    {
-        if (Volatile.Read(ref generation) == expectedGeneration)
-            jumps.TryAdd(key, result);
-    }
-
-    internal bool TryGetDig(
-        long expectedGeneration,
-        (long From, int Dx, int Dz) key,
-        out DigResult result)
-    {
-        result = default;
-        return Volatile.Read(ref generation) == expectedGeneration
-            && digs.TryGetValue(key, out result);
-    }
-
-    internal void StoreDig(
-        long expectedGeneration,
-        (long From, int Dx, int Dz) key,
-        DigResult result)
-    {
-        if (Volatile.Read(ref generation) == expectedGeneration)
-            digs.TryAdd(key, result);
-    }
-
-    internal bool TryGetWalkEdge(
-        long expectedGeneration,
-        (long From, long To) key,
-        out bool result)
-    {
-        result = default;
-        return Volatile.Read(ref generation) == expectedGeneration
-            && walkEdges.TryGetValue(key, out result);
-    }
-
-    internal void StoreWalkEdge(
-        long expectedGeneration,
-        (long From, long To) key,
-        bool result)
-    {
-        if (Volatile.Read(ref generation) == expectedGeneration)
-            walkEdges.TryAdd(key, result);
+        var gates = new object[FillGateCount];
+        for (int i = 0; i < gates.Length; i++) gates[i] = new object();
+        return gates;
     }
 }
 
@@ -207,16 +384,21 @@ public static class NavSearch
     {
         private readonly NavTraversalCache? shared;
         private readonly long sharedGeneration;
+        private readonly NavProbeCache probes;
         private readonly Dictionary<(int X, int Z, int AroundY), NavCell?> standable = [];
         private readonly Dictionary<(long From, long To), float?> steps = [];
         private readonly Dictionary<(long From, int Dx, int Dz), (NavCell Landing, float Cost)?> jumps = [];
         private readonly Dictionary<(long From, int Dx, int Dz), (Vector3 Target, float Cost)?> digs = [];
         private readonly Dictionary<(long From, long To), bool> walkEdges = [];
 
-        public TraversalCache(NavTraversalCache? shared, long sharedGeneration)
+        public TraversalCache(
+            NavTraversalCache? shared,
+            long sharedGeneration,
+            NavProbeCache probes)
         {
             this.shared = shared;
             this.sharedGeneration = sharedGeneration;
+            this.probes = probes;
         }
 
         public int Hits { get; private set; }
@@ -236,7 +418,7 @@ public static class NavSearch
                 return cached.HasValue;
             }
             if (shared is not null
-                && shared.TryGetStandable(sharedGeneration, key, out var sharedResult))
+                && shared.TryGetStandable(map, key, out var sharedResult))
             {
                 Hits++;
                 standable[key] = sharedResult.Found ? sharedResult.Cell : null;
@@ -244,21 +426,47 @@ public static class NavSearch
                 return sharedResult.Found;
             }
 
-            bool found = NavTraversal.TryFindStandable(
-                map,
-                x,
-                z,
-                aroundY,
-                NavTraversal.MaximumTraverseCellDelta,
-                NavTraversal.MaximumTraverseCellDelta,
-                out cell,
-                out _);
-            standable[key] = found ? cell : null;
-            shared?.StoreStandable(
-                sharedGeneration,
-                key,
-                new NavTraversalCache.StandableResult(found, cell));
-            return found;
+            if (shared is not null)
+            {
+                lock (shared.FillGate(0, key.GetHashCode()))
+                {
+                    if (shared.TryGetStandable(map, key, out sharedResult))
+                    {
+                        shared.RecordCoalescedFill();
+                        Hits++;
+                        standable[key] = sharedResult.Found ? sharedResult.Cell : null;
+                        cell = sharedResult.Cell;
+                        return sharedResult.Found;
+                    }
+                    var computed = Compute();
+                    cell = computed.Cell;
+                    return computed.Found;
+                }
+            }
+
+            var uncached = Compute();
+            cell = uncached.Cell;
+            return uncached.Found;
+
+            (bool Found, NavCell Cell) Compute()
+            {
+                bool found = NavTraversal.TryFindStandable(
+                    probes,
+                    x,
+                    z,
+                    aroundY,
+                    NavTraversal.MaximumTraverseCellDelta,
+                    NavTraversal.MaximumTraverseCellDelta,
+                    out NavCell computedCell,
+                    out _);
+                standable[key] = found ? computedCell : null;
+                shared?.StoreStandable(
+                    map,
+                    sharedGeneration,
+                    key,
+                    new NavTraversalCache.StandableResult(found, computedCell));
+                return (found, computedCell);
+            }
         }
 
         public bool TryStep(ChunkMap map, NavCell from, NavCell to, out float cost)
@@ -271,20 +479,50 @@ public static class NavSearch
                 return cached.HasValue;
             }
             if (shared is not null
-                && shared.TryGetStep(sharedGeneration, key, out var sharedResult))
+                && shared.TryGetStep(map, key, out var sharedResult))
             {
                 Hits++;
                 steps[key] = sharedResult.Found ? sharedResult.Cost : null;
                 cost = sharedResult.Cost;
                 return sharedResult.Found;
             }
-            bool traversable = NavTraversal.TryStep(map, from, to, out cost);
-            steps[key] = traversable ? cost : null;
-            shared?.StoreStep(
-                sharedGeneration,
-                key,
-                new NavTraversalCache.CostResult(traversable, cost));
-            return traversable;
+            if (shared is not null)
+            {
+                lock (shared.FillGate(1, key.GetHashCode()))
+                {
+                    if (shared.TryGetStep(map, key, out sharedResult))
+                    {
+                        shared.RecordCoalescedFill();
+                        Hits++;
+                        steps[key] = sharedResult.Found ? sharedResult.Cost : null;
+                        cost = sharedResult.Cost;
+                        return sharedResult.Found;
+                    }
+                    var computed = Compute();
+                    cost = computed.Cost;
+                    return computed.Found;
+                }
+            }
+
+            var uncached = Compute();
+            cost = uncached.Cost;
+            return uncached.Found;
+
+            (bool Found, float Cost) Compute()
+            {
+                bool traversable = NavTraversal.TryStep(
+                    probes,
+                    from,
+                    to,
+                    out float computedCost);
+                steps[key] = traversable ? computedCost : null;
+                shared?.StoreStep(
+                    map,
+                    sharedGeneration,
+                    key,
+                    new NavTraversalCache.CostResult(traversable, computedCost));
+                return (traversable, computedCost);
+            }
         }
 
         public bool TryJump(
@@ -304,7 +542,7 @@ public static class NavSearch
                 return cached.HasValue;
             }
             if (shared is not null
-                && shared.TryGetJump(sharedGeneration, key, out var sharedResult))
+                && shared.TryGetJump(map, key, out var sharedResult))
             {
                 Hits++;
                 jumps[key] = sharedResult.Found
@@ -314,19 +552,53 @@ public static class NavSearch
                 cost = sharedResult.Cost;
                 return sharedResult.Found;
             }
-            bool traversable = NavTraversal.TryJump(
-                map,
-                from,
-                dx,
-                dz,
-                out landing,
-                out cost);
-            jumps[key] = traversable ? (landing, cost) : null;
-            shared?.StoreJump(
-                sharedGeneration,
-                key,
-                new NavTraversalCache.JumpResult(traversable, landing, cost));
-            return traversable;
+            if (shared is not null)
+            {
+                lock (shared.FillGate(2, key.GetHashCode()))
+                {
+                    if (shared.TryGetJump(map, key, out sharedResult))
+                    {
+                        shared.RecordCoalescedFill();
+                        Hits++;
+                        jumps[key] = sharedResult.Found
+                            ? (sharedResult.Landing, sharedResult.Cost)
+                            : null;
+                        landing = sharedResult.Landing;
+                        cost = sharedResult.Cost;
+                        return sharedResult.Found;
+                    }
+                    var computed = Compute();
+                    landing = computed.Landing;
+                    cost = computed.Cost;
+                    return computed.Found;
+                }
+            }
+
+            var uncached = Compute();
+            landing = uncached.Landing;
+            cost = uncached.Cost;
+            return uncached.Found;
+
+            (bool Found, NavCell Landing, float Cost) Compute()
+            {
+                bool traversable = NavTraversal.TryJump(
+                    map,
+                    from,
+                    dx,
+                    dz,
+                    out NavCell computedLanding,
+                    out float computedCost);
+                jumps[key] = traversable ? (computedLanding, computedCost) : null;
+                shared?.StoreJump(
+                    map,
+                    sharedGeneration,
+                    key,
+                    new NavTraversalCache.JumpResult(
+                        traversable,
+                        computedLanding,
+                        computedCost));
+                return (traversable, computedLanding, computedCost);
+            }
         }
 
         public bool CanWalkEdge(ChunkMap map, NavCell from, NavCell to)
@@ -338,16 +610,36 @@ public static class NavSearch
                 return cached;
             }
             if (shared is not null
-                && shared.TryGetWalkEdge(sharedGeneration, key, out bool sharedResult))
+                && shared.TryGetWalkEdge(map, key, out bool sharedResult))
             {
                 Hits++;
                 walkEdges[key] = sharedResult;
                 return sharedResult;
             }
-            bool valid = NavTraversal.CanWalkEdge(map, from, to);
-            walkEdges[key] = valid;
-            shared?.StoreWalkEdge(sharedGeneration, key, valid);
-            return valid;
+            if (shared is not null)
+            {
+                lock (shared.FillGate(3, key.GetHashCode()))
+                {
+                    if (shared.TryGetWalkEdge(map, key, out sharedResult))
+                    {
+                        shared.RecordCoalescedFill();
+                        Hits++;
+                        walkEdges[key] = sharedResult;
+                        return sharedResult;
+                    }
+                    return Compute();
+                }
+            }
+
+            return Compute();
+
+            bool Compute()
+            {
+                bool valid = NavTraversal.CanWalkEdge(map, from, to);
+                walkEdges[key] = valid;
+                shared?.StoreWalkEdge(map, sharedGeneration, key, valid);
+                return valid;
+            }
         }
 
         public bool TryDig(
@@ -367,7 +659,7 @@ public static class NavSearch
                 return cached.HasValue;
             }
             if (shared is not null
-                && shared.TryGetDig(sharedGeneration, key, out var sharedResult))
+                && shared.TryGetDig(map, key, out var sharedResult))
             {
                 Hits++;
                 digs[key] = sharedResult.Found
@@ -378,13 +670,50 @@ public static class NavSearch
                 return sharedResult.Found;
             }
 
-            bool found = NavTraversal.TryDig(map, from, dx, dz, out target, out cost);
-            digs[key] = found ? (target, cost) : null;
-            shared?.StoreDig(
-                sharedGeneration,
-                key,
-                new NavTraversalCache.DigResult(found, target, cost));
-            return found;
+            if (shared is not null)
+            {
+                lock (shared.FillGate(4, key.GetHashCode()))
+                {
+                    if (shared.TryGetDig(map, key, out sharedResult))
+                    {
+                        shared.RecordCoalescedFill();
+                        Hits++;
+                        digs[key] = sharedResult.Found
+                            ? (sharedResult.Target, sharedResult.Cost)
+                            : null;
+                        target = sharedResult.Target;
+                        cost = sharedResult.Cost;
+                        return sharedResult.Found;
+                    }
+                    var computed = Compute();
+                    target = computed.Target;
+                    cost = computed.Cost;
+                    return computed.Found;
+                }
+            }
+
+            var uncached = Compute();
+            target = uncached.Target;
+            cost = uncached.Cost;
+            return uncached.Found;
+
+            (bool Found, Vector3 Target, float Cost) Compute()
+            {
+                bool found = NavTraversal.TryDig(
+                    map,
+                    from,
+                    dx,
+                    dz,
+                    out Vector3 computedTarget,
+                    out float computedCost);
+                digs[key] = found ? (computedTarget, computedCost) : null;
+                shared?.StoreDig(
+                    map,
+                    sharedGeneration,
+                    key,
+                    new NavTraversalCache.DigResult(found, computedTarget, computedCost));
+                return (found, computedTarget, computedCost);
+            }
         }
     }
 
@@ -455,16 +784,19 @@ public static class NavSearch
         NavCell? preferredDigSite = null)
     {
         var options = requestedOptions ?? NavSearchOptions.Default;
+        var probes = new NavProbeCache(map);
         if (options.MaximumExpandedNodes <= 0
             || options.PrimaryBudget < TimeSpan.Zero
             || options.FailureBudget < options.PrimaryBudget
-            || !NavTraversal.Standable(map, start.X, start.Y, start.Z, out _))
+            || !NavTraversal.Standable(probes, start.X, start.Y, start.Z, out _))
             return NavPath.Failed();
 
         var nodes = new Dictionary<long, Node>();
         var open = new NavHeap();
-        long sharedGeneration = sharedTraversalCache?.Begin(map.EditVersion) ?? 0;
-        var traversal = new TraversalCache(sharedTraversalCache, sharedGeneration);
+        long sharedGeneration = sharedTraversalCache is null
+            ? 0
+            : NavTraversalCache.Begin(map);
+        var traversal = new TraversalCache(sharedTraversalCache, sharedGeneration, probes);
         var startNode = new Node
         {
             Cell = start,
@@ -472,7 +804,8 @@ public static class NavSearch
             Heuristic = goal.Heuristic(start),
         };
         nodes[start.Key] = startNode;
-        open.EnqueueOrDecrease(start.Key, startNode.Heuristic);
+        float heuristicWeight = options.HeuristicWeight;
+        open.EnqueueOrDecrease(start.Key, startNode.Heuristic * heuristicWeight);
 
         Node best = startNode;
         Node furthest = startNode;
@@ -590,7 +923,7 @@ public static class NavSearch
                 // straight-line distance keeps this meaningful for every goal kind, including
                 // GoalAwayFrom, where "closer" means the opposite direction.
                 bool usefulPartial =
-                    (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
+                    (startHeuristic - best.Heuristic) * NavCosts.HeuristicSpeed
                         >= options.MinimumPartialDistance;
                 if (failureSpent || primarySpent && usefulPartial)
                 {
@@ -614,7 +947,8 @@ public static class NavSearch
                     nodes,
                     open,
                     digFrontiers,
-                    seenDigFrontiers);
+                    seenDigFrontiers,
+                    heuristicWeight);
         }
 
         // An exhausted ordinary region has no air route, so its best executable dig frontier wins.
@@ -623,7 +957,7 @@ public static class NavSearch
         // unconditional second A* pass.
         float bestAirScore = best.Cost + best.Heuristic;
         bool madeAirProgress =
-            (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
+            (startHeuristic - best.Heuristic) * NavCosts.HeuristicSpeed
                 >= MathF.Max(
                     MinimumAirProgressBeforeFallback,
                     options.MinimumPartialDistance);
@@ -692,7 +1026,8 @@ public static class NavSearch
         Dictionary<long, Node> nodes,
         NavHeap open,
         PriorityQueue<DigFrontier, float> digFrontiers,
-        HashSet<(long From, int Dx, int Dz)> seenDigFrontiers)
+        HashSet<(long From, int Dx, int Dz)> seenDigFrontiers,
+        float heuristicWeight)
     {
         int x = current.Cell.X + dx;
         int z = current.Cell.Z + dz;
@@ -746,7 +1081,8 @@ public static class NavSearch
                         jumpCost,
                         NavAction.Jump,
                         nodes,
-                        open);
+                        open,
+                        heuristicWeight);
                 if (allowDig && (dx == 0 || dz == 0))
                     RecordDigFrontier(
                         goal,
@@ -760,7 +1096,7 @@ public static class NavSearch
                 return;
             }
 
-            Relax(goal, current, next, edgeCost, NavAction.Walk, nodes, open);
+            Relax(goal, current, next, edgeCost, NavAction.Walk, nodes, open, heuristicWeight);
             return;
         }
 
@@ -776,7 +1112,7 @@ public static class NavSearch
         {
             if (IsAvoided(next, blockedCellKey))
                 return;
-            Relax(goal, current, next, edgeCost, NavAction.Jump, nodes, open);
+            Relax(goal, current, next, edgeCost, NavAction.Jump, nodes, open, heuristicWeight);
             return;
         }
 
@@ -1017,7 +1353,8 @@ public static class NavSearch
         float edgeCost,
         NavAction action,
         Dictionary<long, Node> nodes,
-        NavHeap open)
+        NavHeap open,
+        float heuristicWeight)
     {
         float candidateCost = current.Cost + edgeCost;
         if (candidateCost >= NavCosts.Inf) return;
@@ -1040,7 +1377,7 @@ public static class NavSearch
             current.HasUncommittedDeepDescent
             || action == NavAction.Jump
                 && current.Cell.Y - next.Y > MaximumCommittedPartialDropCells;
-        open.EnqueueOrDecrease(next.Key, node.Cost + node.Heuristic);
+        open.EnqueueOrDecrease(next.Key, node.Cost + node.Heuristic * heuristicWeight);
     }
 
     private static bool CardinalClear(

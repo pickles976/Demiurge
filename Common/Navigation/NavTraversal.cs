@@ -20,6 +20,13 @@ public static class NavTraversal
             2f / PlayerMovement.WalkSpeed / NetworkConfig.FixedDt);
     private static readonly float MaximumRisePerMetre =
         MathF.Tan(PlayerMovement.MaxSlopeDegrees * MathF.PI / 180f);
+    /// <summary>
+    /// Simulated ticks a jump gets to leave the ground. The impulse is applied on the first step, so
+    /// a jump that is still grounded after this never happened — it was blocked by headroom — and
+    /// the remaining ticks can only re-confirm that.
+    /// </summary>
+    private const int MaximumJumpLaunchTicks = 3;
+
     private static readonly int MaximumJumpTicks =
         (int)MathF.Ceiling(
             (2f * PlayerMovement.JumpSpeed / PlayerMovement.Gravity + 0.5f)
@@ -458,8 +465,6 @@ public static class NavTraversal
         int dz = to.Z - from.Z;
         if ((dx == 0 && dz == 0) || Math.Abs(dx) > 1 || Math.Abs(dz) > 1)
             return false;
-        if (!Standable(map, to.X, to.Y, to.Z, out float targetY))
-            return false;
 
         // BOTH ends go through TryPosition. The destination was the only one checked, and the source
         // is the end that actually goes stale: a node is discovered standable, sits in the open set
@@ -469,6 +474,7 @@ public static class NavTraversal
         if (!TryPosition(map, from, out Vector3 origin)
             || !TryPosition(map, to, out Vector3 target))
             return false;
+        float targetY = target.Y;
 
         var state = new MoveState
         {
@@ -481,6 +487,17 @@ public static class NavTraversal
         float verticalTolerance =
             PlayerMovement.GroundSnapDistance + PlayerMovement.SkinWidth + 0.15f;
 
+        // A stalled-progress early-out was tried here and REVERTED. It is a genuine cost — a rejected
+        // edge runs the solver all fifteen ticks while an accepted one returns on arrival, and
+        // rejections are the common case — but NeedsWalkValidation only fires on ASCENTS, so every
+        // edge reaching this loop is a climb, and a climbing capsule legitimately makes little
+        // progress for several ticks while it rises and ground-snaps over a lip. Horizontal-only
+        // stall detection failed the conquest capture scenarios 4 runs of 4; measuring progress in 3D
+        // and allowing six stalled ticks still failed 3 of 4, against a baseline that fails 1 of 4.
+        //
+        // The deeper problem is that this cannot be landed safely while the navigation suite is
+        // flaky, because a change that deletes walkable edges from the graph and a bad run look
+        // identical. Deterministic budgets first (docs/TODO.md), then this.
         for (int tick = 0; tick < MaximumWalkValidationTicks; tick++)
         {
             PlayerMovement.Step(
@@ -551,9 +568,6 @@ public static class NavTraversal
         landing = default;
         cost = NavCosts.Inf;
         if (Math.Abs(dx) + Math.Abs(dz) != 1
-            || !Standable(map, from.X, from.Y, from.Z, out _)
-            // Not redundant with the Standable check above: these run on a worker against terrain
-            // the main thread is still writing, so the answer can change between the two lines.
             || !TryPosition(map, from, out Vector3 origin))
             return false;
 
@@ -572,6 +586,10 @@ public static class NavTraversal
             if (tick == 0) flags |= PlayerStateFlags.Jumping;
             PlayerMovement.Step(map, ref state, intent, flags, NetworkConfig.FixedDt);
             becameAirborne |= !state.Grounded;
+            // A jump under a low ceiling never leaves the ground, and used to spend all forty ticks
+            // proving it — the same asymmetry walk validation had, where the rejection cost more
+            // than the acceptance.
+            if (!becameAirborne && tick >= MaximumJumpLaunchTicks) return false;
             if (!becameAirborne || !state.Grounded) continue;
 
             int x = (int)MathF.Floor(state.Position.X);
@@ -626,9 +644,6 @@ public static class NavTraversal
         cost = NavCosts.Inf;
         treadCell = null;
         if (Math.Abs(dx) + Math.Abs(dz) != 1
-            || !Standable(map, from.X, from.Y, from.Z, out _)
-            // See TryJump: the guard above and this line are separated by a window the main thread
-            // can write terrain in, so the standable answer is re-taken rather than assumed.
             || !TryPosition(map, from, out Vector3 feet))
             return false;
         Vector3 direction = Vector3.Normalize(new Vector3(dx, 0f, dz));
