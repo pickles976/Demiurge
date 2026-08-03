@@ -17,7 +17,14 @@ namespace Demiurge.GameClient
     /// </summary>
     public sealed class WeaponMount
     {
-        /// <summary>The rig every player wears; the hand a weapon hangs off is on it.</summary>
+        /// <summary>
+        /// The rig every player wears; the hand a weapon hangs off is on it.
+        ///
+        /// One model NAMES the rig even though teams wear different bodies (see PlayerCosmetics):
+        /// they are the same skeleton with different textures, so every measurement taken here holds
+        /// for all of them. A team whose rig actually differed would need its own numbers, not a
+        /// second constant here.
+        /// </summary>
         public const string PlayerModel = "assets/models/cat_orange.gltf";
 
         private const string HandBone = "right_hand";

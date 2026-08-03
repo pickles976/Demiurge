@@ -11,16 +11,35 @@ namespace Demiurge
         /// passes within GunConfig.HitRadius of center; null on miss or beyond
         /// segmentLength.</summary>
         public static float? HitDistance(Vector3 origin, Vector3 direction, Vector3 center, float segmentLength)
+            => SphereDistance(origin, direction, center, GunConfig.HitRadius, segmentLength);
+
+        /// <summary>The same test against an arbitrary radius. One implementation, so a head and a
+        /// crate cannot end up disagreeing about what "the ray passed within r" means.</summary>
+        private static float? SphereDistance(
+            Vector3 origin,
+            Vector3 direction,
+            Vector3 center,
+            float radius,
+            float segmentLength)
         {
             var toCenter = center - origin;
             float t = Vector3.Dot(toCenter, direction);
             if (t < 0 || t > segmentLength) return null;
 
             float missSq = (toCenter - direction * t).LengthSquared();
-            if (missSq > GunConfig.HitRadius * GunConfig.HitRadius) return null;
+            if (missSq > radius * radius) return null;
 
             return t;
         }
+
+        /// <summary>
+        /// Where a shot struck an actor, and whether it struck the head.
+        ///
+        /// One result rather than two calls: the head sphere lives INSIDE the body capsule, so
+        /// "was this a head hit" is a property of a hit that already happened, not a second
+        /// question that could answer yes when the first answered no.
+        /// </summary>
+        public readonly record struct PlayerHit(float Distance, bool Head);
 
         /// <summary>
         /// Distance along the ray at which it passes closest to a player standing on
@@ -41,6 +60,26 @@ namespace Demiurge
             Vector3 direction,
             Vector3 feet,
             float segmentLength)
+            => PlayerHitAt(origin, direction, feet, segmentLength, crouching: false)?.Distance;
+
+        /// <summary>
+        /// The same test, reporting whether the shot found the head as well as where it landed.
+        ///
+        /// The distance is the capsule's, head hit or not, so the multiplier changes what a hit is
+        /// worth and never where it registers or which of two targets a bullet reaches first. The
+        /// head is a sphere rather than a second capsule because it is one rigid lump of geometry,
+        /// and it follows <paramref name="crouching"/> because the model's head does.
+        ///
+        /// Two known approximations, both deliberate: the sphere does not swing with the aim pitch
+        /// the way the rendered head does — <c>upper_chest</c> parents the neck — and it does not
+        /// ride the walk cycle's bob. Both move the head by centimetres against a 0.20 m radius.
+        /// </summary>
+        public static PlayerHit? PlayerHitAt(
+            Vector3 origin,
+            Vector3 direction,
+            Vector3 feet,
+            float segmentLength,
+            bool crouching)
         {
             float radius = GunConfig.HitRadius;
             float height = PlayerMovement.Body.Height;
@@ -57,7 +96,15 @@ namespace Demiurge
                 axisEnd,
                 out Vector3 onAxis);
             float missSq = (origin + direction * t - onAxis).LengthSquared();
-            return missSq > radius * radius ? null : t;
+            if (missSq > radius * radius) return null;
+
+            bool head = SphereDistance(
+                origin,
+                direction,
+                GunConfig.HeadCenter(feet, crouching),
+                GunConfig.HeadRadius,
+                segmentLength) is not null;
+            return new PlayerHit(t, head);
         }
 
         /// <summary>

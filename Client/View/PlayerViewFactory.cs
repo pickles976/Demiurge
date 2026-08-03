@@ -22,14 +22,16 @@ public class PlayerViewFactory : IDisposable
 
     private void CreatePlayerView(Player player)
     {
+        // Team decides the body. It arrives on the spawn packet, so it is already set when
+        // PlayerJoined fires; a team CHANGE would need the view rebuilt, which nothing does today.
         var animations = new AnimationComponent();
-            animations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/cat_orange_anim_Walk"));
-            animations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/cat_orange_anim_Idle"));
-            animations.Animations.Add("Aiming", game.Content.Load<AnimationClip>("models/cat_orange_anim_Aiming"));
-            animations.Animations.Add("Crouch", game.Content.Load<AnimationClip>("models/cat_orange_anim_Crouch"));
-            animations.Animations.Add("CrouchWalk", game.Content.Load<AnimationClip>("models/cat_orange_anim_CrouchWalk"));
+        foreach (string clip in PlayerCosmetics.Clips)
+            animations.Animations.Add(
+                clip,
+                game.Content.Load<AnimationClip>(PlayerCosmetics.AnimationPath(player.Team, clip)));
 
-        var model = new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf"));
+        var model = new ModelComponent(
+            GLTFLoader.LoadModel(game, PlayerCosmetics.Model(player.Team)));
         if (player is LocalPlayer)
         {
             // First-person keeps the local player entity and skeleton alive for prediction,

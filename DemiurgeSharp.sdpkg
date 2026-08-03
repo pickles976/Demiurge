@@ -16,6 +16,13 @@ TemplateFolders: []
 RootAssets:
     - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
     - 1a8baa39-b12d-505b-401c-4ec3beb60a50:models/body_armor
+    - af1a7827-5b60-fa77-ac21-ac449a67911c:models/cat_gray
+    - 25092207-ffde-4a38-6521-398f7bd0f950:models/cat_gray_skeleton
+    - c42c2ef7-568f-0283-688d-65de254e6581:models/cat_gray_anim_Walk
+    - 78291845-5f6f-648d-3805-219f187ebb65:models/cat_gray_anim_Idle
+    - ba272b45-7972-c49a-32d2-2a82dc97582b:models/cat_gray_anim_Aiming
+    - 7f69b23f-75fa-de4a-ee94-2c47a5987728:models/cat_gray_anim_Crouch
+    - 4e7ca3c8-a3fc-3e48-bca0-806230086688:models/cat_gray_anim_CrouchWalk
     - a9c9c33d-d0f7-8e22-959a-0ad5c3538937:models/cat_orange
     - e13f8a9e-58fb-0f01-4923-3b3bd3d82899:models/cat_orange_skeleton
     - fb7c8408-a6cd-ed2a-6b12-059c4acce042:models/cat_orange_anim_Walk

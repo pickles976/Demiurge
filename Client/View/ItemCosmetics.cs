@@ -60,6 +60,25 @@ public static class ItemCosmetics
             ? WorldScale(type)
             : WorldScale(type) * WeaponMount.FirstPersonScale;
 
+    /// <summary>
+    /// How much closer aiming this weapon pulls the world, ON TOP of the ADS view every weapon
+    /// gets. 1 is the ordinary sight picture; 2 is twice the magnification of that, not twice the
+    /// magnification of the hip view.
+    ///
+    /// A ratio rather than a per-weapon field of view, because the number worth tuning per weapon
+    /// is "how much glass is on it" — the shared ADS framing stays one number in FirstPersonCamera
+    /// and moving it re-frames every optic at once instead of drifting away from a table of angles.
+    ///
+    /// Presentation only. The shot is sampled from the aim direction and the weapon's MOA, so a
+    /// scope makes a target easier for the PLAYER to lay the reticle on and buys no accuracy; the
+    /// reticle's own bloom already reads the live field of view and follows this for free.
+    /// </summary>
+    public static float AimMagnification(ItemType type) => type switch
+    {
+        ItemType.Mosin => 2f,
+        _ => 1f,
+    };
+
     // A new EquipSlot needs a row here — that's the whole client cost of a slot.
     // Seats are the FALLBACK for models with no grip locator; a Hand item's real seat
     // comes from WeaponMount, which owns it so the sim's muzzle can be derived from the

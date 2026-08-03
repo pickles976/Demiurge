@@ -16,15 +16,20 @@ AI
   -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance by sprinting.
   - Digging is *defensive*. Movement is *offensive*
 
-- [ ] PVP
-    - [x] add mosin-nagant
-    - [ ] add black cats
+- [ ] Connected foxhole/trench construction
+- [ ] Commander fortification and crew-weapon objectives
+  grenade reservations
+- [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
+UI Improvements
+
+Feedback Improvements
+
+- [ ] PVP
     - [ ] heavy MG
       - [ ] takes time to assemble and disassemble, player has to lug crate around and is vulnerable
       - [ ] put one at the hilltop flag
       - [ ] allow NPCs to use it
-
     - [ ] flag 3D model
     - [ ] crate
     - [ ] mortar
@@ -37,22 +42,6 @@ AI
       - [ ] low LOD tree
       - [ ] trees have health and take damage and change models to a broken version
       - [ ] trees delete if the terrain beneath them goes away
-
-- [ ] clean up UI and stuff
-
-# AI
-
-- [ ] Connected foxhole/trench construction
-- [ ] Commander fortification and crew-weapon objectives
-  grenade reservations
-- [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
-
-# AI Battle
-
-- [x] Create and load the `conquest` map
-  - [ ] add trees back in
-  - [ ] reusable structure editor
-  - [ ] add heavy MG and mortar items
 
 # PVP Demo
 

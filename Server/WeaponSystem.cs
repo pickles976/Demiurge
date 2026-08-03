@@ -218,14 +218,14 @@ namespace Demiurge.GameServer
                     dt,
                     projectile.RemainingDistance);
 
-                if (TryHit(step.Start, step.End, projectile, actors, tick, out var hit))
+                if (TryHit(step.Start, step.End, projectile, actors, tick, out var hit, out bool headshot))
                 {
                     if (hit is { } target && target.Has.HasFlag(NetComponents.Health))
                         ApplyDamage(
                             projectile.Shooter,
                             target,
                             actors.FirstOrDefault(actor => actor.Status == target),
-                            projectile.Damage,
+                            headshot ? GunConfig.Headshot(projectile.Damage) : projectile.Damage,
                             projectile.Origin,
                             tick);
                     SuppressNearImpact(projectile, step.End, actors, tick);
@@ -263,9 +263,11 @@ namespace Demiurge.GameServer
             Projectile projectile,
             IEnumerable<ServerPlayer> players,
             uint tick,
-            out ServerObject? hit)
+            out ServerObject? hit,
+            out bool headshot)
         {
             hit = null;
+            headshot = false;
             var shooter = projectile.Shooter;
             var segment = end - start;
             float length = segment.Length();
@@ -284,6 +286,7 @@ namespace Demiurge.GameServer
                 if (GunMath.HitDistance(start, direction, obj.Transform.Position, length) is not { } t) continue;
                 if (t >= nearestT) continue;
                 hit = obj;
+                headshot = false;   // an object has an origin, not a body
                 nearestT = t;
             }
 
@@ -306,12 +309,18 @@ namespace Demiurge.GameServer
                             projectile.Origin,
                             tick));
                 }
-                if (GunMath.PlayerHitDistance(start, direction, player.Position, length)
-                    is not { } t) continue;
-                if (t >= nearestT) continue;
+                if (GunMath.PlayerHitAt(
+                        start,
+                        direction,
+                        player.Position,
+                        length,
+                        player.State.HasFlag(PlayerStateFlags.Crouching))
+                    is not { } actorHit) continue;
+                if (actorHit.Distance >= nearestT) continue;
 
                 hit = player.Status;
-                nearestT = t;
+                headshot = actorHit.Head;
+                nearestT = actorHit.Distance;
             }
 
             return nearestT < float.MaxValue;

@@ -150,11 +150,27 @@ namespace Demiurge
 			if (camera != null)
 			{
 				float targetFov =
-					aiming ? AimFieldOfView :
+					aiming ? AimFieldOfViewFor(local.Weapon?.Item.Type) :
 					local.State.HasFlag(PlayerStateFlags.Sprinting) ? SprintFieldOfView :
 					HipFieldOfView;
 				camera.VerticalFieldOfView = MathUtil.Lerp(camera.VerticalFieldOfView, targetFov, SharpStep(StateSharpness, dt));
 			}
+		}
+
+		/// <summary>
+		/// The ADS field of view for the weapon in hand, narrowed by whatever optic it carries.
+		///
+		/// Magnification divides the TANGENT, not the angle: halving 56 degrees would be 2x only for
+		/// a narrow view, and the error grows with the field. Doing it properly is what makes "2x"
+		/// mean a target subtends twice the screen height, which is the thing a player can check.
+		/// </summary>
+		float AimFieldOfViewFor(ItemType? held)
+		{
+			float magnification = held is { } type ? ItemCosmetics.AimMagnification(type) : 1f;
+			if (magnification <= 1f) return AimFieldOfView;
+
+			float halfTangent = MathF.Tan(MathUtil.DegreesToRadians(AimFieldOfView) * 0.5f);
+			return MathUtil.RadiansToDegrees(2f * MathF.Atan(halfTangent / magnification));
 		}
 
 		static float SharpStep(float sharpness, float dt)

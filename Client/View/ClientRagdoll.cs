@@ -60,7 +60,10 @@ public sealed class RagdollViewFactory : IDisposable
 
         var modelEntity = new Entity($"RagdollModel_{player.Id}_{serial}")
         {
-            new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf")),
+            // The corpse wears what the man wore — a body that changed colour on death would read
+            // as the wrong team's casualty.
+            new ModelComponent(
+                GLTFLoader.LoadModel(game, Demiurge.GameClient.PlayerCosmetics.Model(player.Team))),
         };
         modelEntity.Transform.Position = new SVector3(0f, -PelvisHeight, 0f);
 

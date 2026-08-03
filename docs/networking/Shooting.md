@@ -50,6 +50,29 @@ NPCs and players alike, and shots into the ground just below someone's feet no l
 Crouching deliberately has no case here. It lowers the eye, not the body, so the capsule is unchanged;
 cover still protects a crouched player because the terrain ceiling is tested first.
 
+Inside that capsule sits one **head sphere** — `GunConfig.HeadCenterHeight` 1.26 m, radius 0.20 m —
+and a shot that passes through it does `GunConfig.HeadshotMultiplier` (2x) damage. `GunMath.PlayerHitAt`
+returns both facts from one test, because the sphere is inside the capsule and "was it a head hit" is
+therefore a property of a hit that already happened. The distance reported is the capsule's either way,
+so the multiplier changes what a hit is worth and never where it registers or which target a bullet
+reaches first.
+
+Its numbers come from the **player model**, not the capsule: the vertices skinned to cat_orange's `head`
+joint span y 1.047-1.482, so the sphere covers the head a shooter can actually see, and the radius is
+the smaller half-extent because a generous head means 2x damage for a shot that visibly missed. The
+capsule is 1.8 m tall against a 1.48 m model, so deriving the head from it would have floated the sphere
+above the target's crown.
+
+The head is also the one part that **follows the crouch flag**, dropping `GunConfig.CrouchHeadDrop`
+(0.22 m, measured off the crouch clip's head bone). The capsule can ignore crouch because its extra
+height costs a shooter nothing; a head sphere left standing would pay double for a shot over a crouched
+man and single for one through his face. It does not follow the aim pitch or the walk bob, both of which
+move the rendered head by centimetres against a 0.20 m radius.
+
+`GunConfig.PlayerPeekHeight` (1.45 m) stays where it is — near the crown rather than at the sphere's
+centre. It is an AI *aim* point, and lowering it onto the middle of the head would have quietly turned
+every NPC into a headhunter.
+
 `GunConfig.AimHeights` is the ordered list of body points an AI tries to see and shoot — centre mass,
 then the head. Every entry must lie inside the capsule, or an AI would settle on a point it can see
 and provably cannot damage; `Common.Tests/GunMathTests.cs` asserts exactly that.

@@ -33,10 +33,54 @@ namespace Demiurge
         public const float ImpactSuppressionRadius = 4f;
 
         /// <summary>
-        /// Height of the head above the feet. Used as an AI aim point, not as a damage multiplier —
-        /// there is no headshot, only a part of the body that stays exposed behind low cover.
+        /// Height of the head above the feet, as an AI AIM POINT — the part of a man that stays
+        /// exposed behind low cover. It sits near the crown rather than at
+        /// <see cref="HeadCenterHeight"/> deliberately: it is the height perception needs a clear
+        /// line to, and lowering it to the middle of the head sphere would quietly turn every AI
+        /// into a headhunter now that <see cref="HeadshotMultiplier"/> exists.
         /// </summary>
         public const float PlayerPeekHeight = 1.45f;
+
+        /// <summary>
+        /// The head, as a sphere on the body axis — the one region of an actor that is worth more
+        /// than the rest.
+        ///
+        /// Measured off the player model rather than picked: the vertices skinned to the `head`
+        /// joint of cat_orange span y 1.047-1.482 in model space, so the centre is 1.264 up and the
+        /// geometry is 0.44 tall by 0.375 wide. The radius is the smaller half-extent, which keeps
+        /// the sphere inside the silhouette a shooter is actually looking at — a generous head is
+        /// far worse than a tight one, because every metre of it is 2x damage awarded for a shot
+        /// that visibly missed.
+        ///
+        /// It is the MODEL that fixes these numbers, not the collision capsule, whose 1.8 m is
+        /// taller than the 1.48 m the player can see. Aim at what is drawn and you hit the head.
+        /// </summary>
+        public const float HeadCenterHeight = 1.26f;
+        public const float HeadRadius = 0.20f;
+
+        /// <summary>
+        /// How far the head drops when crouched. The body capsule deliberately ignores crouch — it
+        /// lowers the eye, not the volume — but the head cannot: the crouch clip carries the head
+        /// bone 0.217 m down, and a sphere left standing would pay 2x for a shot over a crouched
+        /// man's head while a hit on the head he can see paid 1x.
+        /// </summary>
+        public const float CrouchHeadDrop = 0.22f;
+
+        /// <summary>
+        /// What a head hit is worth. A multiplier rather than a table so it stays one number for
+        /// every weapon: a hit that finds the head is worth more because of where it landed, not
+        /// because of what fired it.
+        /// </summary>
+        public const float HeadshotMultiplier = 2f;
+
+        /// <summary>Centre of the head sphere for an actor standing on <paramref name="feet"/>.</summary>
+        public static System.Numerics.Vector3 HeadCenter(System.Numerics.Vector3 feet, bool crouching)
+            => feet + new System.Numerics.Vector3(
+                0f, crouching ? HeadCenterHeight - CrouchHeadDrop : HeadCenterHeight, 0f);
+
+        /// <summary>Damage after the head multiplier, saturating rather than wrapping.</summary>
+        public static ushort Headshot(ushort damage)
+            => (ushort)MathF.Min(ushort.MaxValue, damage * HeadshotMultiplier);
 
         private static readonly float[] aimHeights = [PlayerCenterHeight, PlayerPeekHeight];
 

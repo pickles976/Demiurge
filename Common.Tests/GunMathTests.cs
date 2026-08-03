@@ -87,4 +87,69 @@ public class GunMathTests
         var origin = new Vector3(-20f, Feet.Y + 0.9f, 0f);
         Assert.Null(GunMath.PlayerHitDistance(origin, -Vector3.UnitX, Feet, segmentLength: 100f));
     }
+
+    /// <summary>Fires horizontally from 20 m away at the given height, reporting the region hit.</summary>
+    private static GunMath.PlayerHit? HitAtHeight(float height, bool crouching = false, float lateralOffset = 0f)
+    {
+        var origin = new Vector3(-20f, Feet.Y + height, lateralOffset);
+        var target = new Vector3(0f, Feet.Y + height, lateralOffset);
+        Vector3 delta = target - origin;
+        float distance = delta.Length();
+        return GunMath.PlayerHitAt(origin, delta / distance, Feet, distance + 5f, crouching);
+    }
+
+    [Theory]
+    [InlineData(0.05f)]   // feet
+    [InlineData(0.9f)]    // hips
+    [InlineData(1.0f)]    // chest, just under the jaw at 1.047
+    [InlineData(1.75f)]   // over the crown, still inside the capsule
+    public void ShotsOutsideTheHeadSphereAreOrdinaryHits(float height)
+        => Assert.False(HitAtHeight(height)?.Head);
+
+    [Theory]
+    [InlineData(1.26f)]   // centre
+    [InlineData(1.10f)]   // jaw
+    [InlineData(1.42f)]   // crown
+    public void ShotsThroughTheHeadAreHeadHits(float height)
+        => Assert.True(HitAtHeight(height)?.Head);
+
+    [Fact]
+    public void TheHeadIsAlwaysInsideTheBodyItBelongsTo()
+    {
+        // The multiplier can only ever apply to a hit, so the head sphere must not reach outside
+        // the capsule — otherwise a 2x hit would exist that an ordinary hit does not.
+        foreach (bool crouching in new[] { false, true })
+        {
+            float center = GunConfig.HeadCenterHeight - (crouching ? GunConfig.CrouchHeadDrop : 0f);
+            Assert.True(center - GunConfig.HeadRadius >= 0f);
+            Assert.True(center + GunConfig.HeadRadius <= PlayerMovement.Body.Height);
+            Assert.True(GunConfig.HeadRadius <= GunConfig.HitRadius);
+        }
+    }
+
+    [Fact]
+    public void CrouchingCarriesTheHeadDownWithTheModel()
+    {
+        // The capsule ignores crouch; the head cannot, or a shot over a crouched man's head would
+        // be worth double and one through it would not.
+        Assert.True(HitAtHeight(1.26f - GunConfig.CrouchHeadDrop, crouching: true)?.Head);
+        Assert.False(HitAtHeight(1.26f, crouching: true)?.Head);
+        Assert.False(HitAtHeight(1.26f - GunConfig.CrouchHeadDrop, crouching: false)?.Head);
+    }
+
+    [Fact]
+    public void AShotPastTheHeadInsideTheCapsuleIsNotAHeadHit()
+    {
+        // The capsule is 0.6 m wide and the head 0.2 m: the metre between them is body, not head.
+        var hit = HitAtHeight(GunConfig.HeadCenterHeight, lateralOffset: 0.45f);
+        Assert.NotNull(hit);
+        Assert.False(hit.Value.Head);
+    }
+
+    [Fact]
+    public void HeadshotDamageDoublesAndSaturates()
+    {
+        Assert.Equal((ushort)140, GunConfig.Headshot(70));
+        Assert.Equal(ushort.MaxValue, GunConfig.Headshot(ushort.MaxValue));
+    }
 }

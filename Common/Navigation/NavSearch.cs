@@ -952,7 +952,11 @@ public static class NavSearch
                     out float edgeCost);
             if (!found && frontier.VerticalRecovery)
             {
-                Vector3 feet = NavTraversal.Position(map, frontier.From.Cell);
+                // TryDig answers false for an unstandable source, so this branch is reached by
+                // exactly the cell Position would throw on. Same worker-thread contract as
+                // Reconstruct below: a frontier the ground has left is stale, not fatal.
+                if (!NavTraversal.TryPosition(map, frontier.From.Cell, out Vector3 feet))
+                    continue;
                 Vector3 nextFeet = feet + new Vector3(frontier.Dx, 0f, frontier.Dz);
                 found = NavTraversal.TryDigClearance(
                         map,

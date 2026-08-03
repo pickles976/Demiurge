@@ -461,13 +461,21 @@ public static class NavTraversal
         if (!Standable(map, to.X, to.Y, to.Z, out float targetY))
             return false;
 
+        // BOTH ends go through TryPosition. The destination was the only one checked, and the source
+        // is the end that actually goes stale: a node is discovered standable, sits in the open set
+        // while the search expands elsewhere, and a dig lands on it before the edge out of it is
+        // validated. That is an ordinary event on a worker thread, and Position would answer it by
+        // terminating the process.
+        if (!TryPosition(map, from, out Vector3 origin)
+            || !TryPosition(map, to, out Vector3 target))
+            return false;
+
         var state = new MoveState
         {
-            Position = Position(map, from),
+            Position = origin,
             Velocity = Vector3.Zero,
             Grounded = true,
         };
-        Vector3 target = Position(map, to);
         Vector3 intent = Vector3.Normalize(new Vector3(dx, 0f, dz));
         float arrivalRadiusSquared = 0.55f * 0.55f;
         float verticalTolerance =
@@ -543,12 +551,15 @@ public static class NavTraversal
         landing = default;
         cost = NavCosts.Inf;
         if (Math.Abs(dx) + Math.Abs(dz) != 1
-            || !Standable(map, from.X, from.Y, from.Z, out _))
+            || !Standable(map, from.X, from.Y, from.Z, out _)
+            // Not redundant with the Standable check above: these run on a worker against terrain
+            // the main thread is still writing, so the answer can change between the two lines.
+            || !TryPosition(map, from, out Vector3 origin))
             return false;
 
         var state = new MoveState
         {
-            Position = Position(map, from),
+            Position = origin,
             Velocity = Vector3.Zero,
             Grounded = true,
         };
@@ -615,10 +626,11 @@ public static class NavTraversal
         cost = NavCosts.Inf;
         treadCell = null;
         if (Math.Abs(dx) + Math.Abs(dz) != 1
-            || !Standable(map, from.X, from.Y, from.Z, out _))
+            || !Standable(map, from.X, from.Y, from.Z, out _)
+            // See TryJump: the guard above and this line are separated by a window the main thread
+            // can write terrain in, so the standable answer is re-taken rather than assumed.
+            || !TryPosition(map, from, out Vector3 feet))
             return false;
-
-        Vector3 feet = Position(map, from);
         Vector3 direction = Vector3.Normalize(new Vector3(dx, 0f, dz));
 
         // A substantially higher standable surface ahead means this is the side of a pit or

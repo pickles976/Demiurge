@@ -153,6 +153,38 @@ public class NavigationTests
         Assert.False(path.ReachedGoal);
     }
 
+    /// <summary>
+    /// The same stale-read contract as <see cref="TerrainEditDuringReconstructionReturnsFailedPath"/>,
+    /// one layer lower. A search worker expands a node that was standable when it was discovered and
+    /// then validates an edge out of it; a dig can land in between, and the SOURCE cell is the one
+    /// nothing re-checks. Throwing there kills the process, because it happens on a worker thread.
+    /// </summary>
+    [Fact]
+    public void EdgeValidationSurvivesTheSourceCellBeingDugAway()
+    {
+        var map = SyntheticTerrain.Flat();
+        var from = CellAt(map, 0, 0);
+        var to = CellAt(map, 1, 0);
+
+        SetCellToAir(map, from);
+
+        Assert.False(NavTraversal.CanWalkEdge(map, from, to));
+    }
+
+    /// <summary>The destination going away is the same event and was already handled; asserted so the
+    /// two ends of one edge cannot drift apart again.</summary>
+    [Fact]
+    public void EdgeValidationSurvivesTheDestinationCellBeingDugAway()
+    {
+        var map = SyntheticTerrain.Flat();
+        var from = CellAt(map, 0, 0);
+        var to = CellAt(map, 1, 0);
+
+        SetCellToAir(map, to);
+
+        Assert.False(NavTraversal.CanWalkEdge(map, from, to));
+    }
+
     private static void SetCellToAir(ChunkMap map, NavCell cell)
     {
         var chunk = Assert.IsType<TerrainChunk>(
