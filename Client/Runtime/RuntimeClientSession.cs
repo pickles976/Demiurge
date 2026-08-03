@@ -64,6 +64,19 @@ public sealed class RuntimeClientSession : IClientSession
         private long serverTicks, networkTicks, drainTicks, terrainTicks;
         private double worstMs;
 
+        /// <summary>
+        /// Rolling frame-to-frame intervals, for the "60+ FPS 99% of the time" target.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately the WALL-CLOCK gap between successive Updates, not the session work above it.
+        /// Session work is currently under a millisecond, so measuring it would report a comfortable
+        /// p99 while the player watched the renderer miss frames — the number has to include everything
+        /// between one frame and the next, including all of Stride.
+        /// </remarks>
+        private PercentileWindow? frameIntervals;
+        private long previousFrame;
+        private long percentileWindowStart;
+
         public void Record(long t0, long t1, long t2, long t3, long t4)
         {
             frames++;
@@ -74,6 +87,19 @@ public sealed class RuntimeClientSession : IClientSession
             worstMs = Math.Max(worstMs, (t4 - t0) * 1000.0 / Stopwatch.Frequency);
 
             long now = Stopwatch.GetTimestamp();
+
+            frameIntervals ??= new PercentileWindow(PerformanceTargets.ClientFrameBudgetMs);
+            if (previousFrame != 0)
+                frameIntervals.Add((float)((now - previousFrame) * 1000.0 / Stopwatch.Frequency));
+            previousFrame = now;
+
+            if (percentileWindowStart == 0) percentileWindowStart = now;
+            if ((now - percentileWindowStart) / (double)Stopwatch.Frequency >= 5.0)
+            {
+                Log.Info(frameIntervals.Summarize().Format("frame"));
+                percentileWindowStart = now;
+            }
+
             if (windowStart == 0) windowStart = now;
             double elapsed = (now - windowStart) / (double)Stopwatch.Frequency;
             if (elapsed < 1.0) return;

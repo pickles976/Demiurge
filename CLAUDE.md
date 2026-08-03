@@ -60,8 +60,19 @@ without reaching the server. See `docs/COMMANDS.md`.
 
 ## Performance targets
 
-**60 FPS client, 30 TPS server, in singleplayer, on a Beelink SER5.** These are requirements, not
-aspirations — a design that only holds on a good machine does not hold.
+**60+ FPS client and 30 TPS server, 99% of the time, in singleplayer, on a Beelink SER5.** These are
+requirements, not aspirations — a design that only holds on a good machine does not hold.
+
+**The "99% of the time" is the load-bearing part, and nothing currently measures it.** `frame:` and
+`server tick:` report one-second averages plus a single worst case, which cannot distinguish "60 fps
+throughout" from "115 fps for half a second and 20 fps for the other half" — and the second is what
+the player feels. A mean that meets the target while the p99 misses it is the normal way this goes
+wrong, not an edge case. Percentile instrumentation is a prerequisite for claiming either target is
+met; until it exists, treat every "we hit 30 TPS" claim, including the ones already written down
+here, as unverified against the real requirement.
+
+The worst case is what to design against anyway. Combat is when the budget is tightest and also when
+stutter is least acceptable.
 
 The SER5 is the reference machine and its shape matters more than its speed: a Ryzen 5 5500U/5560U
 class part, **6 cores / 12 threads**, a **Radeon Vega 6–7 iGPU**, and dual-channel DDR4 whose
@@ -106,12 +117,25 @@ Per-entity per-tick work is scheduled, amortized across ticks, shared between en
 event-driven. This is the rule behind AI think-rate LOD, the terrain meshing queue, and the LOS ray
 budget — it is not an AI-specific concern.
 
-One measured hot path worth knowing before you profile: `ChunkMap.TryGetVoxel` does a `ChunkAt` plus
-a `ConcurrentDictionary` lookup **per voxel**, and `TerrainCollision.TrySample` calls it 56 times
-(8 corners for the cell, 48 more for the smoothed gradient stencil). `TryDeepestContact` triples
-that. Every sample point inside one `TrySample` lies within ±0.5, so the whole thing fits in one
-3×3×3 block fetched once — an unclaimed order of magnitude, bit-identical, benefiting players and
-AI equally.
+One measured hot path worth knowing before you profile: `TerrainCollision.TrySample` reads 56 voxels
+(8 corners for the cell, 48 more for the smoothed gradient stencil) and `TryDeepestContact` triples
+that.
+
+**The repeated-lookup half of this is already fixed and the batching half was tried and is a
+regression.** `VoxelCursor` memoizes the owning chunk, so those 56 reads cost one `ChunkAt` plus a
+`ConcurrentDictionary` probe and 55 memo hits, not 56 probes. This file used to claim the whole
+sample "fits in one 3×3×3 block fetched once — an unclaimed order of magnitude". It does fit, and it
+is not a win: fetching 27 voxels and then indexing into the block costs **more** than 56 warm
+`TryGet` calls, because it trades cheap memoized reads for 56 block-index computations. Measured at
+41.5 µs → 79.8 µs per `PlayerMovement.Step`, i.e. nearly 2× worse, and reverted. Do not re-derive it.
+
+What did help there was smaller: `TrySampleRaw` was calling `TrySampleCell`, which computes a
+9-lerp analytic gradient and discards it — six times per sample, once for each central-difference
+stencil point. A value-only path took `Step` from 41.5 µs to 37.6 µs with bit-identical output.
+
+The order-of-magnitude win on this class of cost turned out to be in `TerrainRaycast` rather than
+collision: the march computed a smoothed surface normal at every step and used none of it, and
+dropping to the per-cell gradient took a 60 m line-of-sight ray from 249 µs to 56 µs.
 
 Measure before optimizing, and measure again after. Per-system tick timing belongs in the developer
 terminal, not in a one-off harness.

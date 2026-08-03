@@ -28,6 +28,39 @@ public readonly record struct NavSearchOptions(
         TimeSpan.FromMilliseconds(100),
         100_000,
         16f);
+
+    /// <summary>
+    /// Expansion counts that REPLACE the wall-clock budgets when set.
+    /// </summary>
+    /// <remarks>
+    /// A wall-clock budget makes the search's answer depend on how busy the machine is. Eight workers
+    /// on six cores means a descheduled thread blows straight through 25 ms and only notices at its
+    /// next 64-expansion check — so the same request returns a complete route on an idle box and a
+    /// partial one under load. That is a real production problem (see the note at the top of
+    /// docs/TODO.md) and it makes navigation TESTS non-deterministic, which is worse than it sounds: a
+    /// suite that fails one run in five cannot tell a regression from noise.
+    /// <para>
+    /// Counting expansions instead removes the machine from the answer entirely. Set these in tests so
+    /// a scenario either passes or fails on its merits. Production still runs on the wall clock,
+    /// because switching it changes NPC behaviour and is a design decision rather than a test fix.
+    /// </para>
+    /// </remarks>
+    public int? PrimaryExpansionBudget { get; init; }
+
+    /// <inheritdoc cref="PrimaryExpansionBudget"/>
+    public int? FailureExpansionBudget { get; init; }
+
+    /// <summary>Budgets by expansion count, so the result does not depend on machine load.</summary>
+    public static NavSearchOptions Deterministic(
+        int primaryExpansions = 20_000,
+        int failureExpansions = 100_000,
+        float minimumPartialDistance = 16f)
+        => Default with
+        {
+            PrimaryExpansionBudget = primaryExpansions,
+            FailureExpansionBudget = failureExpansions,
+            MinimumPartialDistance = minimumPartialDistance,
+        };
 }
 
 /// <summary>
@@ -534,7 +567,23 @@ public static class NavSearch
             {
                 if (cancellationRequested?.Invoke() == true)
                     return NavPath.Failed(expanded) with { CacheHits = traversal.Hits };
-                long elapsed = Stopwatch.GetTimestamp() - started;
+
+                // Expansion budgets, when set, replace the clock entirely — including the read, so a
+                // deterministic search does not even observe elapsed time.
+                bool primarySpent;
+                bool failureSpent;
+                if (options.PrimaryExpansionBudget is { } primaryExpansions
+                    && options.FailureExpansionBudget is { } failureExpansions)
+                {
+                    primarySpent = expanded >= primaryExpansions;
+                    failureSpent = expanded >= failureExpansions;
+                }
+                else
+                {
+                    long elapsed = Stopwatch.GetTimestamp() - started;
+                    primarySpent = elapsed >= primaryTicks;
+                    failureSpent = elapsed >= failureTicks;
+                }
 
                 // Heuristics are in SECONDS (distance / MaxSpeed), so the reduction converts back to
                 // metres before it is compared. Using the goal's own heuristic rather than a
@@ -543,7 +592,7 @@ public static class NavSearch
                 bool usefulPartial =
                     (startHeuristic - best.Heuristic) * NavCosts.MaxSpeed
                         >= options.MinimumPartialDistance;
-                if (elapsed >= failureTicks || elapsed >= primaryTicks && usefulPartial)
+                if (failureSpent || primarySpent && usefulPartial)
                 {
                     exhaustedReachable = false;
                     break;

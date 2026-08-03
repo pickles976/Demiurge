@@ -503,7 +503,7 @@ public class NavigationTests
         for (int request = 0; request < 6 && !arrived; request++)
         {
             var path = NavSearch.Find(
-                map, at, goal, NavSearchOptions.Default, sharedTraversalCache: cache);
+                map, at, goal, NavSearchOptions.Deterministic(), sharedTraversalCache: cache);
 
             Assert.All(
                 path.Waypoints,

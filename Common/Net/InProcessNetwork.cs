@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Demiurge.Net
 {
     /// <summary>
@@ -61,9 +63,15 @@ namespace Demiurge.Net
     }
 
     /// <summary>One direction of travel, and all of the deliberate misbehaviour.</summary>
+    /// <remarks>
+    /// Allocation-free on the steady path, which matters more than it looks: the server tick now runs on
+    /// its own thread, so garbage produced here is collected in competition with the tick that has 33 ms
+    /// to finish. Payload buffers come from <see cref="ArrayPool{T}"/> and the drain scratch is reused,
+    /// so a tick's worth of replication traffic allocates nothing.
+    /// </remarks>
     internal sealed class DeliveryQueue
     {
-        private readonly record struct Pending(ushort Id, MessageSendMode Mode, byte[] Payload, double DueAt);
+        private readonly record struct Pending(ushort Id, MessageSendMode Mode, byte[] Buffer, int Length, double DueAt);
 
         private static double Now
             => System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
@@ -75,6 +83,12 @@ namespace Demiurge.Net
         private readonly object gate = new();
         private long sequence;
 
+        // Reused across drains. Sorting by an explicit key array lets an UNSTABLE Array.Sort behave
+        // stably: the key packs the jitter and the send index together, so ties break on send order.
+        private Pending[] draining = new Pending[64];
+        private long[] keys = new long[64];
+        private int drainCount;
+
         internal DeliveryQueue(Random rng, DeliveryLog log, bool toServer)
         {
             this.rng = rng;
@@ -85,7 +99,7 @@ namespace Demiurge.Net
         internal void Send(Message message)
         {
             // Serialize NOW, into bytes we own. This is the round trip that keeps singleplayer honest.
-            byte[] payload = message.Payload.ToArray();
+            ReadOnlySpan<byte> payload = message.Payload;
 
             if (payload.Length > Message.MaxPayloadBytes)
                 throw new MessageTooLargeException(message.Id, payload.Length, Message.MaxPayloadBytes);
@@ -108,6 +122,8 @@ namespace Demiurge.Net
                 log.Record(new DeliveryRecord(seq, message.Id, message.SendMode, DeliveryVerdict.Delivered, toServer));
 
                 // Riptide's unreliable channel assigns no sequence id, so nothing filters a duplicate out.
+                // The copy is deliberate: two queue entries must not share one pooled buffer, or returning
+                // it twice would hand the same array to two future messages.
                 if (message.SendMode == MessageSendMode.Unreliable
                     && rng.NextDouble() < TransportHostility.UnreliableDuplicateRate)
                 {
@@ -117,7 +133,7 @@ namespace Demiurge.Net
             }
         }
 
-        private void Enqueue(ushort id, MessageSendMode mode, byte[] payload)
+        private void Enqueue(ushort id, MessageSendMode mode, ReadOnlySpan<byte> payload)
         {
             double due = Now;
             if (NetworkConfig.SimulatedLatencySeconds > 0f)
@@ -126,29 +142,39 @@ namespace Demiurge.Net
                        + (rng.NextDouble() * 2.0 - 1.0) * NetworkConfig.SimulatedJitterSeconds;
             }
 
-            pending.Add(new Pending(id, mode, payload, due));
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(payload.Length);
+            payload.CopyTo(buffer);
+            pending.Add(new Pending(id, mode, buffer, payload.Length, due));
         }
 
         /// <summary>Delivers everything currently due, in a locally shuffled order.</summary>
-        internal void Drain(Action<ushort, MessageSendMode, byte[]> deliver)
+        internal void Drain(DeliveryHandler deliver)
         {
-            List<Pending> due;
+            int count;
             lock (gate)
             {
                 if (pending.Count == 0) return;
 
                 double now = Now;
-                due = new List<Pending>(pending.Count);
+                if (draining.Length < pending.Count)
+                {
+                    draining = new Pending[pending.Count * 2];
+                    keys = new long[pending.Count * 2];
+                }
+
+                count = 0;
                 for (int i = pending.Count - 1; i >= 0; i--)
                 {
                     if (pending[i].DueAt > now) continue;
-                    due.Add(pending[i]);
+                    draining[count++] = pending[i];
                     pending.RemoveAt(i);
                 }
-                due.Reverse();   // back into send order before shuffling
+
+                // Back into send order: the reverse walk above collected them backwards.
+                Array.Reverse(draining, 0, count);
 
                 // Bounded shuffle. Each message gets a delivery key of (send position + jitter), where
-                // jitter is in [0, ReorderWindow), and we stable-sort by that key.
+                // jitter is in [0, ReorderWindow), and the send index breaks ties.
                 //
                 // This gives a provable bound rather than an approximate one: if message i is delivered
                 // after message j where j > i, then i + jitter_i > j + jitter_j, so j - i < jitter_i,
@@ -158,17 +184,30 @@ namespace Demiurge.Net
                 // Repeated random swaps look equivalent and are not: they let a message migrate later
                 // again on each pass, so displacement grows without limit and the transport starts
                 // manufacturing orderings no real network can produce.
-                due = due
-                    .Select((item, index) => (item, key: index + rng.Next(TransportHostility.ReorderWindow)))
-                    .OrderBy(entry => entry.key)   // LINQ OrderBy is stable, so equal keys keep send order
-                    .Select(entry => entry.item)
-                    .ToList();
+                for (int i = 0; i < count; i++)
+                    keys[i] = (long)(i + rng.Next(TransportHostility.ReorderWindow)) * count + i;
+
+                Array.Sort(keys, draining, 0, count);
+                drainCount = count;
             }
 
-            foreach (Pending item in due)
-                deliver(item.Id, item.Mode, item.Payload);
+            for (int i = 0; i < drainCount; i++)
+            {
+                Pending item = draining[i];
+                try
+                {
+                    deliver(item.Id, item.Mode, item.Buffer.AsSpan(0, item.Length));
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                }
+            }
         }
     }
+
+    /// <summary>Receives one decoded delivery. A delegate rather than Action so the payload can be a span.</summary>
+    internal delegate void DeliveryHandler(ushort id, MessageSendMode mode, ReadOnlySpan<byte> payload);
 
     internal sealed class InProcessNetServer : INetServer
     {
@@ -224,7 +263,7 @@ namespace Demiurge.Net
             ClientDisconnected?.Invoke(this, new NetClientDisconnectedEventArgs(InProcessNetwork.SingleClientId));
         }
 
-        private void Deliver(ushort id, MessageSendMode mode, byte[] payload)
+        private void Deliver(ushort id, MessageSendMode mode, ReadOnlySpan<byte> payload)
         {
             Message message = Message.CreateForRead(mode, id, payload);
             try
@@ -284,7 +323,7 @@ namespace Demiurge.Net
 
         public void Dispose() => Disconnect();
 
-        private void Deliver(ushort id, MessageSendMode mode, byte[] payload)
+        private void Deliver(ushort id, MessageSendMode mode, ReadOnlySpan<byte> payload)
         {
             Message message = Message.CreateForRead(mode, id, payload);
             try

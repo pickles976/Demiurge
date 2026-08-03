@@ -1,3 +1,51 @@
+# Next Big Thing: navigation search budgets do not hold
+
+Measured 2026-08-02, after the raycast fix took perception and cover off the critical path and the
+server reached 30 TPS. Navigation is now the binding constraint, and it is failing in a specific way
+worth stating before anyone optimises around it.
+
+**`NavSearch` declares a 25 ms useful-prefix budget and a 100 ms failure budget. Live searches run
+153 ms at p50 and 342 ms at p95** — three to six times over, consistently, not occasionally. The
+budget is wall-clock and checked every 64 expansions, which cannot hold when eight workers contend
+for six cores: a descheduled thread blows straight through it and only notices afterwards.
+
+Three consequences, all of which look like separate problems and are not:
+
+- **Routes come back partial** when they should complete, so NPCs replan every few metres and the
+  worker queue stays deep. It improved a lot with the cheaper raycast — full routes went from 0 to 18
+  in a good window — but it is still mostly partial traffic.
+- **Route sharing is effectively off.** `SquadBlackboard` only shares complete dig-free routes by
+  design (see BARITONE.md's execution record, where sharing unproved prefixes made every squad member
+  reconnect to the same local minimum). With few complete routes there is almost nothing to share, so
+  a correctness fix silently removed the reuse that kept cost down.
+- **The navigation tests are flaky** — the same searches, the same budgets, the same contention. While
+  that holds, the suite cannot tell a regression from noise.
+
+Two ways out, and they are genuinely different designs rather than a fix and a workaround. Either the
+budget mechanism becomes robust to descheduling — count expansions rather than milliseconds, so it is
+deterministic and reproducible — or long-range routing gains structure (hierarchy, corridor caching)
+so that a search to a distant flag does not need a budget to terminate in the first place. The first
+is small and makes the tests deterministic; the second is what actually makes NPCs route across the
+map. They are compatible, and the first is a prerequisite for measuring the second honestly.
+
+This is a system, not a patch. It wants the same treatment the time-costed A* got.
+
+**Already done from this diagnosis:** `NavSearchOptions.Deterministic()` budgets by expansion count
+instead of wall clock. Tests using it are reproducible —
+`WideTrenchWithABridgeIsCrossedByRepeatedRequests` went from failing two runs in three to passing
+eight of eight. Production still uses the clock; switching it changes NPC behaviour and belongs to the
+design decision above, not to a test fix.
+
+**Open, and characterised:** `NpcExcavatesAcrossAnUnwalkableSoilSlopeInsteadOfJumpingAtIt` fails
+identically on every run — not flaky, and not fixed by the deterministic budget. The NPC reaches
+`X = 7.69` against a goal at `X = 7.5`, so it arrives horizontally, but ends at `Y = 16.25` where the
+plateau needs `17.14` — **0.89 m short vertically after 167 terrain edits**. It is digging forward into
+the hill rather than cutting a staircase up it. BARITONE.md's execution record claims exactly this
+scenario ("a steep soil frontier is excavated without endless recovery jumping", and the follower's
+uphill recovery jump restored so NPCs could mount the one-metre treads staircase excavation produces),
+so this is a regression against behaviour that was once verified. Fixing it means the staircase
+generator or the follower's rise handling, which is the same subsystem as the item above.
+
 # Art Rules
 use 32x32 textures in Blockbench
 use 16x16 textures for the ground
@@ -93,6 +141,26 @@ another per-weapon branch.
 - [ ] Add resource deposits
 
 # Debugging And Known Issues
+
+- [ ] **Identify the persistent one-tick reconciliation corrections.** Needs a game run; cannot be
+  settled from tests. Combat logs show a steady stream of `[Reconcile] correction of 0.1997` at
+  roughly two per second, and the value is not arbitrary: `PlayerMovement.SprintSpeed` is 6 m/s and
+  6/30 is 0.2, so each correction is exactly ONE server tick of sprinting. Earlier logs showed a
+  spread of 0.13 to 1.24 — multiples of one tick at walk and sprint speed — which was the server
+  missing ticks while it ran at 15–23 TPS. Now that it holds 30 TPS the spread has collapsed to a
+  uniform single tick, so the cause has changed and the remaining one is unidentified.
+
+  The leading suspect is ours: the in-process transport drops 2% of unreliable traffic on purpose
+  (`TransportHostility.UnreliableDropRate`), `PlayerInput` rides that channel, and a dropped input
+  makes `GameWorld.Tick` re-step with the last intent — which is precisely a one-tick divergence. At
+  roughly 60 inputs per second a 2% drop is about 1.2 per second, against the ~2 per second observed.
+  That is close enough to be the explanation and not close enough to assume it.
+
+  **The experiment:** set `UnreliableDropRate` to 0, play a combat session, and compare the correction
+  rate. If it goes to zero the fuzz is working as designed and the finding is that dropped input
+  produces a visible correction — a real multiplayer behaviour worth smoothing rather than a bug we
+  introduced. If corrections persist, something else diverges by exactly one tick and the drop rate
+  was a red herring.
 
 - [ ] Draw chunk borders in debug mode
 - [ ] Revisit the particle system after Stride issue 2496 is resolved:

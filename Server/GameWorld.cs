@@ -37,6 +37,24 @@ namespace Demiurge.GameServer
             private long projectileSum;
             private double worstMs;
 
+            /// <summary>
+            /// Rolling tick durations, for the "30 TPS 99% of the time" target.
+            /// </summary>
+            /// <remarks>
+            /// Reported on a slower cadence than the breakdown above, because a one-second window holds
+            /// about 30 samples and a 99th percentile drawn from 30 samples is just the maximum.
+            /// <para>
+            /// This measures tick DURATION against the 33.3 ms budget, which is a necessary condition
+            /// for sustaining 30 TPS rather than a direct measurement of it: the loop cannot run 30
+            /// ticks in a second if a tick costs more than a thirtieth of one. The achieved rate is the
+            /// `N ticks` count on the line above, and the two should be read together — duration inside
+            /// budget with a rate below 30 would mean something is stalling the loop rather than the
+            /// tick being too expensive.
+            /// </para>
+            /// </remarks>
+            private PercentileWindow? tickDurations;
+            private long percentileWindowStart;
+
             public void Record(
                 long start, long afterAi, long afterActors, long afterFlags,
                 long afterWeapons, long afterGrenades, long end, int projectiles)
@@ -49,9 +67,22 @@ namespace Demiurge.GameServer
                 grenadeTicks += afterGrenades - afterWeapons;
                 broadcastTicks += end - afterGrenades;
                 projectileSum += projectiles;
-                worstMs = Math.Max(worstMs, (end - start) * 1000.0 / Stopwatch.Frequency);
+
+                double tickMs = (end - start) * 1000.0 / Stopwatch.Frequency;
+                worstMs = Math.Max(worstMs, tickMs);
+
+                tickDurations ??= new PercentileWindow(PerformanceTargets.ServerTickBudgetMs);
+                tickDurations.Add((float)tickMs);
 
                 long now = Stopwatch.GetTimestamp();
+
+                if (percentileWindowStart == 0) percentileWindowStart = now;
+                if ((now - percentileWindowStart) / (double)Stopwatch.Frequency >= 5.0)
+                {
+                    Console.WriteLine($"[ServerTick]: {tickDurations.Summarize().Format("tick")}");
+                    percentileWindowStart = now;
+                }
+
                 if (windowStart == 0) windowStart = now;
                 if ((now - windowStart) / (double)Stopwatch.Frequency < 1.0) return;
 

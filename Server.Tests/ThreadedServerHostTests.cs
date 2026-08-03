@@ -18,6 +18,7 @@ namespace Demiurge.ServerTests;
 /// </para>
 /// </remarks>
 [Trait("Category", "Integration")]
+[Collection(RealPortCollection.Name)]
 public class ThreadedServerHostTests
 {
     private static ServerOptions OptionsFor(InProcessNetwork network) => new()

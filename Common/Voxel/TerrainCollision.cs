@@ -68,7 +68,7 @@ namespace Demiurge
         public static bool TrySampleRaw(ChunkMap map, Vector3 p, out float distance)
         {
             var cursor = new VoxelCursor(map);
-            return TrySampleCell(ref cursor, p, out distance, out _);
+            return TrySampleCellValue(ref cursor, p, out distance);
         }
 
         /// <summary>
@@ -78,7 +78,47 @@ namespace Demiurge
         /// column — dozens of samples inside one chunk — throws the memo away between each one.
         /// </summary>
         public static bool TrySampleRaw(ref VoxelCursor cursor, Vector3 p, out float distance)
-            => TrySampleCell(ref cursor, p, out distance, out _);
+            => TrySampleCellValue(ref cursor, p, out distance);
+
+        /// <summary>
+        /// The trilinear value alone, without the analytic cell gradient.
+        /// </summary>
+        /// <remarks>
+        /// Same eight corners and the same seven lerps as <see cref="TrySampleCell"/>, minus the nine
+        /// further lerps and the Vector3 that build the gradient. That matters because the gradient was
+        /// being computed and thrown away on the hot path: one <see cref="TrySample"/> makes six
+        /// <see cref="TrySampleRaw"/> calls for its central-difference stencil, and every one of them
+        /// discarded a gradient. Identical output, strictly less arithmetic.
+        /// </remarks>
+        static bool TrySampleCellValue(ref VoxelCursor cursor, Vector3 p, out float distance)
+        {
+            distance = 0f;
+
+            int x0 = (int)MathF.Floor(p.X);
+            int y0 = (int)MathF.Floor(p.Y);
+            int z0 = (int)MathF.Floor(p.Z);
+
+            float tx = p.X - x0;
+            float ty = p.Y - y0;
+            float tz = p.Z - z0;
+
+            Span<float> d = stackalloc float[8];
+            for (int c = 0; c < 8; c++)
+            {
+                if (!cursor.TryGet(x0 + (c & 1), y0 + ((c >> 1) & 1), z0 + ((c >> 2) & 1), out var voxel))
+                    return false;
+
+                d[c] = voxel.Distance;
+            }
+
+            float y0z0 = Lerp(d[0], d[1], tx);
+            float y1z0 = Lerp(d[2], d[3], tx);
+            float y0z1 = Lerp(d[4], d[5], tx);
+            float y1z1 = Lerp(d[6], d[7], tx);
+
+            distance = Lerp(Lerp(y0z0, y1z0, ty), Lerp(y0z1, y1z1, ty), tz);
+            return true;
+        }
 
         /// <summary>
         /// Trilinear value and its exact analytical gradient inside the containing cell. Deriving
@@ -123,6 +163,44 @@ namespace Demiurge
                             Lerp(d[6] - d[2], d[7] - d[3], tx), ty);
             gradient = new Vector3(dx, dy, dz);
 
+            return true;
+        }
+
+        /// <summary>
+        /// Raw value and a corrected distance, both derived from the SAME eight corners.
+        /// </summary>
+        /// <remarks>
+        /// For a caller that needs to know how far it may safely advance but does NOT need a surface
+        /// normal — a ray march, whose normal is only wanted once, at the hit it finally reports.
+        /// <para>
+        /// <see cref="TrySample(ref VoxelCursor, Vector3, out FieldPoint, out float)"/> costs 56 voxel
+        /// reads: eight for the cell, plus 48 more for the smoothed central-difference gradient it
+        /// divides by. This costs eight. The correction uses the analytic gradient of the trilinear
+        /// interpolant, which <see cref="TrySampleCell"/> already computed from those same eight corners
+        /// and previously threw away.
+        /// </para>
+        /// <para>
+        /// It is a legitimate substitute for the marching decision specifically, because
+        /// <c>TerrainRaycast.SafeStep</c> takes the MINIMUM of raw and corrected, and that minimum stays
+        /// safe under either gradient for the same reason it did before: where the field saturates the
+        /// cell gradient collapses toward zero and inflates the corrected value, but raw is clamped
+        /// there and understates the gap, so the minimum is the clamped one; where it does not
+        /// saturate, the corrected value is the true distance. Do NOT reach for this where a normal is
+        /// wanted — the smoothed gradient exists because the per-cell one is discontinuous at cell
+        /// boundaries, which is invisible in a step length and very visible in shading and pushout.
+        /// </para>
+        /// </remarks>
+        public static bool TrySampleCellCorrected(
+            ref VoxelCursor cursor, Vector3 p, out float raw, out float corrected)
+        {
+            corrected = 0f;
+            if (!TrySampleCell(ref cursor, p, out raw, out var cellGradient)) return false;
+
+            float length = cellGradient.Length();
+
+            // Same guard as TrySample: a clamped-out interior has no length to divide by. Report the
+            // raw value, which is still correctly signed, so callers still see "inside".
+            corrected = length <= MinGradientLength ? raw : raw / length;
             return true;
         }
 
