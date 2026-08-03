@@ -31,7 +31,7 @@ public class WeaponConfigTests
 
         Assert.Equal(5, stats.MagazineCapacity);
         Assert.Equal(1.5f, stats.TicksPerShot / NetworkConfig.TickRate);
-        Assert.Equal(5.3f, stats.ReloadTicks / (float)NetworkConfig.TickRate, precision: 3);
+        Assert.Equal(5.07f, stats.ReloadTicks / (float)NetworkConfig.TickRate, precision: 2);
         Assert.Equal((ushort)70, stats.Damage);
         Assert.Equal(FireMode.SemiAutomatic, stats.FireMode);
     }

@@ -95,18 +95,23 @@ namespace Demiurge.GameClient
         public void Cycle() => elapsed = 0f;
 
         /// <summary>
-        /// Locks the part at the end of its travel — a rifle holds its bolt open while the magazine
+        /// Holds the part at the end of its travel — a rifle holds its bolt open while the magazine
         /// is being filled, and one that cycles briskly through a reload looks like it is loading
         /// itself.
         ///
-        /// Releasing hands over to the ordinary return leg rather than snapping, so the bolt runs
-        /// forward the same way it does after a shot.
+        /// Both edges hand over to a leg of the ordinary cycle rather than snapping: taking hold
+        /// seeks into the travel leg at wherever the part currently is, so the reload OPENS the
+        /// bolt at the same speed a shot does instead of teleporting it back, and releasing seeks to
+        /// the return leg so it runs forward the same way. Seeking by position rather than
+        /// restarting is what keeps a reload begun mid-cycle from jumping.
         /// </summary>
         public void SetHeld(bool value)
         {
             if (value == held) return;
             held = value;
-            if (!held) elapsed = cycle.DelaySeconds + cycle.TravelSeconds + cycle.HoldSeconds;
+            elapsed = held
+                ? cycle.DelaySeconds + Travel() * cycle.TravelSeconds
+                : cycle.DelaySeconds + cycle.TravelSeconds + cycle.HoldSeconds;
         }
 
         public void Update(ModelComponent? model, float dt)
@@ -137,8 +142,12 @@ namespace Demiurge.GameClient
                 localRotation = System.Numerics.Quaternion.Concatenate(restRotation, inverse);
             }
 
-            elapsed = held ? elapsed : elapsed + dt;
-            Seat(ref transform, held ? 1f : Travel());
+            // Held stops the clock at the end of the travel leg rather than at the moment the hold
+            // began, so the part still draws itself back and only then waits there.
+            elapsed = held
+                ? MathF.Min(elapsed + dt, cycle.DelaySeconds + cycle.TravelSeconds)
+                : elapsed + dt;
+            Seat(ref transform, Travel());
         }
 
         /// <summary>

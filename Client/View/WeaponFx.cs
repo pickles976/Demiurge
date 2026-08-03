@@ -97,11 +97,13 @@ public static class WeaponFx
         // moving a beat after the shot, is back while the pull is audible, and runs forward through
         // the closing thump.
         //
-        // 1.35 s of a 1.5 s cadence, and that 0.15 s is the whole margin: this is the one weapon
-        // where the animation nearly fills its own shot interval, so lengthening it again means
-        // lengthening TicksPerShot with it or the rifle fires mid-cycle. The delay stays put through
-        // any such change — it is the gap between the shot and the hand reaching the handle, not
-        // part of the working.
+        // The two MOVING legs are the hand's speed and are tuned as a pair — a stroke that takes
+        // longer to draw than to run home reads as a stuck bolt. Delay and hold are the sync
+        // surface against the recording and are tuned separately; the delay in particular is the
+        // gap between the shot and the hand reaching the handle, not part of the working.
+        //
+        // Whatever the four come to has to stay under the 1.5 s cadence, or the rifle fires
+        // mid-cycle: this is the one weapon whose animation nearly fills its own shot interval.
         ItemType.Mosin => new(
             [
                 "assets/sfx/mosin_shot_1.wav",
@@ -111,9 +113,9 @@ public static class WeaponFx
             ReloadSoundPath: "assets/sfx/mosin_reload.wav",
             Bolt: new BoltCycle(
                 DelaySeconds: 0.15f,
-                TravelSeconds: 0.40f,
-                HoldSeconds: 0.40f,
-                ReturnSeconds: 0.40f,
+                TravelSeconds: 0.286f,
+                HoldSeconds: 0.65f,
+                ReturnSeconds: 0.286f,
                 SoundPath: "assets/sfx/mosin_bolt.wav")),
         ItemType.AWP => new("assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.Glock => new("assets/sfx/ak47_shot.wav", Color.Yellow),

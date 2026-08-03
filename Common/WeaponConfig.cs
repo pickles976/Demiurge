@@ -67,10 +67,16 @@ namespace Demiurge
             ItemType.Mosin => new WeaponStats(
                 MagazineCapacity: 5,
                 TicksPerShot: 3 * NetworkConfig.TickRate / 2f,
-                // 5.3 s: five rounds off a stripper clip with the bolt held open, plus the three
-                // tenths it takes to close it again afterwards. Ticks rather than seconds so client
-                // prediction and server enforcement count the same clock.
-                ReloadTicks: 53 * NetworkConfig.TickRate / 10,
+                // 5.067 s: five rounds off a stripper clip with the bolt held open, plus the time
+                // it takes to close it again afterwards. Ticks rather than seconds so client
+                // prediction and server enforcement count the same clock — the seconds are the
+                // tuned number and the rounding is explicit because the default is banker's, which
+                // silently picks the lower tick whenever a tuned value lands on a midpoint.
+                //
+                // It is also the length of the reload ANIMATION, since MovingPart holds the bolt
+                // open for exactly as long as the reload runs — so changing this pads or trims the
+                // dwell in the middle, after the pull and before the close, and moves neither end.
+                ReloadTicks: (int)MathF.Round(5.067f * NetworkConfig.TickRate, MidpointRounding.AwayFromZero),
                 Damage: 70,
                 BallisticsProfile: WeaponBallisticsProfile.SniperRifle,
                 FireMode: FireMode.SemiAutomatic),
