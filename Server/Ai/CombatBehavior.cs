@@ -38,6 +38,14 @@ internal sealed class CombatBehavior
     internal const float SksMaxEngagementRange = 100f;
 
     /// <summary>
+    /// The bolt gun is the one weapon whose ceiling sits ABOVE what its owner can see for himself:
+    /// <see cref="Perception"/> stops at 100 m, so the last 50 m are reachable only through a
+    /// contact a squadmate shared. That is the intended shape — the marksman is the man who shoots
+    /// at what somebody else found — not an oversight to be clamped back down to sight range.
+    /// </summary>
+    internal const float MosinMaxEngagementRange = 150f;
+
+    /// <summary>
     /// Suppressing fire is aimed at a place rather than a visible body, so it is deliberately slower
     /// than aimed fire and does not wait for the target to reappear. Its purpose is the suppression the
     /// weapon system already applies on a near miss, which is what lets a squadmate move.
@@ -235,12 +243,13 @@ internal sealed class CombatBehavior
            && float.IsFinite(range)
            && range > PpshEffectiveRange;
 
-    internal static float MaxEngagementRangeFor(ItemType weapon)
-        => weapon == ItemType.Sks
-            ? SksMaxEngagementRange
-            : weapon == ItemType.Ppsh
-                ? PpshEffectiveRange
-                : DefaultMaxEngagementRange;
+    internal static float MaxEngagementRangeFor(ItemType weapon) => weapon switch
+    {
+        ItemType.Mosin => MosinMaxEngagementRange,
+        ItemType.Sks => SksMaxEngagementRange,
+        ItemType.Ppsh => PpshEffectiveRange,
+        _ => DefaultMaxEngagementRange,
+    };
 
     internal static float AimMoaForRange(float range)
     {

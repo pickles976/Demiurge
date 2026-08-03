@@ -55,6 +55,25 @@ namespace Demiurge
                 Damage: 18,
                 BallisticsProfile: WeaponBallisticsProfile.Pistol),
             ItemType.AWP => new WeaponStats(MagazineCapacity: 5, TicksPerShot: 60, ReloadTicks: 45, Damage: 75, BallisticsProfile: WeaponBallisticsProfile.SniperRifle),
+            // A manually cycled bolt is the whole character of this weapon, and cadence is where it
+            // lives: the 1.5 s between shots is the time the bolt takes, not a rate of fire somebody
+            // picked. That makes TicksPerShot load-bearing rather than cosmetic — the client's bolt
+            // animation and its sound are paced to fit inside it (WeaponFx.BoltCycle), so shortening
+            // this leaves the rifle firing through its own cycle.
+            //
+            // Semi-automatic for the same reason the SKS is: one press per shot. Holding the button
+            // on a bolt gun would pay out at the cadence, which is exactly what a bolt prevents.
+            // Ballistics are the AWP's, shared through the profile rather than copied.
+            ItemType.Mosin => new WeaponStats(
+                MagazineCapacity: 5,
+                TicksPerShot: 3 * NetworkConfig.TickRate / 2f,
+                // 5.3 s: five rounds off a stripper clip with the bolt held open, plus the three
+                // tenths it takes to close it again afterwards. Ticks rather than seconds so client
+                // prediction and server enforcement count the same clock.
+                ReloadTicks: 53 * NetworkConfig.TickRate / 10,
+                Damage: 70,
+                BallisticsProfile: WeaponBallisticsProfile.SniperRifle,
+                FireMode: FireMode.SemiAutomatic),
             ItemType.Glock => new WeaponStats(MagazineCapacity: 15, TicksPerShot: 7, ReloadTicks: 20, Damage: 5, BallisticsProfile: WeaponBallisticsProfile.Pistol),
             // A grenade stack uses ammo as its remaining count. Each throw automatically cycles
             // the next grenade for 1.5 seconds; R is never needed for this item.

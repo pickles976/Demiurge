@@ -10,13 +10,14 @@ AI
 
 - Sometimes NPCs just stand at the flagpost doing nothing
 - NPCs should always be doing something
+- NPCs are aimlessly digging big holes while defending the flag
 
 - better tactics
   -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance by sprinting.
   - Digging is *defensive*. Movement is *offensive*
 
 - [ ] PVP
-    - [ ] add mosin-nagant
+    - [x] add mosin-nagant
     - [ ] add black cats
 
     - [ ] heavy MG

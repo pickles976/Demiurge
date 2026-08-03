@@ -6,14 +6,23 @@ using Stride.Rendering;
 namespace Demiurge.GameClient
 {
     /// <summary>
-    /// A moving part inside one item model — an SKS bolt travelling back and returning.
+    /// A moving part inside one item model — a bolt travelling back and returning.
     ///
     /// It works by overriding the model's own node transform, which is only possible because the
     /// asset generator gives a model with articulated groups a Skeleton: without one Stride bakes
     /// every node into the vertex buffers and the part has no runtime existence (see the
-    /// HasArticulatedGroup note in GltfAssetGenerator). Where the part travels TO is not tuned
-    /// here either — it comes from the model's own `bolt_start`/`bolt_end` locators, so the artist
-    /// moving the receiver moves the animation with it.
+    /// HasArticulatedGroup note in GltfAssetGenerator).
+    ///
+    /// WHERE the part goes is not tuned here: the `&lt;part&gt;_start` and `&lt;part&gt;_end`
+    /// locators are two poses of one frame the part is rigidly bolted to, and the part simply
+    /// rides that frame. Position and ORIENTATION both, which is why a Mosin's bolt turns its
+    /// handle up and THEN draws back — closing in the opposite order — while an SKS's, whose two
+    /// locators differ only in position, keeps travelling in a straight line without either model
+    /// knowing about the other. Riding the frame is also what makes the turn pivot about the bolt's
+    /// own axis rather than about wherever the artist happened to put the node's origin.
+    ///
+    /// WHEN it goes there comes from the caller's <see cref="WeaponFx.BoltCycle"/>, so the picture
+    /// and the sound of one cycle are paced by the same four numbers.
     ///
     /// Nothing else writes these node transforms: a weapon model carries no AnimationComponent, so
     /// unlike the aim-bone override in PlayerViewScript this can write an absolute local transform
@@ -21,46 +30,74 @@ namespace Demiurge.GameClient
     /// </summary>
     public sealed class MovingPart
     {
-        /// <summary>Back in a snap, forward a little slower — a cycling bolt, not a pendulum. Both
-        /// inside one 10 rounds/second shot interval, so a held burst never starts a cycle on top
-        /// of the one before it.</summary>
-        private const float TravelSeconds = 0.025f;
-        private const float ReturnSeconds = 0.055f;
+        /// <summary>
+        /// How much of one leg is spent turning before anything slides. Short because lifting a
+        /// handle is a flick and drawing a bolt is a stroke.
+        ///
+        /// Zero for a part whose two anchors share a rotation — every self-loading action — so their
+        /// travel stays the straight line it has always been rather than being squeezed into the
+        /// back two thirds of its leg. That is why this costs no extra number on any weapon.
+        /// </summary>
+        private const float TurnFraction = 0.35f;
 
         private readonly string node;
-        private readonly System.Numerics.Vector3 travel;
+        private readonly ModelLocators.Pose start;
+        private readonly ModelLocators.Pose end;
+        private readonly WeaponFx.BoltCycle cycle;
+        private readonly float turnFraction;
 
         private int index = -1;
-        private System.Numerics.Vector3 rest;
+        private System.Numerics.Vector3 restTranslation;
+        private System.Numerics.Quaternion restRotation;
         private bool haveRest;
         private float elapsed = float.MaxValue;
         private bool held;
 
-        private MovingPart(string node, System.Numerics.Vector3 travel)
+        // The part's own transform expressed IN the start locator's frame, computed once the model
+        // has handed over its rest pose. Everything the update writes is this, carried by the
+        // interpolated frame.
+        private System.Numerics.Vector3 localTranslation;
+        private System.Numerics.Quaternion localRotation;
+
+        private MovingPart(
+            string node,
+            ModelLocators.Pose start,
+            ModelLocators.Pose end,
+            WeaponFx.BoltCycle cycle,
+            bool turns)
         {
             this.node = node;
-            this.travel = travel;
+            this.start = start;
+            this.end = end;
+            this.cycle = cycle;
+            turnFraction = turns ? TurnFraction : 0f;
         }
 
         /// <summary>The part this item has, or null for a model with no `&lt;part&gt;_start` /
-        /// `&lt;part&gt;_end` pair. Absence is ordinary: only the SKS has a bolt.</summary>
-        public static MovingPart? For(ModelLocators locators, string model, string part)
+        /// `&lt;part&gt;_end` pair. Absence is ordinary: most weapons have no bolt group.</summary>
+        public static MovingPart? For(
+            ModelLocators locators,
+            string model,
+            string part,
+            WeaponFx.BoltCycle cycle)
         {
             if (locators.Get(model, part + "_start") is not { } start
                 || locators.Get(model, part + "_end") is not { } end)
                 return null;
 
-            var travel = end.Translation - start.Translation;
-            return travel.LengthSquared() < 1e-8f ? null : new MovingPart(part, travel);
+            // A pair of locators that neither move nor turn describe no animation at all.
+            bool moves = (end.Translation - start.Translation).LengthSquared() >= 1e-8f;
+            bool turns = MathF.Abs(System.Numerics.Quaternion.Dot(start.Rotation, end.Rotation)) < 0.999999f;
+            return moves || turns ? new MovingPart(part, start, end, cycle, turns) : null;
         }
 
         /// <summary>Starts one cycle, restarting it if one is already running.</summary>
         public void Cycle() => elapsed = 0f;
 
         /// <summary>
-        /// Locks the part at the end of its travel — an SKS holds its bolt open while the magazine
-        /// is being filled, and a rifle that cycles briskly through a reload looks like it is
-        /// loading itself.
+        /// Locks the part at the end of its travel — a rifle holds its bolt open while the magazine
+        /// is being filled, and one that cycles briskly through a reload looks like it is loading
+        /// itself.
         ///
         /// Releasing hands over to the ordinary return leg rather than snapping, so the bolt runs
         /// forward the same way it does after a shot.
@@ -69,7 +106,7 @@ namespace Demiurge.GameClient
         {
             if (value == held) return;
             held = value;
-            if (!held) elapsed = TravelSeconds;
+            if (!held) elapsed = cycle.DelaySeconds + cycle.TravelSeconds + cycle.HoldSeconds;
         }
 
         public void Update(ModelComponent? model, float dt)
@@ -86,27 +123,67 @@ namespace Demiurge.GameClient
             ref var transform = ref skeleton.NodeTransformations[index].Transform;
             if (!haveRest)
             {
-                rest = (System.Numerics.Vector3)transform.Position;
+                restTranslation = (System.Numerics.Vector3)transform.Position;
+                restRotation = new System.Numerics.Quaternion(
+                    transform.Rotation.X, transform.Rotation.Y, transform.Rotation.Z, transform.Rotation.W);
                 haveRest = true;
+
+                // start^-1 * rest, i.e. the rest pose seen from the start locator. The rest pose is
+                // the part's LOCAL transform and the locators are in the model's root space; the two
+                // coincide because these groups hang directly off the root, which is the same
+                // assumption that makes the locator translations usable as travel at all.
+                var inverse = System.Numerics.Quaternion.Inverse(start.Rotation);
+                localTranslation = System.Numerics.Vector3.Transform(restTranslation - start.Translation, inverse);
+                localRotation = System.Numerics.Quaternion.Concatenate(restRotation, inverse);
             }
 
-            if (held)
+            elapsed = held ? elapsed : elapsed + dt;
+            Seat(ref transform, held ? 1f : Travel());
+        }
+
+        /// <summary>
+        /// How far back the part is, 0 at rest and 1 fully travelled, for the current
+        /// <see cref="elapsed"/>. Four legs: wait, out, dwell, home.
+        /// </summary>
+        private float Travel()
+        {
+            float t = elapsed - cycle.DelaySeconds;
+            if (t <= 0f) return 0f;
+            if (t < cycle.TravelSeconds) return t / cycle.TravelSeconds;
+
+            t -= cycle.TravelSeconds;
+            if (t < cycle.HoldSeconds) return 1f;
+
+            t -= cycle.HoldSeconds;
+            return cycle.ReturnSeconds > 0f ? MathF.Max(0f, 1f - t / cycle.ReturnSeconds) : 0f;
+        }
+
+        /// <summary>Puts the part back on the frame its two locators describe, <paramref name="s"/>
+        /// of the way from start to end.</summary>
+        private void Seat(ref TransformTRS transform, float s)
+        {
+            if (s <= 0f)
             {
-                transform.Position = (rest + travel).ToStride();
+                transform.Position = restTranslation.ToStride();
+                transform.Rotation = restRotation.ToStride();
                 return;
             }
 
-            if (elapsed > TravelSeconds + ReturnSeconds)
-            {
-                transform.Position = rest.ToStride();
-                return;
-            }
+            // Turn FIRST, then slide — the two channels split the one parameter rather than running
+            // together over the whole leg, which is what would send a rotating bolt backwards along
+            // a corkscrew. Splitting one parameter rather than adding a second timer is also what
+            // makes the RETURN come out right for free: run s backwards and the bolt runs forward
+            // and only then turns its handle down, which is the order a bolt is actually closed in.
+            float turn = turnFraction > 0f ? MathF.Min(1f, s / turnFraction) : 1f;
+            float slide = MathF.Max(0f, (s - turnFraction) / (1f - turnFraction));
 
-            elapsed += dt;
-            float back = elapsed < TravelSeconds
-                ? elapsed / TravelSeconds
-                : Math.Max(0f, 1f - (elapsed - TravelSeconds) / ReturnSeconds);
-            transform.Position = (rest + travel * back).ToStride();
+            var frameRotation = System.Numerics.Quaternion.Slerp(start.Rotation, end.Rotation, turn);
+            var frameTranslation = System.Numerics.Vector3.Lerp(start.Translation, end.Translation, slide);
+
+            transform.Position =
+                (frameTranslation + System.Numerics.Vector3.Transform(localTranslation, frameRotation)).ToStride();
+            transform.Rotation =
+                System.Numerics.Quaternion.Concatenate(localRotation, frameRotation).ToStride();
         }
     }
 

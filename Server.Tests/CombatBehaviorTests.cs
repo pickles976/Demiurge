@@ -60,6 +60,7 @@ public class CombatBehaviorTests
         => Assert.Equal(expected, CombatBehavior.PrefersToHoldFire(weapon, range));
 
     [Theory]
+    [InlineData(ItemType.Mosin, 150f)]
     [InlineData(ItemType.Sks, 100f)]
     [InlineData(ItemType.Ppsh, 75f)]
     [InlineData(ItemType.Ak47, 70f)]

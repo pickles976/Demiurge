@@ -1,5 +1,6 @@
 using Demiurge;
 using Demiurge.GameClient;
+using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
@@ -87,6 +88,13 @@ public class ItemAttachScript : SyncScript
     private float recoilLift;
     private float recoilPitch;
     private MovingPart? bolt;
+    private SoundManager sound = null!;
+
+    /// <summary>Seconds until this shot's bolt is worked, or infinity when none is pending. The
+    /// delay is the bolt cycle's own, so the noise arrives with the movement rather than on top of
+    /// the shot that caused it.</summary>
+    private float boltSoundIn = float.PositiveInfinity;
+
     private int shotsThisFrame;
     private float sprintBlend;
     private float swayPhase;
@@ -96,7 +104,9 @@ public class ItemAttachScript : SyncScript
     {
         if (Object.Has.HasFlag(NetComponents.Weapon))
             observedAmmo = Object.Weapon.CurrentAmmo;
-        bolt = MovingPart.For(Locators, ItemCosmetics.Model(Object.Item.Type), "bolt");
+        sound = Services.GetSafeServiceAs<SoundManager>();
+        bolt = MovingPart.For(
+            Locators, ItemCosmetics.Model(Object.Item.Type), "bolt", WeaponFx.Get(Object.Item.Type).Cycle);
     }
 
     public override void Update()
@@ -120,6 +130,20 @@ public class ItemAttachScript : SyncScript
         swing.Update(holdingTool && IsSelected(player) && player.State.HasFlag(PlayerStateFlags.Shooting), dt);
 
         shotsThisFrame = ShotsSince(player);
+
+        // The bolt's noise is scheduled off the same BoltCycle that paces its movement, so the two
+        // cannot drift apart. A self-loading action has no sound path and never schedules anything.
+        var cycle = WeaponFx.Get(Object.Item.Type).Cycle;
+        if (shotsThisFrame > 0 && cycle.SoundPath is not null)
+            boltSoundIn = cycle.DelaySeconds;
+        else
+            boltSoundIn -= dt;
+        if (boltSoundIn <= 0f && cycle.SoundPath is { } boltSound)
+        {
+            boltSoundIn = float.PositiveInfinity;
+            PlayBoltCycle(player, boltSound);
+        }
+
         if (bolt is { } part)
         {
             // The local player's reload is predicted and therefore a frame ahead of the replicated
@@ -148,6 +172,19 @@ public class ItemAttachScript : SyncScript
         Entity.Transform.Scale = new Vector3(ItemCosmetics.WorldScale(Object.Item.Type));
         Seat(ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount)
                  with { Rotation = WeaponMount.HandRotationFor(Object.Item.Type, swing.Angle).ToStride() });
+    }
+
+    /// <summary>
+    /// The bolt as the listener hears it. Your own rifle is in your hands rather than somewhere in
+    /// the world, so it plays flat — the same split, for the same reason, that a reload makes.
+    /// </summary>
+    private void PlayBoltCycle(Player player, string path)
+    {
+        if (player is LocalPlayer)
+            sound.PlayOneShot(path);
+        else
+            sound.PlayOneShotSpatial(
+                path, Digging.Eye(player.Position).ToStride(), falloff: SoundFalloff.Reload);
     }
 
     /// <summary>Worn rather than hidden, when the slot has somewhere to wear it.</summary>
@@ -373,7 +410,7 @@ public class ItemAttachScript : SyncScript
 
     private static RecoilKick RecoilFor(ItemType type) => type switch
     {
-        ItemType.AWP => new RecoilKick(0.10f, 0.020f, MathUtil.DegreesToRadians(6f)),
+        ItemType.AWP or ItemType.Mosin => new RecoilKick(0.10f, 0.020f, MathUtil.DegreesToRadians(6f)),
         ItemType.Glock or ItemType.Ppsh => new RecoilKick(0.040f, 0.008f, MathUtil.DegreesToRadians(3.5f)),
         _ => new RecoilKick(0.050f, 0.010f, MathUtil.DegreesToRadians(2.5f)),
     };

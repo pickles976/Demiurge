@@ -185,6 +185,7 @@ namespace Demiurge.GameServer
                 SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
                 SpawnPickupOnSurface(ItemType.Sks, -3f, 0f);
                 SpawnPickupOnSurface(ItemType.Ppsh, 0f, -3f);
+                SpawnPickupOnSurface(ItemType.Mosin, 0f, 3f);
                 SpawnPickupOnSurface(ItemType.Shovel, -1.5f, 1.5f);
                 SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
                 SpawnPickupOnSurface(ItemType.Grenade, 1.5f, 1.5f);

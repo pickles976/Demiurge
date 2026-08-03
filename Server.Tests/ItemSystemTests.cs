@@ -86,7 +86,7 @@ public class ItemSystemTests
     }
 
     [Fact]
-    public void PlayerLoadoutStartsWithPpsh()
+    public void PlayerLoadoutStartsWithTheDefaultPrimaryAtFullMagazine()
     {
         var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
@@ -95,8 +95,10 @@ public class ItemSystemTests
         items.SpawnInfantryLoadout(player);
 
         Assert.True(objects.TryGet(player.Equipped[EquipSlot.HotbarPrimary], out var primary));
-        Assert.Equal(ItemType.Ppsh, primary.Item.Type);
-        Assert.Equal(35, primary.Weapon.CurrentAmmo);
+        Assert.Equal(ItemConfig.DefaultPlayerPrimaryWeapon, primary.Item.Type);
+        Assert.Equal(
+            WeaponConfig.Require(ItemConfig.DefaultPlayerPrimaryWeapon).MagazineCapacity,
+            primary.Weapon.CurrentAmmo);
     }
 
     [Fact]

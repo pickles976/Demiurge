@@ -39,7 +39,7 @@ namespace Demiurge
         /// The primary a human player receives on spawn. NPCs have their own default because their
         /// four-man squad composition deliberately mixes two assault guns with two rifles.
         /// </summary>
-        public const ItemType DefaultPlayerPrimaryWeapon = ItemType.Ppsh;
+        public const ItemType DefaultPlayerPrimaryWeapon = ItemType.Mosin;
 
         /// <summary>The intermediate-range half of a default NPC squad.</summary>
         public const ItemType DefaultNpcPrimaryWeapon = ItemType.Sks;
@@ -51,6 +51,7 @@ namespace Demiurge
             ItemType.Glock => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.Sks => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.Ppsh => new(ItemCategory.Equippable, EquipSlot.Hand),
+            ItemType.Mosin => new(ItemCategory.Equippable, EquipSlot.Hand),
             ItemType.BodyArmor => new(ItemCategory.Equippable, EquipSlot.Chest),
             ItemType.Grenade => new(ItemCategory.Equippable, EquipSlot.Hand),
             // The shovel is a tool, not a gun: it has no WeaponConfig row, so it never gets a

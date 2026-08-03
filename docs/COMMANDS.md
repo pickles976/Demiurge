@@ -95,8 +95,12 @@ Canonical item IDs:
 
 ```text
 demiurge:ak47
+demiurge:sks
+demiurge:ppsh
+demiurge:mosin
 demiurge:awp
 demiurge:glock
+demiurge:shovel
 demiurge:body_armor
 demiurge:grenade
 ```

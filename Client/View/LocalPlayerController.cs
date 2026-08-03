@@ -88,8 +88,11 @@ public class LocalPlayerController : SyncScript
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
 		HandleHotbarInput(local);
 
-		// State
-		bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
+		// State. A reload takes the sight picture away whether or not the button is still held —
+		// both hands are on the magazine. Working a bolt does NOT: the rifle stays on the shoulder
+		// and the eye stays behind the sights, which is the whole reason a marksman can watch what
+		// he just shot at.
+		bool aiming = Input.IsMouseButtonDown(MouseButton.Right) && !local.IsReloading;
 		bool primaryDown = Input.IsMouseButtonDown(MouseButton.Left);
 
 		// Shooting means "actuating the held item", which is why digging sets it too: it is the

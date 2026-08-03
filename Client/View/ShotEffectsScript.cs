@@ -175,7 +175,7 @@ public class ShotEffectsScript : SyncScript
     /// </summary>
     private static float ShotTrauma(ItemType weapon) => weapon switch
     {
-        ItemType.AWP => 0.75f,
+        ItemType.AWP or ItemType.Mosin => 0.75f,
         ItemType.Glock => 0.26f,
         // Twenty additions per second would pin the shared trauma pool at one if this inherited a
         // rifle's 0.40. The small per-round impulse still stacks into a burst without turning a
@@ -269,6 +269,7 @@ public class ShotEffectsScript : SyncScript
         sound.PlayOneShotSpatial(
             report,
             (ear + bearing * DistantReportRange).ToStride(),
+            volume: WeaponFx.DistantReportVolume,
             falloff: SoundFalloff.DistantReport);
     }
 

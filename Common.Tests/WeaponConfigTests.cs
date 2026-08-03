@@ -21,4 +21,26 @@ public class WeaponConfigTests
             BallisticsConfig.Require(ItemType.Glock),
             BallisticsConfig.Require(ItemType.Ppsh));
     }
+
+    /// <summary>Asserted in SECONDS rather than ticks, because seconds are what was asked for and
+    /// the tick arithmetic is the part that can be got wrong.</summary>
+    [Fact]
+    public void MosinHasRequestedMagazineCadenceReloadAndDamage()
+    {
+        var stats = WeaponConfig.Require(ItemType.Mosin);
+
+        Assert.Equal(5, stats.MagazineCapacity);
+        Assert.Equal(1.5f, stats.TicksPerShot / NetworkConfig.TickRate);
+        Assert.Equal(5.3f, stats.ReloadTicks / (float)NetworkConfig.TickRate, precision: 3);
+        Assert.Equal((ushort)70, stats.Damage);
+        Assert.Equal(FireMode.SemiAutomatic, stats.FireMode);
+    }
+
+    [Fact]
+    public void MosinUsesTheSniperBallisticsAndRecoilProfile()
+    {
+        Assert.Equal(
+            BallisticsConfig.Require(ItemType.AWP),
+            BallisticsConfig.Require(ItemType.Mosin));
+    }
 }
