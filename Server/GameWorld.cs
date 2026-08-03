@@ -274,6 +274,9 @@ namespace Demiurge.GameServer
         public ServerObject SpawnPickup(ItemType type, Vector3 position)
             => items.SpawnPickup(type, position);
 
+        /// <summary>Flag ownership, for scenario setup in benchmarks. See FlagSystem.TryForceOwner.</summary>
+        internal FlagSystem Flags => flags;
+
         public bool TryGetActor(ushort actorId, out ServerPlayer actor)
             => players.TryGetValue(actorId, out actor!);
 

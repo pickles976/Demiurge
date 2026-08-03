@@ -10,11 +10,12 @@ AI
 
 - Sometimes NPCs just stand at the flagpost doing nothing
 - NPCs should always be doing something
-- NPCs are aimlessly digging big holes while defending the flag
+- NPCs are aimlessly digging big holes while defending the flag even when inside a castle. NPCs should know when there is sufficient cover nearby and not need to dig.
 
 - better tactics
   -  be more mobile. Standing is boring. Flanking and sprinting is interesting. When you outnumber your opponent, flank! When you outrange your opponent, stay back. When your opponent outguns you, close the distance by sprinting.
   - Digging is *defensive*. Movement is *offensive*
+  - Strategic AI needs to know when to defend and when to attack.
 
 - [ ] Connected foxhole/trench construction
 - [ ] Commander fortification and crew-weapon objectives

@@ -155,6 +155,33 @@ public sealed class FlagSystem
         }
     }
 
+    /// <summary>Every flag's position, in spawn order.</summary>
+    internal IReadOnlyList<Vector3> Positions
+        => flags.Select(flag => flag.Position).ToArray();
+
+    /// <summary>
+    /// Hands a flag to a team outright, as a completed capture would.
+    ///
+    /// Scenario setup, not gameplay: nothing in a running match awards a flag without going through
+    /// the capture loop in <see cref="Tick"/>. It exists so a benchmark can start from a mid-match
+    /// position — home flags held, centre contested — instead of spending the first two minutes
+    /// measuring thirty-two NPCs walking away from their own spawns.
+    /// </summary>
+    internal bool TryForceOwner(Vector3 position, int team)
+    {
+        var flag = flags.MinBy(candidate =>
+            Vector3.DistanceSquared(candidate.Position, position));
+        if (flag is null) return false;
+
+        ref var state = ref flag.Object.Team;
+        state.Value = team;
+        state.CapturingTeam = FlagConfig.NeutralTeam;
+        state.Progress = 1f;
+        flag.Object.Dirty |= NetComponents.Team;
+        flag.LastReplicatedBucket = ProgressBucket(state.Progress);
+        return true;
+    }
+
     private static int ProgressBucket(float progress)
         => Math.Clamp(
             (int)MathF.Floor(progress * FlagConfig.ProgressReplicationBuckets),
