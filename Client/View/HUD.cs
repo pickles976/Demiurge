@@ -491,6 +491,7 @@ namespace Demiurge
             /// <summary>Null in configurations without a runtime session (the editor status HUD).</summary>
             public SpawnReadiness? Readiness { get; set; }
             private uint _lastPrimaryId = uint.MaxValue;
+            private uint _lastShovelId = uint.MaxValue;
             private uint _lastGrenadeId = uint.MaxValue;
             private int _lastGrenades = int.MinValue;
             private bool _lastDead;
@@ -624,18 +625,22 @@ namespace Demiurge
             private void RefreshHotbar(LocalPlayer local)
             {
                 var primary = local.ItemIn(HotbarSlot.Primary);
+                var shovel = local.ItemIn(HotbarSlot.Shovel);
                 var grenade = local.ItemIn(HotbarSlot.Grenade);
                 int grenades = local.AmmoIn(HotbarSlot.Grenade);
                 uint primaryId = primary?.NetworkId ?? 0;
+                uint shovelId = shovel?.NetworkId ?? 0;
                 uint grenadeId = grenade?.NetworkId ?? 0;
                 if (local.Hotbar == _lastHotbar
                     && primaryId == _lastPrimaryId
+                    && shovelId == _lastShovelId
                     && grenadeId == _lastGrenadeId
                     && grenades == _lastGrenades)
                     return;
 
                 _lastHotbar = local.Hotbar;
                 _lastPrimaryId = primaryId;
+                _lastShovelId = shovelId;
                 _lastGrenadeId = grenadeId;
                 _lastGrenades = grenades;
 
@@ -651,24 +656,20 @@ namespace Demiurge
                 }
 
                 SetSlot(0, primary, primary == null ? "1  EMPTY" : $"1  {DisplayName(primary.Item.Type)}");
-                SetSlot(1, null, "2  SHOVEL", forceMissing: true);
+                // The shovel is a real replicated object like the other two, so it looks its
+                // thumbnail up the same way. This used to pass forceMissing, which pinned the slot to
+                // the purple placeholder and ignored the thumbnail table entirely — written before
+                // shovel.png existed, and left behind once it did.
+                SetSlot(1, shovel, "2  SHOVEL");
                 SetSlot(2, grenade, grenade == null ? "3  EMPTY" : $"3  x{grenades}");
             }
 
             private void SetSlot(
                 int index,
                 NetObject? item,
-                string label,
-                bool forceMissing = false)
+                string label)
             {
                 HotbarLabels[index].Text = label;
-                if (forceMissing)
-                {
-                    HotbarImages[index].Source = MissingThumbnail;
-                    HotbarImages[index].Visibility = Visibility.Visible;
-                    return;
-                }
-
                 HotbarImages[index].Visibility =
                     item == null ? Visibility.Collapsed : Visibility.Visible;
                 if (item != null)

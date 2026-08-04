@@ -1,7 +1,8 @@
 namespace Demiurge.GameServer;
 
 /// <summary>
-/// Default four-man spawn cohort: two assault guns, one intermediate-range rifle, and one bolt gun.
+/// Default spawn cohort: two assault guns, one bolt gun, and ordinary rifles for the rest.
+/// The mix scales with SquadBlackboard.MaximumMembers rather than assuming four men.
 /// Spawn order is tracked per team, so complete cohorts always contain exactly that mix and a
 /// partial cohort receives its assault pair first — the marksman is the LAST man filled in, because
 /// a two-man fire team with a bolt gun in it is short an assault gun rather than long a rifle.

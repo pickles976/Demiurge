@@ -9,41 +9,38 @@ namespace Demiurge.GameServer;
 internal sealed class CombatBehavior
 {
     private const float AimedFireThreshold = 0.55f;
-    // Four enemies can focus one exposed player in the demo. This intentionally represents an
-    // unsettled combat shooter rather than bench accuracy: about 22% centre-mass chance at 40 m
-    // before recoil, while close-range fire remains dangerous.
-    private const float AiAimMoa = 720f;
-    private const float LongRangeAimMoa = 180f;
-    private const float LongRangeStart = 30f;
-    private const float LongRangeFullAccuracy = 70f;
     private const float AimToleranceDegrees = 7f;
-    private const float LongRangeAimToleranceDegrees = 2.5f;
     private const float AimTurnDegreesPerSecond = 180f;
     private const int SuppressionBurstShots = 3;
     private const int ReactionTicks = (55 * NetworkConfig.TickRate + 99) / 100;
     private const int LostContactHoldTicks = 3 * NetworkConfig.TickRate / 2;
     private const int BurstPauseTicks = 3 * NetworkConfig.TickRate / 4;
     private const int PrecisionShotIntervalTicks = 6 * NetworkConfig.TickRate / 5;
-    internal const float PreferredEngagementRange = 25f;
-    // The assault gun opens fire at 75 m, but its low hit probability outside the preferred 25 m
-    // standoff still leaves ShouldCloseDistance set while it fires.
-    internal const float PpshEffectiveRange = 75f;
 
     /// <summary>
-    /// Past this, a believed contact is known about but not engaged. Without the gate any contact the
-    /// squad shared -- perception reaches 100 m -- made combat own an NPC's movement, so men nowhere
-    /// near the fight stood still aiming across the map instead of manoeuvring or holding an objective.
+    /// Beyond this the shot is treated as deliberate: the actor must have its aim settled far more
+    /// tightly before it will pull, and it fires on the slower precision cadence.
+    ///
+    /// This is aim DISCIPLINE, not an engagement ceiling — it says how carefully to shoot, never
+    /// whether the weapon can reach. It survived the removal of the ItemType range table for that
+    /// reason, and it is deliberately weapon-independent: settling the sights is the shooter's job.
     /// </summary>
-    internal const float DefaultMaxEngagementRange = 70f;
-    internal const float SksMaxEngagementRange = 100f;
+    private const float DeliberateShotRange = 30f;
+    private const float DeliberateAimToleranceDegrees = 2.5f;
 
-    /// <summary>
-    /// The bolt gun is the one weapon whose ceiling sits ABOVE what its owner can see for himself:
-    /// <see cref="Perception"/> stops at 100 m, so the last 50 m are reachable only through a
-    /// contact a squadmate shared. That is the intended shape — the marksman is the man who shoots
-    /// at what somebody else found — not an oversight to be clamped back down to sight range.
-    /// </summary>
-    internal const float MosinMaxEngagementRange = 150f;
+    // Gone, and deliberately not replaced:
+    //
+    //   AiAimMoa 720, LongRangeAimMoa 180, LongRangeStart, LongRangeFullAccuracy
+    //     A flat aim error that swamped every weapon's own dispersion — Spread.Combine(720, 4) =
+    //     720.01 — so an NPC shot every gun identically. Now BallisticsStats.SightingMoa scaled by
+    //     the actor's skill.
+    //
+    //   PpshEffectiveRange 75, DefaultMaxEngagementRange 70, SksMaxEngagementRange 100,
+    //   MosinMaxEngagementRange 150, PreferredEngagementRange 25
+    //     Engagement ceilings keyed on ItemType, which existed only because the flat aim term had
+    //     erased the difference the ballistics table already described. A ceiling still exists; it
+    //     is now the range at which a round stops being worth its expected return
+    //     (WeaponEffectiveness.MinimumExpectedDamagePerRound).
 
     /// <summary>
     /// Suppressing fire is aimed at a place rather than a visible body, so it is deliberately slower
@@ -84,9 +81,17 @@ internal sealed class CombatBehavior
         }
 
         mob.Hotbar = HotbarSlot.Primary;
+        // No engagement-range table. A weapon whose expected return per round falls below
+        // WeaponEffectiveness.MinimumExpectedDamagePerRound yields a zero firing solution, and that
+        // IS the decision not to engage — derived from dispersion, damage and cadence rather than
+        // from three hand-set constants keyed on ItemType.
         if (!weapons.TryGetActiveWeapon(mob, out var weapon)
-            || HorizontalDistance(mob.Position, contact.Position)
-                > MaxEngagementRangeFor(weapon.Item.Type))
+            || WeaponEffectiveness.Best(
+                weapon.Item.Type,
+                HorizontalDistance(mob.Position, contact.Position),
+                TargetExposure.Full,
+                extraMoa: 0f,
+                brain.SkillFactor).DamagePerSecond <= 0f)
         {
             brain.ClearCombatTarget();
             return false;
@@ -116,7 +121,20 @@ internal sealed class CombatBehavior
         float range = uncompensated.Length();
         if (range <= 1e-5f)
             return false;
-        bool holdingForEffectiveRange = PrefersToHoldFire(weapon.Item.Type, range);
+        // Whether this shot is worth its round, asked of the weapon rather than of its identity.
+        // PrefersToHoldFire tested `weapon == ItemType.Ppsh && range > 75`, so only the SMG ever
+        // decided to close — a rifleman past its own useful range went mute and stood there, because
+        // nothing set ShouldCloseDistance for him.
+        //
+        // Exposure is deliberately 1 here. This is a question about the weapon's REACH, not about
+        // the target's cover: a man behind a parapet should be shot at less eagerly, but he should
+        // not make a rifleman conclude his rifle has stopped working.
+        bool holdingForEffectiveRange = WeaponEffectiveness.Best(
+            weapon.Item.Type,
+            range,
+            TargetExposure.Full,
+            extraMoa: 0f,
+            brain.SkillFactor).DamagePerSecond <= 0f;
         brain.ShouldCloseDistance = holdingForEffectiveRange;
 
         // Compensate only for projectile drop. Contact memory intentionally carries no live target
@@ -151,9 +169,9 @@ internal sealed class CombatBehavior
         // A suppressing gunner shoots at the last known position. Requiring current visibility made
         // suppression impossible against exactly the target it exists for: one that is behind cover.
         if (suppressing) visibleNow = true;
-        bool precisionShot = range >= LongRangeStart;
+        bool precisionShot = range >= DeliberateShotRange;
         float aimToleranceCos = precisionShot
-            ? MathF.Cos(LongRangeAimToleranceDegrees * MathF.PI / 180f)
+            ? MathF.Cos(DeliberateAimToleranceDegrees * MathF.PI / 180f)
             : AimToleranceCos;
         bool aimSettled = Vector3.Dot(brain.AimDirection, desired) >= aimToleranceCos;
         if (!visibleNow || !reacted || !aimSettled)
@@ -164,7 +182,11 @@ internal sealed class CombatBehavior
             return true;
         }
 
-        float aiAimMoa = AimMoaForRange(range);
+        // The shooter's aim error is now a property of the weapon he is holding
+        // (BallisticsStats.SightingMoa) scaled by his own skill, not a flat 720 MOA constant that
+        // swamped every weapon's dispersion — Spread.Combine(720, 4) = 720.01, which is why weapon
+        // character previously had to be reintroduced by hand as ItemType branches.
+        float aiAimMoa = ballistics.SightingMoa * MathF.Max(brain.SkillFactor, 0.01f);
         float moa = Spread.Combine(
             mob.Spread.TotalMoa(mob.State, ballistics),
             aiAimMoa);
@@ -172,7 +194,6 @@ internal sealed class CombatBehavior
             Spread.SigmaRadians(moa),
             range,
             GunConfig.HitRadius);
-        brain.ShouldCloseDistance |= ShouldAdvance(probability, range);
 
         bool requestShot;
         if (suppressing)
@@ -232,34 +253,9 @@ internal sealed class CombatBehavior
         return true;
     }
 
-    internal static bool ShouldAdvance(float hitProbability, float range)
-        => float.IsFinite(hitProbability)
-           && float.IsFinite(range)
-           && hitProbability < AimedFireThreshold
-           && range > PreferredEngagementRange;
 
-    internal static bool PrefersToHoldFire(ItemType weapon, float range)
-        => weapon == ItemType.Ppsh
-           && float.IsFinite(range)
-           && range > PpshEffectiveRange;
 
-    internal static float MaxEngagementRangeFor(ItemType weapon) => weapon switch
-    {
-        ItemType.Mosin => MosinMaxEngagementRange,
-        ItemType.Sks => SksMaxEngagementRange,
-        ItemType.Ppsh => PpshEffectiveRange,
-        _ => DefaultMaxEngagementRange,
-    };
 
-    internal static float AimMoaForRange(float range)
-    {
-        float amount = Math.Clamp(
-            (range - LongRangeStart)
-            / (LongRangeFullAccuracy - LongRangeStart),
-            0f,
-            1f);
-        return float.Lerp(AiAimMoa, LongRangeAimMoa, amount);
-    }
 
     private static float HorizontalDistance(Vector3 a, Vector3 b)
     {

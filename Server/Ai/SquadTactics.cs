@@ -7,231 +7,383 @@ internal enum SquadRole : byte
     /// <summary>No believed threat. The member follows its objective normally.</summary>
     None,
 
-    /// <summary>
-    /// Hold, keep the threat's head down, and dig a fighting position if the terrain does not already
-    /// provide one. Someone must be in this role before anyone is allowed to move.
-    /// </summary>
+    /// <summary>Hold and shoot. Its value is mostly the damage it PREVENTS to whoever is moving.</summary>
     BaseOfFire,
 
-    /// <summary>Move to an assigned envelope position while the rest of the squad shoots.</summary>
+    /// <summary>Move to a new bearing while the rest of the squad shoots.</summary>
     Bound,
 }
 
-/// <summary>Which side of the threat axis a member works, kept stable across replans.</summary>
-internal enum FlankSide : byte
-{
-    None,
-    Left,
-    Right,
-}
-
-internal readonly record struct SquadTacticalInput(
+/// <summary>One member, as the allocation needs to see him.</summary>
+/// <param name="ExposureHere">Fraction of his silhouette the threat can reach where he stands.</param>
+/// <param name="MovingSinceTick">When his current bound began, or 0 if he is not moving. A mover who
+/// cannot arrive must not hold the rotation shut.</param>
+internal readonly record struct SquadMemberState(
     ushort ActorId,
     Vector3 Position,
-    FlankSide Side,
+    ItemType Weapon,
+    SelfExposure ExposureHere,
+    float SkillFactor,
     int BoundIndex,
-    /// <summary>In position and able to shoot: at cover, or dug into a fighting position.</summary>
-    bool IsSet,
-    /// <summary>PPSH carrier: closes under rifle cover instead of serving as the base of fire.</summary>
-    bool IsAssault = false,
-    /// <summary>The believed threat is visibly reloading and within the 100 m tell radius.</summary>
-    bool ThreatReloading = false,
-    /// <summary>A reload-triggered dash already started and must finish even if the reload ends.</summary>
-    bool BoundCommitted = false);
+    uint MovingSinceTick,
+    /// <summary>Bearing this man is already committed to. Kept across replans: the allocation runs at
+    /// 2 Hz, so a bearing chosen fresh each time redirects a mover twice a second and he covers no
+    /// ground.</summary>
+    Commitment<float> CommittedBearing = default);
 
+internal readonly record struct SquadPlanInput(
+    Vector3 Threat,
+    bool HasThreat,
+    ItemType ThreatWeapon,
+    float Aggression,
+    uint Tick);
+
+/// <summary>
+/// What a member has been told to do. <paramref name="Bearing"/> is the approach angle in radians
+/// around the threat, so two movers on different bearings cannot be stopped by the same cover.
+/// </summary>
 internal readonly record struct SquadTacticalOrder(
     ushort ActorId,
     SquadRole Role,
-    FlankSide Side,
     Vector3 Destination,
+    float Bearing,
     int BoundIndex);
 
 /// <summary>
-/// Turns a believed threat into per-member roles. This is the layer that did not exist: the blackboard
-/// arbitrated resources (two engagement tokens, two advance tokens, position claims) while every NPC
-/// independently decided to close on the threat, which is why a squad read as N individuals converging
-/// on one point instead of a squad manoeuvring.
+/// Who does which, priced in the same currency as everything else.
 ///
-/// Pure and deterministic so the doctrine can be tested headlessly. Terrain is deliberately absent:
-/// this produces intent, and navigation and cover selection resolve it against the actual field.
+/// This is an ALLOCATION, not a doctrine. It does not decide that squads bound, or that riflemen
+/// hold and SMGs close; it computes what each member is worth in each role and picks the assignment
+/// with the highest squad total. Those behaviours then appear because the numbers say so.
+///
+/// The reason it must be joint rather than per-member: a base of fire's value is mostly the damage
+/// it PREVENTS to a mover, by inflating the threat's dispersion (BallisticsConfig.SuppressedMoa).
+/// Scored individually, suppressing an enemy you cannot reliably hit looks worthless, every man
+/// independently concludes that moving is dangerous, and the whole squad stands still — which is
+/// precisely the behaviour this replaces.
+///
+/// There is deliberately NO precondition on movement. The previous version refused to issue a bound
+/// unless somebody was already at cover, so a squad that could not reach cover was forbidden from
+/// moving and stood in the open digging. The allocation here always returns an assignment; its worst
+/// case is that everybody shoots.
+///
+/// Pure and deterministic, so the doctrine can be tested headlessly. Terrain is absent by design:
+/// this produces intent, and navigation and cover selection resolve it against the real field.
 /// </summary>
 internal static class SquadTactics
 {
-    /// <summary>Standoff for the first bound, and how much closer each subsequent bound gets.</summary>
+    /// <summary>Standoff for the first bound, and how much closer each one gets.</summary>
     public const float OpeningStandoff = 45f;
     public const float BoundLength = 12f;
     public const float MinimumStandoff = 12f;
 
     /// <summary>
-    /// Lateral offset of an envelope position from the threat axis. Wide enough that the two sides
-    /// approach on visibly different bearings, which is the whole point of enveloping: the player
-    /// cannot hold both with one arc of fire.
+    /// Bearings a mover may approach on, in radians either side of the threat axis. Wide enough that
+    /// one piece of cover cannot defeat two of them, which is the only reason to spread at all.
     /// </summary>
-    public const float EnvelopeWidth = 22f;
+    private static readonly float[] Bearings =
+        [-1.05f, 1.05f, -0.52f, 0.52f, -1.57f, 1.57f];
 
     /// <summary>
-    /// Movers allowed per side at once. One is what makes it a bound rather than a charge: the rest of
-    /// the side is shooting while he moves.
+    /// How long a man may be moving before the rotation stops waiting for him.
+    ///
+    /// Self-clocking rotation — the next man goes when the last one arrives — deadlocks whenever a
+    /// mover cannot arrive, and "cannot arrive" is common: pinned, blocked, or sent somewhere that
+    /// turned out unreachable. This is the escape hatch, and it is why the ungated allocation above
+    /// is not enough on its own.
     /// </summary>
-    public const int MoversPerSide = 1;
+    public const uint MoverTimeoutTicks = 5 * NetworkConfig.TickRate;
+
+    /// <summary>How long a mover holds the bearing it was given. Matched to the timeout, so a bearing
+    /// cannot outlive the bound that justified it.</summary>
+    public const uint BearingCommitmentTicks = MoverTimeoutTicks;
+
+    /// <summary>
+    /// Men who must stay on the gun while the rest move. One — and the constraint really is only
+    /// one, because everything else about who moves is already decided by the score.
+    ///
+    /// There used to be a flat `MaxMovers = 2` here, which quietly overrode the allocation: four of a
+    /// six-man squad were held static regardless of what they were worth, so the squad's average
+    /// advance was bounded by a constant rather than by the fight. Measured against a lone rifleman,
+    /// lifting the cap took a thirty-second assault from 5.1 m of closing to 13.8 m — and DROPPED
+    /// excavation from 50 bites to 24, because men who are moving are not digging.
+    /// </summary>
+    private const int SuppressorsRequired = 1;
+
+    /// <summary>
+    /// How much better the destination must be, in net health per second, before a man gives up his
+    /// firing position for it.
+    ///
+    /// Leaving the line costs things the score does not model: seconds in transit dealing nothing,
+    /// a settled aim thrown away, a position already known to work. So a marginal improvement is not
+    /// enough. Without this bar, a bolt gun in a mirror match scored a gain of about 0.1 HP/s from
+    /// closing and duly charged — the exact opposite of the range doctrine, and invisible until
+    /// squads were allowed more than two movers.
+    /// </summary>
+    private const float MinimumGainToLeaveTheFiringLine = 1f;
+
+    /// <summary>
+    /// How much of a sprinting man a shooter can actually reach, against a static one.
+    ///
+    /// Crossing open ground has two opposed effects and they very nearly cancel, which is the whole
+    /// reason a bound is a tactic rather than suicide. A mover is the OBVIOUS target — his targeting
+    /// likelihood goes to 1 rather than being shared one-over-squad with everyone still in the
+    /// firing line — but he is also a MOVING target, and a shooter's aim lags a runner.
+    ///
+    /// Pricing only the first makes every assault look fatal; pricing only the second makes every
+    /// assault look free, which is what the model did before this and why closing was systematically
+    /// underpriced.
+    /// </summary>
+    private static readonly SelfExposure SprintingExposure = SelfExposure.Of(0.45f);
 
     public static void Plan(
-        Vector3 threat,
-        bool hasThreat,
-        IReadOnlyList<SquadTacticalInput> members,
+        in SquadPlanInput input,
+        IReadOnlyList<SquadMemberState> members,
         List<SquadTacticalOrder> orders)
     {
         orders.Clear();
         if (members.Count == 0) return;
 
-        if (!hasThreat)
+        if (!input.HasThreat)
         {
             foreach (var member in members)
                 orders.Add(new SquadTacticalOrder(
-                    member.ActorId,
-                    SquadRole.None,
-                    FlankSide.None,
-                    Vector3.Zero,
-                    member.BoundIndex));
+                    member.ActorId, SquadRole.None, Vector3.Zero, 0f, member.BoundIndex));
             return;
         }
 
-        var ordered = new List<SquadTacticalInput>(members);
-        ordered.Sort(static (left, right) => left.ActorId.CompareTo(right.ActorId));
+        Span<float> holdValue = stackalloc float[members.Count];
+        Span<float> moveValue = stackalloc float[members.Count];
+        Span<bool> timedOut = stackalloc bool[members.Count];
 
-        Vector3 centre = Vector3.Zero;
-        foreach (var member in ordered) centre += member.Position;
-        centre /= ordered.Count;
-
-        Vector3 axis = Horizontal(threat - centre);
-        axis = axis.LengthSquared() <= 1e-6f
-            ? Vector3.UnitZ
-            : Vector3.Normalize(axis);
-        Vector3 lateral = LateralAxis(axis);
-
-        // Sides are sticky. A member that has already committed to going left keeps going left, so a
-        // replan mid-manoeuvre does not send it back across the axis through the beaten zone.
-        var sides = new Dictionary<ushort, FlankSide>(ordered.Count);
-        int unassignedRank = 0;
-        foreach (var member in ordered)
+        for (int i = 0; i < members.Count; i++)
         {
-            if (member.Side != FlankSide.None)
-            {
-                sides[member.ActorId] = member.Side;
-                continue;
-            }
-            sides[member.ActorId] = unassignedRank++ % 2 == 0
-                ? FlankSide.Left
-                : FlankSide.Right;
+            var member = members[i];
+            float range = Horizontal(member.Position, input.Threat);
+
+            // What he is worth standing where he is.
+            holdValue[i] = CombatValue.Score(
+                new Combatant(member.Weapon, 0f, member.SkillFactor),
+                [Against(input, range, member.ExposureHere, members.Count)],
+                input.Aggression);
+
+            // What he would be worth if the squad closed ALL THE WAY, not one bound closer.
+            //
+            // One-step lookahead undervalues committed manoeuvre and does so worst for exactly the
+            // men who should be manoeuvring: an SMG at 60 m correctly computes that being at 48 m is
+            // still useless, so it never takes the first bound and never reaches the range where it
+            // wins. The bound is the STEP; the assault is what is being priced.
+            // The threat is SUPPRESSED in this estimate, because the squad will be shooting at it
+            // while this man crosses — that is what a base of fire is for, and it is the only reason
+            // moving in the open prices out at all.
+            //
+            // It belongs here rather than as a flat bonus added to every candidate's gain. Added
+            // flat it was a constant, so it lifted every man above the bar equally and stopped
+            // discriminating: a bolt gun in a mirror match would leave the firing line to charge,
+            // which is the opposite of the range doctrine.
+            var self = new Combatant(member.Weapon, 0f, member.SkillFactor);
+
+            float atDestination = CombatValue.Score(
+                self,
+                [Against(input, MinimumStandoff, SelfExposure.Full, members.Count,
+                    BallisticsConfig.SuppressedMoa)],
+                input.Aggression);
+
+            // The crossing itself, priced at the midpoint: sole target, but a running one.
+            float inTransit = CombatValue.Score(
+                self,
+                [new Engagement(
+                    (range + MinimumStandoff) * 0.5f,
+                    input.ThreatWeapon,
+                    BallisticsConfig.SuppressedMoa,
+                    TargetExposure.Full,
+                    SprintingExposure,
+                    TheirTargetingLikelihood: 1f)],
+                input.Aggression);
+
+            moveValue[i] = 0.5f * (atDestination + inTransit);
+
+            timedOut[i] = member.MovingSinceTick != 0
+                && input.Tick >= member.MovingSinceTick
+                && input.Tick - member.MovingSinceTick >= MoverTimeoutTicks;
         }
 
-        // Nobody moves until somebody is shooting. With no one set the whole squad goes to ground and
-        // digs in first, which is the "he digs in before anything else happens" step.
-        bool anySet = false;
-        foreach (var member in ordered)
-            if (member.IsSet) { anySet = true; break; }
+        // Rank by how much each man gains from moving, net of what the squad loses in fire. A man
+        // already close and shooting well has little to gain; the man furthest back has most.
+        var candidates = new List<(int Index, float Gain)>(members.Count);
+        for (int i = 0; i < members.Count; i++)
+        {
+            if (timedOut[i]) continue;
+            candidates.Add((i, moveValue[i] - holdValue[i]));
+        }
 
-        // One mover per side: the man farthest from the threat. Leapfrog is emergent rather than a
-        // state machine — once he bounds past his partner, the partner becomes the farthest and takes
-        // the next bound, and they alternate for as long as the fight lasts.
-        var movers = new HashSet<ushort>();
-        bool hasAssaultElement = ordered.Any(member => member.IsAssault);
-        if (anySet)
-            foreach (var side in (ReadOnlySpan<FlankSide>)[FlankSide.Left, FlankSide.Right])
+        // Copied out of the `in` parameter: a readonly-ref cannot be captured by the comparator.
+        Vector3 threatPosition = input.Threat;
+        candidates.Sort((left, right) =>
+        {
+            int byGain = right.Gain.CompareTo(left.Gain);
+            if (byGain != 0) return byGain;
+            // Deterministic tie-break: the man furthest from the threat moves first, then by id.
+            float leftRange = Horizontal(members[left.Index].Position, threatPosition);
+            float rightRange = Horizontal(members[right.Index].Position, threatPosition);
+            int byRange = rightRange.CompareTo(leftRange);
+            return byRange != 0
+                ? byRange
+                : members[left.Index].ActorId.CompareTo(members[right.Index].ActorId);
+        });
+
+        // A lone man has nobody to cover him, so moving in the open is pure loss. Anything larger
+        // keeps at least one gun on the threat.
+        // Everyone the score says should move, may move — save the men needed to keep the threat's
+        // head down. A lone man has nobody to cover him, so moving in the open is pure loss.
+        int allowedMovers = Math.Max(0, members.Count - SuppressorsRequired);
+
+        // Bearings are STICKY. They used to be dealt out in candidate-sort order every replan, and
+        // that order changes as men move — so a mover was reassigned to a different side of the
+        // threat twice a second and spent the fight being redirected. Measured, 37 bounds produced
+        // 13 m of displacement per man against a 4 m/s walk speed.
+        //
+        // A man who has committed to a bearing keeps it until he stops moving; only the men without
+        // one draw from the pool, and they take bearings nobody is already using.
+        var movers = new Dictionary<int, float>(allowedMovers);
+        var taken = new HashSet<float>();
+
+        foreach (var (index, gain) in candidates)
+        {
+            if (movers.Count >= allowedMovers) break;
+            if (gain < MinimumGainToLeaveTheFiringLine) continue;
+
+            if (!members[index].CommittedBearing.TryGet(input.Tick, out float committed)) continue;
+            if (!taken.Add(committed)) continue;
+            movers[index] = committed;
+        }
+
+        foreach (var (index, gain) in candidates)
+        {
+            if (movers.Count >= allowedMovers) break;
+            if (gain < MinimumGainToLeaveTheFiringLine || movers.ContainsKey(index)) continue;
+
+            foreach (float bearing in Bearings)
             {
-                var candidates = new List<SquadTacticalInput>();
-                foreach (var member in ordered)
-                    if (sides[member.ActorId] == side)
-                        candidates.Add(member);
-                if (candidates.Count == 0) continue;
+                if (!taken.Add(bearing)) continue;
+                movers[index] = bearing;
+                break;
+            }
+        }
 
-                if (hasAssaultElement)
-                {
-                    // Rifles are the base of fire. Assault carriers leave their holes only on the
-                    // reload tell; once exposed, they finish the dash rather than freezing when the
-                    // magazine change ends on the next tactical replan.
-                    candidates.RemoveAll(member =>
-                        !member.IsAssault
-                        || !member.ThreatReloading && !member.BoundCommitted);
-                    if (candidates.Count == 0) continue;
-                }
+        Vector3 axis = Horizontal(input.Threat - Centre(members));
+        axis = axis.LengthSquared() <= 1e-6f ? Vector3.UnitZ : Vector3.Normalize(axis);
 
-                candidates.Sort((left, right) =>
-                {
-                    int byCommitment = right.BoundCommitted.CompareTo(left.BoundCommitted);
-                    if (byCommitment != 0) return byCommitment;
-                    int byDistance = DistanceSquared(right.Position, threat)
-                        .CompareTo(DistanceSquared(left.Position, threat));
-                    return byDistance != 0 ? byDistance : left.ActorId.CompareTo(right.ActorId);
-                });
-
-                int selected = 0;
-                foreach (var candidate in candidates)
-                {
-                    if (selected >= MoversPerSide) break;
-                    bool wouldStripSideOfFire =
-                        candidate.IsSet
-                        && !ordered.Any(member =>
-                            member.ActorId != candidate.ActorId && member.IsSet);
-                    if (wouldStripSideOfFire) continue;
-                    movers.Add(candidate.ActorId);
-                    selected++;
-                }
+        for (int i = 0; i < members.Count; i++)
+        {
+            var member = members[i];
+            if (!movers.TryGetValue(i, out float bearing))
+            {
+                orders.Add(new SquadTacticalOrder(
+                    member.ActorId, SquadRole.BaseOfFire, member.Position, 0f, member.BoundIndex));
+                continue;
             }
 
-        foreach (var member in ordered)
-        {
-            FlankSide side = sides[member.ActorId];
-            bool bounding = movers.Contains(member.ActorId);
             orders.Add(new SquadTacticalOrder(
                 member.ActorId,
-                bounding ? SquadRole.Bound : SquadRole.BaseOfFire,
-                side,
-                bounding
-                    ? EnvelopePosition(threat, axis, lateral, side, member.BoundIndex)
-                    : member.Position,
+                SquadRole.Bound,
+                ApproachPosition(
+                    input.Threat,
+                    axis,
+                    bearing,
+                    member.BoundIndex,
+                    Horizontal(member.Position, input.Threat)),
+                bearing,
                 member.BoundIndex));
         }
     }
 
     /// <summary>
-    /// Right-hand perpendicular of a threat axis. One definition so the geometry and the Left/Right
-    /// labels cannot drift apart: with the threat at +Z this yields +X, so Right really is to the right.
+    /// Where a bound ends: on its own bearing around the threat, and always CLOSER than the mover
+    /// already is.
+    ///
+    /// The standoff used to come from OpeningStandoff and the bound index alone, which produced an
+    /// orbit rather than an assault. A man already at 55 m was sent to a point 45 m out on a bearing
+    /// 60 degrees around — almost entirely lateral — and because the index only advances when a bound
+    /// completes, and completions are rare, the standoff stayed pinned at 45 m indefinitely. Measured,
+    /// a six-man squad moved 20-35 m each over thirty seconds and closed 0.4 m, with two men ending
+    /// up further away than they started.
+    ///
+    /// Clamping to the mover's current range makes every bound close by at least BoundLength, so the
+    /// squad converges whether or not anybody's bound index is being maintained correctly.
     /// </summary>
-    public static Vector3 LateralAxis(Vector3 axis) => new(axis.Z, 0f, -axis.X);
-
-    /// <summary>
-    /// Where a bound ends: offset laterally onto this member's side of the threat axis, and closer to
-    /// the threat with every completed bound. The lateral term shrinks as the standoff does, so the two
-    /// sides converge on the threat instead of walking past it.
-    /// </summary>
-    public static Vector3 EnvelopePosition(
+    public static Vector3 ApproachPosition(
         Vector3 threat,
         Vector3 axis,
-        Vector3 lateral,
-        FlankSide side,
-        int boundIndex)
+        float bearing,
+        int boundIndex,
+        float currentRange)
     {
-        float standoff = MathF.Max(
-            MinimumStandoff,
-            OpeningStandoff - MathF.Max(0, boundIndex) * BoundLength);
-        float closingFraction = OpeningStandoff <= MinimumStandoff
-            ? 0f
-            : Math.Clamp(
-                (standoff - MinimumStandoff) / (OpeningStandoff - MinimumStandoff),
-                0f,
-                1f);
-        float offset = EnvelopeWidth * (0.35f + 0.65f * closingFraction);
-        float direction = side == FlankSide.Right ? 1f : -1f;
-        return threat - axis * standoff + lateral * (offset * direction);
+        // Never further out than the mover already is. The MinimumStandoff floor is a floor on how
+        // close the squad will deliberately CLOSE, not a distance it will back off to: a man already
+        // inside it was being pushed back out — 11 m to 12 m — which is the orbiting bug again at
+        // knife range. Found by fuzzing, not by any hand-written scenario.
+        float standoff = MathF.Min(
+            currentRange,
+            MathF.Max(
+                MinimumStandoff,
+                MathF.Min(
+                    currentRange - BoundLength,
+                    OpeningStandoff - MathF.Max(0, boundIndex) * BoundLength)));
+
+        float cos = MathF.Cos(bearing);
+        float sin = MathF.Sin(bearing);
+        var rotated = new Vector3(
+            axis.X * cos - axis.Z * sin,
+            0f,
+            axis.X * sin + axis.Z * cos);
+
+        return threat - rotated * standoff;
+    }
+
+    /// <summary>Named <c>Against</c>, not <c>Engagement</c>: a method sharing a name with the type it
+    /// returns makes every call site inside a collection expression ambiguous to read.</summary>
+    /// <summary>
+    /// One member's view of the squad's threat.
+    ///
+    /// <paramref name="squadSize"/> is the term that makes numerical advantage mean something. A
+    /// threat shoots one man at a time, so the chance it is shooting at THIS man is roughly one over
+    /// the number of men it has to choose between — and Engagement.TheirTargetingLikelihood already
+    /// means exactly that.
+    ///
+    /// Without it every man priced incoming fire as though he were facing the enemy alone, so six
+    /// men against one rifleman each expected the full weight of his fire and concluded that closing
+    /// was as dangerous for them as for a lone man. That is why a squad that outnumbered a defender
+    /// six to one would not assault him, and it is the "when you outnumber your opponent, flank"
+    /// doctrine appearing as arithmetic rather than as a rule.
+    /// </summary>
+    private static Engagement Against(
+        in SquadPlanInput input,
+        float range,
+        SelfExposure exposure,
+        int squadSize,
+        float threatExtraMoa = 0f)
+        => new(
+            range,
+            input.ThreatWeapon,
+            threatExtraMoa,
+            TargetExposure.Full,
+            exposure,
+            1f / MathF.Max(1, squadSize));
+
+    private static Vector3 Centre(IReadOnlyList<SquadMemberState> members)
+    {
+        Vector3 sum = Vector3.Zero;
+        foreach (var member in members) sum += member.Position;
+        return sum / members.Count;
     }
 
     private static Vector3 Horizontal(Vector3 value) => value with { Y = 0f };
 
-    private static float DistanceSquared(Vector3 a, Vector3 b)
+    private static float Horizontal(Vector3 a, Vector3 b)
     {
         float dx = a.X - b.X;
         float dz = a.Z - b.Z;
-        return dx * dx + dz * dz;
+        return MathF.Sqrt(dx * dx + dz * dz);
     }
 }

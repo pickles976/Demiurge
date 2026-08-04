@@ -18,7 +18,23 @@ namespace Demiurge
         float BenchMoa,
         float RecoilPerShotMoa,
         float RecoilDecayMoaPerSecond,
-        float RecoilCapMoa);
+        float RecoilCapMoa,
+        /// <summary>
+        /// How well a competent shooter can hold this weapon's sights on a target, as a 95% group
+        /// diameter. This is a property of the weapon-shooter SYSTEM — sight radius, sight picture,
+        /// trigger weight, how steady the thing is — not of the shooter alone, which is why it lives
+        /// per profile rather than as one constant.
+        ///
+        /// It exists because a flat AI aim term made per-weapon dispersion arithmetically invisible:
+        /// Spread.Combine(720, 4) = 720.01, so BenchMoa contributed 0.04 MOA out of 720 and every
+        /// weapon had identical hit probability at every range. That is why CombatBehavior needed
+        /// MaxEngagementRangeFor to reintroduce weapon character by hand.
+        ///
+        /// Calibrated against Hitchman, ORO-T-160 (1952): a rifleman scores roughly 6% (marksman) to
+        /// 25% (expert) on a man-sized target at 310 yards. The per-NPC skill dial scales this term,
+        /// which is what reproduces that spread.
+        /// </summary>
+        float SightingMoa = 0f);
 
     public static class BallisticsConfig
     {
@@ -29,7 +45,24 @@ namespace Demiurge
         public const float SprintingMoa = 60f;
         public const float PostSprintMoa = 40f;
         public const float PostSprintSeconds = 3f;
-        public const float SuppressedMoa = 50f;
+        /// <summary>
+        /// Dispersion added while rounds are landing nearby.
+        ///
+        /// This was 50, which measured at a 3% reduction in a carbine's outgoing damage — a carbine
+        /// already carries ~283 MOA of sighting and recoil, and Combine(283, 50) = 287. Suppression
+        /// was arithmetically negligible, which meant covering fire did nothing, which meant bounding
+        /// never paid for itself and squads stood still. SquadTacticsTests.CoveringFireIsWhat-
+        /// MakesABoundAffordable pins this so the number cannot quietly drift back.
+        ///
+        /// 145 removes about a fifth of a carbine's damage and rather more of a bolt gun's, since it
+        /// is added in quadrature and a precision weapon has less inherent dispersion to hide it in.
+        /// Suppression therefore costs the marksman more than the sprayer, which is both realistic and
+        /// what makes a base of fire worth forming.
+        ///
+        /// It applies to players as well as NPCs — being shot at degrades your aim by the same
+        /// amount, which is the point.
+        /// </summary>
+        public const float SuppressedMoa = 145f;
         public const float SuppressionSeconds = 2f;
         public const float StanceChangeMoa = 30f;
         public const float StanceChangeSeconds = 0.5f;
@@ -44,31 +77,36 @@ namespace Demiurge
                 BenchMoa: 2f,
                 RecoilPerShotMoa: 70f,
                 RecoilDecayMoaPerSecond: 70f,
-                RecoilCapMoa: 70f),
+                RecoilCapMoa: 70f,
+                SightingMoa: 60f),
             WeaponBallisticsProfile.SemiAutomaticRifle => new BallisticsStats(
                 ProjectileSpeed: 800f,
                 BenchMoa: 3f,
                 RecoilPerShotMoa: 32f,
                 RecoilDecayMoaPerSecond: 40f,
-                RecoilCapMoa: 190f),
+                RecoilCapMoa: 190f,
+                SightingMoa: 150f),
             WeaponBallisticsProfile.Carbine => new BallisticsStats(
                 ProjectileSpeed: 715f,
                 BenchMoa: 4f,
                 RecoilPerShotMoa: 36f,
                 RecoilDecayMoaPerSecond: 30f,
-                RecoilCapMoa: 220f),
+                RecoilCapMoa: 220f,
+                SightingMoa: 200f),
             WeaponBallisticsProfile.Pistol => new BallisticsStats(
                 ProjectileSpeed: 375f,
                 BenchMoa: 8f,
                 RecoilPerShotMoa: 30f,
                 RecoilDecayMoaPerSecond: 35f,
-                RecoilCapMoa: 150f),
+                RecoilCapMoa: 150f,
+                SightingMoa: 400f),
             WeaponBallisticsProfile.Throwable => new BallisticsStats(
                 ProjectileSpeed: GrenadeConfig.ThrowSpeed,
                 BenchMoa: 0f,
                 RecoilPerShotMoa: 0f,
                 RecoilDecayMoaPerSecond: 0f,
-                RecoilCapMoa: 0f),
+                RecoilCapMoa: 0f,
+                SightingMoa: 0f),
             _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, null),
         };
 

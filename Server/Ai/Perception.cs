@@ -10,6 +10,16 @@ internal sealed class Perception
     private static readonly float MinimumViewDot =
         MathF.Cos(FieldOfViewDegrees * 0.5f * MathF.PI / 180f);
 
+    /// <summary>Centre mass was reachable: the whole silhouette is available to shoot at.</summary>
+    private static readonly TargetExposure FullyExposed = TargetExposure.Full;
+
+    /// <summary>
+    /// Only the peek height answered, so the target is behind something with its head and shoulders
+    /// over the top. A fifth of a standing man's presented area, which is what makes shooting at a
+    /// man in a trench genuinely poor value rather than merely slightly worse.
+    /// </summary>
+    private static readonly TargetExposure PeekingExposure = TargetExposure.Of(0.2f);
+
     private readonly ChunkMap terrain;
 
     public Perception(ChunkMap terrain) => this.terrain = terrain;
@@ -100,8 +110,9 @@ internal sealed class Perception
             // the cover and the NPC never acquired a contact, so it never returned fire. The second
             // ray is only paid when centre mass is genuinely blocked, which is the uncommon case.
             // Whichever point answered is remembered so CombatBehavior aims where perception saw.
-            foreach (float height in GunConfig.AimHeights)
+            for (int heightIndex = 0; heightIndex < GunConfig.AimHeights.Length; heightIndex++)
             {
+                float height = GunConfig.AimHeights[heightIndex];
                 Vector3 aim = target.Position + Vector3.UnitY * height;
                 Vector3 delta = aim - origin;
                 float aimDistance = delta.Length();
@@ -113,6 +124,16 @@ internal sealed class Perception
                 brain.Contacts.Observe(target.Id, target.Position, tick);
                 brain.PerceivedTargetId = target.Id;
                 brain.PerceivedAimHeight = height;
+
+                // Exposure, for free, from which aim point answered. Centre mass clear means the
+                // whole silhouette is available; only the peek height clear means head and shoulders
+                // over cover. It feeds the target radius in WeaponEffectiveness, so a man behind a
+                // parapet is genuinely harder to hit and not merely harder to see — and it costs no
+                // rays beyond the ones perception was already casting.
+                brain.PerceivedExposure = heightIndex == 0
+                    ? FullyExposed
+                    : PeekingExposure;
+
                 observed = new AiContact(target.Id, target.Position, tick, 1f);
                 break;
             }

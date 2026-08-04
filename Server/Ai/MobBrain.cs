@@ -16,22 +16,79 @@ internal sealed class MobBrain
     public int SquadIndex { get; set; }
 
     /// <summary>
-    /// Envelope side from the squad plan. Persisted rather than recomputed so it is sticky: a replan
-    /// mid-manoeuvre must not send a committed flanker back across the threat axis.
-    /// </summary>
-    public FlankSide FlankSide { get; set; }
-
-    /// <summary>
     /// How many bounds this member has completed. Each one shortens its standoff, which is what makes
     /// the squad close in rather than shuffle at a fixed range.
     /// </summary>
     public int BoundIndex { get; set; }
 
     /// <summary>
-    /// In position and able to shoot. The squad plan will not order anyone to move unless at least one
-    /// member is set, which is what keeps a bound covered by fire.
+    /// Tick this actor's current bound began, or 0 when it is not moving.
+    ///
+    /// <see cref="SquadTactics"/> uses it to stop waiting for a mover that cannot arrive. Bounding is
+    /// self-clocking — the next man goes when the last one gets there — and self-clocking deadlocks
+    /// the moment somebody is pinned, blocked, or sent somewhere unreachable.
     /// </summary>
-    public bool IsSet => AtCover;
+    public uint MovingSinceTick { get; set; }
+
+    /// <summary>
+    /// Bearing around the threat this actor has committed to for its current bound.
+    ///
+    /// A Commitment rather than a bare float because the 2 Hz replan would otherwise re-deal it every
+    /// pass and swap a mover to the far side of the threat mid-manoeuvre — measured, that turned 37
+    /// bounds into 13 m of displacement per man. The expiry also means a bearing cannot outlive the
+    /// bound it belongs to if something forgets to clear it.
+    /// </summary>
+    public Commitment<float> BoundBearing { get; set; } = Commitment<float>.None;
+
+    /// <summary>
+    /// Fraction of the believed TARGET's silhouette perception last had a line to. Feeds the target
+    /// radius in <see cref="WeaponEffectiveness"/>, so a target in cover is genuinely harder to hit
+    /// rather than merely harder to see.
+    ///
+    /// This is how exposed the ENEMY is. It is not, and must not be confused with, how exposed this
+    /// actor is — see <see cref="SelfExposure"/>. Feeding one into the other tells a squad it is
+    /// protected whenever its target is, which makes holding look free and manoeuvre look suicidal.
+    /// </summary>
+    public TargetExposure PerceivedExposure { get; set; } = TargetExposure.Full;
+
+    /// <summary>
+    /// How much of THIS actor a shooter can reach where it currently stands, 0..1.
+    ///
+    /// Derived from what the actor has actually done about cover rather than from a raycast, because
+    /// a per-actor self-exposure ray would cost one more ray per NPC per tick and the states that
+    /// matter are already tracked: a man in a finished fighting position is hard to hit, a man at a
+    /// cover position is harder than one in the open, and everyone else is a standing target.
+    /// </summary>
+    public SelfExposure SelfExposure => SelfExposure.Of(
+        Entrenched ? EntrenchedSelfExposure.Fraction
+        : AtCover ? CoveredExposure
+        : 1f);
+
+    /// <summary>Dug in below grade with a parapet in front: only the head and shoulders needed to
+    /// shoot over it are available.</summary>
+    public static readonly SelfExposure EntrenchedSelfExposure = SelfExposure.Of(0.15f);
+
+    /// <summary>At a cover position but not dug in — using terrain that was already there.</summary>
+    private const float CoveredExposure = 0.35f;
+
+    /// <summary>
+    /// Scales this actor's sighting error. 1 is a competent soldier, above 1 is worse. Execution
+    /// only — scoring always uses the nominal value, so a poor shot does not correctly reason about
+    /// being a poor shot.
+    /// </summary>
+    public float SkillFactor { get; set; } = 1f;
+
+    /// <summary>
+    /// Next tick this actor may fire, derived from the chosen firing solution's rate rather than from
+    /// a per-weapon burst schedule.
+    /// </summary>
+    public uint NextShotTick { get; set; }
+
+    /// <summary>
+    /// Gunfire this actor remembers, ranked by salience rather than recency. Replaces a single
+    /// last-write-wins slot in which a distant shot erased a point-blank one.
+    /// </summary>
+    public HeardShots Heard { get; } = new();
     public uint ObjectiveRevision { get; set; }
     /// <summary>True only after this actor's own path reaches its formation slot. Proximity to the
     /// shared flag is insufficient: a relocated flank member can respawn inside the capture radius

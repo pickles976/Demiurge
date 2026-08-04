@@ -13,16 +13,15 @@ internal readonly record struct SquadObjective(
 /// </summary>
 internal sealed class SquadBlackboard
 {
-    public const int MaximumMembers = 4;
-    public const int MaximumEngagementTokens = 2;
-    public const int MaximumAdvanceTokens = 2;
+    /// <summary>
+    /// Men per squad. Six rather than four so a squad can hold a real base of fire AND a real
+    /// manoeuvre element at the same time, which is what makes fire-and-movement legible.
+    /// </summary>
+    public const int MaximumMembers = 6;
 
     private const int ContactShareDelayTicks =
         (35 * NetworkConfig.TickRate + 99) / 100;
     private const int ClaimLeaseTicks = 2 * NetworkConfig.TickRate;
-    private const int EngagementTurnTicks = 3 * NetworkConfig.TickRate;
-    private const int EngagementRefreshGraceTicks = 2;
-    private const int EngagementCooldownTicks = NetworkConfig.TickRate;
     private const float ClaimRadius = 1.5f;
     private const float ClaimRadiusSquared = ClaimRadius * ClaimRadius;
 
@@ -34,17 +33,23 @@ internal sealed class SquadBlackboard
         Vector3 Position,
         uint ExpiresTick);
 
-    private readonly record struct TokenLease(
-        uint StartedTick,
-        uint LastRefreshTick);
+    // Engagement and advance permits used to live here: rotating two-man leases that decided who was
+    // allowed to shoot and who was allowed to close, independently of the squad's actual plan.
+    //
+    // They were a SECOND arbitration layer, and it disagreed with the first. SquadTactics would assign
+    // four men to the base of fire and the blackboard would then forbid two of them from firing, which
+    // is the whole point of a base of fire. Measured against a lone rifleman, riflemen stood next to
+    // each other holding fire and waiting for a turn that a three-second lease and a one-second
+    // cooldown doled out.
+    //
+    // The allocation is now the only authority: BaseOfFire means shoot, Bound means move. Nothing
+    // second-guesses it.
 
     private readonly Queue<ContactReport> reports = new();
-    private readonly ContactMemory sharedContacts = new();
+    /// <summary>The squad's collective belief, which outlives any one man's attention. See
+    /// ContactMemory.SquadRetentionTicks.</summary>
+    private readonly ContactMemory sharedContacts = new(ContactMemory.SquadRetentionTicks);
     private readonly Dictionary<ushort, PositionClaim> claims = new();
-    private readonly Dictionary<ushort, TokenLease> engagementTokens = new();
-    private readonly Dictionary<ushort, uint> engagementCooldowns = new();
-    private readonly Dictionary<ushort, TokenLease> advanceTokens = new();
-    private readonly Dictionary<ushort, uint> advanceCooldowns = new();
     private readonly List<ushort> expiredActors = new(MaximumMembers);
     private readonly List<ushort> roster = new(MaximumMembers);
     private readonly Dictionary<ushort, SquadTacticalOrder> orders = new(MaximumMembers);
@@ -94,10 +99,6 @@ internal sealed class SquadBlackboard
     public void Release(ushort actorId)
     {
         claims.Remove(actorId);
-        engagementTokens.Remove(actorId);
-        engagementCooldowns.Remove(actorId);
-        advanceTokens.Remove(actorId);
-        advanceCooldowns.Remove(actorId);
         orders.Remove(actorId);
     }
 
@@ -145,10 +146,6 @@ internal sealed class SquadBlackboard
         sharedContacts.Prune(tick);
 
         PruneClaims(tick);
-        PruneTokens(engagementTokens, tick);
-        PruneTokens(advanceTokens, tick);
-        PruneCooldowns(engagementCooldowns, tick);
-        PruneCooldowns(advanceCooldowns, tick);
     }
 
     public void ShareContactsWith(ContactMemory member, uint tick)
@@ -180,27 +177,7 @@ internal sealed class SquadBlackboard
 
     public void ReleaseClaim(ushort actorId) => claims.Remove(actorId);
 
-    public bool TryAcquireEngagement(ushort actorId, uint tick)
-        => TryAcquireToken(
-            actorId,
-            tick,
-            engagementTokens,
-            engagementCooldowns,
-            MaximumEngagementTokens);
 
-    public bool TryAcquireAdvance(ushort actorId, uint tick)
-        => TryAcquireToken(
-            actorId,
-            tick,
-            advanceTokens,
-            advanceCooldowns,
-            MaximumAdvanceTokens);
-
-    public void ReleaseEngagement(ushort actorId)
-        => engagementTokens.Remove(actorId);
-
-    public void ReleaseAdvance(ushort actorId)
-        => advanceTokens.Remove(actorId);
 
     public bool CanReserveGrenade(uint tick) => tick >= nextGrenadeTick;
 
@@ -214,35 +191,6 @@ internal sealed class SquadBlackboard
 
     public void CancelGrenadeReservation() => nextGrenadeTick = 0;
 
-    private static bool TryAcquireToken(
-        ushort actorId,
-        uint tick,
-        Dictionary<ushort, TokenLease> tokens,
-        Dictionary<ushort, uint> cooldowns,
-        int maximumTokens)
-    {
-        if (tokens.TryGetValue(actorId, out var lease))
-        {
-            if (tick - lease.StartedTick < EngagementTurnTicks)
-            {
-                tokens[actorId] = lease with { LastRefreshTick = tick };
-                return true;
-            }
-
-            tokens.Remove(actorId);
-            cooldowns[actorId] = tick + EngagementCooldownTicks;
-            return false;
-        }
-
-        if (cooldowns.TryGetValue(actorId, out uint cooldown) && tick < cooldown)
-            return false;
-        if (tokens.Count >= maximumTokens)
-            return false;
-
-        tokens[actorId] = new TokenLease(tick, tick);
-        return true;
-    }
-
     private void PruneClaims(uint tick)
     {
         expiredActors.Clear();
@@ -253,17 +201,6 @@ internal sealed class SquadBlackboard
             claims.Remove(actorId);
     }
 
-    private void PruneTokens(
-        Dictionary<ushort, TokenLease> tokens,
-        uint tick)
-    {
-        expiredActors.Clear();
-        foreach (var pair in tokens)
-            if (tick - pair.Value.LastRefreshTick > EngagementRefreshGraceTicks)
-                expiredActors.Add(pair.Key);
-        foreach (ushort actorId in expiredActors)
-            tokens.Remove(actorId);
-    }
 
     private void PruneCooldowns(
         Dictionary<ushort, uint> cooldowns,

@@ -19,53 +19,57 @@ public class CombatBehaviorTests
             100 + MobBrain.IncomingFireResponseTicks));
     }
 
+    // ShouldAdvance, AimMoaForRange, PrefersToHoldFire and MaxEngagementRangeFor are gone. They
+    // encoded weapon character as constants keyed on ItemType — a 75 m PPSh ceiling, a 150 m Mosin
+    // ceiling, a flat 720 MOA aim error — because the flat aim term made the ballistics table's own
+    // per-weapon dispersion arithmetically invisible to the AI.
+    //
+    // The behaviour they described is now derived, so the tests describe it the same way: as
+    // orderings that must hold, not as the constants that used to produce them. A test written
+    // against a heuristic encodes that heuristic's special cases and then obstructs the general
+    // system that replaced it.
+
     [Theory]
-    [InlineData(0.10f, 60f, true)]
-    [InlineData(0.10f, 35f, true)]
-    [InlineData(0.60f, 60f, false)]
-    [InlineData(0.10f, 15f, false)]
-    public void LowProbabilityFireClosesOnlyFromLongRange(
-        float probability,
-        float range,
-        bool expected)
-        => Assert.Equal(
-            expected,
-            CombatBehavior.ShouldAdvance(probability, range));
-
-    [Fact]
-    public void AimBecomesTighterAsRangeIncreases()
+    [InlineData(ItemType.Ppsh)]
+    [InlineData(ItemType.Ak47)]
+    [InlineData(ItemType.Sks)]
+    [InlineData(ItemType.Mosin)]
+    public void EveryWeaponEventuallyStopsBeingWorthFiring(ItemType weapon)
     {
-        float close = CombatBehavior.AimMoaForRange(20f);
-        float medium = CombatBehavior.AimMoaForRange(50f);
-        float far = CombatBehavior.AimMoaForRange(90f);
-
-        Assert.True(close > medium);
-        Assert.True(medium > far);
-        Assert.Equal(720f, close);
-        Assert.Equal(180f, far);
-        Assert.Equal(far, CombatBehavior.AimMoaForRange(200f));
+        // The engagement ceiling still exists — it is just a consequence of a round stopping being
+        // worth its expected return, rather than a number somebody wrote down per weapon.
+        Assert.True(Reach(weapon) > 0f, $"{weapon} cannot engage at any range");
+        Assert.True(Reach(weapon) < 1000f, $"{weapon} never stops engaging");
     }
 
-    [Theory]
-    [InlineData(ItemType.Ppsh, 76f, true)]
-    [InlineData(ItemType.Ppsh, 75f, false)]
-    [InlineData(ItemType.Ppsh, 55f, false)]
-    [InlineData(ItemType.Ppsh, 40f, false)]
-    [InlineData(ItemType.Ppsh, 20f, false)]
-    [InlineData(ItemType.Sks, 40f, false)]
-    public void PpshHoldsFireUntilItsEffectiveRange(
-        ItemType weapon,
-        float range,
-        bool expected)
-        => Assert.Equal(expected, CombatBehavior.PrefersToHoldFire(weapon, range));
+    [Fact]
+    public void ReachOrdersWeaponsFromSubmachineGunToBoltAction()
+    {
+        Assert.True(Reach(ItemType.Ppsh) < Reach(ItemType.Ak47));
+        Assert.True(Reach(ItemType.Ak47) < Reach(ItemType.Sks));
+        Assert.True(Reach(ItemType.Sks) < Reach(ItemType.Mosin));
+    }
 
-    [Theory]
-    [InlineData(ItemType.Mosin, 150f)]
-    [InlineData(ItemType.Sks, 100f)]
-    [InlineData(ItemType.Ppsh, 75f)]
-    [InlineData(ItemType.Ak47, 70f)]
-    public void EngagementCeilingIsWeaponSpecific(ItemType weapon, float expected)
-        => Assert.Equal(expected, CombatBehavior.MaxEngagementRangeFor(weapon));
+    [Fact]
+    public void ADeadShotReachesFurtherThanAPoorOne()
+    {
+        Assert.True(
+            Reach(ItemType.Sks, skillFactor: 0.5f) > Reach(ItemType.Sks, skillFactor: 2f),
+            "the skill dial scales sighting error, so it must scale reach with it");
+    }
+
+    /// <summary>Furthest range at which this weapon still returns a firing solution.</summary>
+    private static float Reach(ItemType weapon, float skillFactor = 1f)
+    {
+        float last = 0f;
+        for (float range = 1f; range <= 1000f; range += 1f)
+        {
+            if (WeaponEffectiveness.Best(weapon, range, TargetExposure.Full, 0f, skillFactor).DamagePerSecond <= 0f)
+                break;
+            last = range;
+        }
+        return last;
+    }
 
     [Theory]
     [InlineData(99f, true, true)]

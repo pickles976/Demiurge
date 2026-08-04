@@ -14,9 +14,28 @@ public readonly record struct AiContact(
 /// </summary>
 public sealed class ContactMemory
 {
+    /// <summary>How long ONE man keeps believing in an enemy he can no longer see.</summary>
     public const int RetentionTicks = 5 * NetworkConfig.TickRate;
 
+    /// <summary>
+    /// How long a SQUAD keeps believing, which is deliberately much longer.
+    ///
+    /// A squad's belief is not one man's attention and must not decay like it. Perception has a 110
+    /// degree field of view, so a man who turns to run a flank stops seeing the enemy he is flanking
+    /// — and with a single five-second memory shared by everyone, two movers looking away was enough
+    /// to make the whole squad forget. Losing the contact then cancelled the manoeuvre, which turned
+    /// them back toward the threat, which reacquired it: measured, a six-man assault advanced for
+    /// twenty seconds and then fell back, with 36% of actor-ticks believing in no enemy at all.
+    ///
+    /// Twenty seconds is long enough to cross the ground a bound covers, and short enough that a
+    /// squad still eventually loses a man who has genuinely broken contact.
+    /// </summary>
+    public const int SquadRetentionTicks = 20 * NetworkConfig.TickRate;
+
+    private readonly int retentionTicks;
     private readonly Dictionary<ushort, Observation> observations = new();
+
+    public ContactMemory(int retentionTicks = RetentionTicks) => this.retentionTicks = retentionTicks;
 
     public int Count => observations.Count;
 
@@ -102,8 +121,8 @@ public sealed class ContactMemory
         return nearestDistance < float.MaxValue;
     }
 
-    private static float Confidence(uint seen, uint now)
-        => Math.Clamp(1f - (now - seen) / (float)RetentionTicks, 0f, 1f);
+    private float Confidence(uint seen, uint now)
+        => Math.Clamp(1f - (now - seen) / (float)retentionTicks, 0f, 1f);
 
     private readonly record struct Observation(Vector3 Position, uint LastSeenTick);
 }

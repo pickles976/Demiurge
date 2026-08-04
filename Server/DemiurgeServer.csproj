@@ -4,6 +4,15 @@
       <TargetFramework>net10.0</TargetFramework>
       <ImplicitUsings>enable</ImplicitUsings>
       <Nullable>enable</Nullable>
+      <!--
+        CS8509: a switch expression did not handle all possible inputs.
+
+        This is the build-time half of ActorIntent. A closed union only prevents the
+        decision-overridden-elsewhere bug class if adding a case forces every consumer to say what it
+        does about it; left as a warning it is noise that scrolls past. Promoted to an error so the
+        compiler enforces what the type is for.
+      -->
+      <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
     </PropertyGroup>
     <ItemGroup>
       <PackageReference Include="RiptideNetworking.Riptide" Version="2.2.1" />

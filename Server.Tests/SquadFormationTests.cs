@@ -56,20 +56,24 @@ public class SquadFormationTests
     [Fact]
     public void OverStrengthSquadShedsItsFarthestMembers()
     {
-        // Five men cannot be one squad. The outlier is the one that leaves, not whichever the
+        // One man more than a squad holds. The outlier is the one that leaves, not whichever the
         // dictionary happened to yield first.
         var assignments = Plan(
             At(60000, 0, 0f, 0f),
             At(60001, 0, 1f, 0f),
             At(60002, 0, 0f, 1f),
             At(60003, 0, 1f, 1f),
-            At(60004, 0, 25f, 25f));
+            At(60004, 0, 2f, 0f),
+            At(60005, 0, 0f, 2f),
+            At(60006, 0, 25f, 25f));
 
         int core = assignments[60000];
         Assert.Equal(core, assignments[60001]);
         Assert.Equal(core, assignments[60002]);
         Assert.Equal(core, assignments[60003]);
-        Assert.NotEqual(core, assignments[60004]);
+        Assert.Equal(core, assignments[60004]);
+        Assert.Equal(core, assignments[60005]);
+        Assert.NotEqual(core, assignments[60006]);
         Assert.Equal(
             SquadBlackboard.MaximumMembers,
             assignments.Values.Count(squad => squad == core));

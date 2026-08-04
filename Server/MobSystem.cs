@@ -7,6 +7,37 @@ namespace Demiurge.GameServer
     /// Minimal server-side mob driver. Mobs are still ServerPlayers: this class only chooses intent,
     /// while movement, replication, health, equipped items, and weapon hit detection stay on the
     /// existing player/object systems.
+    ///
+    /// <para><b>Who decides what.</b> Every bug in this system so far has had one shape: a decision
+    /// made in one place and silently overridden in another. Eight of them in a single pass —
+    /// a cover gate vetoing the squad's movement order, two blackboard permits vetoing the squad's
+    /// firing and movement orders, an entrenchment flag vetoing a bound, an individual's own contact
+    /// state vetoing a squad manoeuvre, a roster loop discarding the allocation's members, a replan
+    /// overriding its own previous bearing, and a five-second individual memory overriding the
+    /// squad's belief.</para>
+    ///
+    /// <para>So each decision has exactly ONE owner, and code that is not the owner may read the
+    /// answer but never recompute or override it:</para>
+    ///
+    /// <list type="table">
+    /// <item><term>Which squad a man is in</term><description><see cref="SquadFormation"/>, by live
+    /// proximity — except while he is committed to a move, when he keeps the squad he has.</description></item>
+    /// <item><term>What the squad believes about the enemy</term><description><see cref="SquadBlackboard"/>.
+    /// Its belief deliberately outlives any individual's, because a flanker cannot see behind
+    /// himself.</description></item>
+    /// <item><term>Which objective a squad is on</term><description><see cref="CommanderAi"/>.</description></item>
+    /// <item><term>Who moves, who shoots, and on what bearing</term><description><see cref="SquadTactics"/>,
+    /// priced in <see cref="CombatValue"/>. Nothing else may gate movement or fire. The engagement
+    /// and advance permits that used to live on the blackboard were exactly this mistake.</description></item>
+    /// <item><term>Whether a shot is worth taking</term><description><see cref="WeaponEffectiveness"/>.
+    /// A zero firing solution IS the decision to hold fire; there is no separate range table.</description></item>
+    /// <item><term>Where a man physically goes</term><description><see cref="NavigationSystem"/> and
+    /// <see cref="PathFollower"/>, given a destination they do not choose.</description></item>
+    /// <item><term>How a decision survives a replan</term><description><see cref="Commitment{T}"/>.
+    /// Sticky bearings and sticky squad membership are the same problem and use the same type.</description></item>
+    /// </list>
+    ///
+    /// <para>This class owns none of those. It orchestrates them and executes their output.</para>
     /// </summary>
     internal sealed class MobSystem : IDisposable
     {
@@ -19,7 +50,18 @@ namespace Demiurge.GameServer
         private const int ConcealmentRequeryTicks = 3 * NetworkConfig.TickRate;
         private const int CoverCrouchTicks = 3 * NetworkConfig.TickRate / 4;
         private const int CoverStandTicks = NetworkConfig.TickRate;
-        private const int CoverQueriesPerTick = 1;
+        /// <summary>
+        /// Cover searches allowed per tick, server-wide.
+        ///
+        /// This was 1, which measured at 0-3 searches per SECOND across every NPC — cover cost
+        /// 0-400 us/tick inside a tick running 3.9 ms p50 against a 33 ms budget. It was not
+        /// protecting the budget; it was starving the behaviour, and NPCs that could not get a cover
+        /// query stood in the open and dug instead.
+        ///
+        /// Raised deliberately, and the tick percentile line is the gate: if [ServerTick] p99 moves
+        /// materially, lower this rather than making the query cheaper.
+        /// </summary>
+        private const int CoverQueriesPerTick = 8;
         private const float CoverThreatRequeryDistance = 5f;
         private const float TurnRadiansPerSecond = 180f * MathF.PI / 180f;
         private const float ObjectiveFormationRadius = 1.75f;
@@ -65,8 +107,29 @@ namespace Demiurge.GameServer
         private readonly Dictionary<(int Team, int Squad), (List<ushort> Members, Vector3 Sum)>
             rosterScratch = new();
         private readonly List<(int Team, int Squad)> emptySquads = [];
-        private readonly List<SquadTacticalInput> tacticalInputs = [];
+        private readonly List<SquadMemberState> tacticalInputs = [];
         private readonly List<SquadTacticalOrder> tacticalOrders = [];
+
+        /// <summary>
+        /// Bounds begun since the server started. Exposed because "did anybody actually manoeuvre"
+        /// cannot be observed from outside the AI — unlike stationary time and digging, which can be
+        /// read from actor positions and ChunkMap.EditVersion and therefore cannot be satisfied by an
+        /// AI that merely reports itself busy.
+        /// </summary>
+        public int BoundsStarted { get; private set; }
+
+        // Temporary diagnostics for the hilltop-assault investigation. Actor-ticks, not events.
+        public int DiagNoOrder;
+        public int DiagRoleNone;
+        public int DiagRoleBound;
+        public int DiagRoleBaseOfFire;
+        public int DiagBoundMoveCalls;
+        public int DiagCoverMoveCalls;
+        public int DiagMustEntrench;
+        public int DiagPerceptionAttempts;
+        public int DiagPerceptionObserved;
+        public int DiagSquadHasThreat;
+        public int DiagOwnContact;
         private int coverQueriesRemaining;
         private int timingTicks;
         private int timingAgentSamples;
@@ -223,8 +286,14 @@ namespace Demiurge.GameServer
                 {
                     var squad = BoardFor(actor, brain);
                     squad.ShareContactsWith(brain.Contacts, tick);
+                    DiagPerceptionAttempts++;
                     if (perception.Tick(actor, actors, brain, tick) is { } observed)
+                    {
+                        DiagPerceptionObserved++;
                         squad.Publish(observed, tick);
+                    }
+                    if (squad.TryGetPrimaryThreat(tick, out _)) DiagSquadHasThreat++;
+                    if (brain.Contacts.TryNearest(actor.Position, tick, out _)) DiagOwnContact++;
                 }
             timingPerceptionStopwatchTicks += Stopwatch.GetTimestamp() - started;
         }
@@ -302,32 +371,88 @@ namespace Demiurge.GameServer
 
             bool hasOrder = squad.TryGetOrder(mob.Id, out var order);
             bool bounding = hasOrder && order.Role == SquadRole.Bound;
+            if (!hasOrder) DiagNoOrder++;
+            else if (order.Role == SquadRole.None) DiagRoleNone++;
+            else if (order.Role == SquadRole.Bound) DiagRoleBound++;
+            else DiagRoleBaseOfFire++;
             bool assault = weapons.TryGetActiveWeapon(mob, out var activePrimary)
                 && activePrimary.Item.Type == ItemType.Ppsh;
             // A base of fire holds and shoots at where the target is, not only at a target it can
             // currently see. That is what buys the bounding man his move.
-            bool suppressing =
-                hasOrder
+            // Being ordered to the base of fire IS being the base of fire. It used to also require
+            // brain.IsSet (i.e. AtCover), which meant a man who could not reach cover never
+            // suppressed, so nobody was ever covered, so nobody ever moved.
+            bool suppressing = hasOrder && order.Role == SquadRole.BaseOfFire;
+            // "Is this shot worth taking from here?" is now answered by the firing solution rather
+            // than by asking whether the weapon happens to be a PPSh. A weapon whose expected return
+            // per round falls below WeaponEffectiveness.MinimumExpectedDamagePerRound yields a zero
+            // solution, which IS the decision to hold fire and close instead.
+            bool holdingForEffectiveRange =
+                brain.Contacts.TryNearest(mob.Position, tick, out var nearestContact)
+                && weapons.TryGetPrimaryWeapon(mob, out var rangeWeapon)
+                && WeaponEffectiveness.Best(
+                    rangeWeapon.Item.Type,
+                    HorizontalDistance(mob.Position, nearestContact.Position),
+                    // Reach, not this target's cover — see the matching note in CombatBehavior.
+                    TargetExposure.Full,
+                    extraMoa: 0f,
+                    brain.SkillFactor).DamagePerSecond <= 0f;
+
+            // Digging is what a base of fire does when the ground has not already given it cover, and
+            // it is never what a moving man does.
+            //
+            // This used to be `assault && ...`, i.e. PPSh carriers dug a fighting position before
+            // doing anything else — and because the movement branch below is `bounding &&
+            // !mustEntrench`, an SMG man ORDERED TO FLANK would dig instead. That is the weapon
+            // identity branch the scoring layer exists to remove: entrenchment now follows from being
+            // static and unprotected, which is true of a rifleman on bare ground and false of anyone
+            // already behind a wall.
+            // Digging has to be WORTH something, not merely permitted, and "worth" is the same
+            // currency as everything else: how much incoming damage the hole actually removes.
+            //
+            // A man already behind terrain, or already in a finished fighting position, has his
+            // exposure down near the floor — so another hole buys almost nothing and he should be
+            // shooting or moving instead. That is exactly what CombatValueTests pins as
+            // EntrenchingBuysNothingWhenAlreadyProtected, applied here rather than approximated by
+            // "is he at cover".
+            bool mustEntrench = false;
+            if (hasOrder
                 && order.Role == SquadRole.BaseOfFire
-                && brain.IsSet;
-            bool holdingForEffectiveRange = assault
-                && brain.Contacts.TryNearest(mob.Position, tick, out var nearestContact)
-                && CombatBehavior.PrefersToHoldFire(
-                    ItemType.Ppsh,
-                    HorizontalDistance(mob.Position, nearestContact.Position));
-            bool mustEntrench = assault
                 && !brain.HasCompletedInitialEntrenchment
-                && !brain.Entrenched;
+                && !brain.Entrenched
+                && brain.Contacts.TryNearest(mob.Position, tick, out var incomingFrom))
+            {
+                var self = new Combatant(
+                    weapons.TryGetPrimaryWeapon(mob, out var selfWeapon)
+                        ? selfWeapon.Item.Type
+                        : ItemType.Ak47,
+                    0f,
+                    brain.SkillFactor);
+                float range = HorizontalDistance(mob.Position, incomingFrom.Position);
+
+                float takenNow = CombatValue.Taken(
+                    self,
+                    [new Engagement(range, ItemType.Ak47, 0f, TargetExposure.Full,
+                        brain.SelfExposure, 1f)]);
+                float takenDugIn = CombatValue.Taken(
+                    self,
+                    [new Engagement(range, ItemType.Ak47, 0f, TargetExposure.Full,
+                        MobBrain.EntrenchedSelfExposure, 1f)]);
+
+                mustEntrench = takenNow - takenDugIn >= EntrenchWorthwhileDamagePerSecond;
+            }
+
             bool readyAtEntrenchPeek = !brain.Entrenched
                 || (!ShouldCrouchAtCover(brain, tick)
                     && HorizontalDistanceSquared(mob.Position, brain.CoverPeekPosition)
                         <= CoverArrivalDistance * CoverArrivalDistance);
+            // No engagement permit. Being assigned to the base of fire IS permission to shoot —
+            // the blackboard used to hand out two rotating three-second firing turns per squad, so
+            // four of six men were forbidden to fire at any moment while the allocation had them
+            // down as the base of fire.
             bool mayFire = !holdingForEffectiveRange
                 && !mustEntrench
-                && readyAtEntrenchPeek
-                && squad.TryAcquireEngagement(mob.Id, tick);
-            if (holdingForEffectiveRange)
-                squad.ReleaseEngagement(mob.Id);
+                && readyAtEntrenchPeek;
             bool underFire =
                 brain.IsUnderFire(tick)
                 || mob.Spread.SuppressionMoa > 1f;
@@ -341,13 +466,42 @@ namespace Demiurge.GameServer
                 suppressing && mayFire);
             timingCombatStopwatchTicks += Stopwatch.GetTimestamp() - combatStarted;
 
-            if (combatOwnsTick)
+            // A bound is executed whether or not COMBAT owns the tick.
+            //
+            // This branch used to sit entirely inside `if (combatOwnsTick)`, and combat.Tick returns
+            // false whenever this actor personally has no contact — which is 36% of the time, because
+            // perception's 110 degree field of view means a man running a flank cannot see the enemy
+            // he is flanking. The squad believed in the threat 94% of the time and ordered the bound;
+            // the individual didn't, so his own state vetoed it and he wandered off to his objective
+            // instead. Measured, 1742 actor-ticks under a bound order produced 892 bound movements.
+            //
+            // Manoeuvre is a SQUAD decision. Requiring the mover to independently agree there is an
+            // enemy is the same two-authorities mistake as the engagement permits.
+            // ONE decision, made here and nowhere else. Everything below reads `intent`; nothing
+            // recomputes whether this man may move or shoot. See ActorIntent for why.
+            // Order matters and is load-bearing:
+            //
+            //   Bound first, because a squad manoeuvre outranks this actor's own combat state — a
+            //     flanker cannot see the man he is flanking, so requiring his personal agreement was
+            //     what stopped half the bounds executing.
+            //   PursueObjective next, because with no combat there is nothing to entrench against.
+            //     Getting this below Entrench made every NPC dig at spawn instead of advancing.
+            //   Entrench and SeekCover last, both inside combat.
+            ActorIntent decision =
+                bounding && !mustEntrench ? new ActorIntent.Bound(order.Destination, order.Bearing)
+                : !combatOwnsTick ? new ActorIntent.PursueObjective()
+                : mustEntrench ? new ActorIntent.Entrench()
+                : new ActorIntent.SeekCover(MayAdvance: true);
+
+            if (decision is not ActorIntent.PursueObjective)
             {
                 brain.Navigation.Progress.Reset();
                 Vector3 combatIntent;
                 bool combatJump;
-                if (bounding && !mustEntrench)
+                if (decision is ActorIntent.Entrench) DiagMustEntrench++;
+                if (decision is ActorIntent.Bound)
                 {
+                    DiagBoundMoveCalls++;
                     UpdateBoundMovement(
                         mob,
                         brain,
@@ -364,12 +518,11 @@ namespace Demiurge.GameServer
                     bool assaultWaitingInPosition = assault
                         && hasOrder
                         && order.Role == SquadRole.BaseOfFire;
-                    bool mayAdvance =
-                        !assaultWaitingInPosition
-                        && (underFire
-                            || wantsAdvance && squad.TryAcquireAdvance(mob.Id, tick));
-                    if (underFire || !mayAdvance)
-                        squad.ReleaseAdvance(mob.Id);
+                    // No advance permit either. Whether this man moves is the allocation's call,
+                    // and it already made it — Bound moves, BaseOfFire holds. A second rotating
+                    // lease could only disagree with it.
+                    bool mayAdvance = !assaultWaitingInPosition && (underFire || wantsAdvance);
+                    DiagCoverMoveCalls++;
                     UpdateCoverMovement(
                         mob,
                         brain,
@@ -393,10 +546,19 @@ namespace Demiurge.GameServer
                 // you to use. Never while firing or tucked in — SprintingMoa and the post-sprint
                 // penalty mean a man who sprints and shoots does neither well, so the state flags
                 // that buy the speed also pay for it.
+                // A bound sprints unconditionally. Crossing open ground is the whole job, and the
+                // squad is putting fire on the threat precisely so this man does not have to — the
+                // suppression term in SquadTactics is what paid for the move in the first place.
+                //
+                // The `!Shooting` guard below deliberately does not apply to him. It used to, and
+                // once bounds began executing outside the combat gate a mover had usually already
+                // been through combat.Tick and picked up Shooting, so the flag that makes him fast
+                // was cancelled by the flag that makes him inaccurate — he walked, and shot badly.
                 bool sprinting = combatIntent != Vector3.Zero
                     && !crouching
-                    && !mob.State.HasFlag(PlayerStateFlags.Shooting)
-                    && (bounding || !brain.AtCover || !mayFire);
+                    && (decision is ActorIntent.Bound
+                        || !mob.State.HasFlag(PlayerStateFlags.Shooting)
+                            && (!brain.AtCover || !mayFire));
 
                 mob.State = mob.State
                     .With(PlayerStateFlags.Moving, combatIntent != Vector3.Zero)
@@ -475,8 +637,6 @@ namespace Demiurge.GameServer
             }
             timingEntrenchStopwatchTicks += Stopwatch.GetTimestamp() - entrenchStarted;
 
-            squad.ReleaseEngagement(mob.Id);
-            squad.ReleaseAdvance(mob.Id);
             if (brain.HasCoverDestination)
             {
                 ClearCover(mob.Id, brain, squad);
@@ -760,13 +920,11 @@ namespace Demiurge.GameServer
 
             var squad = BoardFor(mob, brain);
             ClearCover(mob.Id, brain, squad);
-            squad.ReleaseEngagement(mob.Id);
-            squad.ReleaseAdvance(mob.Id);
             brain.ClearCombatTarget();
             brain.ClearGunshot();
             brain.ClearUnderFire();
             brain.Contacts.Forget();
-            brain.FlankSide = FlankSide.None;
+            brain.MovingSinceTick = 0;
             brain.BoundIndex = 0;
             brain.ResetEntrenchmentHistory();
             brain.AssaultDashActive = false;
@@ -828,18 +986,41 @@ namespace Demiurge.GameServer
             foreach (var pair in membersByTeam)
             {
                 SquadFormation.Plan(pair.Value, squadAssignments);
+
+                // TWO passes on purpose, and the split is load-bearing.
+                //
+                // These were one loop, and one loop meant one `continue` could skip both jobs at
+                // once. It did: a guard meant to stop a mid-bound man being REASSIGNED also skipped
+                // his ROSTER insertion, so every moving man silently left his squad, got no order,
+                // fell through to cover movement, stopped moving, rejoined, was ordered to bound, and
+                // was dropped again. Measured, 1.7% of actor-ticks bounding against 97% of movement
+                // going to cover seeking.
+                //
+                // Deciding which squad a man is in and recording that he is in it are different
+                // questions. Pass one may decline to change an answer; pass two has no `continue` and
+                // therefore cannot lose anybody.
+
                 foreach (var member in pair.Value)
                 {
                     if (!squadAssignments.TryGetValue(member.ActorId, out int squadIndex)
                         || !brains.TryGetValue(member.ActorId, out var brain))
                         continue;
-                    if (brain.SquadIndex != squadIndex)
-                    {
-                        // Leases belong to the squad that granted them.
-                        BoardFor(brain).Release(member.ActorId);
-                        brain.SquadIndex = squadIndex;
-                    }
-                    var key = (pair.Key, squadIndex);
+
+                    // A man mid-bound keeps his CURRENT squad rather than being reassigned by
+                    // proximity, so a replan cannot change his bearing and bound index under him
+                    // while he is crossing open ground.
+                    if (brain.MovingSinceTick != 0 || brain.SquadIndex == squadIndex) continue;
+
+                    // Leases belong to the squad that granted them.
+                    BoardFor(brain).Release(member.ActorId);
+                    brain.SquadIndex = squadIndex;
+                }
+
+                foreach (var member in pair.Value)
+                {
+                    if (!brains.TryGetValue(member.ActorId, out var brain)) continue;
+
+                    var key = (pair.Key, brain.SquadIndex);
                     if (!rosterScratch.TryGetValue(key, out var roster))
                         rosterScratch[key] = roster = ([], Vector3.Zero);
                     roster.Members.Add(member.ActorId);
@@ -880,42 +1061,68 @@ namespace Demiurge.GameServer
                 var threatActor = hasThreat
                     ? actors.FirstOrDefault(candidate => candidate.Id == threat.ActorId)
                     : null;
+                // The threat's weapon is what makes the range matchup decidable, so it is read from
+                // the believed contact rather than assumed. An unidentified threat is costed as a
+                // carbine: the middle of the range, and the safe error in both directions.
+                ItemType threatWeapon = threatActor is { } armed
+                    && weapons.TryGetPrimaryWeapon(armed, out var threatPrimary)
+                        ? threatPrimary.Item.Type
+                        : ItemType.Ak47;
+
                 tacticalInputs.Clear();
                 foreach (ushort actorId in squad.Roster)
                 {
                     if (!brains.TryGetValue(actorId, out var brain)) continue;
                     var actor = actors.FirstOrDefault(candidate => candidate.Id == actorId);
                     if (actor is null || actor.Status is { Health.Current: 0 }) continue;
-                    bool assault = weapons.TryGetPrimaryWeapon(actor, out var primary)
-                        && primary.Item.Type == ItemType.Ppsh;
-                    bool knowsReload = threatActor is { } enemy
-                        && CanRecognizeEnemyReload(actor, enemy);
-                    tacticalInputs.Add(new SquadTacticalInput(
+
+                    tacticalInputs.Add(new SquadMemberState(
                         actorId,
                         actor.Position,
-                        brain.FlankSide,
+                        weapons.TryGetPrimaryWeapon(actor, out var primary)
+                            ? primary.Item.Type
+                            : ItemType.Ak47,
+                        // How exposed HE is, not how exposed his target is. Passing PerceivedExposure
+                        // here told a squad it was protected whenever the man it was shooting at
+                        // happened to be behind cover, so holding scored brilliantly, moving scored
+                        // terribly, and six men would dig in against one rifle rather than flank it.
+                        brain.SelfExposure,
+                        brain.SkillFactor,
                         brain.BoundIndex,
-                        brain.IsSet,
-                        IsAssault: assault,
-                        ThreatReloading: knowsReload,
-                        BoundCommitted: brain.AssaultDashActive));
+                        brain.MovingSinceTick,
+                        brain.BoundBearing));
                 }
                 if (tacticalInputs.Count == 0) continue;
 
                 SquadTactics.Plan(
-                    threat.Position,
-                    hasThreat,
+                    new SquadPlanInput(
+                        threat.Position,
+                        hasThreat,
+                        threatWeapon,
+                        CombatValue.DefaultAggression,
+                        tick),
                     tacticalInputs,
                     tacticalOrders);
                 squad.SetOrders(tacticalOrders);
                 foreach (var order in tacticalOrders)
                     if (brains.TryGetValue(order.ActorId, out var brain))
                     {
-                        brain.FlankSide = order.Side;
-                        bool assault = tacticalInputs.Any(input =>
-                            input.ActorId == order.ActorId && input.IsAssault);
-                        if (order.Role == SquadRole.Bound && assault)
-                            brain.AssaultDashActive = true;
+                        if (order.Role == SquadRole.Bound)
+                        {
+                            if (brain.MovingSinceTick == 0)
+                            {
+                                brain.MovingSinceTick = tick;
+                                BoundsStarted++;
+                            }
+                            brain.BoundBearing = brain.BoundBearing.Renew(
+                                order.Bearing, tick, SquadTactics.BearingCommitmentTicks);
+                        }
+                        else
+                        {
+                            brain.MovingSinceTick = 0;
+                            brain.BoundBearing = brain.BoundBearing.Released();
+                        }
+
                         // Contact broken. The next fight opens at full standoff rather than resuming a
                         // closing sequence against an enemy that is no longer there.
                         if (order.Role == SquadRole.None)
@@ -1941,7 +2148,7 @@ namespace Demiurge.GameServer
                     centre.Z + MathF.Sin(angle) * ObjectiveFormationRadius);
             }
 
-            var slotPosition = WedgeFormation.Slot(centre, squad.Centre, slot);
+            var slotPosition = WedgeFormation.Slot(centre, squad.Centre, slot, squad.Roster.Count);
             return SurfaceQuery.SurfacePosition(terrain, slotPosition.X, slotPosition.Z);
         }
 
@@ -1962,6 +2169,23 @@ namespace Demiurge.GameServer
                && HorizontalDistance(observer.Position, enemy.Position)
                    <= EnemyReloadAwarenessRange;
 
+        /// <summary>
+        /// How close an advancing actor tries to get before it stops closing.
+        ///
+        /// Lives here rather than on CombatBehavior now that the engagement-range table is gone: this
+        /// is how far a MOVEMENT should carry, not how far a weapon reaches. Whether to advance at
+        /// all is decided by the firing solution; this only bounds how far the advance goes.
+        /// </summary>
+        private const float CombatAdvanceStandoff = 25f;
+
+        /// <summary>
+        /// Incoming damage, in health per second, below which digging a fighting position is not
+        /// worth the time it costs. Roughly a tenth of a man's health per second — enough that being
+        /// shot at seriously justifies a hole, and being shot at ineffectually from across the map
+        /// does not.
+        /// </summary>
+        private const float EntrenchWorthwhileDamagePerSecond = 10f;
+
         private bool TryCombatAdvancePosition(
             ServerPlayer mob,
             Vector3 threat,
@@ -1971,13 +2195,13 @@ namespace Demiurge.GameServer
             Vector3 toward = threat - mob.Position;
             toward.Y = 0f;
             float range = toward.Length();
-            if (range <= CombatBehavior.PreferredEngagementRange + 1f)
+            if (range <= CombatAdvanceStandoff + 1f)
                 return false;
 
             toward /= range;
             float travel = MathF.Min(
                 8f,
-                range - CombatBehavior.PreferredEngagementRange);
+                range - CombatAdvanceStandoff);
             Vector3 sample = mob.Position + toward * travel;
             if (!TryCellAt(sample, out var cell))
                 return false;

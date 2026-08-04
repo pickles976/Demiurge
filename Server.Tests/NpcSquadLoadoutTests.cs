@@ -5,7 +5,7 @@ namespace Demiurge.ServerTests;
 public class NpcSquadLoadoutTests
 {
     [Fact]
-    public void EveryFourManSpawnCohortIsTwoAssaultGunsARifleAndOneBoltGun()
+    public void EverySpawnCohortIsTwoAssaultGunsRiflesAndOneBoltGun()
     {
         for (int squad = 0; squad < 4; squad++)
         {
@@ -15,9 +15,19 @@ public class NpcSquadLoadoutTests
                 .Select(NpcSquadLoadout.PrimaryForSpawnOrdinal)
                 .ToArray();
 
-            Assert.Equal(2, weapons.Count(type => type == ItemType.Ppsh));
-            Assert.Equal(1, weapons.Count(type => type == ItemType.Sks));
-            Assert.Equal(1, weapons.Count(type => type == ItemType.Mosin));
+            Assert.Equal(
+                NpcSquadLoadout.AssaultWeaponsPerSquad,
+                weapons.Count(type => type == ItemType.Ppsh));
+            Assert.Equal(
+                NpcSquadLoadout.MarksmenPerSquad,
+                weapons.Count(type => type == ItemType.Mosin));
+            // Everyone else carries the ordinary rifle: the cohort scales with squad size rather
+            // than being a fixed four-man recipe.
+            Assert.Equal(
+                SquadBlackboard.MaximumMembers
+                    - NpcSquadLoadout.AssaultWeaponsPerSquad
+                    - NpcSquadLoadout.MarksmenPerSquad,
+                weapons.Count(type => type == ItemConfig.DefaultNpcPrimaryWeapon));
         }
     }
 }

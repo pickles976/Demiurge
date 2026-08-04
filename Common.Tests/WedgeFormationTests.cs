@@ -10,17 +10,81 @@ public class WedgeFormationTests
 {
     private static readonly Vector3 From = new(0f, 0f, 0f);
     private static readonly Vector3 Objective = new(0f, 0f, 100f);   // due north of the squad
+    private const int SquadSize = 4;
+
+    /// <summary>
+    /// Squad size and formation width are coupled, and nothing used to reconcile them.
+    ///
+    /// At a fixed 14 m spacing the envelope grew with the squad: four men put the flanks 28 m out,
+    /// six men put them 42 m out and 27 m back — roughly 50 m from the objective, off its tactical
+    /// ground and often onto terrain nobody can stand on. The outermost man pathed there, never
+    /// arrived, and tripped the sixty-second stuck watchdog; `EachConquestTeamCapturesBothCentral-
+    /// FlagsWithoutStuckRelocation` went red the moment squads went from four men to six.
+    ///
+    /// So the envelope is the fixed quantity and spacing is derived from it. Growing the squad packs
+    /// it tighter rather than reaching further, down to a one-grenade floor.
+    /// </summary>
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void TheEnvelopeIsBoundedForEverySquadSizeWeActuallyField(int squadSize)
+    {
+        for (int slot = 0; slot < squadSize; slot++)
+        {
+            var position = WedgeFormation.Slot(Objective, From, slot, squadSize);
+            float spread = Vector3.Distance(position, Objective);
+
+            Assert.True(
+                spread <= WedgeFormation.MaximumEnvelopeWidth * 1.25f,
+                $"squad of {squadSize}: slot {slot} sits {spread:0.0} m from the objective");
+        }
+    }
+
+    /// <summary>
+    /// Past a certain size the two constraints genuinely conflict: twelve men kept a grenade apart
+    /// need about 60 m of frontage, which no 30 m envelope can hold. Dispersion wins, and that is the
+    /// right priority — spread and reachable beats compact and grenade-bait. This pins WHICH one
+    /// gives, so the trade-off is a decision rather than an accident.
+    /// </summary>
+    [Fact]
+    public void BeyondAFieldableSquadTheGrenadeFloorWinsOverTheEnvelope()
+    {
+        Assert.Equal(WedgeFormation.MinimumSpacing, WedgeFormation.SpacingFor(12));
+        Assert.True(
+            WedgeFormation.SpacingFor(4) > WedgeFormation.MinimumSpacing,
+            "an ordinary squad should still be spreading to the envelope, not to the floor");
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(6)]
+    [InlineData(12)]
+    public void NoTwoMenAreEverInsideOneGrenade(int squadSize)
+    {
+        var slots = Enumerable.Range(0, squadSize)
+            .Select(slot => WedgeFormation.Slot(Objective, From, slot, squadSize))
+            .ToArray();
+
+        for (int a = 0; a < slots.Length; a++)
+            for (int b = a + 1; b < slots.Length; b++)
+                Assert.True(
+                    Vector3.Distance(slots[a], slots[b]) >= GrenadeConfig.DamageRadius,
+                    $"squad of {squadSize}: slots {a} and {b} are "
+                    + $"{Vector3.Distance(slots[a], slots[b]):0.0} m apart");
+    }
 
     [Fact]
     public void PointManTakesTheObjectiveItself()
-        => Assert.Equal(Objective, WedgeFormation.Slot(Objective, From, 0));
+        => Assert.Equal(Objective, WedgeFormation.Slot(Objective, From, 0, SquadSize));
 
     [Fact]
     public void FlanksAlternateSidesAndFallBackByRank()
     {
-        var right = WedgeFormation.Slot(Objective, From, 1);
-        var left = WedgeFormation.Slot(Objective, From, 2);
-        var farRight = WedgeFormation.Slot(Objective, From, 3);
+        var right = WedgeFormation.Slot(Objective, From, 1, SquadSize);
+        var left = WedgeFormation.Slot(Objective, From, 2, SquadSize);
+        var farRight = WedgeFormation.Slot(Objective, From, 3, SquadSize);
 
         // Approach runs along +Z, so the lateral axis is X and the two flanks straddle it.
         Assert.True(right.X > 0f, $"slot 1 should be right of the axis, got {right}");
@@ -39,11 +103,12 @@ public class WedgeFormationTests
         // Same objective, approached from the east instead of the south. The flanks must rotate
         // with the axis of advance — a V that stays world-aligned turns into a file the moment the
         // squad approaches along the wrong bearing, which is exactly what it exists to avoid.
-        var fromSouth = WedgeFormation.Slot(Objective, From, 1);
-        var fromEast = WedgeFormation.Slot(Objective, Objective + new Vector3(100f, 0f, 0f), 1);
+        var fromSouth = WedgeFormation.Slot(Objective, From, 1, SquadSize);
+        var fromEast = WedgeFormation.Slot(
+            Objective, Objective + new Vector3(100f, 0f, 0f), 1, SquadSize);
 
         Assert.True(
-            Vector3.Distance(fromSouth, fromEast) > WedgeFormation.Spacing,
+            Vector3.Distance(fromSouth, fromEast) > WedgeFormation.SpacingFor(SquadSize),
             $"slot 1 barely moved when the approach changed: {fromSouth} vs {fromEast}");
 
         // Still the same distance off the objective, just on a different bearing.
@@ -59,7 +124,7 @@ public class WedgeFormationTests
         // Degenerate approach: the direction is undefined, but four men must not be handed the same
         // spot or they pile up on the flag.
         var slots = Enumerable.Range(0, 4)
-            .Select(slot => WedgeFormation.Slot(Objective, Objective, slot))
+            .Select(slot => WedgeFormation.Slot(Objective, Objective, slot, SquadSize))
             .ToArray();
 
         Assert.Equal(slots.Length, slots.Distinct().Count());
@@ -69,13 +134,13 @@ public class WedgeFormationTests
     public void MenAreSpacedFarEnoughApartToNotShareOneBurst()
     {
         var slots = Enumerable.Range(0, SquadBlackboardLimits.MaximumMembers)
-            .Select(slot => WedgeFormation.Slot(Objective, From, slot))
+            .Select(slot => WedgeFormation.Slot(Objective, From, slot, SquadSize))
             .ToArray();
 
         for (int a = 0; a < slots.Length; a++)
             for (int b = a + 1; b < slots.Length; b++)
                 Assert.True(
-                    Vector3.Distance(slots[a], slots[b]) >= WedgeFormation.Depth,
+                    Vector3.Distance(slots[a], slots[b]) >= WedgeFormation.MinimumSpacing,
                     $"slots {a} and {b} are {Vector3.Distance(slots[a], slots[b]):0.0} m apart");
     }
 
