@@ -51,6 +51,8 @@ New Features
       - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
       - [ ] remove glock, AWP, and AK
+      - [ ] impart a force on ragdolls so they dont just flop lifelessly
+      - [ ] dead soldiers drop their weapon and you can pick it up
 
 
 ## Richer Environment 
@@ -60,30 +62,14 @@ New Features
 
 - [ ] structure editor
 
+- [ ] DP-27 Pixel Art
+
 - [ ] add grass
 - [ ] add trees
 - [ ] tree destruction
       - [ ] low LOD tree
       - [ ] trees have health and take damage and change models to a broken version
       - [ ] trees delete if the terrain beneath them goes away
-
-# Rendering
-
-- [ ] NPCs show no equipped weapon or shovel in third person. Not an AI-overhaul regression — no
-      client code was touched — and the machinery exists on both ends: `ItemSystem.SpawnInfantryLoadout`
-      creates primary/shovel/grenade as replicated `ServerObject`s, and `ObjectViewFactory` attaches an
-      `ItemAttachScript` to each item object to seat it on its holder's bone. Break is somewhere
-      between. First suspect is `ItemAttachScript.Update`, which resolves its holder by entity name and
-      then returns silently with no log:
-
-      ```csharp
-      owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
-      if (owner == null) return;
-      ```
-
-      `PlayerViewFactory` does name NPC entities `Player_{id}`, so that ought to match — which points
-      instead at whether NPC-owned item objects are replicated to the client at all, or whether the NPC
-      model carries the attach bones. Needs a live look; add a log on that early return first.
 
 # NPC AI Overhaul
 

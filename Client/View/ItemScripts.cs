@@ -196,7 +196,7 @@ public class ItemAttachScript : SyncScript
         // to hang a rifle on — and the bone the socket names belongs to a disabled ModelComponent.
         if (IsLocalViewModel()
             || !HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out var hotbar)
-            || ItemCosmetics.StowedSocket(hotbar, Object.Item.Type) is not { } socket)
+            || ItemCosmetics.StowedSocket(hotbar, Object.Item.Type, Mount) is not { } socket)
         {
             model.Enabled = false;
             return;

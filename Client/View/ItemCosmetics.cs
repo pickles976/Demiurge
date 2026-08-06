@@ -146,11 +146,33 @@ public static class ItemCosmetics
     /// instead of occupying the same line.</summary>
     private static readonly float BackLean = MathUtil.DegreesToRadians(24f);
 
+    /// <summary>
+    /// A quarter turn about the weapon's OWN forward axis — model +Z, the barrel — so the receiver
+    /// lies flat against the back rather than edge-on to it.
+    ///
+    /// Applied FIRST, which is what makes it a roll along the barrel instead of a swing across the
+    /// spine: Stride multiplies as "apply a, then b", so a rotation composed before the slinging
+    /// happens in the model's own frame, where +Z still points down the barrel. Compose it after and
+    /// the same quarter turn is taken about whatever axis the barrel has already been laid onto.
+    /// </summary>
+    private static readonly float SlungRoll = MathUtil.PiOverTwo;
+
     /// <summary>Barrel up the spine and sights facing away from the back: model +Z (muzzle) onto
     /// world +Y, model +Y (top of the receiver) onto world -Z. Then leaned so the rifle lies
     /// diagonally rather than straight up the middle.</summary>
     private static readonly Quaternion SlungRotation =
-        Quaternion.RotationX(-MathUtil.PiOverTwo) * Quaternion.RotationZ(BackLean);
+        Quaternion.RotationZ(SlungRoll)
+        * Quaternion.RotationX(-MathUtil.PiOverTwo)
+        * Quaternion.RotationZ(BackLean);
+
+    /// <summary>
+    /// The point on the back that stowed kit hangs from, in `torso` bone space.
+    ///
+    /// One constant for both pieces because they are meant to cross AT it — leaned opposite ways
+    /// about a shared point rather than parked at two positions that have to be re-tuned in step
+    /// every time either moves.
+    /// </summary>
+    private static readonly Vector3 BackAnchor = new(0.1f, 0.42f, -0.14f);
 
     /// <summary>Blade down and leaned the other way. The shovel is modelled standing up its own
     /// shaft, so turning it over is the whole job.</summary>
@@ -165,18 +187,32 @@ public static class ItemCosmetics
     /// Rifle and shovel both ride the back, leaned opposite ways and seated at different heights so
     /// they cross rather than intersect.
     /// </summary>
-    public static Socket? StowedSocket(HotbarSlot slot, ItemType type) => slot switch
+    public static Socket? StowedSocket(HotbarSlot slot, ItemType type, WeaponMount mount) => slot switch
     {
-        // Slung across the upper back. The rifle models put their origin near the middle of the
-        // weapon, so the seat is the centre of the sling rather than a grip.
-        HotbarSlot.Primary => new Socket("upper_chest", new Vector3(0f, 0.02f, -0.18f), SlungRotation),
+        // Slung across the back, hung from its GRIP rather than from wherever the model's author put
+        // the origin — which is what lets one anchor serve weapons of different lengths without each
+        // one needing its own seat. `torso` is the pelvis in this rig, so both pieces stay put
+        // instead of swinging with the walk cycle.
+        HotbarSlot.Primary => new Socket("torso", GripAt(BackAnchor, type, SlungRotation, mount), SlungRotation),
 
-        // `torso` is the pelvis in this rig — the thighs hang off it — so the shovel stays put
-        // instead of swinging with the walk cycle. Carried high and close: 0.2 m in from where it
-        // first sat, which had it floating off the back, and 0.2 m up, which is what keeps the shaft
-        // clear of the rifle now that it is no longer held out behind the body.
-        HotbarSlot.Shovel => new Socket("torso", new Vector3(0.1f, 0.42f, -0.14f), HangingRotation),
+        // Seated by its origin, which is where it was tuned. The shovel is modelled standing up its
+        // own shaft, so its origin already sits about where it should hang from.
+        HotbarSlot.Shovel => new Socket("torso", BackAnchor, HangingRotation),
 
         _ => null,
     };
+
+    /// <summary>
+    /// The seat that lands a model's `grip` locator on <paramref name="point"/>.
+    ///
+    /// A model-space point p is drawn at `p * scale * rotation + seat`, so putting the grip at a
+    /// chosen spot is just that equation solved for the seat. <see cref="WeaponMount.Seat(ItemType,
+    /// System.Numerics.Quaternion)"/> is the same solve for the origin case, which is why this is
+    /// its result offset by the target rather than a second copy of the rotation maths.
+    ///
+    /// Falls back to seating by the origin for a model with no grip locator — the item sits in
+    /// roughly the right place rather than vanishing to the bone.
+    /// </summary>
+    private static Vector3 GripAt(Vector3 point, ItemType type, Quaternion rotation, WeaponMount mount)
+        => point + mount.Seat(type, rotation.ToNumerics()).ToStride() * WorldScale(type);
 }
