@@ -15,6 +15,9 @@ public static class EditorPlacementBounds
         // The flag pole is thin; a pole-width box would be near impossible to click.
         EditorPlacementKind.Flag =>
             (new Vector3(-0.35f, 0f, -0.35f), new Vector3(0.35f, 2.4f, 0.35f)),
+        // The crate model is about 1 m long, 0.6 wide and 0.42 tall, resting on the placement.
+        EditorPlacementKind.SupplyCrate =>
+            (new Vector3(-0.35f, 0f, -0.55f), new Vector3(0.35f, 0.5f, 0.55f)),
         EditorPlacementKind.Mob or EditorPlacementKind.PlayerSpawn =>
             (new Vector3(-PlayerMovement.Body.Radius, 0f, -PlayerMovement.Body.Radius),
              new Vector3(PlayerMovement.Body.Radius, PlayerMovement.Body.Height, PlayerMovement.Body.Radius)),

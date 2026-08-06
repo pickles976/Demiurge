@@ -4,7 +4,7 @@ using System.Numerics;
 namespace Demiurge.Editor;
 
 public enum EditorToolMode { Terrain, Block, Object }
-public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, Flag }
+public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, Flag, Crate }
 
 public sealed record EditorToolSettings
 {
@@ -149,7 +149,8 @@ public static class EditorCommandParser
     private static EditorCommandResult SetObject(string[] tokens, EditorToolSettings settings)
     {
         if (tokens.Length < 2)
-            return EditorCommandResult.Fail("Usage: editor object <pickup|mob|spawn|flag|team|clear> ...");
+            return EditorCommandResult.Fail(
+                "Usage: editor object <pickup|crate|mob|spawn|flag|team|clear> ...");
         switch (tokens[1].ToLowerInvariant())
         {
             case "pickup":
@@ -157,6 +158,12 @@ public static class EditorCommandParser
                     return EditorCommandResult.Fail("Usage: editor object pickup <item-id>");
                 settings.ObjectKind = EditorObjectChoiceKind.Pickup;
                 settings.ObjectId = ItemCatalog.Id(item);
+                break;
+            case "crate":
+                if (tokens.Length != 3 || !ItemCatalog.TryResolve(tokens[2], out var crated))
+                    return EditorCommandResult.Fail("Usage: editor object crate <item-id>");
+                settings.ObjectKind = EditorObjectChoiceKind.Crate;
+                settings.ObjectId = ItemCatalog.Id(crated);
                 break;
             case "mob":
                 settings.ObjectKind = EditorObjectChoiceKind.Mob;

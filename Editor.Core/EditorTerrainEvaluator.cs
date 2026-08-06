@@ -134,6 +134,11 @@ public sealed class EditorTerrainEvaluator
                 ItemCatalog.TryResolve(placement.ArchetypeId, out var item)
                     ? item
                     : throw new InvalidDataException($"Unknown item {placement.ArchetypeId}")),
+            EditorPlacementKind.SupplyCrate => new RuntimePlacement(
+                RuntimePlacementKind.SupplyCrate, position, placement.Yaw,
+                ItemCatalog.TryResolve(placement.ArchetypeId, out var crated)
+                    ? crated
+                    : throw new InvalidDataException($"Unknown item {placement.ArchetypeId}")),
             EditorPlacementKind.Mob => new RuntimePlacement(
                 RuntimePlacementKind.Mob, position, placement.Yaw,
                 Item: ResolveMobWeapon(placement),

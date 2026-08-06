@@ -8,6 +8,13 @@ public enum RuntimePlacementKind : byte
     Mob = 2,
     PlayerSpawn = 3,
     Flag = 4,
+
+    /// <summary>
+    /// A weapon pickup presented as a supply crate rather than as the weapon itself. Same item and
+    /// same pickup rules as <see cref="Pickup"/> — only the world presentation differs, which is why
+    /// it is a placement kind and not an item.
+    /// </summary>
+    SupplyCrate = 5,
 }
 
 public readonly record struct RuntimePlacement(

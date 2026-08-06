@@ -271,6 +271,7 @@ public sealed class EditorControllerScript : SyncScript
         var kind = Settings.ObjectKind switch
         {
             EditorObjectChoiceKind.Pickup => EditorPlacementKind.Pickup,
+            EditorObjectChoiceKind.Crate => EditorPlacementKind.SupplyCrate,
             EditorObjectChoiceKind.Mob => EditorPlacementKind.Mob,
             EditorObjectChoiceKind.Spawn => EditorPlacementKind.PlayerSpawn,
             EditorObjectChoiceKind.Flag => EditorPlacementKind.Flag,

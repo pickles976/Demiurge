@@ -69,6 +69,7 @@ public static class EditorValidation
             switch (placement.Kind)
             {
                 case EditorPlacementKind.Pickup:
+                case EditorPlacementKind.SupplyCrate:
                     if (!ItemCatalog.TryResolve(placement.ArchetypeId, out _))
                         errors.Add($"Placement {placement.Id} has unknown item {placement.ArchetypeId}");
                     break;
@@ -104,7 +105,8 @@ public static class EditorValidation
         if (spawns == 0) errors.Add("Source map requires at least one player spawn");
         if (document.TerrainStrokes.Count > 10_000)
             warnings.Add("Map has more than 10,000 terrain strokes; consider compaction");
-        if (!document.Placements.Any(p => p.Kind == EditorPlacementKind.Pickup))
+        if (!document.Placements.Any(p =>
+                p.Kind is EditorPlacementKind.Pickup or EditorPlacementKind.SupplyCrate))
             warnings.Add("Map has no pickups");
         if (!document.Placements.Any(p => p.Kind == EditorPlacementKind.Mob))
             warnings.Add("Map has no mobs");

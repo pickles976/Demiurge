@@ -37,6 +37,14 @@ public static class ItemCosmetics
     };
 
     /// <summary>
+    /// Map-authored weapon supply, drawn as the crate rather than as the weapon inside it. One
+    /// model for every item, because the crate is the point: you learn where resupply is, not what
+    /// is in it, until you walk over it. The server marks these with
+    /// <see cref="ObjectType.Crate"/>, which only a world pickup ever carries.
+    /// </summary>
+    public const string SupplyCrateModel = "assets/models/crate.gltf";
+
+    /// <summary>
     /// Model units to world units, for a pickup lying on the ground and for a worn item on
     /// somebody else's body. One per model rather than one global number because the models were
     /// not authored to a shared scale: the rifles come out at about a metre and the shovel comes

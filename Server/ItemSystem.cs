@@ -17,6 +17,18 @@ namespace Demiurge.GameServer
         public ItemSystem(ObjectReplication objects) => this.objects = objects;
 
         public ServerObject SpawnPickup(ItemType type, Vector3 position)
+            => SpawnPickup(type, position, ObjectType.Item);
+
+        /// <summary>
+        /// A map-authored weapon crate: the same pickup, presented as a container until somebody
+        /// takes it. Only the ObjectType differs, and it lives exactly as long as the world pickup
+        /// does — picking up and dropping both respawn the object as <see cref="ObjectType.Item"/>,
+        /// so a crated weapon is a crate on the ground and a weapon everywhere else.
+        /// </summary>
+        public ServerObject SpawnSupplyCrate(ItemType type, Vector3 position)
+            => SpawnPickup(type, position, ObjectType.Crate);
+
+        private ServerObject SpawnPickup(ItemType type, Vector3 position, ObjectType presentation)
         {
             // The trait tables are the mask recipe: a WeaponConfig row means a
             // WeaponState bit, an ArmorConfig row an ArmorState bit, and so on.
@@ -26,7 +38,7 @@ namespace Demiurge.GameServer
             if (weapon != null) mask |= NetComponents.Weapon;
             if (armor != null) mask |= NetComponents.Armor;
 
-            return objects.Spawn(ObjectType.Item, mask, position, obj =>
+            return objects.Spawn(presentation, mask, position, obj =>
             {
                 obj.Item = new ItemState { Type = type };
                 if (weapon is { } w) obj.Weapon = new WeaponState { CurrentAmmo = w.MagazineCapacity };

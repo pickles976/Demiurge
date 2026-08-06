@@ -18,8 +18,10 @@ public class ObjectViewFactory : IDisposable
     private readonly ObjectRegistry registry;
     private readonly ModelLocators modelLocators;
 
-    // Scenery only. Items never appear here: their model comes from
-    // ItemCosmetics and their behavior from the component mask.
+    // Keyed by ObjectType, and it WINS over the item model below: an object whose type names its
+    // own view gets it even when it also carries an Item. That is how a supply crate works — the
+    // crate is the view, the item inside is what picking it up gives you. Every ordinary item
+    // spawns as ObjectType.Item, has no entry here, and still gets its model from ItemCosmetics.
     private readonly Dictionary<ObjectType, Func<NetObject, Entity>> builders;
 
     public ObjectViewFactory(Game game, Scene scene, ObjectRegistry registry, WeaponMount mount,
@@ -37,8 +39,10 @@ public class ObjectViewFactory : IDisposable
         treeViews = new TreeViewFactory.Manager(game, scene, players, modelLocators);
         builders = new()
         {
-            [ObjectType.Crate] = _ => game.Create3DPrimitive(PrimitiveModelType.Cube,
-                                          new() { IncludeCollider = false }),
+            [ObjectType.Crate] = _ => new Entity
+            {
+                new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.SupplyCrateModel)),
+            },
             [ObjectType.TrainingDummy] = _ => new Entity {
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
             [ObjectType.Grenade] = _ => CreateThrownGrenade(),
@@ -68,11 +72,14 @@ public class ObjectViewFactory : IDisposable
             return;
         }
 
+        // The type's own view first, so a crated pickup draws as its crate.
+        bool typedView = builders.TryGetValue(obj.Type, out var build);
+
         Entity entity;
-        if (isItem)
+        if (typedView)
+            entity = build!(obj);
+        else if (isItem)
             entity = new Entity { new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(obj.Item.Type))) };
-        else if (builders.TryGetValue(obj.Type, out var build))
-            entity = build(obj);
         else return;   // no visual (PlayerStatus, unknown types): skip, don't crash
 
         entity.Name = $"NetObject_{obj.NetworkId}";
@@ -80,16 +87,21 @@ public class ObjectViewFactory : IDisposable
         // View behavior per component the object HAS — the mask decides.
         // Item+Transform sits in the world: the bob presenter OWNS the entity
         // transform (so no NetTransformScript alongside). Item+Owner is worn:
-        // the attach presenter owns it instead.
-        if (isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new PickupBobScript { Object = obj });
+        // the attach presenter owns it instead. A crated pickup is the exception
+        // to the hover-and-spin: a supply crate rests where the server put it.
+        bool bobs = isItem && !typedView && obj.Has.HasFlag(NetComponents.Transform);
+        if (bobs) entity.Add(new PickupBobScript { Object = obj });
         if (isItem && obj.Has.HasFlag(NetComponents.Owner))
             entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Locators = modelLocators, Priority = 25 });
-        if (!isItem && obj.Has.HasFlag(NetComponents.Transform)) entity.Add(new NetTransformScript { Object = obj });
+        if (!bobs && obj.Has.HasFlag(NetComponents.Transform)
+            && !obj.Has.HasFlag(NetComponents.Owner))
+            entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });
 
         // A pickup on the ground and a worn item share one size; the first-person view model is the
-        // only thing that draws an item at a different scale, and ItemAttachScript owns that.
-        if (isItem)
+        // only thing that draws an item at a different scale, and ItemAttachScript owns that. A
+        // typed view is drawn at the scale its own model was authored at.
+        if (isItem && !typedView)
             entity.Transform.Scale = new Stride.Core.Mathematics.Vector3(
                 ItemCosmetics.WorldScale(obj.Item.Type));
 

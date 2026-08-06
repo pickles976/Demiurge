@@ -66,6 +66,7 @@ public static class RuntimeMapValidation
             switch (placement.Kind)
             {
                 case RuntimePlacementKind.Pickup:
+                case RuntimePlacementKind.SupplyCrate:
                     try { _ = ItemCatalog.Get(placement.Item); }
                     catch (ArgumentOutOfRangeException) { errors.Add($"Unknown pickup item {placement.Item}"); }
                     WarnIfUnsupported(map, placement, warnings);
@@ -110,7 +111,8 @@ public static class RuntimeMapValidation
         }
 
         if (spawnCount == 0) errors.Add("Runtime map requires at least one player spawn");
-        if (!map.Placements.Any(p => p.Kind == RuntimePlacementKind.Pickup))
+        if (!map.Placements.Any(p =>
+                p.Kind is RuntimePlacementKind.Pickup or RuntimePlacementKind.SupplyCrate))
             warnings.Add("Map has no pickup placements");
         if (!map.Placements.Any(p => p.Kind == RuntimePlacementKind.Mob))
             warnings.Add("Map has no mob placements");

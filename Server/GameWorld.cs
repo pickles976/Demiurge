@@ -226,6 +226,9 @@ namespace Demiurge.GameServer
                     case RuntimePlacementKind.Pickup:
                         items.SpawnPickup(placement.Item, placement.Position);
                         break;
+                    case RuntimePlacementKind.SupplyCrate:
+                        items.SpawnSupplyCrate(placement.Item, placement.Position);
+                        break;
                     case RuntimePlacementKind.Mob:
                         var mob = SpawnMob(placement.Position, placement.Team, placement.Item);
                         mob.Yaw = placement.Yaw;

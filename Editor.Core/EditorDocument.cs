@@ -51,6 +51,9 @@ public enum EditorPlacementKind
     Mob,
     PlayerSpawn,
     Flag,
+
+    /// <summary>A weapon pickup crated as map supply. The archetype is the item it hands out.</summary>
+    SupplyCrate,
 }
 
 public sealed record EditorPlacement

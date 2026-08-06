@@ -114,6 +114,14 @@ barrels, the PlayerStatus object.
 3. Server: `objects.Spawn(ObjectType.Barrel, NetComponents.Transform | ..., pos, init)`
    — put full component state in `init`; it must be set before the broadcast.
 
+The one crossing of that line is a **container**: `ObjectType.Crate` is spawned WITH an
+Item mask by `ItemSystem.SpawnSupplyCrate`, and `ObjectViewFactory` lets a builder entry
+beat the item model so it draws as a crate rather than as the weapon inside it. That stays
+honest because the type only describes the world presentation and only survives as long as
+it: picking up and dropping both respawn the object as `ObjectType.Item`, so a crated
+weapon is a crate on the ground and a weapon in every other state. A builder entry also
+suppresses `PickupBobScript`, which is what makes a crate sit still.
+
 ### Add a client→server message (e.g. UseAction)
 
 1. `Common/NetworkProtocol.cs`: append to `ClientToServerId`.

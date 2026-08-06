@@ -202,7 +202,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     "terrain" => ["operation", "shape", "size", "strength", "material"],
                     "block" => BlockCatalog.All.Select(definition => definition.Id)
                         .Concat(["size"]),
-                    "object" => ["pickup", "mob", "spawn", "flag", "team", "clear", "list", "select", "equip", "set-team"],
+                    "object" => ["pickup", "crate", "mob", "spawn", "flag", "team", "clear", "list", "select", "equip", "set-team"],
                     _ => [],
                 };
             if (tokenIndex == 3 && tokens.Length > 2)
@@ -213,7 +213,8 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     "terrain operation" => ["add", "subtract"],
                     "terrain shape" => ["sphere", "box", "organic"],
                     "terrain material" => BlockCatalog.All.Select(definition => definition.Id),
-                    "object pickup" => ItemCatalog.All.Select(definition => definition.Id),
+                    "object pickup" or "object crate" =>
+                        ItemCatalog.All.Select(definition => definition.Id),
                     "object select" => editor.Editor.Document.Placements
                         .Select(placement => EditorPlacementIds.Display(placement.Id)),
                     "object equip" => editor.Editor.Document.Placements
@@ -306,6 +307,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             [
                 "Object placement:",
                 "  editor object pickup <item-id>",
+                "  editor object crate <item-id>",
                 "  editor object mob",
                 "  editor object spawn [spawn-id]",
                 "  editor object flag",
@@ -316,7 +318,8 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  editor object equip <placement-id|selected> <weapon-id>",
                 "  editor object set-team <placement-id|selected> <positive-integer>",
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
-                "Examples: editor object pickup demiurge:ak47 | editor object mob",
+                "A crate is the same pickup drawn as a supply crate; it rests still on the ground.",
+                "Examples: editor object pickup demiurge:ak47 | editor object crate demiurge:dp27",
                 "Left click places the selected archetype and reports its stable placement ID.",
             ],
             "session" =>

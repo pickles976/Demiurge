@@ -11,8 +11,9 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 Map Upgrade for testing
 
-- Add a ticket system. Start with 200 tickets, bleed if you lose majority of flags. Add ticket UI to the top of the screen, red vs blue ticket count.
-- NPCs will always have infinite ammo, take that into account
+- Add a ticket system. Start with 200 tickets. You lose 1 ticket every 3 seconds for every flag the enemy controls more than you. (enemy controls 3 flags, you control 2, minus 1 ticket every 3s). Add a Battlefield-style ticket UI to the top of the screen, orange color for team 1, gray for team 2. 
+
+- Kill feed needs to make the names of the NPCs orange for team 1, gray for team 2
 
 AI IMPROVEMENTS
 
@@ -22,6 +23,7 @@ It sounds like we have a bunch of tasks running in threads that overwrite the NP
   single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
 
 - Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
+- NPCs will always have infinite ammo, take that into account
 
 Bugs:
 - units still standing idle at flag -- if they are defending, we need visual feedback indicating so. Add a command to show NPC state above their head in white text
@@ -51,6 +53,9 @@ New Features
       - [ ] allow NPCs to use it
       - [ ] add 4 more NPCs to each team
 
+      - [ ] dead soldiers drop their weapon and you can pick it up
+      - [ ] limit ammo for players
+
       - [ ] add mortar
       - [ ] mortar, carry crate, unpack, repack
       - [ ] add to map
@@ -58,11 +63,8 @@ New Features
     - [ ] Commander set crew-weapon objectives
       - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
-
-
       - [ ] remove glock, AWP, and AK
       - [ ] impart a force on ragdolls so they dont just flop lifelessly
-      - [ ] dead soldiers drop their weapon and you can pick it up
 
 
 ## Richer Environment 

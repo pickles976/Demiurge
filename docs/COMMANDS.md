@@ -184,6 +184,7 @@ editor block size <size>
 editor block size <x> <y> <z>
 
 editor object pickup <item>
+editor object crate <item>
 editor object mob
 editor object spawn <spawn-id>
 editor object clear
@@ -205,6 +206,11 @@ Use `help <command>` for contextual terminal help. In particular, `help object` 
 selection commands and available item IDs. Placing an object reports its stable eight-character
 placement ID. `editor object list` prints every placement, and Tab completes IDs for `select` and
 `equip`. These are editor IDs, not runtime actor IDs prefixed with `@`.
+
+`editor object crate <item>` places the same pickup as `editor object pickup`, drawn as a supply
+crate instead of as the weapon and resting still on the ground rather than hovering and spinning.
+Taking one gives the item inside, and from that moment it looks like an ordinary weapon — carried or
+dropped.
 
 Canonical blocks are `demiurge:grass`, `demiurge:dirt`, and `demiurge:stone`.
 The default terrain fill is `demiurge:grass`, which enables automatic surface classification:

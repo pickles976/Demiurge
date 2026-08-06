@@ -81,6 +81,8 @@ public sealed class EditorPlacementViewFactory : IDisposable
         {
             EditorPlacementKind.Pickup when ItemCatalog.TryResolve(placement.ArchetypeId, out var item)
                 => ItemCosmetics.Model(item),
+            // A crate looks the same whatever is inside it; the archetype only decides what it gives.
+            EditorPlacementKind.SupplyCrate => ItemCosmetics.SupplyCrateModel,
             EditorPlacementKind.Mob => "assets/models/dummy.gltf",
             _ => null,
         };
