@@ -89,6 +89,49 @@ public sealed class EditorCoreTests
     }
 
     [Fact]
+    public void PickingTakesTheNearestPlacementInsideTheRayLimit()
+    {
+        // No terrain, so every placement resolves to its cell centre.
+        var terrain = new ChunkMap();
+        var near = MobAt(new Int3(0, 0, 4));
+        var far = MobAt(new Int3(0, 0, 20));
+        EditorPlacement[] placements = [far, near];
+        var origin = new Vector3(0.5f, 0.9f, 0.5f);
+
+        Assert.Equal(
+            near.Id,
+            EditorPlacementPicker.Pick(placements, terrain, origin, Vector3.UnitZ, 100f));
+
+        // The terrain hit distance clips picking, so an object behind a hill is not reachable.
+        Assert.Null(EditorPlacementPicker.Pick(placements, terrain, origin, Vector3.UnitZ, 2f));
+
+        // A ray that misses the bounds picks nothing, even pointed the right way.
+        Assert.Null(EditorPlacementPicker.Pick(
+            placements, terrain, origin + new Vector3(3f, 0f, 0f), Vector3.UnitZ, 100f));
+    }
+
+    [Fact]
+    public void PlacementBoundsSitOnTheSurfaceAndCoverTheView()
+    {
+        var (min, max) = EditorPlacementBounds.Local(EditorPlacementKind.Mob);
+        Assert.Equal(0f, min.Y);
+        Assert.Equal(PlayerMovement.Body.Height, max.Y);
+
+        var (flagMin, flagMax) = EditorPlacementBounds.Local(EditorPlacementKind.Flag);
+        Assert.Equal(0f, flagMin.Y);
+        Assert.True(flagMax.Y > max.Y, "the flag pole is taller than a man");
+    }
+
+    private static EditorPlacement MobAt(Int3 cell) => new()
+    {
+        Id = Guid.NewGuid(),
+        Kind = EditorPlacementKind.Mob,
+        ArchetypeId = "demiurge:mob",
+        Cell = cell,
+        Team = 1,
+    };
+
+    [Fact]
     public void SourceRoundTripIsCanonical()
     {
         var document = EditorDocument.Create("canonical");

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "mapId": "5202a1ca-a01c-46b6-9a88-df11e8ae2cbd",
+  "mapId": "fa7a0b9e-aed2-487e-be80-6337ba33db33",
   "name": "conquest",
   "baseTerrain": {
     "generatorId": "demiurge:terrain-v1",
@@ -221077,6 +221077,22 @@
       "groupId": null
     },
     {
+      "id": "3fcee7a9-d0de-4f3e-8667-e3955b0e986a",
+      "kind": "flag",
+      "archetypeId": "demiurge:flag",
+      "cell": {
+        "x": 134,
+        "y": 20,
+        "z": -474,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
+    },
+    {
       "id": "427e7f31-8560-44c5-b77d-4212a4de3b3f",
       "kind": "flag",
       "archetypeId": "demiurge:flag",
@@ -221100,6 +221116,22 @@
         "x": 252,
         "y": 22,
         "z": -170,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
+    },
+    {
+      "id": "739d83ed-f6ca-4067-960b-02131fa977da",
+      "kind": "flag",
+      "archetypeId": "demiurge:flag",
+      "cell": {
+        "x": 91,
+        "y": 24,
+        "z": 439,
         "samplePosition": {},
         "centre": {}
       },

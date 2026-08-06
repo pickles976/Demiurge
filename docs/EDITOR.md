@@ -368,13 +368,21 @@ where the object anchor will be placed.
 Left mouse on terrain       place selected archetype
 Left mouse on editor object select it
 Left mouse after selection  move it to the highlighted cell
-Right mouse or Escape       cancel move / clear selection
+Right mouse on editor object delete it
+Right mouse elsewhere / Escape  cancel move / clear selection
 Delete                      delete selection
 R                           rotate selection or pending object by 90 degrees
 ```
 
-Selection raycasts editor placement bounds and terrain, taking the nearest valid result. The first
-version uses a stable cell-sized selection proxy instead of depending on model mesh raycasts.
+The object under the cursor is outlined in red, and that outline is its delete hitbox: picking and
+the highlight both come from `EditorPlacementBounds`, so what a right click removes is exactly what
+was drawn. Bounds are kind-aware — a man-sized capsule box for mobs and player spawns, a taller box
+for flags, a cell for pickups — rather than one cell-sized proxy for everything.
+
+Selection raycasts editor placement bounds and terrain, taking the nearest valid result, so an
+object cannot be picked through a hill in front of it. It does not require terrain behind the
+object: one silhouetted against the sky is still selectable and deletable. Picking uses those
+stable bounds rather than depending on model mesh raycasts.
 
 Every object source record stores a stable placement GUID and an integer anchor cell. World X/Z are
 the cell center. `EditorPlacementPosition` resolves world Y to the nearest upward SDF crossing around

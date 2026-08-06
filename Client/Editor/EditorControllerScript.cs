@@ -36,10 +36,14 @@ public sealed class EditorControllerScript : SyncScript
     private bool blockRemoving;
     private Guid? selectedPlacement;
 
+    /// <summary>How far object picking reaches when no terrain is behind the cursor.</summary>
+    private const float ObjectPickRange = 2_000f;
+
     public NVector3? LodFocus => Entity.Transform.Position;
     public EInt3? TargetCell { get; private set; }
     public bool TargetIsValid { get; private set; }
     public Guid? SelectedPlacementId => selectedPlacement;
+    public Guid? HoveredPlacementId { get; private set; }
 
     public void SelectPlacement(Guid id, bool announce = true)
     {
@@ -83,6 +87,17 @@ public sealed class EditorControllerScript : SyncScript
         bool leftReleased = !left && leftWasDown;
         bool rightReleased = !right && rightWasDown;
 
+        // Objects are picked against their own bounds, so one hovering over a pit or silhouetted
+        // against the sky stays clickable even though the ray never reaches terrain.
+        HoveredPlacementId = Settings.Mode == EditorToolMode.Object
+            ? EditorPlacementPicker.Pick(
+                Session.Document.Placements,
+                Session.Terrain,
+                origin,
+                direction,
+                hit?.Distance ?? ObjectPickRange)
+            : null;
+
         if (hit is { } terrainHit)
         {
             var objectCells = EditorTargeting.Cells(terrainHit.Point, terrainHit.Normal);
@@ -101,7 +116,7 @@ public sealed class EditorControllerScript : SyncScript
                         blockSamples, left, right, leftPressed, rightPressed, leftReleased, rightReleased);
                     break;
                 case EditorToolMode.Object:
-                    if (leftPressed) HandleObject(origin, direction, terrainHit, objectCells);
+                    if (leftPressed) HandleObject(objectCells);
                     break;
             }
         }
@@ -109,6 +124,15 @@ public sealed class EditorControllerScript : SyncScript
         {
             CommitTerrain();
             CommitBlocks();
+        }
+
+        if (Settings.Mode == EditorToolMode.Object)
+        {
+            // Selecting an object needs no terrain under the cursor; placing one does, and that
+            // path stays inside the terrain-hit branch above.
+            if (hit is null && leftPressed && HoveredPlacementId is { } picked) SelectPlacement(picked);
+            if (rightPressed) HandleObjectRightClick();
+            DrawHoveredPlacement();
         }
 
         HandleSelectionKeys();
@@ -225,14 +249,9 @@ public sealed class EditorControllerScript : SyncScript
         blockCells.Clear();
     }
 
-    private void HandleObject(
-        NVector3 origin,
-        NVector3 direction,
-        TerrainHit terrainHit,
-        EditorTargetCells cells)
+    private void HandleObject(EditorTargetCells cells)
     {
-        var picked = PickPlacement(origin, direction, terrainHit.Distance);
-        if (picked is { } id)
+        if (HoveredPlacementId is { } id)
         {
             SelectPlacement(id);
             return;
@@ -275,35 +294,43 @@ public sealed class EditorControllerScript : SyncScript
             $"{EditorPlacementIds.Display(placement.Id)}");
     }
 
-    private Guid? PickPlacement(NVector3 origin, NVector3 direction, float terrainDistance)
+    /// <summary>
+    /// Right click deletes the object under the cursor, and otherwise clears any selection — the
+    /// same "cancel" it has always meant when pointed at nothing.
+    /// </summary>
+    private void HandleObjectRightClick()
     {
-        Guid? best = null;
-        float bestDistance = terrainDistance;
-        foreach (var placement in Session.Document.Placements)
+        if (HoveredPlacementId is { } id && Session.Placement(id) is { } placement)
         {
-            var position = EditorPlacementPosition.Resolve(Session.Terrain, placement);
-            var min = position - new NVector3(0.5f, 0f, 0.5f);
-            var max = position + new NVector3(0.5f, 1f, 0.5f);
-            if (RayBox(origin, direction, min, max, out float distance) && distance < bestDistance)
-            {
-                best = placement.Id;
-                bestDistance = distance;
-            }
+            DeletePlacement(placement);
+            HoveredPlacementId = null;
+            return;
         }
-        return best;
+        selectedPlacement = null;
+    }
+
+    private void DeletePlacement(EditorPlacement placement)
+    {
+        Session.Execute(new DeletePlacementCommand(placement));
+        if (selectedPlacement == placement.Id) selectedPlacement = null;
+        FeedbackRequested?.Invoke(
+            $"Deleted {placement.Kind.ToString().ToLowerInvariant()} placement " +
+            EditorPlacementIds.Display(placement.Id));
+    }
+
+    /// <summary>The box a right click would delete, drawn from the same bounds picking tested.</summary>
+    private void DrawHoveredPlacement()
+    {
+        if (HoveredPlacementId is not { } id || Session.Placement(id) is not { } placement) return;
+        var (min, max) = EditorPlacementBounds.World(Session.Terrain, placement);
+        WorldPreviewRenderer.Cube(min, max, new Color(255, 80, 80, 250));
     }
 
     private void HandleSelectionKeys()
     {
         bool delete = Input.IsKeyDown(Keys.Delete);
         if (delete && !deleteWasDown && selectedPlacement is { } id && Session.Placement(id) is { } placement)
-        {
-            Session.Execute(new DeletePlacementCommand(placement));
-            selectedPlacement = null;
-            FeedbackRequested?.Invoke(
-                $"Deleted {placement.Kind.ToString().ToLowerInvariant()} placement " +
-                EditorPlacementIds.Display(placement.Id));
-        }
+            DeletePlacement(placement);
         deleteWasDown = delete;
 
         bool rotate = Input.IsKeyDown(Keys.R);
@@ -380,6 +407,7 @@ public sealed class EditorControllerScript : SyncScript
 
     private void CaptureDisabledInput()
     {
+        HoveredPlacementId = null;
         strokeDabs.Clear();
         blockBefore.Clear();
         blockCells.Clear();
@@ -558,40 +586,10 @@ public sealed class EditorControllerScript : SyncScript
 
     private void CancelGestures()
     {
+        HoveredPlacementId = null;
         strokeDabs.Clear();
         blockBefore.Clear();
         blockCells.Clear();
         leftWasDown = rightWasDown = false;
-    }
-
-    private static bool RayBox(
-        NVector3 origin,
-        NVector3 direction,
-        NVector3 min,
-        NVector3 max,
-        out float distance)
-    {
-        float near = 0f;
-        float far = float.MaxValue;
-        for (int axis = 0; axis < 3; axis++)
-        {
-            float o = axis == 0 ? origin.X : axis == 1 ? origin.Y : origin.Z;
-            float d = axis == 0 ? direction.X : axis == 1 ? direction.Y : direction.Z;
-            float lo = axis == 0 ? min.X : axis == 1 ? min.Y : min.Z;
-            float hi = axis == 0 ? max.X : axis == 1 ? max.Y : max.Z;
-            if (MathF.Abs(d) < 1e-8f)
-            {
-                if (o < lo || o > hi) { distance = 0; return false; }
-                continue;
-            }
-            float t1 = (lo - o) / d;
-            float t2 = (hi - o) / d;
-            if (t1 > t2) (t1, t2) = (t2, t1);
-            near = MathF.Max(near, t1);
-            far = MathF.Min(far, t2);
-            if (near > far) { distance = 0; return false; }
-        }
-        distance = near;
-        return true;
     }
 }

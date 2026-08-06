@@ -9,15 +9,18 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-UI Improvements
+Map Upgrade for testing
+
+- Add a ticket system. Start with 200 tickets, bleed if you lose majority of flags. Add ticket UI to the top of the screen, red vs blue ticket count.
+- NPCs will always have infinite ammo, take that into account
+
+AI IMPROVEMENTS
 
 Overall the changes we made have caused the pace of the game to increase. NPC battles are much more exciting.
 
 It sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a     
   single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
 
-- NPCs will always have infinite ammo, take that into account
-- Add a ticket system. Start with 200 tickets, bleed if you lose majority of flags. Add ticket UI to the top of the screen, red vs blue ticket count.
 - Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 
 Bugs:
@@ -35,20 +38,27 @@ New Features
 
 - [ ] PVP
 
+      - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbag
       - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
       - [ ] add uniforms to cats
       - [ ] flag 3D model
 
-      - [ ] mortar
-
+      - [ ] camera placement relative to head collider
+      - [ ] dig dirt to place sandbags
       - [ ] add prone
       - [ ] tune MG for firing while prone
       - [ ] add MG pickup crate at hilltop flag
       - [ ] allow NPCs to use it
       - [ ] add 4 more NPCs to each team
 
+      - [ ] add mortar
+      - [ ] mortar, carry crate, unpack, repack
+      - [ ] add to map
+
     - [ ] Commander set crew-weapon objectives
       - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
+
+
 
       - [ ] remove glock, AWP, and AK
       - [ ] impart a force on ragdolls so they dont just flop lifelessly
