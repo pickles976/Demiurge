@@ -91,6 +91,7 @@ namespace Demiurge.GameServer
         private readonly ChunkMap terrain;
         private readonly TerrainSystem terrainEdits;
         private readonly WeaponSystem weapons;
+        private readonly ItemSystem items;
         private readonly CommanderAi commander;
         private readonly NavigationSystem navigation;
         private readonly Perception perception;
@@ -180,6 +181,7 @@ namespace Demiurge.GameServer
             ChunkMap terrain,
             TerrainSystem terrainEdits,
             WeaponSystem weapons,
+            ItemSystem items,
             FlagSystem flags,
             GrenadeSystem grenades,
             int seed = 0x51A7)
@@ -187,6 +189,7 @@ namespace Demiurge.GameServer
             this.terrain = terrain;
             this.terrainEdits = terrainEdits;
             this.weapons = weapons;
+            this.items = items;
             commander = new CommanderAi(flags);
             navigation = new NavigationSystem(terrain);
             perception = new Perception(terrain);
@@ -1865,7 +1868,11 @@ namespace Demiurge.GameServer
         private void StepSolver(ServerPlayer mob, Vector3 intent, float dt)
         {
             long started = Stopwatch.GetTimestamp();
-            PlayerMovement.Step(terrain, ref mob.Move, intent, mob.State, dt);
+            // Weapon weight slows an NPC exactly as it slows a player — one movement path, and the
+            // navigation cost model is the only thing that does not know about it, which is
+            // survivable because a slower actor arrives late rather than wrong.
+            PlayerMovement.Step(
+                terrain, ref mob.Move, intent, mob.State, dt, items.MoveSpeedScale(mob, mob.Hotbar));
             timingSolverStopwatchTicks += Stopwatch.GetTimestamp() - started;
         }
 

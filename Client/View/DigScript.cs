@@ -6,8 +6,9 @@ using Stride.Input;
 namespace Demiurge
 {
     /// <summary>
-    /// Digging with your hands: highlights the voxel sample you are about to edit, and edits it on
-    /// left click.
+    /// The shovel: highlights the voxel sample you are about to edit, and edits it on click. Left
+    /// takes one out, right puts one in — two clicks either way for a whole voxel, the same brush
+    /// and the same rate limit, because placing is digging with the sign flipped.
     ///
     /// Nothing here is predicted. The outline is local, but the hole is not: the request goes to the
     /// server and the voxel disappears when the broadcast edit comes back. Predicting the dig would
@@ -27,8 +28,16 @@ namespace Demiurge
         /// server's gate — it just stops us spamming requests it would throw away.</summary>
         private const float MinDigInterval = 1f / Digging.HoldHz;
 
+        /// <summary>The dug voxel's outline. White reads as "this is coming out".</summary>
+        private static readonly Color DigHighlight = new(255, 255, 255, 230);
+
+        /// <summary>Sandbag-coloured, and on the other side of the surface, so the two actions are
+        /// told apart by where the box is as much as by what colour it is.</summary>
+        private static readonly Color PlaceHighlight = new(214, 187, 120, 230);
+
         private float sinceDig = MinDigInterval;
         private bool wasDown;
+        private bool placeWasDown;
 
         /// <summary>The voxel currently under the crosshair, or null if nothing is in reach.</summary>
         public System.Numerics.Vector3? Target { get; private set; }
@@ -55,20 +64,29 @@ namespace Demiurge
             // digging tool, so the number keys always have stable meaning.
             if (local.Hotbar != HotbarSlot.Shovel) return;
 
-            if (FindTarget() is not { } target) return;
+            // Edge-triggered: one edit per click, and holding a button repeats at the rate limit
+            // rather than every frame. Left wins a frame where both are held — taking terrain away
+            // is the more urgent of the two, and one click may only ever mean one thing.
+            bool digDown = Input.IsMouseButtonDown(MouseButton.Left);
+            bool placeDown = Input.IsMouseButtonDown(MouseButton.Right) && !digDown;
+            bool pressed = (digDown && !wasDown) || (placeDown && !placeWasDown);
+            wasDown = digDown;
+            placeWasDown = placeDown;
+
+            // The highlight follows the button that is DOWN, so the box moves to the far side of the
+            // surface the moment you hold right — you see where the block will go before it goes
+            // there. With nothing held it shows the dig, which is the shovel's resting meaning.
+            var action = placeDown ? TerrainAction.Place : TerrainAction.Dig;
+
+            if (FindTarget(action) is not { } target) return;
             Target = target;
 
-            WorldPreviewRenderer.VoxelSample(target, new Color(255, 255, 255, 230));
+            WorldPreviewRenderer.VoxelSample(
+                target, action == TerrainAction.Place ? PlaceHighlight : DigHighlight);
 
-            // Edge-triggered: one dig per click, and holding the button repeats at the rate limit
-            // rather than every frame.
-            bool down = Input.IsMouseButtonDown(MouseButton.Left);
-            bool pressed = down && !wasDown;
-            wasDown = down;
-
-            if ((pressed || down) && sinceDig >= MinDigInterval)
+            if ((pressed || digDown || placeDown) && sinceDig >= MinDigInterval)
             {
-                Network.SendDig(new PlayerDigData { Target = target, Hotbar = local.Hotbar });
+                Network.SendDig(new PlayerDigData { Target = target, Hotbar = local.Hotbar, Action = action });
                 sinceDig = 0f;
             }
         }
@@ -86,7 +104,7 @@ namespace Demiurge
         /// and the character the first thing that ray met was on the far side of you, and it lit up
         /// and dug quite happily.
         /// </summary>
-        private System.Numerics.Vector3? FindTarget()
+        private System.Numerics.Vector3? FindTarget(TerrainAction action)
         {
             if (Registry.LocalPlayer is not { } local) return null;
             if (Entity.Get<LocalPlayerController>()?.AimPoint is not { } aimPoint) return null;
@@ -99,11 +117,15 @@ namespace Demiurge
             if (TerrainRaycast.Cast(Terrain.Map, eye, System.Numerics.Vector3.Normalize(toAim), Digging.Reach)
                 is not { } hit) return null;
 
-            var target = Digging.TargetVoxel(hit.Point, hit.Normal);
+            var target = Digging.TargetVoxel(hit.Point, hit.Normal, action);
 
-            // The same test the server will run, from the same origin — so anything highlighted here
-            // is something the server will accept.
-            return Digging.InReach(local.Position, target) ? target : null;
+            // Every test the server will run, from the same origin — so anything highlighted here is
+            // something the server will accept, and a refused placement never lights up at all.
+            if (!Digging.InReach(local.Position, target)) return null;
+            if (target.Y <= ChunkConstants.WorldMinY || target.Y >= ChunkConstants.WorldMaxY - 1) return null;
+            if (action == TerrainAction.Place && Digging.WouldEncasePlayer(local.Position, target)) return null;
+
+            return target;
         }
     }
 }

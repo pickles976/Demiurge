@@ -112,7 +112,9 @@ namespace Demiurge
 				mouseLocked = true;
 			}
 
-			bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
+			// Not while the shovel is out: right-click is the place button there, and this is the
+			// same exclusion LocalPlayerController applies to the replicated Aiming flag.
+			bool aiming = Input.IsMouseButtonDown(MouseButton.Right) && local.Hotbar != HotbarSlot.Shovel;
 			float sensitivity = LookSensitivity * (aiming ? AimSensitivityMultiplier : 1f);
 
 			var look = Input.AbsoluteMouseDelta;
@@ -153,7 +155,12 @@ namespace Demiurge
 					aiming ? AimFieldOfViewFor(local.Weapon?.Item.Type) :
 					local.State.HasFlag(PlayerStateFlags.Sprinting) ? SprintFieldOfView :
 					HipFieldOfView;
-				camera.VerticalFieldOfView = MathUtil.Lerp(camera.VerticalFieldOfView, targetFov, SharpStep(StateSharpness, dt));
+				// Paced by the held weapon, unlike the crouch blend above: coming up to the sights is
+				// a property of what is in your hands, and this rate has to match the view model's in
+				// ItemAttachScript or the gun arrives at the sights before the view does.
+				float aimSharpness = StateSharpness
+					* (local.Weapon?.Item.Type is { } held ? ItemCosmetics.AimSpeedScale(held) : 1f);
+				camera.VerticalFieldOfView = MathUtil.Lerp(camera.VerticalFieldOfView, targetFov, SharpStep(aimSharpness, dt));
 			}
 		}
 

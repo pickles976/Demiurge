@@ -37,6 +37,7 @@ public sealed class MobDigEscapeIntegrationTests(ITestOutputHelper output)
             terrain,
             terrainEdits,
             weapons,
+            items,
             flags,
             grenades,
             seed: 0xD16);

@@ -7,6 +7,9 @@ namespace Demiurge.GameServer
     /// Server-authoritative terrain edits. The server owns the field; clients ask, this decides, and
     /// the decision is broadcast as a command every client replays.
     ///
+    /// Digging and placing are one path with the operator flipped — see <see cref="TerrainAction"/>
+    /// — so the rate gate, the reach check and the grid snap are written once and cannot come apart.
+    ///
     /// Digging is gated on TICKS rather than on how fast the client sends, for the same reason
     /// firing is: a message rate is whatever a client chooses it to be, while a tick is the same
     /// clock on both ends. The cost this protects is NOT bandwidth — an edit is 26 bytes — it is
@@ -54,14 +57,24 @@ namespace Demiurge.GameServer
             // broadcast and a re-mesh on every client for no change at all.
             if (target.Y <= ChunkConstants.WorldMinY) return;
 
+            bool placing = dig.Action == TerrainAction.Place;
+
+            // Nothing above the world to build on or into, and the top plane is where a section
+            // stops owning grid points.
+            if (target.Y >= ChunkConstants.WorldMaxY - 1) return;
+
+            // You may not build through yourself. Re-checked here rather than trusted because the
+            // client's refusal is a highlight the player can see and this one is the rule.
+            if (placing && Digging.WouldEncasePlayer(player.Position, target)) return;
+
             player.NextDigTick = tick + TicksPerDig;
 
             Apply(new TerrainEditData
             {
                 Centre = target,
                 HalfExtent = Digging.Bite,
-                Mode = EditMode.SubtractSoil,
-                Fill = BlockType.BlockType_Air,
+                Mode = placing ? EditMode.Add : EditMode.SubtractSoil,
+                Fill = placing ? Digging.PlacedBlock : BlockType.BlockType_Air,
                 Shape = EditShape.Sphere,
                 Strength = Digging.BiteStrength,
             });

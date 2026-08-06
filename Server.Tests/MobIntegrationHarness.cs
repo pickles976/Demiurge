@@ -17,7 +17,7 @@ internal sealed class MobIntegrationHarness : IDisposable
         Weapons = new WeaponSystem(Server, Objects, terrain);
         Flags = new FlagSystem(Objects);
         Grenades = new GrenadeSystem(Objects, Items, TerrainEdits, terrain);
-        Mobs = new MobSystem(terrain, TerrainEdits, Weapons, Flags, Grenades, seed);
+        Mobs = new MobSystem(terrain, TerrainEdits, Weapons, Items, Flags, Grenades, seed);
     }
 
     public ChunkMap Terrain { get; }

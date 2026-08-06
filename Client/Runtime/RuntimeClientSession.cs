@@ -379,18 +379,27 @@ public sealed class RuntimeClientSession : IClientSession
     private void OnObjectDespawned(NetObject obj)
     {
         if (registry.LocalPlayer is not { } local) return;
-        if (obj.Has.HasFlag(NetComponents.Weapon)) local.Unequip(obj);
+        local.Drop(obj);
         if (ReferenceEquals(local.Status, obj)) local.Status = null;
     }
 
     private void LinkOwned(LocalPlayer local, NetObject obj)
     {
         if (!obj.Has.HasFlag(NetComponents.Owner) || obj.Owner.PlayerId != network.ClientId) return;
-        if (obj.Has.HasFlag(NetComponents.Weapon)
-            && obj.Has.HasFlag(NetComponents.Attachment)
+
+        // Two questions, deliberately separate. "Is it in a hand slot" decides whether the player is
+        // CARRYING it, which is what the HUD and the movement scale ask — the shovel is carried and
+        // has no WeaponState, and answering both questions with the weapon mask is what left slot 2
+        // drawing as empty. "Does it shoot" additionally decides whether there is anything to
+        // predict about it.
+        bool inHand = obj.Has.HasFlag(NetComponents.Attachment)
             && (obj.Attachment.Slot == EquipSlot.Hand
-                || HotbarConfig.TryFromStorageSlot(obj.Attachment.Slot, out _)))
-            local.Equip(obj);
+                || HotbarConfig.TryFromStorageSlot(obj.Attachment.Slot, out _));
+        if (inHand && obj.Has.HasFlag(NetComponents.Item))
+        {
+            if (obj.Has.HasFlag(NetComponents.Weapon)) local.Equip(obj);
+            else local.Carry(obj);
+        }
         if (obj.Type == ObjectType.PlayerStatus) local.Status = obj;
     }
 }

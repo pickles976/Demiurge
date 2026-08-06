@@ -252,7 +252,7 @@ public sealed class GrenadeSystem
                     {
                         Centre = new Vector3(firstX + x, target.Y, firstZ + z),
                         HalfExtent = Digging.Bite,
-                        Mode = EditMode.SubtractSoil,
+                        Mode = EditMode.SubtractBlast,
                         Fill = BlockType.BlockType_Air,
                         Shape = EditShape.Sphere,
                         Strength =

@@ -19,6 +19,7 @@ public static class ItemCatalog
         new(ItemType.BodyArmor, "demiurge:body_armor", ["body_armor", "body-armor", "bodyarmor"]),
         new(ItemType.Grenade, "demiurge:grenade", ["grenade"]),
         new(ItemType.Mosin, "demiurge:mosin", ["mosin", "mosin-nagant", "m9130"]),
+        new(ItemType.Dp27, "demiurge:dp27", ["dp27", "dp-27", "dp_27", "dp"]),
     ];
 
     private static readonly Dictionary<string, ItemType> byName = BuildLookup();

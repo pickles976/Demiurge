@@ -238,6 +238,35 @@ namespace Demiurge.GameServer
             return true;
         }
 
+        /// <summary>
+        /// What the actor has in a hotbar slot, or null when the slot is empty.
+        ///
+        /// The Hand fallback is the same one WeaponSystem.TryGetActiveWeapon applies, and it is not
+        /// optional here: an administrative `give` predates the hotbar and lands in Hand, where slot
+        /// 1 still selects it — and the client's own per-slot map files those under Primary too.
+        /// </summary>
+        public ItemType? HeldItem(ServerPlayer player, HotbarSlot hotbar)
+        {
+            if (!HotbarConfig.IsValid(hotbar)) return null;
+
+            var slot = HotbarConfig.StorageSlot(hotbar);
+            if (hotbar == HotbarSlot.Primary && !player.Equipped.ContainsKey(slot))
+                slot = EquipSlot.Hand;
+
+            return player.Equipped.TryGetValue(slot, out uint itemId) && objects.TryGet(itemId, out var item)
+                ? item.Item.Type
+                : null;
+        }
+
+        /// <summary>
+        /// The movement multiplier for whatever is in the actor's selected slot, which is the
+        /// server's half of <see cref="PlayerMovement.Step"/>'s speedScale. The client predicts the
+        /// same number from its own map of that slot; see <see cref="WeaponStats.MoveSpeedScale"/>
+        /// for why only weapons are allowed to carry one.
+        /// </summary>
+        public float MoveSpeedScale(ServerPlayer player, HotbarSlot hotbar)
+            => HeldItem(player, hotbar) is { } type ? WeaponConfig.MoveSpeedScale(type) : 1f;
+
         /// <summary>Everything worn leaves with its owner. Call from RemovePlayer.
         /// Miss this and every client keeps orphan views retrying their attach
         /// forever.</summary>

@@ -31,10 +31,17 @@ namespace Demiurge
         /// <summary>Difference: solid where the terrain is solid and the shape is not.</summary>
         Subtract,
         /// <summary>
-        /// Difference applied only to grass and dirt samples. Air still receives updated distance
-        /// values so the carved soil surface remains a valid SDF; stone is bit-identical.
+        /// Difference applied only to <see cref="Blocks.IsSoil"/> samples — what a shovel can move.
+        /// Air still receives updated distance values so the carved soil surface remains a valid
+        /// SDF; stone is bit-identical.
         /// </summary>
         SubtractSoil,
+        /// <summary>
+        /// Difference applied to <see cref="Blocks.IsBlastable"/> samples: everything a shovel can
+        /// move, plus masonry. The wider list is the whole difference between the two — a charge
+        /// brings a brick wall down and a spade does not, while natural rock is untouched by either.
+        /// </summary>
+        SubtractBlast,
     }
 
     public static class TerrainEdits
@@ -228,11 +235,7 @@ namespace Demiurge
                     {
                         int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
                         var voxel = chunk[i];
-                        if (mode == EditMode.SubtractSoil
-                            && voxel.Material is not (
-                                BlockType.BlockType_Air
-                                or BlockType.BlockType_Grass
-                                or BlockType.BlockType_Dirt))
+                        if (!Blocks.CanRemove(mode, voxel.Material))
                             continue;
 
                         var world = new Vector3(originX + x, y, originZ + z);

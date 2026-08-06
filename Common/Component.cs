@@ -31,6 +31,7 @@ namespace Demiurge
         Shovel = 7,
         Ppsh = 8,
         Mosin = 9,
+        Dp27 = 10,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"

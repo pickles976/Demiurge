@@ -3,28 +3,45 @@ use 32x32 textures in Blockbench
 use 16x16 textures for the ground
 For weapons, need to model sights and add anchors for camera to figure out where to position weapon for ADS
 
+1. Finish up AI
+2. Make the environment richer
+3. Multiplayer test
+
 # PVP Mechanics
 
 UI Improvements
 
+Overall the changes we made have caused the pace of the game to increase. NPC battles are much more exciting.
 
 It sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a     
   single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
 
 - Add a ticket system. Start with 200 tickets, bleed if you lose majority of flags. Add ticket UI to the top of the screen, red vs blue ticket count.
+- Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 
 Bugs:
-- models with weapons equipped sitting back at spawn doing nothing
-- shovel.png still not hooked up
 - units still standing idle at flag -- if they are defending, we need visual feedback indicating so. Add a command to show NPC state above their head in white text
 - defenders at the castle still digging a giant hole
 - defenders are digging WAYYY too much
-- digging down to cross a trench rather than just jumping in
+- digging down to cross a big trench rather than just jumping in
+
+- give grenades to assault units only
+- Assault units are useless at long range, and extremely deadly at close range. They need to take this into account. The PPSH and grenades can absolutely massacre defenders.
+
+New Features
+- Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
+
+- Try to add digging back in to combat
 
 
 - [ ] PVP
-    - [ ] heavy MG
-      Add the DP-27. 550 RPM, similar ballistics as Mosin, but slightly since it is 7.62x54mm but shorter muzzle length., but 50 damage instead of 70. 47 rounds per magazine. Make the player spawn with it by default. Add the reload and gunshot sounds.
+
+      - [ ] hook up helmet code
+
+      - [ ] add uniforms to cats
+      - [ ] flag 3D model
+
+      - [ ] mortar
 
       - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
       - [ ] fix NPCs holding stuff
@@ -33,18 +50,20 @@ Bugs:
       - [ ] tune MG for firing while prone
       - [ ] add MG pickup crate at hilltop flag
       - [ ] allow NPCs to use it
+      - [ ] add 4 more NPCs to each team
 
-    - [ ] Commander fortification and crew-weapon objectives
-  grenade reservations
-  - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
+    - [ ] Commander set crew-weapon objectives
+      - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
-    - [ ] mortar
-    - [ ] add helmet
-    - [ ] add uniforms to cats
-    - [ ] flag 3D model
 
-- [ ] sandbags texture and block type
+## Richer Environment 
 
+- [ ] add wood texture
+- [ ] add wood block type
+
+- [ ] structure editor
+
+- [ ] add grass
 - [ ] add trees
 - [ ] tree destruction
       - [ ] low LOD tree
@@ -104,6 +123,8 @@ Bugs found during design, each explaining part of the observed behaviour:
       following look 55× more expensive than its actual 51 µs/tick.
 - [ ] `docs/BARITONE.md` cites `StaircaseDigTargetsStayInsideOneMetreCorridor`, which does not exist.
 
+# MERGE INTO MAIN
+
 # PVP Demo
 
 - [ ] add screen where you enter a server IP and port
@@ -112,16 +133,6 @@ Bugs found during design, each explaining part of the observed behaviour:
   - [ ] Provision a DigitalOcean host
   - [ ] Configure the scrungy.com domain
 - [ ] Track and fix issues found by the Demo
-
-# Map Editor And Content
-
-- [x] Load a specific baked map when the server starts
-- [x] Save and load source maps
-- [x] Edit terrain, blocks, objects, and spawn points in 3D
-- [x] Capture, save, load, transform, and place structures
-- [ ] Add a dedicated editor object browser and properties UI
-- [ ] Add cancellable background baking with progress
-- [ ] Profile long editing sessions and add compaction only if justified
 
 # Open World
 

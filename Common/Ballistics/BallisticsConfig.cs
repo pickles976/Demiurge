@@ -7,6 +7,7 @@ namespace Demiurge
         Carbine,
         Pistol,
         Throwable,
+        MachineGun,
     }
 
     /// <summary>
@@ -100,6 +101,22 @@ namespace Demiurge
                 RecoilDecayMoaPerSecond: 35f,
                 RecoilCapMoa: 150f,
                 SightingMoa: 400f),
+            // The same full-power cartridge as the bolt gun, out of a shorter barrel: every term is
+            // the sniper profile's, moved a little the wrong way. Speed and bench accuracy are the
+            // barrel; the recoil terms are not, and they are why this is a profile of its own rather
+            // than the sniper row reused. A nine-kilo gun firing 550 rounds a minute barely moves per
+            // shot and never settles between them, so the per-shot kick is small and the CEILING is
+            // what a sustained burst actually runs into — the opposite shape to a rifle that kicks
+            // hard once and recovers.
+            WeaponBallisticsProfile.MachineGun => new BallisticsStats(
+                ProjectileSpeed: 800f,
+                BenchMoa: 3f,
+                RecoilPerShotMoa: 26f,
+                RecoilDecayMoaPerSecond: 55f,
+                RecoilCapMoa: 200f,
+                // Iron sights on a long sight radius, held by a weapon heavy enough to stay where it
+                // is put — better than a carbine's, well short of the Mosin's glass.
+                SightingMoa: 150f),
             WeaponBallisticsProfile.Throwable => new BallisticsStats(
                 ProjectileSpeed: GrenadeConfig.ThrowSpeed,
                 BenchMoa: 0f,

@@ -29,7 +29,19 @@ namespace Demiurge
         int ReloadTicks,
         ushort Damage,
         WeaponBallisticsProfile BallisticsProfile,
-        FireMode FireMode = FireMode.Automatic);
+        FireMode FireMode = FireMode.Automatic,
+        /// <summary>
+        /// What carrying this weapon does to <see cref="PlayerMovement.WalkSpeed"/> and every other
+        /// speed the movement step picks — 1 for a weapon light enough not to notice.
+        ///
+        /// It lives in the weapon table rather than in ItemConfig because weapons are the only
+        /// things heavy enough to matter so far, and both ends read it through
+        /// <see cref="WeaponConfig.MoveSpeedScale"/>, which answers 1 for anything without a row.
+        /// That indirection is the load-bearing part: the client PREDICTS movement, so a weight the
+        /// server applies and the prediction does not shows up as a reconciliation correction every
+        /// tick the item is in hand. Move this to a table the client cannot see and that is the bug.
+        /// </summary>
+        float MoveSpeedScale = 1f);
 
     /// <summary>The weapon trait table: only guns have rows, null means "not a
     /// gun". ItemSystem.SpawnPickup derives the WeaponState mask bit from a row
@@ -80,12 +92,42 @@ namespace Demiurge
                 Damage: 70,
                 BallisticsProfile: WeaponBallisticsProfile.SniperRifle,
                 FireMode: FireMode.SemiAutomatic),
+            // The pan gun. Its numbers are all consequences of one fact — it is a nine-kilo squad
+            // automatic firing the Mosin's cartridge — rather than a slot on a rate/damage curve:
+            //
+            // - 550 rounds a minute is the real cyclic rate, written as the rate rather than as the
+            //   tick count it comes to (3.27) so it can be read against the gun it describes. The
+            //   fraction matters and is deliberately kept: both cooldown paths carry the sub-tick
+            //   phase, so this pays out at 550 rpm rather than rounding to 600 or 450.
+            // - 47 rounds is the pan magazine, which is most of what the weapon is for. Swapping one
+            //   takes 4 s, which is both slower than any box magazine in the game and just inside
+            //   the 4.3 s reload sample, so the picture ends before the noise does.
+            // - 50 damage against the Mosin's 70: same bullet, but this is a suppression weapon, and
+            //   a two-hit kill that arrives nine times a second would beat every rifle in the game
+            //   at every range.
+            // - The move scale is the other half of that balance and the reason the gun is carried
+            //   rather than free: 0.7 of every movement speed, so taking the volume of fire costs
+            //   the ability to reposition with it.
+            ItemType.Dp27 => new WeaponStats(
+                MagazineCapacity: 47,
+                TicksPerShot: 60f * NetworkConfig.TickRate / 550f,
+                ReloadTicks: (int)MathF.Round(4f * NetworkConfig.TickRate, MidpointRounding.AwayFromZero),
+                Damage: 50,
+                BallisticsProfile: WeaponBallisticsProfile.MachineGun,
+                MoveSpeedScale: 0.7f),
             ItemType.Glock => new WeaponStats(MagazineCapacity: 15, TicksPerShot: 7, ReloadTicks: 20, Damage: 5, BallisticsProfile: WeaponBallisticsProfile.Pistol),
             // A grenade stack uses ammo as its remaining count. Each throw automatically cycles
             // the next grenade for 1.5 seconds; R is never needed for this item.
             ItemType.Grenade => new WeaponStats(MagazineCapacity: 4, TicksPerShot: 1, ReloadTicks: GrenadeConfig.ReloadTicks, Damage: 0, BallisticsProfile: WeaponBallisticsProfile.Throwable),
             _ => null,
         };
+
+        /// <summary>
+        /// What holding this item does to movement speed. One is the answer for anything without a
+        /// weapon row, which is what lets both ends ask the question about whatever is in the hand
+        /// without first checking that it is a gun.
+        /// </summary>
+        public static float MoveSpeedScale(ItemType type) => Get(type)?.MoveSpeedScale ?? 1f;
 
         /// <summary>For call sites that already gated on the WeaponState bit.
         /// Throws instead of handing back phantom stats — a miswired call site

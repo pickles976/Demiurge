@@ -25,6 +25,7 @@ public static class ItemCosmetics
         ItemType.Sks => "assets/models/sks.gltf",
         ItemType.Ppsh => "assets/models/ppsh.gltf",
         ItemType.Mosin => "assets/models/mosin.gltf",
+        ItemType.Dp27 => "assets/models/dp_27.gltf",
         ItemType.AWP => "assets/models/sniper_rifle.gltf",
         ItemType.Glock => "assets/models/glock.gltf",
         ItemType.Shovel => "assets/models/shovel.gltf",
@@ -76,6 +77,25 @@ public static class ItemCosmetics
     public static float AimMagnification(ItemType type) => type switch
     {
         ItemType.Mosin => 2f,
+        _ => 1f,
+    };
+
+    /// <summary>
+    /// How fast this weapon comes up to the sights, as a multiple of the ordinary rate — 0.7 being
+    /// "30% slower to aim". It scales the two exponential blends that ARE the ADS animation: the
+    /// view model travelling from the hip grip to the sight grip, and the camera settling onto the
+    /// aimed field of view. Both, because either one alone reads as a bug — the gun arriving before
+    /// the view or the other way round.
+    ///
+    /// Presentation, like <see cref="AimMagnification"/>. Nothing gates a shot on the sight picture
+    /// having arrived; what the weight of a weapon costs in the SIM is
+    /// <see cref="WeaponStats.MoveSpeedScale"/>.
+    /// </summary>
+    public static float AimSpeedScale(ItemType type) => type switch
+    {
+        // Nine kilos with a pan magazine on top of it. The same 0.7 its movement carries, because
+        // it is the same weight doing both.
+        ItemType.Dp27 => 0.7f,
         _ => 1f,
     };
 

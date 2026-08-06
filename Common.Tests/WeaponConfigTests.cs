@@ -43,4 +43,45 @@ public class WeaponConfigTests
             BallisticsConfig.Require(ItemType.AWP),
             BallisticsConfig.Require(ItemType.Mosin));
     }
+
+    /// <summary>Cadence asserted as ROUNDS PER MINUTE, which is the number the gun is specified in;
+    /// 550 is not a whole number of ticks and the fractional cadence is what preserves it.</summary>
+    [Fact]
+    public void Dp27HasRequestedMagazineCadenceAndDamage()
+    {
+        var stats = WeaponConfig.Require(ItemType.Dp27);
+
+        Assert.Equal(47, stats.MagazineCapacity);
+        Assert.Equal(550f, 60f * NetworkConfig.TickRate / stats.TicksPerShot, precision: 3);
+        Assert.Equal((ushort)50, stats.Damage);
+        Assert.Equal(FireMode.Automatic, stats.FireMode);
+    }
+
+    /// <summary>Same cartridge, shorter barrel: every ballistic term is the bolt gun's, moved the
+    /// wrong way. A property of the model rather than the specific numbers, so retuning the profile
+    /// cannot quietly make the machine gun the better rifle.</summary>
+    [Fact]
+    public void Dp27ShootsSlightlyWorseThanTheMosinItSharesACartridgeWith()
+    {
+        var mosin = BallisticsConfig.Require(ItemType.Mosin);
+        var dp27 = BallisticsConfig.Require(ItemType.Dp27);
+
+        Assert.True(dp27.ProjectileSpeed < mosin.ProjectileSpeed);
+        Assert.True(dp27.BenchMoa > mosin.BenchMoa);
+        Assert.True(dp27.SightingMoa > mosin.SightingMoa);
+    }
+
+    /// <summary>The weight is the balance for the magazine and the rate of fire, so it is worth
+    /// pinning that the machine gun is the only thing in the game that carries one.</summary>
+    [Fact]
+    public void OnlyTheDp27CostsMovementSpeedToCarry()
+    {
+        Assert.Equal(0.7f, WeaponConfig.MoveSpeedScale(ItemType.Dp27));
+
+        foreach (var definition in ItemCatalog.All)
+        {
+            if (definition.Type == ItemType.Dp27) continue;
+            Assert.Equal(1f, WeaponConfig.MoveSpeedScale(definition.Type));
+        }
+    }
 }

@@ -181,6 +181,10 @@ public class ShotEffectsScript : SyncScript
         // rifle's 0.40. The small per-round impulse still stacks into a burst without turning a
         // 35-round magazine into continuous full-strength camera shake.
         ItemType.Ppsh => 0.12f,
+        // Half a rifle's. Nine rounds a second into a shared pool that decays slower than it fills
+        // means the full-strength impulse never gets a gap to drain through, and the gun is heavy
+        // enough that it should be the steadiest thing in the game to hold on target anyway.
+        ItemType.Dp27 => 0.20f,
         _ => 0.40f,
     };
 

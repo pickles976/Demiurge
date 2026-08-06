@@ -170,7 +170,7 @@ namespace Demiurge.GameServer
                 terrainEdits,
                 terrain,
                 activityFeed);
-            mobs = new MobSystem(terrain, terrainEdits, weapons, flags, grenades);
+            mobs = new MobSystem(terrain, terrainEdits, weapons, items, flags, grenades);
 
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
@@ -186,6 +186,7 @@ namespace Demiurge.GameServer
                 SpawnPickupOnSurface(ItemType.Sks, -3f, 0f);
                 SpawnPickupOnSurface(ItemType.Ppsh, 0f, -3f);
                 SpawnPickupOnSurface(ItemType.Mosin, 0f, 3f);
+                SpawnPickupOnSurface(ItemType.Dp27, 3f, -3f);
                 SpawnPickupOnSurface(ItemType.Shovel, -1.5f, 1.5f);
                 SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
                 SpawnPickupOnSurface(ItemType.Grenade, 1.5f, 1.5f);
@@ -477,7 +478,13 @@ namespace Demiurge.GameServer
 
                 for (int i = 0; i < toProcess && player.PendingMoves.TryDequeue(out var move); i++)
                 {
-                    PlayerMovement.Step(terrain, ref player.Move, move.Intent, move.State, dt);
+                    // The MOVE's hotbar, not the player's: the field is written when input arrives
+                    // and the queue can be a tick or two behind, so stepping against it would apply
+                    // a weight the client had not yet applied to that move — a correction on every
+                    // weapon switch. The client replays from the same field.
+                    PlayerMovement.Step(
+                        terrain, ref player.Move, move.Intent, move.State, dt,
+                        items.MoveSpeedScale(player, move.Hotbar));
                     player.State = move.State;
                     player.Yaw = move.Yaw;
                     player.Pitch = move.Pitch;
@@ -488,7 +495,9 @@ namespace Demiurge.GameServer
 
                 // Queue starved, just reuse last player input
                 if (!processedAny)
-                    PlayerMovement.Step(terrain, ref player.Move, player.LastIntent, player.State, dt);
+                    PlayerMovement.Step(
+                        terrain, ref player.Move, player.LastIntent, player.State, dt,
+                        items.MoveSpeedScale(player, player.Hotbar));
             }
             mobs.RecordTick(mobMovementTicks, mobCount);
             while (mobs.TryDequeueStuckMob(out ushort stuckMobId))

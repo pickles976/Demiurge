@@ -117,6 +117,17 @@ public static class WeaponFx
                 HoldSeconds: 0.65f,
                 ReturnSeconds: 0.286f,
                 SoundPath: "assets/sfx/mosin_bolt.wav")),
+        // Four samples rather than two: at 550 rounds a minute a pair alternating is audibly a pair,
+        // which is the machine-gun buzz the list exists to break up.
+        ItemType.Dp27 => new(
+            [
+                "assets/sfx/dp_27_shot_1.wav",
+                "assets/sfx/dp_27_shot_2.wav",
+                "assets/sfx/dp_27_shot_3.wav",
+                "assets/sfx/dp_27_shot_4.wav",
+            ],
+            Color.Yellow,
+            ReloadSoundPath: "assets/sfx/dp_27_reload.wav"),
         ItemType.AWP => new("assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.Glock => new("assets/sfx/ak47_shot.wav", Color.Yellow),
 

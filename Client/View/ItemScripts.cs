@@ -338,8 +338,11 @@ public class ItemAttachScript : SyncScript
         }
         else
         {
+            // The weapon's own aim speed scales the rate, so a heavy gun takes proportionally longer
+            // to come up — and the same scale paces the camera's field of view in FirstPersonCamera,
+            // so the sight picture and the view arrive together.
             viewGripOffset = Vector3.Lerp(viewGripOffset, targetGripOffset,
-                1f - MathF.Exp(-ViewModelSharpness * dt));
+                1f - MathF.Exp(-ViewModelSharpness * ItemCosmetics.AimSpeedScale(Object.Item.Type) * dt));
         }
 
         UpdateRecoil(dt, aiming);

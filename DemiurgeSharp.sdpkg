@@ -36,6 +36,9 @@ RootAssets:
     - a1c2311d-86f9-2c54-4afa-520e8bf3e1e5:models/glock
     - d5a9cf33-e6e0-1d7a-8e30-373b802dea66:models/grass
     - c605e5d7-c639-5541-5331-8318a2984af1:models/grenade
+    - fa8b4eb7-70c4-bdfb-9cde-401b8f3bb3fb:models/helmet
+    - 016d02af-936e-8fe5-34b6-ecbf1fb18204:models/mortar_tube
+    - fd649226-80d2-a505-e213-de3739edf665:models/mortar
     - 7343b844-5900-3b08-7028-2752608fb224:models/mosin
     - 8f53437d-a0be-dd5d-295c-bd35d482d6dd:models/mosin_skeleton
     - 3aa2019a-0c38-617b-6392-cd993646fd91:models/ppsh

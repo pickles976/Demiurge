@@ -84,6 +84,17 @@ public class RemotePlayer : Player
 
     // Every stored weapon keeps its own predicted ammo/timers while the player scrolls away.
     private readonly Dictionary<HotbarSlot, PredictedWeapon> hotbarWeapons = [];
+
+    /// <summary>
+    /// Everything the player is carrying in a hotbar slot, weapon or not.
+    ///
+    /// Separate from <see cref="hotbarWeapons"/> because that map is the PREDICTION — ammo,
+    /// cooldowns, spread — and a shovel has none of those to predict. It has no WeaponConfig row, so
+    /// it never carried a WeaponState bit, so it was absent from the only per-slot map there was:
+    /// which is why its hotbar slot drew as empty however many thumbnails were on disk. Anything
+    /// asking "what is in slot 2" wants this one.
+    /// </summary>
+    private readonly Dictionary<HotbarSlot, NetObject> hotbarItems = [];
     private PredictedWeapon? ActiveWeapon
         => hotbarWeapons.GetValueOrDefault(Hotbar);
 
@@ -103,17 +114,37 @@ public class RemotePlayer : Player
     // pattern as the registries' events. Carries the shot's origin and direction.
     public event Action<Vector3, Vector3>? ShotFired;
 
+    /// <summary>Which hotbar slot an owned item occupies. Legacy Hand/admin equips are slot 1.</summary>
+    private static HotbarSlot SlotOf(NetObject item)
+        => HotbarConfig.TryFromStorageSlot(item.Attachment.Slot, out var stored)
+            ? stored
+            : HotbarSlot.Primary;
+
+    /// <summary>Records an owned item in its slot. Every hotbar item goes through here; only the
+    /// ones that shoot additionally go through <see cref="Equip"/>.</summary>
+    public void Carry(NetObject item) => hotbarItems[SlotOf(item)] = item;
+
+    public void Drop(NetObject item)
+    {
+        foreach (var pair in hotbarItems)
+        {
+            if (!ReferenceEquals(pair.Value, item)) continue;
+            hotbarItems.Remove(pair.Key);
+            break;
+        }
+        Unequip(item);
+    }
+
     public void Equip(NetObject weapon)
     {
-        HotbarSlot slot = HotbarConfig.TryFromStorageSlot(weapon.Attachment.Slot, out var stored)
-            ? stored
-            : HotbarSlot.Primary; // legacy Hand/admin equips are slot 1
+        var slot = SlotOf(weapon);
         hotbarWeapons[slot] = new PredictedWeapon
         {
             Object = weapon,
             Stats = WeaponConfig.Require(weapon.Item.Type),
             Ammo = weapon.Weapon.CurrentAmmo,
         };
+        hotbarItems[slot] = weapon;
     }
 
     public void Unequip(NetObject weapon)
@@ -134,10 +165,23 @@ public class RemotePlayer : Player
     }
 
     public NetObject? ItemIn(HotbarSlot slot)
-        => hotbarWeapons.GetValueOrDefault(slot)?.Object;
+        => hotbarItems.GetValueOrDefault(slot);
 
     public int AmmoIn(HotbarSlot slot)
         => hotbarWeapons.GetValueOrDefault(slot)?.Ammo ?? 0;
+
+    /// <summary>
+    /// The prediction's half of <see cref="PlayerMovement.Step"/>'s speedScale: what the item in
+    /// this slot does to movement speed. Taken per SLOT rather than from whatever is selected now,
+    /// because a replay re-runs old moves and each one has to be stepped with the weight it was sent
+    /// with — the server does the same, off the same field on the same input.
+    ///
+    /// An empty slot weighs nothing, and both ends read the same table for everything else, so a
+    /// slot the client has not been told about yet is the only way the two can differ — and it
+    /// resolves the moment the object arrives.
+    /// </summary>
+    private float MoveSpeedScaleIn(HotbarSlot slot)
+        => ItemIn(slot) is { } held ? WeaponConfig.MoveSpeedScale(held.Item.Type) : 1f;
 
     /// <summary>
     /// Fires at a point in the world rather than along a direction, and that distinction is the
@@ -267,7 +311,9 @@ public class RemotePlayer : Player
                 continue;
             }
 
-            PlayerMovement.Step(terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt);
+            PlayerMovement.Step(
+                terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt,
+                MoveSpeedScaleIn(move.Hotbar));
             pendingMoves.Enqueue(move);
         }
     }
@@ -317,7 +363,9 @@ public class RemotePlayer : Player
 
         Move = authoritative;                           // snap to authority...
         foreach (var move in pendingMoves)              // ...then re-apply what it hasn't seen
-            PlayerMovement.Step(terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt);
+            PlayerMovement.Step(
+                terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt,
+                MoveSpeedScaleIn(move.Hotbar));
 
         // Diagnostic: in the happy path replay reproduces the prediction exactly.
         // Any hit here means client and server sims disagreed (or a bug).
