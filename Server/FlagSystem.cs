@@ -160,6 +160,23 @@ public sealed class FlagSystem
         => flags.Select(flag => flag.Position).ToArray();
 
     /// <summary>
+    /// How many flags each team currently controls. A flag being drained still counts for its
+    /// owner until it actually goes neutral, which is what makes the ticket bleed follow ownership
+    /// rather than momentary presence.
+    /// </summary>
+    public IReadOnlyDictionary<int, int> ControlledCounts()
+    {
+        var counts = new Dictionary<int, int>();
+        foreach (var flag in flags)
+        {
+            int owner = flag.Object.Team.Value;
+            if (owner == FlagConfig.NeutralTeam) continue;
+            counts[owner] = counts.GetValueOrDefault(owner) + 1;
+        }
+        return counts;
+    }
+
+    /// <summary>
     /// Hands a flag to a team outright, as a completed capture would.
     ///
     /// Scenario setup, not gameplay: nothing in a running match awards a flag without going through

@@ -18,6 +18,12 @@ namespace Demiurge
 {
     public class HUD
     {
+        /// <summary>Conquest ticket bar colours and size, shared by the layout and the script.</summary>
+        public static readonly Color Team1Color = new(235, 145, 45, 255);
+        public static readonly Color Team2Color = new(198, 203, 209, 255);
+        public const float TicketBarWidth = 190f;
+        public const float TicketBarHeight = 7f;
+
         public static Entity CreateTerminal(
             Game game,
             ClientInputState inputState,
@@ -194,6 +200,65 @@ namespace Demiurge
             root.Children.Add(statusCanvas);
             root.Children.Add(hotbarPanel);
 
+            // Conquest tickets, top centre: the two sides face each other across the middle, the
+            // way Battlefield reads — team 1 orange on the left, team 2 grey on the right.
+            var ticketPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 14, 0, 0),
+            };
+            var ticketCounters = new TextBlock[2];
+            var ticketFills = new Border[2];
+            for (int i = 0; i < 2; i++)
+            {
+                var color = i == 0 ? Team1Color : Team2Color;
+                // Starts at the full count rather than blank: the server's first word on the subject
+                // may be up to one bleed interval away, and a starting score is what is true until
+                // then. The server re-sends every interval, so a wrong guess corrects itself.
+                var counter = new TextBlock
+                {
+                    Text = $"{ConquestConfig.StartingTickets}",
+                    TextColor = color,
+                    Font = font,
+                    TextSize = 26,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+
+                // Canvas rather than a Grid: the fill is sized in pixels every update, and a Canvas
+                // is the panel that leaves a child's Width alone.
+                var fill = new Border
+                {
+                    Width = TicketBarWidth,
+                    Height = TicketBarHeight,
+                    BackgroundColor = color,
+                };
+                var track = new Canvas
+                {
+                    Width = TicketBarWidth,
+                    Height = TicketBarHeight,
+                    BackgroundColor = new Color(12, 14, 16, 190),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                track.Children.Add(fill);
+
+                var column = new StackPanel
+                {
+                    Orientation = Orientation.Vertical,
+                    Width = TicketBarWidth,
+                    Margin = new Thickness(i == 0 ? 0 : 18, 0, i == 0 ? 18 : 0, 0),
+                };
+                column.Children.Add(counter);
+                column.Children.Add(track);
+
+                ticketCounters[i] = counter;
+                ticketFills[i] = fill;
+                ticketPanel.Children.Add(column);
+            }
+            root.Children.Add(ticketPanel);
+
             var activityText = new TextBlock
             {
                 Text = "",
@@ -232,7 +297,8 @@ namespace Demiurge
                 BackgroundColor = new Color(5, 5, 7, 175),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 36, 0, 0),
+                // Below the ticket bar, which now owns the top centre.
+                Margin = new Thickness(0, 92, 0, 0),
                 Content = respawnText,
                 Visibility = Visibility.Collapsed,
             };
@@ -261,6 +327,8 @@ namespace Demiurge
                     Readiness = game.Services.GetService<SpawnReadiness>(),
                     ActivityPanel = activityPanel,
                     ActivityText = activityText,
+                    TicketCounters = ticketCounters,
+                    TicketFills = ticketFills,
                 },
             };
 
@@ -471,6 +539,9 @@ namespace Demiurge
             public TextBlock RespawnText { get; set; } = null!;
             public UIElement ActivityPanel { get; set; } = null!;
             public TextBlock ActivityText { get; set; } = null!;
+            /// <summary>Index 0 is team 1, index 1 is team 2 — the two sides the bar draws.</summary>
+            public TextBlock[] TicketCounters { get; set; } = [];
+            public Border[] TicketFills { get; set; } = [];
 
             private PlayerRegistry _registry = null!;
             private NetworkManager _network = null!;
@@ -497,18 +568,28 @@ namespace Demiurge
             private bool _lastDead;
             private int _lastRespawnSeconds = int.MinValue;
 
+            // Written on the network thread, read on the main thread — the whole message at once,
+            // since it is the complete score rather than a delta. Applied in Update.
+            private MatchTicketsData? _receivedTickets;
+            private readonly object _ticketGate = new();
+            private readonly int[] _shownTickets = [-1, -1];
+
             public override void Start()
             {
                 _registry = Services.GetSafeServiceAs<PlayerRegistry>();
                 _network = Services.GetSafeServiceAs<NetworkManager>();
                 _network.ActivityFeedReceived += OnActivityFeed;
+                _network.MatchTicketsReceived += OnMatchTickets;
                 Root.Visibility = Visibility.Collapsed;   // until spawn
             }
 
             public override void Cancel()
             {
                 if (_network is not null)
+                {
                     _network.ActivityFeedReceived -= OnActivityFeed;
+                    _network.MatchTicketsReceived -= OnMatchTickets;
+                }
             }
 
             public override void Update()
@@ -521,6 +602,7 @@ namespace Demiurge
                     _lastVisible = visible;
                     Root.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
                 }
+                RefreshTickets();
                 if (local == null) return;
 
                 int health = local.Status?.Health.Current ?? 0;
@@ -552,6 +634,37 @@ namespace Demiurge
                 if (string.IsNullOrWhiteSpace(activity.Text)) return;
                 lock (_activityGate)
                     _receivedActivity.Enqueue(activity.Text);
+            }
+
+            /// <summary>Network thread. Keeps only the newest score; an older one that overtakes it
+            /// carries no information the newer one lacks.</summary>
+            private void OnMatchTickets(MatchTicketsData tickets)
+            {
+                lock (_ticketGate)
+                    _receivedTickets = tickets;
+            }
+
+            private void RefreshTickets()
+            {
+                MatchTicketsData? received;
+                lock (_ticketGate)
+                {
+                    received = _receivedTickets;
+                    _receivedTickets = null;
+                }
+                if (received is not { Teams: { } teams }) return;
+
+                foreach (var entry in teams)
+                {
+                    int index = entry.Team - 1;   // team 1 draws left, team 2 right
+                    if (index < 0 || index >= TicketCounters.Length) continue;
+                    if (_shownTickets[index] == entry.Tickets) continue;
+
+                    _shownTickets[index] = entry.Tickets;
+                    TicketCounters[index].Text = entry.Tickets.ToString();
+                    TicketFills[index].Width = TicketBarWidth
+                        * Math.Clamp(entry.Tickets / (float)ConquestConfig.StartingTickets, 0f, 1f);
+                }
             }
 
             private void RefreshActivityFeed()

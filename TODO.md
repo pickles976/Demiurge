@@ -9,6 +9,8 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
+- improve animations
+
 Map Upgrade for testing
 
 - Add a ticket system. Start with 200 tickets. You lose 1 ticket every 3 seconds for every flag the enemy controls more than you. (enemy controls 3 flags, you control 2, minus 1 ticket every 3s). Add a Battlefield-style ticket UI to the top of the screen, orange color for team 1, gray for team 2. 
@@ -65,6 +67,10 @@ New Features
 
       - [ ] remove glock, AWP, and AK
       - [ ] impart a force on ragdolls so they dont just flop lifelessly
+      - [ ] fix audio cutting off
+      - [ ] long range report sounds
+      - [ ] need pickup prompt
+
 
 
 ## Richer Environment 

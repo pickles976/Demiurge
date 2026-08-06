@@ -93,12 +93,12 @@ public class WireRoundTripTests
     /// through almost any bug you care to write — including reading two fields in swapped order when
     /// both happen to be zero.
     /// </remarks>
-    private static object Populate(Type type)
+    private static object Populate(Type type, string seedPrefix = "")
     {
         object instance = Activator.CreateInstance(type)!;
 
         foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
-            field.SetValue(instance, ValueFor(field.FieldType, field.Name));
+            field.SetValue(instance, ValueFor(field.FieldType, seedPrefix + field.Name));
 
         return instance;
     }
@@ -142,7 +142,18 @@ public class WireRoundTripTests
         if (type == typeof(Vector2)) return new Vector2(seed % 100 + 0.25f, seed % 50 - 1.5f);
         if (type == typeof(byte[])) return new byte[] { 1, 2, 3, 4, 5 };
 
-        if (typeof(IMessageSerializable).IsAssignableFrom(type)) return Populate(type);
+        if (typeof(IMessageSerializable).IsAssignableFrom(type)) return Populate(type, seedName);
+
+        // A repeated field. Every element gets a DIFFERENT seed, so writing element 0 three times —
+        // the natural way to get a count-prefixed list wrong — changes the bytes and fails.
+        if (type.IsArray && type.GetElementType() is { } element)
+        {
+            const int elements = 3;
+            var array = Array.CreateInstance(element, elements);
+            for (int i = 0; i < elements; i++)
+                array.SetValue(ValueFor(element, $"{seedName}{i}"), i);
+            return array;
+        }
 
         throw new NotSupportedException(
             $"The conformance filler does not know how to populate {type.Name} (field '{seedName}'). "

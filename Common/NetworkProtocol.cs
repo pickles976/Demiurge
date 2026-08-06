@@ -120,7 +120,8 @@ namespace Demiurge
         // Appended, never inserted — these values ARE the protocol.
         TerrainEdit,
         CommandResult,
-        ActivityFeed
+        ActivityFeed,
+        MatchTickets
     }
 
     public enum ClientToServerId : ushort

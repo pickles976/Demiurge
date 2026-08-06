@@ -15,6 +15,7 @@ namespace Demiurge.GameServer
         private readonly WeaponSystem weapons;
         private readonly GrenadeSystem grenades;
         private readonly FlagSystem flags;
+        private readonly TicketSystem tickets;
         private readonly TerrainSystem terrainEdits;
         private readonly ActivityFeedSystem activityFeed;
         private readonly ChunkTcpServer chunks;
@@ -163,6 +164,7 @@ namespace Demiurge.GameServer
             activityFeed = new ActivityFeedSystem(server);
             weapons = new WeaponSystem(server, objects, terrain, activityFeed);
             flags = new FlagSystem(objects, activityFeed);
+            tickets = new TicketSystem(server, flags, playableTeams);
             terrainEdits = new TerrainSystem(server, terrain);
             grenades = new GrenadeSystem(
                 objects,
@@ -345,6 +347,7 @@ namespace Demiurge.GameServer
                 server.Send(CreateSpawnMessage(other), clientId);
 
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
+            tickets.SendTo(clientId);      // ...and on the score, which only moves every 3 s
 
             int team = AssignPlayerTeam();
             var player = new ServerPlayer { Id = clientId, Team = team };
@@ -516,6 +519,8 @@ namespace Demiurge.GameServer
 
             long afterActors = Stopwatch.GetTimestamp();
             flags.Tick(dt, players.Values);
+            // After the capture pass, so a flag that changed hands this tick is priced this tick.
+            tickets.Tick(dt);
 
             // Save history
             foreach (var player in players.Values)
