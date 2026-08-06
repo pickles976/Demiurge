@@ -71,6 +71,26 @@ public class TicketSystemTests
         Assert.Equal(ConquestConfig.StartingTickets - 1, tickets.Tickets[1]);
     }
 
+    [Fact]
+    public void EveryRespawnCostsItsTeamOneTicketAndStopsAtZero()
+    {
+        var (_, tickets) = Match();
+
+        tickets.ChargeRespawn(1);
+        tickets.ChargeRespawn(1);
+        tickets.ChargeRespawn(2);
+
+        Assert.Equal(ConquestConfig.StartingTickets - 2, tickets.Tickets[1]);
+        Assert.Equal(ConquestConfig.StartingTickets - 1, tickets.Tickets[2]);
+
+        for (int i = 0; i < ConquestConfig.StartingTickets + 5; i++) tickets.ChargeRespawn(1);
+        Assert.Equal(0, tickets.Tickets[1]);
+
+        // A team that is not playing this map is not a team that can be charged.
+        tickets.ChargeRespawn(7);
+        Assert.False(tickets.Tickets.ContainsKey(7));
+    }
+
     private static (FlagSystem Flags, TicketSystem Tickets) Match()
     {
         var objects = new ObjectReplication(new NullNetServer());

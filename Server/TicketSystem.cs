@@ -18,6 +18,7 @@ public sealed class TicketSystem
     private readonly FlagSystem flags;
     private readonly Dictionary<int, int> tickets = [];
     private float sinceBleed;
+    private bool pending;
 
     public TicketSystem(INetServer server, FlagSystem flags, IEnumerable<int> teams)
     {
@@ -30,12 +31,37 @@ public sealed class TicketSystem
 
     public IReadOnlyDictionary<int, int> Tickets => tickets;
 
+    /// <summary>
+    /// One reinforcement. Charged when a man actually re-enters the world rather than when he dies,
+    /// so a death at the end of a round costs nothing if nobody comes back for it — and so a team
+    /// pays once per body, not once per corpse.
+    ///
+    /// NPCs are charged too. They are the reinforcements on this map; exempting them would leave a
+    /// thirty-two-man battle costing two teams nothing but map control.
+    /// </summary>
+    public void ChargeRespawn(int team)
+    {
+        if (!tickets.TryGetValue(team, out int remaining) || remaining == 0) return;
+        tickets[team] = remaining - 1;
+        // Not sent from here: a respawn wave is many of these in one tick, and they coalesce into
+        // the single message the next Tick sends.
+        pending = true;
+    }
+
     public void Tick(float dt)
     {
         if (tickets.Count == 0 || !float.IsFinite(dt) || dt <= 0f) return;
 
         sinceBleed += dt;
-        if (sinceBleed < ConquestConfig.TicketBleedSeconds) return;
+        if (sinceBleed < ConquestConfig.TicketBleedSeconds)
+        {
+            if (pending)
+            {
+                server.SendToAll(CreateMessage());
+                pending = false;
+            }
+            return;
+        }
         // One charge per interval however long the tick was: a server hitch is not a reason to
         // take three seconds of tickets off a team at once.
         sinceBleed -= ConquestConfig.TicketBleedSeconds;
@@ -54,6 +80,7 @@ public sealed class TicketSystem
         // seconds, and it means a client that missed its join-time catch-up — or subscribed a frame
         // late — repairs itself rather than showing a blank score for the rest of the match.
         server.SendToAll(CreateMessage());
+        pending = false;
     }
 
     /// <summary>Catches a joining client up, since the next bleed may be three seconds away.</summary>

@@ -564,6 +564,7 @@ namespace Demiurge.GameServer
                 status.Dirty |= NetComponents.Health;
                 items.RefillRespawnLoadout(player);
                 if (player.IsMob) mobs.OnRespawn(player);
+                tickets.ChargeRespawn(player.Team);
                 player.RespawnTick = 0;
             }
 

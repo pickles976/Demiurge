@@ -81,6 +81,8 @@ public class ItemAttachScript : SyncScript
 
     private Entity? owner;
     private string? linkedNode;
+    private string? handNodeName;
+    private int handNode = -1;
     private Vector3 viewGripOffset = WeaponMount.HipGripOffset;
     private bool firstViewFrame = true;
     private int? observedAmmo;
@@ -172,8 +174,114 @@ public class ItemAttachScript : SyncScript
 
         model.Enabled = true;
         Entity.Transform.Scale = new Vector3(ItemCosmetics.WorldScale(Object.Item.Type));
-        Seat(ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount)
-                 with { Rotation = WeaponMount.HandRotationFor(Object.Item.Type, swing.Angle).ToStride() });
+
+        // Two mounts, and which one is right depends on what the man is doing.
+        //
+        // AIMING: the weapon is the thing being pointed, so it takes its orientation from the actor
+        // and ignores the arm — see SeatInHand.
+        //
+        // NOT AIMING: the weapon is being CARRIED, and the carry is the animation's to describe.
+        // Hanging it off the hand bone the old way is what makes it swing with the arms at a run,
+        // and no amount of actor-derived orientation reproduces that, because the sway is not in
+        // the actor's transform at all — it only exists in the pose.
+        //
+        // The switch is instant, like the Aiming clip's own (PlayerViewScript blends it with no
+        // fade), and the two agree closely at that moment anyway: HandRotation was tuned so the
+        // firing pose points the barrel forward, which is where the aimed mount puts it.
+        var socket = ItemCosmetics.GetSocket(Object.Attachment.Slot, Object.Item.Type, Mount);
+        if (socket.Node is { } hand && player.State.HasFlag(PlayerStateFlags.Aiming))
+            SeatInHand(hand, player.Pitch);
+        else
+            Seat(socket with
+            {
+                Rotation = WeaponMount.HandRotationFor(Object.Item.Type, swing.Angle).ToStride(),
+            });
+    }
+
+    /// <summary>
+    /// A held item takes its POSITION from the hand and its ORIENTATION from the actor: the grip
+    /// lands on the hand bone, and the weapon points where the man is aiming — his yaw and his
+    /// pitch, upright about the barrel — whatever the arm underneath it happens to be doing.
+    ///
+    /// That split is why this does not use <see cref="ModelNodeLinkComponent"/> — a bone link
+    /// supplies the whole parent matrix, so anything hung off it inherits the bone's rotation by
+    /// construction and the only way out is to cancel that rotation back out again. Reading the one
+    /// thing we want from the skeleton is both shorter and honest about which frame each half of
+    /// the transform comes from.
+    ///
+    /// The entity stays at the scene root, so what is written here IS the world transform.
+    /// </summary>
+    private void SeatInHand(string node, float pitch)
+    {
+        if (linkedNode != null)
+        {
+            Entity.Remove<ModelNodeLinkComponent>();
+            // ModelNodeLinkProcessor only clears the link in Draw, one phase after this, and until
+            // it does the transform written below would be composed onto the bone as if it were
+            // still bone-local — a one-frame jump every time the man raises his sights.
+            Entity.Transform.TransformLink = null;
+            linkedNode = null;
+        }
+
+        var type = Object.Item.Type;
+
+        // Three rotations, innermost frame first, because Stride and System.Numerics both compose
+        // as "apply a, THEN b":
+        //   the item's own swing, in its model frame, so a chop still reads as a chop;
+        //   the aim pitch, about the actor's X — the same PitchRotation the aim bone and the shot
+        //     both use, so the drawn barrel agrees with where the man is looking;
+        //   the actor's yaw, which is the whole of his transform (PlayerViewScript writes
+        //     RotationY(Yaw) and nothing else, for players and NPCs alike), taking it into world.
+        // Nothing here reads the arm, which is the point: no wrist twist, no roll.
+        var rotation = System.Numerics.Quaternion.Concatenate(
+            WeaponMount.SwingRotation(swing.Angle),
+            System.Numerics.Quaternion.Concatenate(
+                WeaponMount.PitchRotation(pitch),
+                owner!.Transform.Rotation.ToNumerics()));
+
+        // Seat is the offset that lands the model's grip on a point, solved for THIS rotation; the
+        // scale it is drawn at has to go through it too, or a model drawn at anything but 1:1 hangs
+        // off its hand by the fraction it was shrunk (the shovel, at 0.2).
+        float scale = ItemCosmetics.WorldScale(type);
+        Entity.Transform.Rotation = rotation.ToStride();
+        Entity.Transform.Position =
+            (HandPosition(node) + Mount.Seat(type, rotation) * scale).ToStride();
+    }
+
+    /// <summary>
+    /// Where the hand bone is, in world space, this frame.
+    ///
+    /// Skeleton world matrices are computed in Draw, so what is readable from a script is the
+    /// previous frame's pose — and <see cref="TransformComponent.WorldMatrix"/> is one frame behind
+    /// for the same reason. That pairing is what makes this exact where it matters: the bone offset
+    /// is taken in the owner's OWN frame from those two stale-but-consistent values, then placed by
+    /// the owner's CURRENT transform. Only the animation pose is a frame old. Using the bone's world
+    /// position directly would leave a sprinting man's rifle trailing a stride behind him.
+    /// </summary>
+    private System.Numerics.Vector3 HandPosition(string node)
+    {
+        var transform = owner!.Transform;
+        var current = transform.Position.ToNumerics();
+        if (owner.Get<ModelComponent>()?.Skeleton is not { } skeleton) return current;
+
+        if (handNodeName != node)
+        {
+            // A name that is not in the rig resolves to -1 and stays there: the item sits at the
+            // actor's origin, which is wrong but findable, rather than silently at the world's.
+            handNode = Array.FindIndex(skeleton.Nodes, bone => bone.Name == node);
+            handNodeName = node;
+        }
+        if (handNode < 0) return current;
+
+        var bone = skeleton.NodeTransformations[handNode].WorldMatrix.TranslationVector;
+        var posed = transform.WorldMatrix;
+        posed.Decompose(out _, out Quaternion posedRotation, out Vector3 posedPosition);
+
+        var inOwnerFrame = System.Numerics.Vector3.Transform(
+            (bone - posedPosition).ToNumerics(),
+            System.Numerics.Quaternion.Inverse(posedRotation.ToNumerics()));
+        return current
+            + System.Numerics.Vector3.Transform(inOwnerFrame, transform.Rotation.ToNumerics());
     }
 
     /// <summary>

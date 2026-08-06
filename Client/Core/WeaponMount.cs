@@ -79,6 +79,14 @@ namespace Demiurge.GameClient
                 : Quaternion.CreateFromAxisAngle(Vector3.UnitX, radians);
 
         /// <summary>
+        /// <see cref="Pitch"/> on its own, for a caller that orients an item in some frame OTHER
+        /// than the hand bone's and so wants the swing without <see cref="HandRotation"/> baked in.
+        /// The third-person held item is that caller: it takes its facing from the actor, not from
+        /// the arm.
+        /// </summary>
+        public static Quaternion SwingRotation(float radians) => Pitch(radians);
+
+        /// <summary>
         /// First-person view-model orientation. <see cref="HandRotation"/> is only half of the
         /// third-person chain: it lives under the animated right_hand bone, whose aiming pose swings
         /// the barrel forward. A camera-relative model has no hand bone, so this applies that missing

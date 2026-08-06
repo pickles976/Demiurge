@@ -4,18 +4,16 @@ use 16x16 textures for the ground
 For weapons, need to model sights and add anchors for camera to figure out where to position weapon for ADS
 
 1. Finish up AI
-2. Make the environment richer
-3. Multiplayer test
+2. Finish PVP MVP
+3. Make the environment richer
+4. Multiplayer test
 
 # PVP Mechanics
 
-- improve animations
-
 Map Upgrade for testing
 
-- Add a ticket system. Start with 200 tickets. You lose 1 ticket every 3 seconds for every flag the enemy controls more than you. (enemy controls 3 flags, you control 2, minus 1 ticket every 3s). Add a Battlefield-style ticket UI to the top of the screen, orange color for team 1, gray for team 2. 
-
 - Kill feed needs to make the names of the NPCs orange for team 1, gray for team 2
+
 
 AI IMPROVEMENTS
 
@@ -42,10 +40,11 @@ New Features
 
 - [ ] PVP
 
-      - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbag
-      - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
       - [ ] add uniforms to cats
       - [ ] flag 3D model
+
+      - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
+      - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbag
 
       - [ ] camera placement relative to head collider
       - [ ] dig dirt to place sandbags
@@ -70,6 +69,8 @@ New Features
       - [ ] fix audio cutting off
       - [ ] long range report sounds
       - [ ] need pickup prompt
+
+      - [ ] json config for all items
 
 
 

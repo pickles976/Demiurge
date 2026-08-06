@@ -23,6 +23,7 @@ RootAssets:
     - ba272b45-7972-c49a-32d2-2a82dc97582b:models/cat_gray_anim_Aiming
     - 7f69b23f-75fa-de4a-ee94-2c47a5987728:models/cat_gray_anim_Crouch
     - 4e7ca3c8-a3fc-3e48-bca0-806230086688:models/cat_gray_anim_CrouchWalk
+    - 94bd20da-9ed5-add1-75ee-92519991a9a8:models/cat_gray_anim_Prone
     - a9c9c33d-d0f7-8e22-959a-0ad5c3538937:models/cat_orange
     - e13f8a9e-58fb-0f01-4923-3b3bd3d82899:models/cat_orange_skeleton
     - fb7c8408-a6cd-ed2a-6b12-059c4acce042:models/cat_orange_anim_Walk
