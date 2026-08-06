@@ -111,6 +111,8 @@ public class ItemAttachScript : SyncScript
 
     public override void Update()
     {
+        // One body per id — PlayerRegistry ignores a repeat spawn, so this cannot be ambiguous. When
+        // it could, the oldest match won and every weapon ended up on an orphaned body.
         owner ??= Entity.Scene?.Entities.FirstOrDefault(e => e.Name == $"Player_{Object.Owner.PlayerId}");
         if (owner == null) return;
         if (Entity.Get<ModelComponent>() is not { } model) return;

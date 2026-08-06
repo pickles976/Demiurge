@@ -49,6 +49,21 @@ public class PlayerRegistry : IDisposable
 
     private void OnPlayerSpawned(PlayerSpawnData data)
     {
+        // An actor we already have is not a second actor. Replacing it would leave the VIEW behind:
+        // PlayerJoined fires again, PlayerViewFactory adds another Player_{id} entity, and nothing
+        // removes the first — which then stands where it spawned forever, collecting the owner's
+        // weapons, because items find their owner by entity name and take the oldest match.
+        //
+        // ObjectRegistry has always ignored a duplicate spawn for exactly this reason, and the
+        // asymmetry is what made one doubled stream visible as doubled BODIES and invisible for
+        // objects. The stream that caused it is fixed in InProcessNetwork; this is the layer that
+        // should not have been able to turn it into orphans in the first place.
+        if (players.ContainsKey(data.PlayerId))
+        {
+            Console.WriteLine($"[Actors] ignoring a repeat spawn for actor {data.PlayerId}");
+            return;
+        }
+
         Player player = data.PlayerId == network.ClientId
             ? LocalPlayer = new LocalPlayer(network, terrain, mount)
                 { Id = data.PlayerId, Position = data.Position, Team = data.Team }

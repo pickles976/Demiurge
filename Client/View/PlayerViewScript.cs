@@ -12,6 +12,11 @@ public class PlayerViewScript : SyncScript
     public required PlayerRegistry Registry {get; init;}
     public required Player Player { get; init; }
 
+    /// <summary>The worn helmet, hidden and shown with the body it sits on. Driven from here rather
+    /// than by its own script so the two can never disagree — a helmet left visible on a first-person
+    /// player hangs in front of their eyes, and one left on a corpse floats where the body was.</summary>
+    public ModelComponent? Helmet { get; init; }
+
     public PlayerStateFlags State;
 
     private PlayingAnimation? CurrentAnimation { get; set; }
@@ -22,8 +27,11 @@ public class PlayerViewScript : SyncScript
 
     public override void Update()
     {
+        bool bodyVisible = Player is not LocalPlayer && !Player.IsDead;
         if (Entity.Get<ModelComponent>() is { } model)
-            model.Enabled = Player is not LocalPlayer && !Player.IsDead;
+            model.Enabled = bodyVisible;
+        if (Helmet is { } helmet)
+            helmet.Enabled = bodyVisible;
 
         switch (Player)
         {

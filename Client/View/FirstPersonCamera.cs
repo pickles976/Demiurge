@@ -112,8 +112,8 @@ namespace Demiurge
 				mouseLocked = true;
 			}
 
-			// Not while the shovel is out: right-click is the place button there, and this is the
-			// same exclusion LocalPlayerController applies to the replicated Aiming flag.
+			// Not while the shovel is out: there are no sights on a spade to bring up. Same
+			// exclusion LocalPlayerController applies to the replicated Aiming flag.
 			bool aiming = Input.IsMouseButtonDown(MouseButton.Right) && local.Hotbar != HotbarSlot.Shovel;
 			float sensitivity = LookSensitivity * (aiming ? AimSensitivityMultiplier : 1f);
 

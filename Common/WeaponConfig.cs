@@ -118,7 +118,11 @@ namespace Demiurge
             ItemType.Glock => new WeaponStats(MagazineCapacity: 15, TicksPerShot: 7, ReloadTicks: 20, Damage: 5, BallisticsProfile: WeaponBallisticsProfile.Pistol),
             // A grenade stack uses ammo as its remaining count. Each throw automatically cycles
             // the next grenade for 1.5 seconds; R is never needed for this item.
-            ItemType.Grenade => new WeaponStats(MagazineCapacity: 4, TicksPerShot: 1, ReloadTicks: GrenadeConfig.ReloadTicks, Damage: 0, BallisticsProfile: WeaponBallisticsProfile.Throwable),
+            //
+            // Two, not four. It is the number carried AND the number restored on respawn, since a
+            // stack refills to its capacity like any other magazine — so this one value is the whole
+            // supply an actor sees between deaths.
+            ItemType.Grenade => new WeaponStats(MagazineCapacity: 2, TicksPerShot: 1, ReloadTicks: GrenadeConfig.ReloadTicks, Damage: 0, BallisticsProfile: WeaponBallisticsProfile.Throwable),
             _ => null,
         };
 

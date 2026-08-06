@@ -54,20 +54,37 @@ namespace Demiurge.GameServer
         /// </summary>
         internal void SpawnInfantryLoadout(ServerPlayer actor, ItemType? primaryWeapon = null)
         {
-            SpawnHotbar(
-                actor,
-                primaryWeapon ?? (actor.IsMob
-                    ? ItemConfig.DefaultNpcPrimaryWeapon
-                    : ItemConfig.DefaultPlayerPrimaryWeapon),
-                HotbarSlot.Primary);
+            ItemType primary = primaryWeapon ?? DefaultPrimary(actor);
+            SpawnHotbar(actor, primary, HotbarSlot.Primary);
             SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
-            SpawnHotbar(
+            if (CarriesGrenades(actor, primary)) SpawnGrenades(actor);
+            actor.Hotbar = HotbarSlot.Primary;
+        }
+
+        private static ItemType DefaultPrimary(ServerPlayer actor)
+            => actor.IsMob
+                ? ItemConfig.DefaultNpcPrimaryWeapon
+                : ItemConfig.DefaultPlayerPrimaryWeapon;
+
+        /// <summary>
+        /// Who is issued a grenade stack: every player, and the NPCs carrying the assault gun.
+        ///
+        /// One predicate for both loadout paths. They are the same rule and were the same three
+        /// lines twice, which is exactly the shape that lets a spawn and a respawn quietly disagree
+        /// about what a man is carrying.
+        ///
+        /// Players are unconditional because a player is not a squad role — nobody assigns him a
+        /// weapon, and stripping his grenades for picking up a rifle would read as a bug.
+        /// </summary>
+        private static bool CarriesGrenades(ServerPlayer actor, ItemType primary)
+            => !actor.IsMob || NpcSquadLoadout.CarriesGrenades(primary);
+
+        private void SpawnGrenades(ServerPlayer actor)
+            => SpawnHotbar(
                 actor,
                 ItemType.Grenade,
                 HotbarSlot.Grenade,
                 ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
-            actor.Hotbar = HotbarSlot.Primary;
-        }
 
         /// <summary>
         /// Restores every equipped weapon to a full magazine after a death. Consumed default slots
@@ -79,6 +96,7 @@ namespace Demiurge.GameServer
             bool hasPrimary = false;
             bool hasShovel = false;
             bool hasGrenades = false;
+            ItemType primary = DefaultPrimary(actor);
             foreach (var pair in actor.Equipped)
             {
                 if (!objects.TryGet(pair.Value, out var item)
@@ -95,26 +113,24 @@ namespace Demiurge.GameServer
 
                 item.Weapon.CurrentAmmo = weapon.MagazineCapacity;
                 item.Dirty |= NetComponents.Weapon;
-                hasPrimary |= pair.Key is EquipSlot.HotbarPrimary or EquipSlot.Hand;
+                if (pair.Key is EquipSlot.HotbarPrimary or EquipSlot.Hand)
+                {
+                    hasPrimary = true;
+                    // What he is carrying NOW, not what he spawned with: a mob that picked up a
+                    // PPSH is an assaulter for the purposes of the rule below.
+                    primary = item.Item.Type;
+                }
                 hasGrenades |= pair.Key == EquipSlot.HotbarGrenade
                     && item.Item.Type == ItemType.Grenade;
             }
 
-            if (!hasPrimary)
-                SpawnHotbar(
-                    actor,
-                    actor.IsMob
-                        ? ItemConfig.DefaultNpcPrimaryWeapon
-                        : ItemConfig.DefaultPlayerPrimaryWeapon,
-                    HotbarSlot.Primary);
-            if (!hasShovel)
-                SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
-            if (!hasGrenades)
-                SpawnHotbar(
-                    actor,
-                    ItemType.Grenade,
-                    HotbarSlot.Grenade,
-                    ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
+            if (!hasPrimary) SpawnHotbar(actor, primary, HotbarSlot.Primary);
+            if (!hasShovel) SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
+
+            // A stack he still has was refilled by the loop above, whoever he is. This only decides
+            // who is ISSUED a new one, so a man who came by grenades some other way keeps them
+            // rather than having them taken off him at the respawn wave.
+            if (!hasGrenades && CarriesGrenades(actor, primary)) SpawnGrenades(actor);
             actor.Hotbar = HotbarSlot.Primary;
         }
 

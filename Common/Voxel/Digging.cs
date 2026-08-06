@@ -58,6 +58,16 @@ namespace Demiurge
         public const float BiteStrength = 1f / ClicksPerVoxel;
 
         /// <summary>
+        /// Whether the shovel can build as well as dig.
+        ///
+        /// Off. The mechanism is intact and tested — <see cref="TerrainAction"/>, the placement
+        /// target, the brush, the server gate — this is the one switch that decides whether players
+        /// are offered it. Read by BOTH ends deliberately: the client must not highlight or request
+        /// what the server would refuse, or the outline sits on a voxel that never appears.
+        /// </summary>
+        public const bool PlacementEnabled = false;
+
+        /// <summary>
         /// What a shovel builds with. Fixed rather than carried on the request: there is no way for
         /// a player to CHOOSE a material yet, and a block type off the wire would be a client
         /// deciding what the world is made of. When a material picker exists this becomes a field on

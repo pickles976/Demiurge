@@ -58,8 +58,13 @@ public class GrenadeSystemTests
         };
         grenades.ApplyThrow(player, fire, tick: 20);
 
+        // Counted DOWN from the stack's capacity rather than against a literal: what this test is
+        // about is the interval between throws, and retuning how many grenades a man carries should
+        // not land as a failure here.
+        int capacity = WeaponConfig.Require(ItemType.Grenade).MagazineCapacity;
+
         Assert.True(objects.TryGet(held.NetworkId, out var stack));
-        Assert.Equal(3, stack.Weapon.CurrentAmmo);
+        Assert.Equal(capacity - 1, stack.Weapon.CurrentAmmo);
         Assert.Equal(
             20u + (uint)WeaponConfig.Require(ItemType.Grenade).ReloadTicks,
             player.NextGrenadeThrowTick);
@@ -70,12 +75,12 @@ public class GrenadeSystemTests
 
         grenades.ApplyThrow(player, fire, tick: 21);
         Assert.Single(objects.All, obj => obj.Type == ObjectType.Grenade);
-        Assert.Equal(3, stack.Weapon.CurrentAmmo);
+        Assert.Equal(capacity - 1, stack.Weapon.CurrentAmmo);
 
         fire.RenderTick = player.NextGrenadeThrowTick;
         grenades.ApplyThrow(player, fire, player.NextGrenadeThrowTick);
         Assert.Equal(2, objects.All.Count(obj => obj.Type == ObjectType.Grenade));
-        Assert.Equal(2, stack.Weapon.CurrentAmmo);
+        Assert.Equal(capacity - 2, stack.Weapon.CurrentAmmo);
     }
 
     [Fact]

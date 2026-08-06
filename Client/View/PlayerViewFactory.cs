@@ -39,13 +39,25 @@ public class PlayerViewFactory : IDisposable
             model.Enabled = false;
         }
 
+        // Worn rather than modelled into the body, so one helmet serves every team and can be tuned
+        // without touching a rig. The link makes the bone the parent, so its transform below is an
+        // offset in BONE space; being a child of the body as well is what makes it go away with the
+        // body when the view is destroyed.
+        var helmetModel = new ModelComponent(GLTFLoader.LoadModel(game, PlayerCosmetics.HelmetModel));
+        var helmet = new Entity($"Helmet_{player.Id}") { helmetModel };
+        helmet.Add(new ModelNodeLinkComponent { Target = model, NodeName = PlayerCosmetics.HelmetBone });
+        helmet.Transform.Position = PlayerCosmetics.HelmetSeat.ToStride();
+        helmet.Transform.Rotation = PlayerCosmetics.HelmetRotation.ToStride();
+        helmet.Transform.Scale = new Vector3(PlayerCosmetics.HelmetScale);
+
         var entity = new Entity($"Player_{player.Id}")
         {
             model,
-            new PlayerViewScript {Player = player, Registry = registry},
+            new PlayerViewScript { Player = player, Registry = registry, Helmet = helmetModel },
             animations,
         };
         entity.Transform.Position = player.Position.ToStride();
+        entity.Transform.Children.Add(helmet.Transform);
         entity.Scene = scene;
     }
 

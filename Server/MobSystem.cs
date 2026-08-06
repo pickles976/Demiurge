@@ -379,7 +379,7 @@ namespace Demiurge.GameServer
             else if (order.Role == SquadRole.Bound) DiagRoleBound++;
             else DiagRoleBaseOfFire++;
             bool assault = weapons.TryGetActiveWeapon(mob, out var activePrimary)
-                && activePrimary.Item.Type == ItemType.Ppsh;
+                && activePrimary.Item.Type == NpcSquadLoadout.AssaultWeapon;
             // A base of fire holds and shoots at where the target is, not only at a target it can
             // currently see. That is what buys the bounding man his move.
             // Being ordered to the base of fire IS being the base of fire. It used to also require

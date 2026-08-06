@@ -300,6 +300,7 @@ public sealed class RuntimeClientSession : IClientSession
         // not freeze someone mid-firefight.
         spawnReadiness.Ready |= registry.LocalPlayer is not null
             && terrainView?.IsMeshedAround(lodFocus, SpawnPreloadRadius) == true;
+
     }
 
     public void Dispose()

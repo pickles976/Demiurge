@@ -41,7 +41,7 @@ public class ItemSystemTests
     }
 
     [Fact]
-    public void HotbarGrenadeStackStartsWithFour()
+    public void HotbarGrenadeStackStartsAtItsCapacity()
     {
         var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
@@ -49,13 +49,15 @@ public class ItemSystemTests
         var grenade = items.SpawnHotbar(actor, ItemType.Grenade, HotbarSlot.Grenade);
 
         Assert.True(grenade.Has.HasFlag(NetComponents.Weapon));
-        Assert.Equal(4, grenade.Weapon.CurrentAmmo);
+        // The stack's capacity IS the issue, so this reads it from the table rather than restating
+        // it — the number itself is pinned once, in WeaponConfigTests.
+        Assert.Equal(WeaponConfig.Require(ItemType.Grenade).MagazineCapacity, grenade.Weapon.CurrentAmmo);
         Assert.Equal(EquipSlot.HotbarGrenade, grenade.Attachment.Slot);
         Assert.Equal(grenade.NetworkId, actor.Equipped[EquipSlot.HotbarGrenade]);
     }
 
     [Fact]
-    public void InfantryLoadoutStartsWithDefaultRifleShovelAndFourGrenades()
+    public void InfantryLoadoutStartsWithDefaultRifleAndShovel()
     {
         var objects = new ObjectReplication(new NullNetServer());
         var items = new ItemSystem(objects);
@@ -69,10 +71,6 @@ public class ItemSystemTests
         Assert.Equal(
             WeaponConfig.Require(ItemConfig.DefaultNpcPrimaryWeapon).MagazineCapacity,
             primary.Weapon.CurrentAmmo);
-
-        Assert.True(objects.TryGet(npc.Equipped[EquipSlot.HotbarGrenade], out var grenades));
-        Assert.Equal(ItemType.Grenade, grenades.Item.Type);
-        Assert.Equal(4, grenades.Weapon.CurrentAmmo);
 
         // The shovel is a real item object now — it is what the hip and the hand render — but it
         // is a tool, not a gun: no WeaponConfig row means no WeaponState bit, so fire and reload
@@ -99,6 +97,64 @@ public class ItemSystemTests
         Assert.Equal(
             WeaponConfig.Require(ItemConfig.DefaultPlayerPrimaryWeapon).MagazineCapacity,
             primary.Weapon.CurrentAmmo);
+    }
+
+    /// <summary>
+    /// Grenades follow the assault gun, not the man. Asserted as the rule over every primary the
+    /// spawn cohort issues rather than against one weapon, so changing which gun the assaulters
+    /// carry moves this with it instead of leaving a stale name behind.
+    /// </summary>
+    [Theory]
+    [InlineData(ItemType.Ppsh, true)]
+    [InlineData(ItemType.Sks, false)]
+    [InlineData(ItemType.Mosin, false)]
+    public void OnlyAssaultNpcsAreIssuedGrenades(ItemType primary, bool expected)
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var npc = new ServerPlayer { Id = 60000, IsMob = true };
+
+        items.SpawnInfantryLoadout(npc, primary);
+
+        Assert.Equal(expected, npc.Equipped.ContainsKey(EquipSlot.HotbarGrenade));
+    }
+
+    /// <summary>A player is not a squad role: nobody assigns him a weapon, so nothing about what he
+    /// picked up decides whether he has grenades.</summary>
+    [Theory]
+    [InlineData(ItemType.Ppsh)]
+    [InlineData(ItemType.Mosin)]
+    public void PlayersAlwaysCarryGrenadesWhateverTheirPrimary(ItemType primary)
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var player = new ServerPlayer { Id = 7 };
+
+        items.SpawnInfantryLoadout(player, primary);
+
+        Assert.True(player.Equipped.ContainsKey(EquipSlot.HotbarGrenade));
+    }
+
+    /// <summary>
+    /// The respawn path applies the same rule as the spawn path. These were three duplicated lines
+    /// apiece before, which is exactly how a man ends up with a different loadout after his first
+    /// death than he started the round with.
+    /// </summary>
+    [Fact]
+    public void RespawnIssuesGrenadesByTheSameRuleAsSpawning()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var rifleman = new ServerPlayer { Id = 60000, IsMob = true };
+        var assaulter = new ServerPlayer { Id = 60001, IsMob = true };
+
+        items.SpawnInfantryLoadout(rifleman, ItemType.Sks);
+        items.SpawnInfantryLoadout(assaulter, NpcSquadLoadout.AssaultWeapon);
+        items.RefillRespawnLoadout(rifleman);
+        items.RefillRespawnLoadout(assaulter);
+
+        Assert.False(rifleman.Equipped.ContainsKey(EquipSlot.HotbarGrenade));
+        Assert.True(assaulter.Equipped.ContainsKey(EquipSlot.HotbarGrenade));
     }
 
     [Fact]

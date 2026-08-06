@@ -257,6 +257,16 @@ material comes from the **solid** end of its sign-changing edge.
   needs a `Dirty` flag or it never leaves the server.
 - Never mutate the object dictionary while enumerating it (find-then-act, like
   the interact handler's nearest-pickup scan).
+- **Applying a message twice must equal applying it once.** Spawn/despawn arrive
+  at-least-once — live broadcast and join catch-up are two paths to the same
+  state — so a spawn for an id you already have is a repeat, not a second thing:
+  ignore it, the way `ObjectRegistry` and `PlayerRegistry` both do. `PlayerRegistry`
+  didn't, and 32 NPCs rendered as 64 bodies. Full account in CLAUDE.md's netcode
+  section.
+- **Assert uniqueness where you rely on it.** `dict[key] = value` and
+  `FirstOrDefault(match)` never fail, so a duplicate turns into a wrong picture
+  somewhere else instead of an exception here. `Add` and `Single` are free at
+  these call sites.
 - Verify with two clients + a late joiner. The late joiner is the test that finds
   catch-up bugs; the second client finds every "works on my screen" bug.
 

@@ -16,6 +16,7 @@ Overall the changes we made have caused the pace of the game to increase. NPC ba
 It sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a     
   single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
 
+- NPCs will always have infinite ammo, take that into account
 - Add a ticket system. Start with 200 tickets, bleed if you lose majority of flags. Add ticket UI to the top of the screen, red vs blue ticket count.
 - Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 
@@ -25,7 +26,6 @@ Bugs:
 - defenders are digging WAYYY too much
 - digging down to cross a big trench rather than just jumping in
 
-- give grenades to assault units only
 - Assault units are useless at long range, and extremely deadly at close range. They need to take this into account. The PPSH and grenades can absolutely massacre defenders.
 
 New Features
@@ -33,18 +33,13 @@ New Features
 
 - Try to add digging back in to combat
 
-
 - [ ] PVP
 
-      - [ ] hook up helmet code
-
+      - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
       - [ ] add uniforms to cats
       - [ ] flag 3D model
 
       - [ ] mortar
-
-      - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
-      - [ ] fix NPCs holding stuff
 
       - [ ] add prone
       - [ ] tune MG for firing while prone
@@ -54,6 +49,8 @@ New Features
 
     - [ ] Commander set crew-weapon objectives
       - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
+
+      - [ ] remove glock, AWP, and AK
 
 
 ## Richer Environment 

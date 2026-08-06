@@ -213,7 +213,13 @@ namespace Demiurge.Net
     {
         private readonly DeliveryQueue inbound;
         private readonly DeliveryQueue outbound;
-        private bool connected;
+
+        /// <summary>
+        /// Whether there is anybody to send to. Volatile because it is written by the thread that
+        /// calls <see cref="InProcessNetClient.Connect"/> — the client's — and read by the server's
+        /// own tick thread on every send.
+        /// </summary>
+        private volatile bool connected;
 
         internal InProcessNetServer(DeliveryQueue inbound, DeliveryQueue outbound)
         {
@@ -236,15 +242,27 @@ namespace Demiurge.Net
 
         public void Update() => inbound.Drain(Deliver);
 
+        // A send with nobody connected reaches nobody, and the message is released rather than held.
+        //
+        // This is the one place a queue behaves unlike a socket in a way that MATTERS, and it is not
+        // hostility — it is the transport inventing a scenario no network can produce, which is the
+        // same line TransportHostility's reorder bound is drawn at. A socket server iterates its
+        // connected peers, so a broadcast into an empty room evaporates. Holding those messages
+        // instead hands them to whoever connects next, on top of the catch-up that joining already
+        // triggers, and the client is told about every pre-existing actor and object twice.
+        //
+        // The world is BUILT before anyone connects — every mob, its loadout, and the flags are
+        // announced from GameWorld's constructor — so this was not an edge case: it was every actor
+        // in the map, every session. See the conformance test named for it.
         public void Send(Message message, ushort clientId)
         {
-            outbound.Send(message);
+            if (connected) outbound.Send(message);
             message.Release();
         }
 
         public void SendToAll(Message message)
         {
-            outbound.Send(message);
+            if (connected) outbound.Send(message);
             message.Release();
         }
 

@@ -16,7 +16,21 @@ dotnet run --project Server/DemiurgeServer.csproj   # standalone server
 dotnet test DemiurgeSharp.slnx                  # xUnit suite (Common.Tests), headless
 dotnet test --filter "Category!=Benchmark&Category!=Integration"  # ordinary fast suite
 dotnet test Server.Tests/DemiurgeServer.Tests.csproj --filter "Category=Integration"  # feature integration
+dotnet test Server.Tests/DemiurgeServer.Tests.csproj --filter "FullyQualifiedName~ItemSystemTests"  # one class
 ```
+
+**Run the tests a change can actually break, not all of them.** There is a pyramid here and it is
+worth using: one test class is ~50 ms, one project's fast tier is a few hundred, the whole fast suite
+is ~40 s (the editor project dominates), and the integration tier is over a minute of real ports and
+NPC scenarios. Filter by class or project while iterating on a small feature — a weapon number, a
+loadout rule, a socket offset — and widen only when the change reaches further than you thought.
+Grep is often the better tool anyway: "does anything assume every actor has a grenade?" is a search,
+not a test run.
+
+The whole suite earns its time at the end of a piece of work, when touching `Common` (both ends
+compile it), or when a change crosses a boundary — the wire, the shared movement step, a transport.
+Integration is for the things it is named for: real sockets, real maps, NPCs walking. Do not gate a
+one-line tuning change behind it.
 
 **Singleplayer is the normal way to test anything server-side** — one launch instead of two.
 Profiles live in `Properties/launchSettings.json`; `client` is first so a bare `dotnet run` keeps
@@ -319,6 +333,38 @@ Two Riptide facts that cost real debugging time:
 - `NetworkManager.Dispatch` runs handlers **on the network thread** when
   `SimulatedLatencySeconds` is 0. Anything it writes that the main thread also reads needs
   marshalling — `TerrainState` queues and drains in `Update()` for this reason.
+
+### Delivery is at-least-once, so every handler must be idempotent
+
+"Independently applicable" above is half the rule. The other half: **a message may arrive more than
+once, and applying it twice must equal applying it once.** This is not hypothetical — the transport
+duplicates unreliable messages ON PURPOSE (`TransportHostility.UnreliableDuplicateRate`), and a
+reliable one can be re-sent by any path that both broadcasts live state and replays it as catch-up,
+which is exactly what `ObjectReplication` does for a joining client.
+
+It has already cost a day. `InProcessNetServer` queued sends with nobody connected, so every actor
+and object announced during `GameWorld`'s constructor was handed to the first client to connect ON
+TOP of its catch-up — 32 NPCs, twice each. `ObjectRegistry` ignores a spawn for an id it already has
+and was unharmed; `PlayerRegistry` did not, so it replaced each actor and orphaned the body built for
+the first one. The orphans stood at spawn playing Idle, collecting the weapons, while the live NPCs
+walked off empty-handed. Fixed in the transport (a send with no peer reaches nobody, as a socket
+does) AND in `PlayerRegistry`, because the receiver should not have been able to turn a repeat into
+an orphan whatever the transport did.
+
+Two habits fall out of it, and both are cheap:
+
+- **A repeat spawn for a live id is not a second thing.** Ignore it. Both registries do now; a third
+  keyed collection of replicated things should share their implementation rather than re-derive it,
+  since hand-writing the second copy is how one of them ended up without the guard.
+- **A lookup on a key that is supposed to be unique must ASSERT that.** `players[id] = player` and
+  `FirstOrDefault(e => e.Name == $"Player_{id}")` are total functions that cannot fail, which is why
+  a duplicate surfaced three layers away as a rendering puzzle instead of as an exception naming the
+  id. `Add` and `Single` cost nothing at these call sites and fail at the defect.
+
+A related trap this bug set twice, once in the code and once in the instrument written to find it:
+**a send with no audience is not evidence about anybody.** Counting the server's pre-connection
+broadcasts as delivered makes every object in the world look announced twice — the same false
+positive, one layer up.
 
 ## Terrain / chunks (in progress)
 

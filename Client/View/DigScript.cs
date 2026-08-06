@@ -68,7 +68,9 @@ namespace Demiurge
             // rather than every frame. Left wins a frame where both are held — taking terrain away
             // is the more urgent of the two, and one click may only ever mean one thing.
             bool digDown = Input.IsMouseButtonDown(MouseButton.Left);
-            bool placeDown = Input.IsMouseButtonDown(MouseButton.Right) && !digDown;
+            bool placeDown = Digging.PlacementEnabled
+                && Input.IsMouseButtonDown(MouseButton.Right)
+                && !digDown;
             bool pressed = (digDown && !wasDown) || (placeDown && !placeWasDown);
             wasDown = digDown;
             placeWasDown = placeDown;

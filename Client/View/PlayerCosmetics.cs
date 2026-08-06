@@ -50,4 +50,44 @@ public static class PlayerCosmetics
 
     /// <summary>The clips <see cref="PlayerViewScript"/> selects between.</summary>
     public static readonly string[] Clips = ["Walk", "Idle", "Aiming", "Crouch", "CrouchWalk"];
+
+    // ---- Headgear -------------------------------------------------------------------------------
+    //
+    // Every actor wears one. It is COSMETIC, not an item: no ItemType, no wire traffic, no pickup —
+    // the same reasoning that keeps bodies and animation clips out of the protocol. If a helmet ever
+    // has to be shot off, taken, or counted as armor, it stops being this and becomes an equippable
+    // through the ItemConfig/EquipSlot.Head path, which already has a socket row waiting for it.
+    //
+    // It rides the `head` bone through a ModelNodeLinkComponent, so it inherits the aim lean and the
+    // walk cycle for free — the bone is a child of the chain PlayerViewScript already pitches.
+
+    public const string HelmetModel = "assets/models/helmet.gltf";
+
+    /// <summary>The bone it hangs off. Present on both bodies; the rig note above is why one name
+    /// serves every team.</summary>
+    public const string HelmetBone = "head";
+
+    /// <summary>
+    /// Model units to the rig's. ONE, and it should stay one: the helmet is modelled to fit this
+    /// head, so any scaling here is the code disagreeing with the art. It is written down anyway
+    /// because every cosmetic answers this question — <see cref="ItemCosmetics.WorldScale"/> is the
+    /// same entry for held items — and a missing row reads as an oversight rather than as a
+    /// deliberate 1:1.
+    /// </summary>
+    public const float HelmetScale = 1f;
+
+    /// <summary>
+    /// Where it sits in BONE space, which for `head` is the rig's own frame: +Y up, +Z the way the
+    /// character faces.
+    ///
+    /// Zero, for the same reason the scale is one: the model is authored to sit on this head, so the
+    /// starting point is what the artist drew rather than a correction to it. This and
+    /// <see cref="HelmetRotation"/> are the tuning surface if the rig's bone origin turns out to sit
+    /// somewhere the model does not expect.
+    /// </summary>
+    public static readonly System.Numerics.Vector3 HelmetSeat = System.Numerics.Vector3.Zero;
+
+    /// <summary>Turn applied in the helmet's own frame, for a model whose forward is not the rig's.
+    /// Identity until the first look says otherwise.</summary>
+    public static readonly System.Numerics.Quaternion HelmetRotation = System.Numerics.Quaternion.Identity;
 }

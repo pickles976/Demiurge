@@ -92,9 +92,9 @@ public class LocalPlayerController : SyncScript
 		// both hands are on the magazine. Working a bolt does NOT: the rifle stays on the shoulder
 		// and the eye stays behind the sights, which is the whole reason a marksman can watch what
 		// he just shot at.
-		// Right-click means PLACE while the shovel is out (DigScript), so it must not also mean aim:
-		// the tool has no sights to come up to, and the shared aim flag would still narrow the field
-		// of view and halve the walk speed of somebody who was only building a wall.
+		// Not while the shovel is out. A tool has nothing to aim — WeaponMount already refuses to
+		// move it on right-click — but the shared aim flag would still narrow the field of view and
+		// halve the walk speed of somebody holding a spade.
 		bool aiming = Input.IsMouseButtonDown(MouseButton.Right)
 			&& !local.IsReloading
 			&& local.Hotbar != HotbarSlot.Shovel;

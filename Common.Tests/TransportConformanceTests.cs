@@ -90,6 +90,57 @@ public abstract class TransportConformance
         Assert.Equal(sent, arrived);
     }
 
+    /// <summary>
+    /// A broadcast with nobody connected reaches nobody — including whoever connects next.
+    ///
+    /// This is the shape of a real send: a socket transport iterates its connected peers, so a
+    /// broadcast into an empty room evaporates. A queue does not, and the difference is not
+    /// academic. The server builds its world before any client connects and announces every actor
+    /// and object as it goes; if those announcements are held and handed to the first client to
+    /// arrive, that client is told about every one of them TWICE — once from the held broadcast and
+    /// once from the catch-up its own join triggers.
+    ///
+    /// Measured in the game as 32 NPCs rendered as 64 bodies: the second spawn replaced each actor
+    /// in the client's registry and orphaned the body built for the first, which then stood at its
+    /// spawn playing Idle while the live one walked away. Weapons stayed on the orphan because items
+    /// find their owner by entity name and take the oldest match. ObjectRegistry ignores a spawn for
+    /// an id it already has, which is the only reason the same doubled stream left objects intact.
+    /// </summary>
+    [Fact]
+    public void ABroadcastSentBeforeAnyoneConnectsIsNotDeliveredToWhoeverConnectsNext()
+    {
+        using TransportFixture fixture = Create();
+
+        fixture.Server.SendToAll(Numbered(MessageSendMode.Reliable, 1));
+        fixture.Server.Send(Numbered(MessageSendMode.Reliable, 2), clientId: 1);
+
+        var received = new List<int>();
+        fixture.Client.MessageReceived += (_, e) => received.Add(e.Message.GetInt());
+
+        fixture.Connect();
+        fixture.Pump();
+
+        Assert.Empty(received);
+    }
+
+    /// <summary>The other half of the same rule: once connected, a broadcast does arrive — so the
+    /// fix above is a gate on connection state and not a hole that swallows traffic.</summary>
+    [Fact]
+    public void ABroadcastSentAfterConnectingArrivesExactlyOnce()
+    {
+        using TransportFixture fixture = Create();
+        fixture.Connect();
+        fixture.Pump();
+
+        var received = new List<int>();
+        fixture.Client.MessageReceived += (_, e) => received.Add(e.Message.GetInt());
+
+        fixture.Server.SendToAll(Numbered(MessageSendMode.Reliable, 7));
+        fixture.Pump();
+
+        Assert.Equal([7], received);
+    }
+
     [Fact]
     public void OversizedMessageThrowsWhereItIsBuilt()
     {

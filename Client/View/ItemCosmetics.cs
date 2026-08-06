@@ -171,9 +171,11 @@ public static class ItemCosmetics
         // weapon, so the seat is the centre of the sling rather than a grip.
         HotbarSlot.Primary => new Socket("upper_chest", new Vector3(0f, 0.02f, -0.18f), SlungRotation),
 
-        // Lower and further out, so the shaft clears the rifle. `torso` is the pelvis in this rig —
-        // the thighs hang off it — so the shovel stays put instead of swinging with the walk cycle.
-        HotbarSlot.Shovel => new Socket("torso", new Vector3(0f, 0.22f, -0.24f), HangingRotation),
+        // `torso` is the pelvis in this rig — the thighs hang off it — so the shovel stays put
+        // instead of swinging with the walk cycle. Carried high and close: 0.2 m in from where it
+        // first sat, which had it floating off the back, and 0.2 m up, which is what keeps the shaft
+        // clear of the rifle now that it is no longer held out behind the body.
+        HotbarSlot.Shovel => new Socket("torso", new Vector3(0.1f, 0.42f, -0.14f), HangingRotation),
 
         _ => null,
     };

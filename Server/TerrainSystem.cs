@@ -59,6 +59,10 @@ namespace Demiurge.GameServer
 
             bool placing = dig.Action == TerrainAction.Place;
 
+            // The client will not ask while placement is off, so this is the server refusing to take
+            // an old or hand-made request's word for it — the same reason reach is re-checked.
+            if (placing && !Digging.PlacementEnabled) return;
+
             // Nothing above the world to build on or into, and the top plane is where a section
             // stops owning grid points.
             if (target.Y >= ChunkConstants.WorldMaxY - 1) return;
