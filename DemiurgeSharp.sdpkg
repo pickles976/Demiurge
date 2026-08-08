@@ -24,6 +24,7 @@ RootAssets:
     - 6762ff9d-9a8b-63bd-9ba3-9e36f818bddb:models/cat_anim_Crouch
     - 508a0c6f-ccdc-26dc-f769-b200611164b9:models/cat_anim_CrouchWalk
     - 847e8e50-23aa-5b39-28a7-54d0b358e796:models/cat_anim_Prone
+    - 9f09e514-4c4b-0122-0d03-c91095253693:models/cat_anim_ProneCrawl
     - aa09233d-4762-44f7-a82e-1d2968738d31:models/crate
     - 5e701637-223b-4073-e81f-43aa55ad113a:models/dp_27
     - b6431852-c82a-4e9e-2134-1365f0b24e8f:models/dp_27_skeleton

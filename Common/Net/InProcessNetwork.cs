@@ -231,8 +231,16 @@ namespace Demiurge.Net
         public event EventHandler<NetClientConnectedEventArgs>? ClientConnected;
         public event EventHandler<NetClientDisconnectedEventArgs>? ClientDisconnected;
 
+        // Connection changes cross a thread boundary; the messages already did, through their own
+        // locked queues. See Update for why these cannot be raised where they happen.
+        private readonly object connectionGate = new();
+        private bool pendingAccept;
+        private bool pendingDrop;
+
         public void Start(ushort port, int maxClientCount) { }
 
+        /// <summary>Shutdown, on whichever thread is tearing the session down. Raised directly
+        /// rather than queued: nothing will pump this server again.</summary>
         public void Stop()
         {
             if (!connected) return;
@@ -240,7 +248,38 @@ namespace Demiurge.Net
             ClientDisconnected?.Invoke(this, new NetClientDisconnectedEventArgs(InProcessNetwork.SingleClientId));
         }
 
-        public void Update() => inbound.Drain(Deliver);
+        /// <summary>
+        /// Server thread. Raises any pending connection change, then delivers queued messages.
+        ///
+        /// The connection events are RAISED HERE rather than where they happen, and that is the
+        /// whole point of the queue below: Connect() and Disconnect() are called on the CLIENT's
+        /// thread, while this runs on the server's. Invoking them directly ran GameWorld.AddPlayer
+        /// on the client thread, mutating the player dictionary while the server thread was midway
+        /// through enumerating it in Tick — an intermittent "collection was modified" crash a second
+        /// or so into every session, which struck only when the connect landed inside the enumeration.
+        ///
+        /// A socket transport does not have this problem because nothing is raised until the server
+        /// polls; this now matches that. Connect first, then messages, so anything the client sent
+        /// immediately after connecting is delivered to a world that already knows about it.
+        /// </summary>
+        public void Update()
+        {
+            bool accepted, dropped;
+            lock (connectionGate)
+            {
+                accepted = pendingAccept;
+                dropped = pendingDrop;
+                pendingAccept = false;
+                pendingDrop = false;
+            }
+
+            if (accepted)
+                ClientConnected?.Invoke(this, new NetClientConnectedEventArgs(InProcessNetwork.SingleClientId));
+            if (dropped)
+                ClientDisconnected?.Invoke(this, new NetClientDisconnectedEventArgs(InProcessNetwork.SingleClientId));
+
+            inbound.Drain(Deliver);
+        }
 
         // A send with nobody connected reaches nobody, and the message is released rather than held.
         //
@@ -268,17 +307,19 @@ namespace Demiurge.Net
 
         public void Dispose() => Stop();
 
+        // Called from the CLIENT's thread. The flag flips immediately, because sends have to start
+        // reaching the peer at once; the EVENT waits for the server to pump. See Update.
         internal void AcceptClient()
         {
             connected = true;
-            ClientConnected?.Invoke(this, new NetClientConnectedEventArgs(InProcessNetwork.SingleClientId));
+            lock (connectionGate) pendingAccept = true;
         }
 
         internal void DropClient()
         {
             if (!connected) return;
             connected = false;
-            ClientDisconnected?.Invoke(this, new NetClientDisconnectedEventArgs(InProcessNetwork.SingleClientId));
+            lock (connectionGate) pendingDrop = true;
         }
 
         private void Deliver(ushort id, MessageSendMode mode, ReadOnlySpan<byte> payload)

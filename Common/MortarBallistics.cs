@@ -27,11 +27,9 @@ public static class MortarBallistics
     public const float MuzzleHeight = 0.9f;
 
     /// <summary>
-    /// The point this mortar will actually drop a bomb on, given where the gunner asked for. It is a
-    /// CLAMP rather than a yes-or-no because the cursor is a continuous thing sliding around a
-    /// bounded sector: refusing an illegal point would make the aim marker vanish at the edges,
-    /// where a gunner spends most of his time. Sliding it to the nearest legal point keeps the
-    /// marker under the cursor's direction and honest about the limit at the same time.
+    /// The closest point this mortar could drop a bomb on, given an arbitrary requested point. The
+    /// server uses this after validating a request to absorb harmless replication and float drift;
+    /// the client keeps its cursor target unclamped so it can indicate an invalid aim instead.
     ///
     /// <paramref name="facingYaw"/> is the heading the tube was emplaced on — see ItemSystem.PutDown,
     /// which records where its owner was looking as he set it down.
@@ -65,15 +63,34 @@ public static class MortarBallistics
         return clamped with { Y = desired.Y };
     }
 
+    /// <summary>
+    /// Whether the target is actually inside the mortar's traversable range band and bearing.
+    /// This is the exact player-facing rule used to decide whether the reticle represents a shot;
+    /// unlike <see cref="IsLegalTarget"/>, it has no network tolerance beyond a negligible float
+    /// comparison epsilon.
+    /// </summary>
+    public static bool IsTargetInFireSector(Vector3 mortar, float facingYaw, Vector3 target)
+    {
+        const float epsilon = 1e-4f;
+        return DistanceToFireSectorSquared(mortar, facingYaw, target) <= epsilon * epsilon;
+    }
+
     /// <summary>Whether a point is one this mortar could have been asked for — the server's check
     /// that a fire request was not fabricated. Generous by a small margin, because the client
-    /// clamps against ITS copy of the emplacement and a rounded float should not cost a shot.</summary>
+    /// computes against ITS replicated copy of the emplacement and a rounded float should not cost
+    /// a shot.</summary>
     public static bool IsLegalTarget(Vector3 mortar, float facingYaw, Vector3 target)
+        => DistanceToFireSectorSquared(mortar, facingYaw, target)
+           <= LegalTargetTolerance * LegalTargetTolerance;
+
+    private static float DistanceToFireSectorSquared(
+        Vector3 mortar,
+        float facingYaw,
+        Vector3 target)
     {
-        var clamped = ClampTarget(mortar, facingYaw, target);
-        var flatClamped = clamped with { Y = 0f };
+        var flatClamped = ClampTarget(mortar, facingYaw, target) with { Y = 0f };
         var flatTarget = target with { Y = 0f };
-        return Vector3.DistanceSquared(flatClamped, flatTarget) <= LegalTargetTolerance * LegalTargetTolerance;
+        return Vector3.DistanceSquared(flatClamped, flatTarget);
     }
 
     /// <summary>Metres of slack between a claimed target and the nearest legal one.</summary>

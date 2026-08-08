@@ -11,13 +11,13 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-- [ ] replace 2 of the MG crates with mortars
-
-- [ ] json config for all items
-
 - [ ] add prone
 - [ ] tune MG for firing while prone
 
+- [ ] json config for all items
+
+https://github.com/id-Software/Quake-III-Arena
+- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
 
 AI IMPROVEMENTS
 
@@ -47,30 +47,26 @@ New Features
 
 - Try to add digging back in to combat
 
-https://github.com/id-Software/Quake-III-Arena
-- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
-
-- [ ] allow NPCs to use it
-- [ ] grenades are too bouncy
-- [ ] dead soldiers drop their weapon and you can pick it up
-- [ ] limit ammo for players
-
-
 - [ ] PVP
+
+      - [ ] allow NPCs to use the mortar
+      - [ ] grenades are too bouncy
+      - [ ] dead soldiers drop their weapon and you can pick it up
+      - [ ] limit ammo for players
 
       - [ ] flag 3D model     
       - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbaga
       - [ ] dig dirt to place sandbags
 
-    - [ ] Commander set crew-weapon objectives
-      - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
+      - [ ] Commander set crew-weapon objectives
+            - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
-      - [ ] remove glock, AWP, and AK
-      - [ ] fix audio cutting off
-      - [ ] long range report sounds
-      - [ ] mortar whistle sound
+            - [ ] remove glock, AWP, and AK
+            - [ ] fix audio cutting off
+            - [ ] long range report sounds
+            - [ ] mortar whistle sound
 
-      - [ ] add 4 more NPCs to each team
+            - [ ] add 4 more NPCs to each team
 
 ## Richer Environment 
 

@@ -75,6 +75,20 @@ public class MortarBallisticsTests
         Assert.False(MortarBallistics.IsLegalTarget(Emplacement, FacingNorth, behind));
     }
 
+    [Fact]
+    public void FireSectorRequiresBothLegalBearingAndRange()
+    {
+        var inside = Emplacement + new Vector3(0f, 0f, 120f);
+        var tooClose = Emplacement + new Vector3(0f, 0f, MortarConfig.MinimumRange - 1f);
+        var tooFar = Emplacement + new Vector3(0f, 0f, MortarConfig.MaximumRange + 1f);
+        var outsideTraverse = Emplacement + new Vector3(120f, 0f, 0f);
+
+        Assert.True(MortarBallistics.IsTargetInFireSector(Emplacement, FacingNorth, inside));
+        Assert.False(MortarBallistics.IsTargetInFireSector(Emplacement, FacingNorth, tooClose));
+        Assert.False(MortarBallistics.IsTargetInFireSector(Emplacement, FacingNorth, tooFar));
+        Assert.False(MortarBallistics.IsTargetInFireSector(Emplacement, FacingNorth, outsideTraverse));
+    }
+
     /// <summary>
     /// The load-bearing one: fly the solved velocity under the same gravity the server uses and the
     /// bomb has to arrive where it was aimed. Integrated in small steps rather than solved in closed

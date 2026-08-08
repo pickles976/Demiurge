@@ -55,6 +55,8 @@ public sealed class MortarControlScript : SyncScript
     private static readonly Color SectorColor = new(220, 60, 55, 235);
     private static readonly Color ScatterColor = new(245, 245, 245, 240);
     private static readonly Color AimColor = new(245, 245, 245, 150);
+    private static readonly Color InvalidScatterColor = new(245, 60, 55, 240);
+    private static readonly Color InvalidAimColor = new(245, 60, 55, 180);
     private static readonly Color ReloadColor = new(245, 200, 80, 235);
 
     private bool wasFiring;
@@ -86,12 +88,13 @@ public sealed class MortarControlScript : SyncScript
         DrawSector(position, facing);
 
         if (GroundUnderCursor(position, facing) is not { } aim) return;
-        DrawAim();
+        bool isInFireSector = MortarBallistics.IsTargetInFireSector(position, facing, aim);
+        DrawAim(isInFireSector);
 
         // Edge-triggered: one bomb per click. Loading is automatic and takes the five seconds the
         // ring counts down; a held button must not queue a request against every frame of it.
         bool firing = Input.IsMouseButtonDown(MouseButton.Left);
-        if (firing && !wasFiring && reloadRemaining <= 0f)
+        if (firing && !wasFiring && isInFireSector && reloadRemaining <= 0f)
         {
             local.TryFireMortar(aim);
             reloadRemaining = MortarConfig.ReloadSeconds;
@@ -154,7 +157,8 @@ public sealed class MortarControlScript : SyncScript
     }
 
     /// <summary>
-    /// The place on the ground under the mouse, folded into what the tube can actually reach.
+    /// The place on the ground under the mouse. Deliberately left unclamped so the reticle can show
+    /// when the gunner is pointing outside what the tube can actually reach.
     ///
     /// Worked out directly rather than by unprojecting a ray, and that is the fix for a cursor that
     /// used to run the wrong way: the camera is posed in THIS method's frame while the projection
@@ -178,7 +182,7 @@ public sealed class MortarControlScript : SyncScript
             + Across(facing) * (acrossFraction * halfWidth)
             + Heading(facing) * (alongFraction * HalfDepth);
 
-        return MortarBallistics.ClampTarget(mortar, facing, ground with { Y = mortar.Y });
+        return ground with { Y = mortar.Y };
     }
 
     /// <summary>Metres on the ground to pixels across the screen.</summary>
@@ -220,7 +224,7 @@ public sealed class MortarControlScript : SyncScript
     /// through the camera at all. Only the radius is a world measurement, since the circle stands
     /// for five metres of ground.
     /// </summary>
-    private void DrawAim()
+    private void DrawAim(bool isInFireSector)
     {
         var bounds = Game.Window.ClientBounds;
         var mouse = Input.MousePosition;                    // 0..1, origin top-left, +Y DOWN
@@ -229,8 +233,10 @@ public sealed class MortarControlScript : SyncScript
             (0.5f - mouse.Y) * bounds.Height);              // LineRenderer 2D is centred pixels, +Y UP
 
         float radius = ToPixels(MortarConfig.DispersionMetres);
-        LineRenderer.Circle2D(centre, radius, ScatterColor);
-        LineRenderer.DrawPoint2D(centre, AimColor, size: 6f);
+        LineRenderer.Circle2D(centre, radius,
+            isInFireSector ? ScatterColor : InvalidScatterColor);
+        LineRenderer.DrawPoint2D(centre,
+            isInFireSector ? AimColor : InvalidAimColor, size: 6f);
         DrawReloadRing(centre, radius + 6f);
     }
 

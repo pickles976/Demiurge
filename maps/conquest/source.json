@@ -221191,7 +221191,7 @@
     {
       "id": "c664ede6-a493-4e54-a191-ae2a31a842bc",
       "kind": "supplyCrate",
-      "archetypeId": "demiurge:dp27",
+      "archetypeId": "demiurge:mortar",
       "cell": {
         "x": 31,
         "y": 22,
@@ -221207,7 +221207,7 @@
     {
       "id": "f0191820-1524-486f-8cf1-1d612cd6f7b3",
       "kind": "supplyCrate",
-      "archetypeId": "demiurge:dp27",
+      "archetypeId": "demiurge:mortar",
       "cell": {
         "x": 254,
         "y": 22,
