@@ -125,7 +125,7 @@ public sealed class GrenadeExplosionScript : SyncScript
 
     /// <summary>Past WeaponFx.DistantReportMetres a blast is a rumble from elsewhere, and gets its
     /// own recording for the same reason distant rifle fire does.</summary>
-    private const string DistantExplosionSound = "assets/sfx/grenade_far_off_200m.wav";
+    private const string DistantExplosionSound = "assets/sfx/grenade_explosion_far.wav";
 
     /// <summary>Where a far-off blast is placed: along the true bearing, at a range it can be heard
     /// from. The recording already sounds distant — see PlayShotReport for the full reasoning.</summary>

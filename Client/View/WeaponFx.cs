@@ -90,7 +90,7 @@ public static class WeaponFx
             ],
             Color.Yellow,
             ReloadSoundPath: "assets/sfx/ppsh_reload.wav",
-            DistantReportSoundPath: "assets/sfx/ppsh_report_far_off_200m.wav",
+            DistantReportSoundPath: "assets/sfx/ppsh_shot_far.wav",
             ReloadVolume: 0.6f),
         // The cycle is timed against the recording rather than eyeballed: the sample's own lift and
         // pull land 0.2-0.4 s in, its close lands at 0.9 s and its lock at 1.3 s, so the bolt starts
@@ -111,6 +111,7 @@ public static class WeaponFx
             ],
             Color.Yellow,
             ReloadSoundPath: "assets/sfx/mosin_reload.wav",
+            DistantReportSoundPath: RifleReport,
             Bolt: new BoltCycle(
                 DelaySeconds: 0.15f,
                 TravelSeconds: 0.286f,
@@ -127,7 +128,8 @@ public static class WeaponFx
                 "assets/sfx/dp_27_shot_4.wav",
             ],
             Color.Yellow,
-            ReloadSoundPath: "assets/sfx/dp_27_reload.wav"),
+            ReloadSoundPath: "assets/sfx/dp_27_reload.wav",
+            DistantReportSoundPath: RifleReport),
         ItemType.AWP => new("assets/sfx/ak47_shot.wav", Color.Yellow),
         ItemType.Glock => new("assets/sfx/ak47_shot.wav", Color.Yellow),
 
@@ -139,7 +141,6 @@ public static class WeaponFx
     /// somewhere else, and it gets its own recording rather than the near sample turned down.
     /// </summary>
     public const float DistantReportMetres = 200f;
-    public const float VeryDistantReportMetres = 400f;
 
     /// <summary>
     /// How loud a far-off report plays. It is a volume rather than a falloff because the sound is
@@ -149,19 +150,21 @@ public static class WeaponFx
     /// </summary>
     public const float DistantReportVolume = 0.6f;
 
-    private const string DistantReport = "assets/sfx/far_off_rifle_report_200m.wav";
-    private const string VeryDistantReport = "assets/sfx/far_off_rifle_report_400m.wav";
+    /// <summary>
+    /// The far-off report of a rifle-calibre weapon, and the default for anything without its own.
+    /// There is one distance tier: a second recording for a longer range was tried and removed,
+    /// because a report placed at a fixed 30 m along the true bearing (see PlayShotReport) sounds
+    /// the same at 400 m as at 200 m — the extra tier cost a file and changed nothing audible.
+    /// </summary>
+    public const string RifleReport = "assets/sfx/rifle_shot_far.wav";
 
     /// <summary>
     /// The recording for a shot heard from <paramref name="metres"/> away, or null to use the
     /// weapon's own near sample.
     /// </summary>
     public static string? DistantReportFor(in Entry entry, float metres)
-        => metres >= DistantReportMetres && entry.DistantReportSoundPath is { } weaponReport
-            ? weaponReport
-         : metres >= VeryDistantReportMetres ? VeryDistantReport
-         : metres >= DistantReportMetres ? DistantReport
-         : null;
+        => metres < DistantReportMetres ? null
+         : entry.DistantReportSoundPath ?? RifleReport;
 
     /// <summary>One of this weapon's shot samples. Shared Random: this only ever runs on the
     /// main thread, from the shot-effects script.</summary>
