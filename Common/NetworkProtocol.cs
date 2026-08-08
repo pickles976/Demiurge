@@ -132,7 +132,14 @@ namespace Demiurge
         PlayerInteract,
         // Appended, never inserted — these values ARE the protocol.
         PlayerDig,
-        CommandRequest
+        CommandRequest,
+        /// <summary>F: use the emplaced thing in reach. Distinct from PlayerInteract (E, which
+        /// changes what is in your hands) because "operate this" and "pick this up" are different
+        /// intentions about the same object, and one key doing both is what the press/hold split was
+        /// trying and failing to express.</summary>
+        PlayerUse,
+        /// <summary>Drop a bomb on a point. Only legal while operating an emplaced mortar.</summary>
+        MortarFire
     }
 
     public static class MessageExtensions

@@ -115,7 +115,7 @@ namespace Demiurge
         /// replay reproduces the server exactly.
         ///
         /// <paramref name="speedScale"/> is what the actor is carrying, as a multiplier on whichever
-        /// speed the flags select — <see cref="WeaponConfig.MoveSpeedScale"/>. It is a PARAMETER
+        /// speed the flags select — <see cref="ItemConfig.MoveSpeedScale"/>. It is a PARAMETER
         /// rather than something this step looks up because Common owns no equipment: the server
         /// reads the actor's hotbar and the client reads the same slot out of its predicted map, and
         /// both then step the identical arithmetic. Anything that scales it must be visible to both

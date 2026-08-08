@@ -114,6 +114,18 @@ namespace Demiurge.GameClient
             client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerInteract));
         }
 
+        public void SendUse()
+        {
+            client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerUse));
+        }
+
+        public void SendMortarFire(MortarFireData request)
+        {
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.MortarFire);
+            message.AddSerializable(request);
+            client.Send(message);
+        }
+
         public void SendDig(PlayerDigData dig)
         {
             Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerDig);

@@ -253,6 +253,15 @@ public sealed class RuntimeClientSession : IClientSession
             Readiness = spawnReadiness,
             Priority = 20,
         });
+        camera.Add(new MortarControlScript
+        {
+            Registry = registry,
+            Objects = objectRegistry,
+            InputState = inputState,
+            // After the first-person camera, which stands down while operating: this one poses the
+            // camera for the frame and must not have its transform overwritten afterwards.
+            Priority = 12,
+        });
         camera.Add(new ReticleScript { Registry = registry, InputState = inputState, Priority = 30 });
         camera.Add(new DigScript
         {
@@ -396,10 +405,20 @@ public sealed class RuntimeClientSession : IClientSession
         bool inHand = obj.Has.HasFlag(NetComponents.Attachment)
             && (obj.Attachment.Slot == EquipSlot.Hand
                 || HotbarConfig.TryFromStorageSlot(obj.Attachment.Slot, out _));
-        if (inHand && obj.Has.HasFlag(NetComponents.Item))
+
+        // Hauled is a THIRD answer, and leaving it out of the first two is what made a carried
+        // mortar invisible to everything the client decides for itself: the slot is neither Hand nor
+        // a hotbar slot, so nothing was recorded, IsCarrying stayed false, and the kit went on being
+        // drawn. It must not take the Equip path either, weapon row or not — a carryable is not
+        // fired, so there is nothing about it to predict.
+        bool hauled = obj.Has.HasFlag(NetComponents.Attachment)
+            && obj.Attachment.Slot == EquipSlot.Carried;
+
+        if (obj.Has.HasFlag(NetComponents.Item))
         {
-            if (obj.Has.HasFlag(NetComponents.Weapon)) local.Equip(obj);
-            else local.Carry(obj);
+            if (hauled) local.Carry(obj);
+            else if (inHand && obj.Has.HasFlag(NetComponents.Weapon)) local.Equip(obj);
+            else if (inHand) local.Carry(obj);
         }
         if (obj.Type == ObjectType.PlayerStatus) local.Status = obj;
     }

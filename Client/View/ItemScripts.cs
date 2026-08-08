@@ -127,6 +127,19 @@ public class ItemAttachScript : SyncScript
             return;
         }
 
+        // Hands off his own kit: hauling something, or working an emplacement. Either way nothing
+        // he owns is drawn — not the selected weapon in first person, not the slung rifle in third.
+        // Asked of the OWNER rather than of the item, so one carried thing or one mortar hides
+        // everything else he has at once.
+        bool handsBusy = (player.IsCarrying && Object.Attachment.Slot != EquipSlot.Carried)
+                         || player.IsOperating;
+        if (handsBusy)
+        {
+            model.Enabled = false;
+            if (WeaponView.NetworkId == Object.NetworkId) WeaponView.Clear();
+            return;
+        }
+
         // A swing is driven by the Shooting flag, which is replicated, so everybody sees the same
         // dig from their own angle. Cycling the bolt is driven by ammo falling, which is likewise
         // replicated — predicted locally, off the wire for everyone else.
@@ -356,10 +369,16 @@ public class ItemAttachScript : SyncScript
     /// — it is a tool, not a gun — but it still has to be drawn in front of the camera rather than
     /// on a body the first-person view does not render.
     /// </summary>
+    /// <summary>
+    /// Whether this is the local player's own item, drawn as a view model rather than on a body he
+    /// cannot see. Carried counts: something hauled in both hands is the most first-person thing
+    /// there is, and leaving it out is what made a picked-up mortar invisible to its own carrier —
+    /// it was being seated on the torso bone of a disabled model.
+    /// </summary>
     private bool IsLocalViewModel()
         => Registry.LocalPlayer is { } local
            && Object.Owner.PlayerId == local.Id
-           && (Object.Attachment.Slot == EquipSlot.Hand
+           && (Object.Attachment.Slot is EquipSlot.Hand or EquipSlot.Carried
                || HotbarConfig.TryFromStorageSlot(Object.Attachment.Slot, out _));
 
     private bool IsSelected(Player player)
@@ -425,10 +444,17 @@ public class ItemAttachScript : SyncScript
 
         // Sprinting is just "Shift is down", so it has to be qualified: standing still with Shift
         // held is not a run, and a sprint pose while aiming would fight the sight picture.
+        //
+        // Never for something hauled. Every view-model animation there is — the sway, the roll, the
+        // sprint pitch — is scaled by sprintBlend, so refusing it here is what makes a carried thing
+        // sit dead still in the hands while its owner moves. It is the right shape for one too: the
+        // sway is a weapon swinging in one hand at a run, and a mortar is clamped against the chest
+        // with both.
         bool sprinting = local.State.HasFlag(PlayerStateFlags.Sprinting)
                          && local.State.HasFlag(PlayerStateFlags.Moving)
                          && !aiming
-                         && !pullingGrenade;
+                         && !pullingGrenade
+                         && !ItemConfig.IsCarryable(Object.Item.Type);
         sprintBlend = MathUtil.Lerp(
             sprintBlend,
             sprinting ? 1f : 0f,
@@ -436,10 +462,15 @@ public class ItemAttachScript : SyncScript
         if (sprintBlend > 0.001f)
             swayPhase += dt * SwayHz * MathUtil.TwoPi;
 
-        var targetGripOffset = pullingGrenade
-            ? WeaponMount.GrenadePullbackGripOffset
-            : Mount.FirstPersonGripOffset(Object.Item.Type, aiming, modelScale)
-              + WeaponMount.SprintGripDelta * sprintBlend;
+        // Hauled in front of the chest in both hands, and none of the weapon poses apply: there is
+        // no aiming it, no sprint carry, no sights to come up to. It just sits there in the way,
+        // which is the point of it.
+        var targetGripOffset = ItemConfig.IsCarryable(Object.Item.Type)
+            ? WeaponMount.CarriedGripOffset
+            : pullingGrenade
+                ? WeaponMount.GrenadePullbackGripOffset
+                : Mount.FirstPersonGripOffset(Object.Item.Type, aiming, modelScale)
+                  + WeaponMount.SprintGripDelta * sprintBlend;
 
         if (firstViewFrame)
         {
@@ -527,4 +558,44 @@ public class ItemAttachScript : SyncScript
         ItemType.Glock or ItemType.Ppsh => new RecoilKick(0.040f, 0.008f, MathUtil.DegreesToRadians(3.5f)),
         _ => new RecoilKick(0.050f, 0.010f, MathUtil.DegreesToRadians(2.5f)),
     };
+}
+
+/// <summary>
+/// The white trail behind a mortar bomb.
+///
+/// Drawn from where the bomb has BEEN rather than from a predicted arc, so it shows the flight that
+/// actually happened — including the scatter, which a predicted line drawn to the aim point would
+/// quietly hide. The entity's transform is driven by NetTransformScript off the replicated
+/// position, so sampling it once a frame is sampling the real thing.
+/// </summary>
+public sealed class MortarRoundScript : SyncScript
+{
+    /// <summary>How many samples the trail keeps. At 60 fps this is about a second and a half of
+    /// flight, which is enough to read as an arc without drawing the whole parabola.</summary>
+    private const int MaxSamples = 90;
+
+    /// <summary>Metres between samples. Without it a stationary frame would fill the buffer with
+    /// duplicates of one point.</summary>
+    private const float MinimumStep = 0.35f;
+
+    private static readonly Color TrailColor = new(250, 250, 250, 215);
+
+    private readonly List<Stride.Core.Mathematics.Vector3> trail = [];
+
+    public override void Update()
+    {
+        var here = Entity.Transform.Position;
+        if (trail.Count == 0
+            || Stride.Core.Mathematics.Vector3.Distance(trail[^1], here) >= MinimumStep)
+        {
+            trail.Add(here);
+            if (trail.Count > MaxSamples) trail.RemoveAt(0);
+        }
+
+        // The live position closes the line every frame, so the trail stays attached to the bomb
+        // between samples instead of lagging up to MinimumStep behind it.
+        if (trail.Count < 2) return;
+        LineRenderer.DrawPolyline(trail, TrailColor);
+        LineRenderer.DrawLine(trail[^1], here, TrailColor);
+    }
 }

@@ -98,6 +98,18 @@ namespace Demiurge
 				return;
 			}
 
+			// On an emplacement, MortarControlScript owns the view. Hand back the pointer with it:
+			// that camera is aimed with the cursor, so a locked mouse would leave the gunner unable
+			// to lay the weapon he is standing at.
+			if (local.IsOperating)
+			{
+				if (mouseLocked) Input.UnlockMousePosition();
+				Game.IsMouseVisible = true;
+				mouseLocked = false;
+				following = false;
+				return;
+			}
+
 			if (!seededRotation)
 			{
 				orbit = local.Yaw + MathF.PI;

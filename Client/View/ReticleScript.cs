@@ -33,6 +33,11 @@ namespace Demiurge
             if (InputState.TerminalOpen || Entity.Get<DebugFlyCameraScript>()?.Active == true) return;
             if (Registry.LocalPlayer is not { } local) return;
             if (local.IsDead) return;
+            // Hands full: there is no weapon pointed anywhere, so a reticle would be marking the
+            // aim of something that cannot fire.
+            if (local.IsCarrying) return;
+            // A gunner aims with the mortar's own circle, not with a rifle's crosshair.
+            if (local.IsOperating) return;
 
             // Down the sights, the weapon's own sight picture IS the aim: a screen-space crosshair
             // on top of it is a second, disagreeing opinion about where the shot goes — and the two

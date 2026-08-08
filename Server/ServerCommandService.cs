@@ -102,7 +102,7 @@ internal sealed class ServerCommandService
             return Result(requestId, false, $"Actor @{actorId} does not exist");
 
         var stats = ItemConfig.Get(command.Item);
-        if (stats.Category != ItemCategory.Equippable)
+        if (!ItemConfig.IsHeld(command.Item))
             return Result(requestId, false, $"{ItemCatalog.Id(command.Item)} cannot be equipped");
 
         world.Equip(target, command.Item);

@@ -156,13 +156,13 @@ namespace Demiurge.GameServer
             bool dropReplaced)
         {
             var stats = ItemConfig.Get(type);
-            if (stats.Category != ItemCategory.Equippable)
+            if (!ItemConfig.IsHeld(type))
                 throw new InvalidOperationException($"{type} cannot be equipped");
 
             if (player.Equipped.Remove(slot, out uint currentId) && objects.TryGet(currentId, out var current))
             {
                 if (dropReplaced)
-                    Drop(current, player.Position);
+                    Drop(current, player.Position, player.Yaw);
                 else
                     objects.Despawn(current.NetworkId);
             }
@@ -194,6 +194,14 @@ namespace Demiurge.GameServer
         /// no target, so there is nothing to validate beyond proximity.</summary>
         public void ApplyInteract(ServerPlayer player)
         {
+            // Hands full: E puts the thing down instead of looking for another one. One key, and it
+            // reads the same way round every time — E is "change what is in my hands".
+            if (player.IsCarrying)
+            {
+                PutDown(player);
+                return;
+            }
+
             // Find first, act after: Despawn/Spawn mutate the object dictionary
             // and must not run inside its enumeration.
             //
@@ -202,17 +210,34 @@ namespace Demiurge.GameServer
             var pickup = PickupTargeting.Nearest(player.Position, objects.All, Describe);
             if (pickup == null) return;
 
-            var slot = pickup.Has.HasFlag(NetComponents.Weapon)
-                ? HotbarConfig.StorageSlot(HotbarConfig.SlotFor(pickup.Item.Type))
-                : ItemConfig.Get(pickup.Item.Type).Slot;
+            // Something hauled goes into the hands, not into the kit: it must not take the rifle's
+            // slot, because picking it up is not a swap. Whatever was already being carried IS
+            // swapped out — you have one pair of hands.
+            var slot = ItemConfig.IsCarryable(pickup.Item.Type)
+                ? EquipSlot.Carried
+                : pickup.Has.HasFlag(NetComponents.Weapon)
+                    ? HotbarConfig.StorageSlot(HotbarConfig.SlotFor(pickup.Item.Type))
+                    : ItemConfig.Get(pickup.Item.Type).Slot;
             Equip(player, pickup, slot);
+        }
+
+        /// <summary>
+        /// Sets down what the player is hauling, where he stands and facing where he faces. That
+        /// heading is the whole point for a mortar — it is the line the tube then traverses around —
+        /// so putting one down is an act of aiming, not of tidying up.
+        /// </summary>
+        public void PutDown(ServerPlayer player)
+        {
+            if (!player.Equipped.Remove(EquipSlot.Carried, out uint carriedId)) return;
+            if (!objects.TryGet(carriedId, out var carried)) return;
+            Drop(carried, player.Position, player.Yaw);
         }
 
         private void Equip(ServerPlayer player, ServerObject pickup, EquipSlot slot)
         {
             // Swap: the current occupant drops where the player stands.
             if (player.Equipped.Remove(slot, out uint currentId) && objects.TryGet(currentId, out var current))
-                Drop(current, player.Position);
+                Drop(current, player.Position, player.Yaw);
 
             // pickup -> equipped: despawn + respawn with Transform swapped for
             // Owner + Attachment. CopyComponents carries every shared bit — live
@@ -229,7 +254,16 @@ namespace Demiurge.GameServer
             player.Equipped[slot] = equipped.NetworkId;
         }
 
-        private void Drop(ServerObject equipped, Vector3 position)
+        /// <summary>
+        /// Puts an equipped item back in the world at <paramref name="yaw"/> — the direction its
+        /// owner was facing as they let go of it.
+        ///
+        /// For most items that is decoration. For a mortar it is the emplacement: the tube traverses
+        /// a sector either side of this heading and cannot be re-laid without picking the thing up,
+        /// so which way a man was looking when he set it down is a lasting fact about the world and
+        /// has to survive the equipped-to-pickup transition rather than being reset to zero.
+        /// </summary>
+        private void Drop(ServerObject equipped, Vector3 position, float yaw)
         {
             // equipped -> pickup: the mirror image of Equip's transition. The
             // spawn position IS the pickup's Transform, so it must not be copied
@@ -237,8 +271,11 @@ namespace Demiurge.GameServer
             var mask = (equipped.Has & ~(NetComponents.Owner | NetComponents.Attachment)) | NetComponents.Transform;
             objects.Despawn(equipped.NetworkId);
 
-            objects.Spawn(ObjectType.Item, mask, position,
-                obj => ServerObject.CopyComponents(equipped, obj, equipped.Has & mask));
+            objects.Spawn(ObjectType.Item, mask, position, obj =>
+            {
+                ServerObject.CopyComponents(equipped, obj, equipped.Has & mask);
+                obj.Transform.Yaw = yaw;
+            });
         }
 
         /// <summary>
@@ -282,11 +319,43 @@ namespace Demiurge.GameServer
         /// <summary>
         /// The movement multiplier for whatever is in the actor's selected slot, which is the
         /// server's half of <see cref="PlayerMovement.Step"/>'s speedScale. The client predicts the
-        /// same number from its own map of that slot; see <see cref="WeaponStats.MoveSpeedScale"/>
+        /// same number from its own map of that slot; see <see cref="ItemStats.MoveSpeedScale"/>
         /// for why only weapons are allowed to carry one.
         /// </summary>
         public float MoveSpeedScale(ServerPlayer player, HotbarSlot hotbar)
-            => HeldItem(player, hotbar) is { } type ? WeaponConfig.MoveSpeedScale(type) : 1f;
+            => CarriedItem(player) is { } hauled ? ItemConfig.MoveSpeedScale(hauled)
+             : HeldItem(player, hotbar) is { } type ? ItemConfig.MoveSpeedScale(type)
+             : 1f;
+
+        /// <summary>
+        /// The emplaced carryable within reach of this player, or null — what F operates. Uses the
+        /// same PickupTargeting rule E does, filtered to things that are set down rather than
+        /// merely lying about, so the two keys always agree on which object is meant.
+        /// </summary>
+        public ServerObject? EmplacedInReach(ServerPlayer player)
+        {
+            var nearest = PickupTargeting.Nearest(player.Position, objects.All, Describe);
+            return nearest is not null && ItemConfig.IsCarryable(nearest.Item.Type) ? nearest : null;
+        }
+
+        /// <summary>What this player is hauling, or null. Its weight is what he moves at.</summary>
+        public ItemType? CarriedItem(ServerPlayer player)
+            => player.Equipped.TryGetValue(EquipSlot.Carried, out uint id)
+               && objects.TryGet(id, out var item)
+                ? item.Item.Type
+                : null;
+
+        /// <summary>
+        /// Applies a requested hotbar selection, or refuses it because the man's hands are full.
+        /// Every path that honours a client's slot choice goes through here, so "you cannot switch
+        /// while carrying" is one rule in one place rather than a condition three call sites have to
+        /// remember.
+        /// </summary>
+        public void SelectHotbar(ServerPlayer player, HotbarSlot hotbar)
+        {
+            if (player.IsCarrying) return;
+            player.Hotbar = hotbar;
+        }
 
         /// <summary>Everything worn leaves with its owner. Call from RemovePlayer.
         /// Miss this and every client keeps orphan views retrying their attach

@@ -18,8 +18,11 @@ namespace Demiurge;
 /// </summary>
 public static class PickupTargeting
 {
-    /// <summary>How close a player must stand, in metres. Reach, not a search radius.</summary>
-    public const float Radius = 0.75f;
+    /// <summary>
+    /// How close a player must stand, in metres. Reach, not a search radius: it is how far an arm
+    /// goes, so it stays short enough that which item you mean is never ambiguous.
+    /// </summary>
+    public const float Radius = 1.5f;
 
     public const float RadiusSquared = Radius * Radius;
 
@@ -37,7 +40,7 @@ public static class PickupTargeting
     /// </summary>
     public static bool IsAvailable(in Candidate candidate)
         => candidate.Has.HasFlag(NetComponents.Item | NetComponents.Transform)
-           && ItemConfig.Get(candidate.Type).Category == ItemCategory.Equippable;
+           && ItemConfig.IsHeld(candidate.Type);
 
     /// <summary>
     /// The pickup within reach of <paramref name="from"/>, nearest first, or null for none. The

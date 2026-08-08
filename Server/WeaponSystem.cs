@@ -92,6 +92,13 @@ namespace Demiurge.GameServer
             float additionalMoa)
         {
             if (!TryGetActiveWeapon(player, out var weapon)) return false;
+
+            // Freight in the hands is not a weapon in them. A carryable is used once it is set
+            // down, so the ordinary fire path refuses it — otherwise a mortar somebody is hauling
+            // would work, and work WRONGLY, as a flat rifle shot out of a carried tube. Asked of the
+            // CATEGORY so the next heavy thing inherits the rule instead of being named here.
+            if (ItemConfig.IsCarryable(weapon.Item.Type)) return false;
+
             var stats = WeaponConfig.Require(weapon.Item.Type);
             if (tick < player.NextFireTick
                 || tick < player.ReloadDoneTick

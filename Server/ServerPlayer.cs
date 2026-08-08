@@ -35,6 +35,21 @@ namespace Demiurge.GameServer
         // holds the references and the fire/reload timing gates below.
         public Dictionary<EquipSlot, uint> Equipped { get; } = new();
 
+        /// <summary>
+        /// Whether this man's hands are full of something hauled. While they are he cannot fire,
+        /// reload, dig, or change what is selected — the same way you cannot work a rifle with a
+        /// mortar baseplate in your arms. He keeps everything he owns; he simply cannot get at it.
+        /// </summary>
+        public bool IsCarrying => Equipped.ContainsKey(EquipSlot.Carried);
+
+        /// <summary>
+        /// The emplaced weapon this man is working, or 0. He stands still while it is set: an
+        /// emplacement is a position you commit to, and walking away is what putting it down means.
+        /// </summary>
+        public uint OperatingObjectId { get; set; }
+
+        public bool IsOperating => OperatingObjectId != 0;
+
         public uint NextDigTick { get; set; }      // earliest tick the next dig is legal
         public float NextFireTick { get; set; }    // fractional deadline; 20 Hz is 1.5 ticks at 30 TPS
         public uint ReloadDoneTick { get; set; }   // firing is blocked until this tick

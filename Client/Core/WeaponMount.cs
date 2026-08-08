@@ -105,6 +105,18 @@ namespace Demiurge.GameClient
         public static readonly Vector3 GrenadePullbackGripOffset = new(0.42f, -0.30f, -0.10f);
 
         /// <summary>
+        /// Where something HAULED sits in the view: centred and low, because it is held in both arms
+        /// against the chest rather than shouldered on one side. Centred is the readable part — an
+        /// off-centre carry reads as a weapon you could use, and this is the opposite of that.
+        ///
+        /// Held well clear of the eye, and it has to be. A carryable is a full-size object rather
+        /// than a gun framed for the view — ItemCosmetics draws it at world scale for that reason —
+        /// so a metre-long tube at a weapon's carry distance puts its back end behind the near
+        /// plane and the player sees the inside of it.
+        /// </summary>
+        public static readonly Vector3 CarriedGripOffset = new(0.20f, -1.10f, -0.95f);
+
+        /// <summary>
         /// How far in front of the eye the REAR sight sits while aiming — the only ADS number left
         /// to tune on a weapon that carries sight locators, because everything else about where the
         /// gun goes is then solved rather than eyeballed. Chosen to keep the eye relief the
@@ -170,7 +182,9 @@ namespace Demiurge.GameClient
         public static Quaternion FirstPersonRestRotation(ItemType type)
             => type == ItemType.Shovel
                 ? Quaternion.CreateFromAxisAngle(Vector3.UnitY, -MathF.PI / 3f)   // -60 degrees
-                : Quaternion.Identity;
+                : ItemConfig.IsCarryable(type)
+                    ? Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 6f)   // 30 degrees
+                    : Quaternion.Identity;
 
         private readonly ModelLocators locators;
         private readonly Func<ItemType, string> modelOf;

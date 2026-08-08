@@ -359,6 +359,7 @@ namespace Demiurge
                     RespawnPanel = respawnPanel,
                     RespawnText = respawnText,
                     Readiness = game.Services.GetService<SpawnReadiness>(),
+                    WeaponPanels = [statusCanvas, hotbarPanel],
                     PickupPanel = pickupPanel,
                     PickupText = pickupText,
                     Objects = objects,
@@ -575,6 +576,9 @@ namespace Demiurge
                 = new Dictionary<ItemType, SpriteFromTexture>();
             public UIElement RespawnPanel { get; set; } = null!;
             public TextBlock RespawnText { get; set; } = null!;
+            /// <summary>Ammo, health and the hotbar — everything about the weapon in hand. Hidden
+            /// together whenever the hands are not available for one.</summary>
+            public UIElement[] WeaponPanels { get; set; } = [];
             public UIElement PickupPanel { get; set; } = null!;
             public TextBlock PickupText { get; set; } = null!;
             /// <summary>Every replicated object, so the prompt can find the pickup underfoot.
@@ -614,6 +618,7 @@ namespace Demiurge
             /// <summary>Network id the prompt currently names; 0 for none. Keyed by id rather than
             /// by item type so walking between two identical rifles still refreshes.</summary>
             private uint _promptedPickup;
+            private bool _weaponPanelsShown = true;
 
             // Written on the network thread, read on the main thread — the whole message at once,
             // since it is the complete score rather than a delta. Applied in Update.
@@ -672,6 +677,7 @@ namespace Demiurge
                 }
 
                 RefreshDeploying();
+                RefreshWeaponPanels(local);
                 RefreshHotbar(local);
                 RefreshPickupPrompt(local);
                 RefreshActivityFeed();
@@ -716,25 +722,77 @@ namespace Demiurge
             }
 
             /// <summary>
+            /// The weapon read-out belongs to a man who can use a weapon. Hauling something or
+            /// working an emplacement takes his hands, so the ammo, the health and the hotbar go
+            /// with them rather than reporting on a rifle he cannot reach.
+            /// </summary>
+            private void RefreshWeaponPanels(LocalPlayer local)
+            {
+                bool available = !local.IsCarrying && !local.IsOperating;
+                if (available == _weaponPanelsShown) return;
+                _weaponPanelsShown = available;
+
+                foreach (var panel in WeaponPanels)
+                    panel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            /// <summary>
             /// Offers what E would actually take. The choice is PickupTargeting's, in Common, and
             /// the server runs the identical call in ItemSystem.ApplyInteract — so the prompt cannot
             /// name one weapon while the key equips another.
             /// </summary>
             private void RefreshPickupPrompt(LocalPlayer local)
             {
+                // Hands full: the only thing E can do is put it down, so that is what to offer. It
+                // takes priority over anything underfoot for the same reason the server does — you
+                // cannot pick a second thing up while holding the first.
+                if (!local.IsDead && local.CarriedItem is { } hauled)
+                {
+                    ShowPrompt(
+                        hauled.NetworkId,
+                        $"Press E to put down {ItemCatalog.Name(hauled.Item.Type)}");
+                    return;
+                }
+
+                // A dozen or so world items, scanned once a frame. Cheap enough not to schedule,
+                // and it has to be live: the offer changes as you walk.
+                // Working one: the only thing left to offer is how to stop.
+                if (local.IsOperating)
+                {
+                    ShowPrompt(uint.MaxValue, "Press F to step away");
+                    return;
+                }
+
                 var pickup = local.IsDead
                     ? null
                     : PickupTargeting.Nearest(local.Position, Objects.Objects, Describe);
 
-                // A dozen or so world items, scanned once a frame. Cheap enough not to schedule,
-                // and it has to be live: the offer changes as you walk.
-                uint id = pickup?.NetworkId ?? 0u;
-                if (id == _promptedPickup) return;
-                _promptedPickup = id;
+                if (pickup is null)
+                {
+                    ShowPrompt(0u, null);
+                    return;
+                }
 
-                PickupPanel.Visibility = pickup is null ? Visibility.Collapsed : Visibility.Visible;
-                if (pickup is not null)
-                    PickupText.Text = $"Press E to pick up {ItemCatalog.Name(pickup.Item.Type)}";
+                // Something emplaced offers two things and both are worth saying, because one key
+                // takes it away and the other works it — a gunner who only knew about E would carry
+                // off the weapon he meant to fire.
+                string name = ItemCatalog.Name(pickup.Item.Type);
+                ShowPrompt(
+                    pickup.NetworkId,
+                    ItemConfig.IsCarryable(pickup.Item.Type)
+                        ? $"Press F to use {name}    Press E to pick up {name}"
+                        : $"Press E to pick up {name}");
+            }
+
+            /// <summary>Shows one prompt, keyed by the object it names so identical neighbours still
+            /// refresh. Null text hides the panel.</summary>
+            private void ShowPrompt(uint networkId, string? text)
+            {
+                if (networkId == _promptedPickup) return;
+                _promptedPickup = networkId;
+
+                PickupPanel.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
+                if (text is not null) PickupText.Text = text;
             }
 
             private static PickupTargeting.Candidate Describe(NetObject obj)

@@ -1,6 +1,32 @@
 namespace Demiurge;
 
 /// <summary>
+/// How big a bang is, as the two radii and the crater it digs. A profile rather than a set of
+/// constants because there is now more than one thing that goes off: a grenade and a mortar bomb
+/// differ only in scale, and the blast code should take the numbers as an argument rather than
+/// reaching for one weapon's globals and being unable to serve the other.
+/// </summary>
+public readonly record struct BlastProfile(
+    float LethalRadius,
+    float DamageRadius,
+    float TerrainDeformationScale)
+{
+    /// <summary>Fraction of a victim's maximum health this blast takes at <paramref name="distance"/>:
+    /// everything inside the lethal radius, falling linearly to nothing at the damage radius.</summary>
+    public float DamageFraction(float distance)
+        => distance <= LethalRadius
+            ? 1f
+            : distance >= DamageRadius
+                ? 0f
+                : (DamageRadius - distance) / (DamageRadius - LethalRadius);
+
+    /// <summary>The same blast, bigger. Radii and crater together — scaling one without the other
+    /// is how a weapon ends up killing over an area it visibly did not touch.</summary>
+    public BlastProfile Scaled(float factor)
+        => new(LethalRadius * factor, DamageRadius * factor, TerrainDeformationScale * factor);
+}
+
+/// <summary>
 /// Shared placeholder-grenade tuning. A quick launch and stronger grenade-only gravity produce a
 /// low, readable arc while still letting ballistics—not an invisible range wall—limit a perfect
 /// 45-degree throw to 40 m.
@@ -35,10 +61,8 @@ public static class GrenadeConfig
     public const float SurfaceOffset = 0.01f;
     public const int MaxImpactsPerTick = 3;
 
-    public static float DamageFraction(float distance)
-        => distance <= LethalRadius
-            ? 1f
-            : distance >= DamageRadius
-                ? 0f
-                : (DamageRadius - distance) / (DamageRadius - LethalRadius);
+    /// <summary>What a grenade does, as a profile the blast code can be handed.</summary>
+    public static BlastProfile Blast => new(LethalRadius, DamageRadius, TerrainDeformationScale);
+
+    public static float DamageFraction(float distance) => Blast.DamageFraction(distance);
 }

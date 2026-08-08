@@ -106,6 +106,12 @@ public class PlayerRegistry : IDisposable
         {
             case LocalPlayer local:
                 local.RespawnTick = data.RespawnTick;
+                // His own input flags are his to author and are rebuilt every frame from the
+                // keyboard; the server's are not derivable from input at all and have to be taken
+                // from the wire, or they are overwritten the frame after they arrive. That is
+                // exactly what left a gunner's camera in first person while the server had him on
+                // a mortar.
+                local.State = ServerAuthoredState.Merge(local.State, data.State);
                 local.Reconcile(data.Move, data.LastProcessedSequence);
                 break;
             case RemotePlayer remote:

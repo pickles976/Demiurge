@@ -63,6 +63,9 @@ namespace Demiurge
             // Slot 2 is the placeholder shovel/empty hand. Empty slot 1 is deliberately not a
             // digging tool, so the number keys always have stable meaning.
             if (local.Hotbar != HotbarSlot.Shovel) return;
+            // Both hands are round something else. The server refuses the dig too; this keeps the
+            // client from drawing the target highlight for an edit that will not happen.
+            if (local.IsCarrying) return;
 
             // Edge-triggered: one edit per click, and holding a button repeats at the rate limit
             // rather than every frame. Left wins a frame where both are held — taking terrain away

@@ -71,17 +71,52 @@ public class WeaponConfigTests
         Assert.True(dp27.SightingMoa > mosin.SightingMoa);
     }
 
-    /// <summary>The weight is the balance for the magazine and the rate of fire, so it is worth
-    /// pinning that the machine gun is the only thing in the game that carries one.</summary>
+    /// <summary>
+    /// Weight is the balance for the machine gun's magazine and rate of fire, and the whole point of
+    /// the mortar. Everything else is light, and staying light is the thing worth pinning: a stray
+    /// weight is a movement bug that reads as lag, because the client predicts with this number.
+    /// </summary>
     [Fact]
-    public void OnlyTheDp27CostsMovementSpeedToCarry()
+    public void OnlyTheHeavyThingsCostMovementSpeedToCarry()
     {
-        Assert.Equal(0.7f, WeaponConfig.MoveSpeedScale(ItemType.Dp27));
+        Assert.Equal(0.7f, ItemConfig.MoveSpeedScale(ItemType.Dp27));
+        Assert.Equal(MortarConfig.CarryMoveSpeedScale, ItemConfig.MoveSpeedScale(ItemType.Mortar));
 
         foreach (var definition in ItemCatalog.All)
         {
-            if (definition.Type == ItemType.Dp27) continue;
-            Assert.Equal(1f, WeaponConfig.MoveSpeedScale(definition.Type));
+            if (definition.Type is ItemType.Dp27 or ItemType.Mortar) continue;
+            Assert.Equal(1f, ItemConfig.MoveSpeedScale(definition.Type));
+        }
+    }
+
+    /// <summary>
+    /// A carryable is a thing you haul, and hauling has to cost something or the category is
+    /// decoration. This is the property, not the mortar's particular 0.5.
+    /// </summary>
+    [Fact]
+    public void EveryCarryableSlowsTheManHaulingIt()
+    {
+        foreach (var definition in ItemCatalog.All)
+        {
+            if (!ItemConfig.IsCarryable(definition.Type)) continue;
+            Assert.True(
+                ItemConfig.MoveSpeedScale(definition.Type) < 1f,
+                $"{definition.Id} is carryable but free to carry");
+        }
+    }
+
+    /// <summary>
+    /// Carryable things still have to be pickable-up — the category changes how they are USED, not
+    /// whether E takes them. Every path that decides that asks ItemConfig.IsHeld; this is what
+    /// fails if one of them goes back to testing for Equippable alone.
+    /// </summary>
+    [Fact]
+    public void ACarryableCanStillBePickedUp()
+    {
+        foreach (var definition in ItemCatalog.All)
+        {
+            if (!ItemConfig.IsCarryable(definition.Type)) continue;
+            Assert.True(ItemConfig.IsHeld(definition.Type), $"{definition.Id} cannot be picked up");
         }
     }
 }

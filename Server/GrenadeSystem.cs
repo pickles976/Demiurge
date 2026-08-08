@@ -230,38 +230,48 @@ public sealed class GrenadeSystem
             grenade.Position,
             players,
             tick,
+            GrenadeConfig.Blast,
             victim => activityFeed?.ReportKill(grenade.Owner, victim));
 
-        // Keep the readable 2x2 footprint, but apply each bite at half strength so the total
-        // deformation is half of the original four-click crater.
-        var contact = TerrainRaycast.Cast(
-            terrain,
-            grenade.Position,
-            -Vector3.UnitY,
-            GrenadeConfig.DamageRadius);
-        if (contact is { } terrainContact)
+        Crater(terrainEdits, terrain, grenade.Position, GrenadeConfig.Blast);
+        objects.Despawn(grenade.Object.NetworkId);
+    }
+
+    /// <summary>
+    /// Digs the hole a blast leaves, under whatever it went off above.
+    ///
+    /// Shared with the mortar rather than reimplemented for it, and the profile is what makes that
+    /// possible: the footprint is a readable 2x2 of bites and the profile scales how hard each one
+    /// bites, so a bigger bang leaves a bigger hole without a second copy of this loop drifting away
+    /// from the first.
+    /// </summary>
+    internal static void Crater(
+        TerrainSystem terrainEdits,
+        ChunkMap terrain,
+        Vector3 origin,
+        in BlastProfile blast)
+    {
+        var contact = TerrainRaycast.Cast(terrain, origin, -Vector3.UnitY, blast.DamageRadius);
+        if (contact is not { } terrainContact) return;
+
+        var target = Digging.TargetVoxel(terrainContact.Point, terrainContact.Normal);
+        float firstX = MathF.Floor(target.X - 0.5f);
+        float firstZ = MathF.Floor(target.Z - 0.5f);
+        for (int z = 0; z < 2; z++)
         {
-            var target = Digging.TargetVoxel(terrainContact.Point, terrainContact.Normal);
-            float firstX = MathF.Floor(target.X - 0.5f);
-            float firstZ = MathF.Floor(target.Z - 0.5f);
-            for (int z = 0; z < 2; z++)
+            for (int x = 0; x < 2; x++)
             {
-                for (int x = 0; x < 2; x++)
+                terrainEdits.Apply(new TerrainEditData
                 {
-                    terrainEdits.Apply(new TerrainEditData
-                    {
-                        Centre = new Vector3(firstX + x, target.Y, firstZ + z),
-                        HalfExtent = Digging.Bite,
-                        Mode = EditMode.SubtractBlast,
-                        Fill = BlockType.BlockType_Air,
-                        Shape = EditShape.Sphere,
-                        Strength =
-                            Digging.BiteStrength * GrenadeConfig.TerrainDeformationScale,
-                    });
-                }
+                    Centre = new Vector3(firstX + x, target.Y, firstZ + z),
+                    HalfExtent = Digging.Bite,
+                    Mode = EditMode.SubtractBlast,
+                    Fill = BlockType.BlockType_Air,
+                    Shape = EditShape.Sphere,
+                    Strength = Digging.BiteStrength * blast.TerrainDeformationScale,
+                });
             }
         }
-        objects.Despawn(grenade.Object.NetworkId);
     }
 
     /// <summary>
@@ -272,6 +282,7 @@ public sealed class GrenadeSystem
         Vector3 origin,
         IEnumerable<ServerPlayer> players,
         uint tick,
+        in BlastProfile blast,
         Action<ServerPlayer>? killed = null)
     {
         foreach (var player in players)
@@ -280,7 +291,7 @@ public sealed class GrenadeSystem
 
             bool wasAlive = status.Health.Current > 0;
             float distance = Vector3.Distance(origin, player.Position);
-            float fraction = GrenadeConfig.DamageFraction(distance);
+            float fraction = blast.DamageFraction(distance);
             if (fraction <= 0f) continue;
 
             // The blow's own magnitude, which inside the lethal radius is everything a man has even
@@ -289,7 +300,7 @@ public sealed class GrenadeSystem
             // are thrown the same distance by the same grenade.
             float blowDamage = status.Health.Max * fraction;
 
-            if (distance <= GrenadeConfig.LethalRadius)
+            if (distance <= blast.LethalRadius)
             {
                 status.Health.Current = 0;
             }

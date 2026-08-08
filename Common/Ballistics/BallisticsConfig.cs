@@ -8,6 +8,7 @@ namespace Demiurge
         Pistol,
         Throwable,
         MachineGun,
+        Mortar,
     }
 
     /// <summary>
@@ -119,6 +120,17 @@ namespace Demiurge
                 SightingMoa: 150f),
             WeaponBallisticsProfile.Throwable => new BallisticsStats(
                 ProjectileSpeed: GrenadeConfig.ThrowSpeed,
+                BenchMoa: 0f,
+                RecoilPerShotMoa: 0f,
+                RecoilDecayMoaPerSecond: 0f,
+                RecoilCapMoa: 0f,
+                SightingMoa: 0f),
+            // A lobbed bomb, not a shot: the speed is solved per round from the range the gunner
+            // picked (MortarConfig), so the figure here is only the fallback any code that asks a
+            // mortar for "its" muzzle velocity would get. Accuracy terms are zero because a mortar
+            // does not miss by dispersion around a line — it misses by landing somewhere else.
+            WeaponBallisticsProfile.Mortar => new BallisticsStats(
+                ProjectileSpeed: MortarConfig.NominalSpeed,
                 BenchMoa: 0f,
                 RecoilPerShotMoa: 0f,
                 RecoilDecayMoaPerSecond: 0f,

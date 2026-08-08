@@ -31,6 +31,7 @@ public static class ItemCosmetics
         ItemType.Shovel => "assets/models/shovel.gltf",
         ItemType.BodyArmor => "assets/models/body_armor.gltf",
         ItemType.Grenade => "assets/models/grenade.gltf",
+        ItemType.Mortar => "assets/models/mortar_tube.gltf",
 
         // Unknown type off the wire: AK stand-in rather than a crash.
         _ => "assets/models/ak47.gltf",
@@ -65,7 +66,7 @@ public static class ItemCosmetics
     /// only ever needs sizing once.
     /// </summary>
     public static float FirstPersonScale(ItemType type)
-        => type == ItemType.Grenade
+        => type == ItemType.Grenade || ItemConfig.IsCarryable(type)
             ? WorldScale(type)
             : WorldScale(type) * WeaponMount.FirstPersonScale;
 
@@ -97,7 +98,7 @@ public static class ItemCosmetics
     ///
     /// Presentation, like <see cref="AimMagnification"/>. Nothing gates a shot on the sight picture
     /// having arrived; what the weight of a weapon costs in the SIM is
-    /// <see cref="WeaponStats.MoveSpeedScale"/>.
+    /// <see cref="ItemStats.MoveSpeedScale"/>.
     /// </summary>
     public static float AimSpeedScale(ItemType type) => type switch
     {
@@ -121,6 +122,9 @@ public static class ItemCosmetics
         [EquipSlot.HotbarPrimary] = new("right_hand", Vector3.Zero, WeaponMount.HandRotation.ToStride()),
         [EquipSlot.HotbarShovel] = new("right_hand", Vector3.Zero, WeaponMount.HandRotation.ToStride()),
         [EquipSlot.HotbarGrenade] = new("right_hand", Vector3.Zero, WeaponMount.HandRotation.ToStride()),
+        // Hauled in front of the chest rather than off a hand bone: it takes both arms, which is
+        // the whole reason nothing else can be used while it is there.
+        [EquipSlot.Carried] = new("torso", new Vector3(0f, 0.1f, 0.45f), Quaternion.Identity),
     };
 
     // Unknown slot off the wire: ride the player root rather than crash.

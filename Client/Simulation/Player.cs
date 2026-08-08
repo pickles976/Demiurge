@@ -8,6 +8,17 @@ public abstract class Player
     public ushort Id { get; init; }
     public virtual Vector3 Position { get; set; }
     public PlayerStateFlags State { get; set; }
+
+    /// <summary>
+    /// Whether this man's hands are full of something hauled — so nothing else he owns should be
+    /// drawn in them. Off the replicated flag for everybody but the local player, who overrides it
+    /// with what he is actually holding because his own is predicted.
+    /// </summary>
+    public virtual bool IsCarrying => State.HasFlag(PlayerStateFlags.Carrying);
+
+    /// <summary>Whether this man is standing at an emplaced weapon and working it. He does not move
+    /// while it is true, and his own client draws a different camera for it.</summary>
+    public bool IsOperating => State.HasFlag(PlayerStateFlags.Operating);
     public float Yaw { get; set; }
     public HotbarSlot Hotbar { get; set; } = HotbarSlot.Primary;
     public int Team { get; set; } = 1;
@@ -120,12 +131,43 @@ public class RemotePlayer : Player
             ? stored
             : HotbarSlot.Primary;
 
+    /// <summary>
+    /// What this player is hauling in both hands, or null. Mirrors ServerPlayer.IsCarrying, and
+    /// exists as its own field rather than a hotbar entry for the same reason the server keeps a
+    /// separate slot: hauling something must not evict the rifle. Note that SlotOf would otherwise
+    /// file it under Primary and do exactly that, since it defaults anything it does not recognise.
+    /// </summary>
+    public NetObject? CarriedItem { get; private set; }
+
+    /// <summary>
+    /// Whether the hands are full. Blocks firing, reloading, digging and slot changes, client-side,
+    /// so prediction refuses the same inputs the server will.
+    ///
+    /// Answered from the item itself rather than from the replicated flag, because this player's is
+    /// predicted: it has to be true the frame the pickup lands, not a round trip later.
+    /// </summary>
+    public override bool IsCarrying => CarriedItem is not null;
+
     /// <summary>Records an owned item in its slot. Every hotbar item goes through here; only the
     /// ones that shoot additionally go through <see cref="Equip"/>.</summary>
-    public void Carry(NetObject item) => hotbarItems[SlotOf(item)] = item;
+    public void Carry(NetObject item)
+    {
+        if (item.Attachment.Slot == EquipSlot.Carried)
+        {
+            CarriedItem = item;
+            return;
+        }
+        hotbarItems[SlotOf(item)] = item;
+    }
 
     public void Drop(NetObject item)
     {
+        if (ReferenceEquals(CarriedItem, item))
+        {
+            CarriedItem = null;
+            return;
+        }
+
         foreach (var pair in hotbarItems)
         {
             if (!ReferenceEquals(pair.Value, item)) continue;
@@ -180,8 +222,16 @@ public class RemotePlayer : Player
     /// slot the client has not been told about yet is the only way the two can differ — and it
     /// resolves the moment the object arrives.
     /// </summary>
+    /// <remarks>
+    /// Hauling overrides the slot, because what you are carrying is what you are moving under — the
+    /// slung rifle's weight is not paid twice. This one term is player state rather than per-slot,
+    /// so a replay spanning a pickup can disagree with the server for the moves either side of it;
+    /// picking something up is rare enough, and settles on the next correction.
+    /// </remarks>
     private float MoveSpeedScaleIn(HotbarSlot slot)
-        => ItemIn(slot) is { } held ? WeaponConfig.MoveSpeedScale(held.Item.Type) : 1f;
+        => CarriedItem is { } hauled ? ItemConfig.MoveSpeedScale(hauled.Item.Type)
+         : ItemIn(slot) is { } held ? ItemConfig.MoveSpeedScale(held.Item.Type)
+         : 1f;
 
     /// <summary>
     /// Fires at a point in the world rather than along a direction, and that distinction is the
@@ -257,6 +307,16 @@ public class RemotePlayer : Player
     /// Nothing is predicted — the outcome arrives as ordinary object
     /// spawn/despawn replication and flows through Equip/Unequip.</summary>
     public void TryInteract() => network.SendInteract();
+
+    /// <summary>F: get on or off the emplaced thing in reach, rather than picking it up.</summary>
+    public void TryUse() => network.SendUse();
+
+    /// <summary>
+    /// Ask for a bomb on a point. Not predicted at all — there is no local effect to show and the
+    /// dispersion is the server's to sample, so the request goes and the bomb arrives replicated.
+    /// </summary>
+    public void TryFireMortar(System.Numerics.Vector3 target)
+        => network.SendMortarFire(new MortarFireData { Target = target });
 
         public LocalPlayer(NetworkManager network, TerrainState terrain, WeaponMount mount)
         {

@@ -19,6 +19,7 @@ public class GrenadeSystemTests
             Vector3.Zero,
             [thrower, friendly, mob, outside],
             tick: 0,
+            GrenadeConfig.Blast,
             victim => killed.Add(victim.Id));
 
         Assert.Equal(0, thrower.Status!.Health.Current);
@@ -42,7 +43,7 @@ public class GrenadeSystemTests
         var killed = PlayerAt(1, 3f);
         var wounded = PlayerAt(2, 7f);
 
-        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [killed, wounded], tick: 0);
+        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [killed, wounded], tick: 0, GrenadeConfig.Blast);
 
         Assert.True(killed.Status!.Dirty.HasFlag(NetComponents.Impulse));
         Assert.True(killed.Status.Impulse.Velocity.X > 0f, "thrown away from the blast");
@@ -64,7 +65,7 @@ public class GrenadeSystemTests
         var nearlyDead = PlayerAt(2, 3f);
         nearlyDead.Status!.Health.Current = 1;
 
-        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [whole, nearlyDead], tick: 0);
+        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [whole, nearlyDead], tick: 0, GrenadeConfig.Blast);
 
         Assert.Equal(0, whole.Status!.Health.Current);
         Assert.Equal(0, nearlyDead.Status.Health.Current);

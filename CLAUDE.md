@@ -541,7 +541,9 @@ SDSL shaders live in `assets/shaders/` and are referenced by class name, not pat
 **Debug drawing** — `Client/Rendering/LineRenderer.cs`, immediate mode: call `DrawLine`,
 `DrawPolyline`, `DrawPoint`, `Circle2D` (and the `*2D` screen-space variants) every frame from
 any script and they're re-issued each frame. 3D coordinates project through the static
-`LineRenderer.Camera`; 2D coordinates are pixels centred on the screen. This is the tool for
+`LineRenderer.Camera`; 2D coordinates are pixels centred on the screen, **+Y UP** — the opposite of
+`Input.MousePosition`, which is normalized with +Y down, so anything drawn at the cursor needs
+`(0.5 - mouse.Y) * height` and not the other way round. This is the tool for
 things like the "debug draw chunk borders" TODO — reach for it before inventing anything.
 
 **Audio** — `Client/Audio/SoundManager.cs` talks to OpenAL directly through Silk.NET,
@@ -611,6 +613,40 @@ comments in `Stride.*.xml` beside them. Use the plain `net10.0` variants — thi
 - **Verify visual changes by asking him to look**, not by screenshotting the game.
 - Two-client local testing: an unfocused Stride window is throttled by the engine.
   Background-window stutter is not a netcode bug.
+
+### Reach for the simplest mechanism that does the job
+
+**Opus 5 over-engineers small things, and this is where it shows up.** Not in architecture — the
+sections above are about getting systems right and they still apply. It shows up in the *small*
+decision inside a system, where the elaborate answer gets chosen over the obvious one and then has
+to be debugged.
+
+The worked example, 2026-08-08. The mortar's aim reticle should sit on the mouse. It was drawn by
+taking the cursor, mapping it to a point on the ground, and projecting that point back to the
+screen — through the camera's `ViewProjectionMatrix`, which is built from the PREVIOUS frame's
+transform, so a script that poses the camera and then projects in the same frame gets a matrix that
+disagrees with where the camera is. Three separate bugs came out of that one choice: an inverted
+cursor, a reticle that would not sit under the pointer, and a "fix" that hand-inverted the mapping
+instead of deleting it. The actual answer is two lines — read `Input.MousePosition`, convert to
+centred pixels, draw. **A thing that follows the mouse is parented to the mouse.** It never needed a
+camera at all.
+
+Same session, same habit: a 5 m dispersion was implemented as a *circular error probable* with a
+Rayleigh-median conversion (`sigma = CEP / 1.1774`) and pinned by a test that fired 20,000 rounds to
+assert half landed inside the circle. What was wanted was a gaussian with a 5 m spread. One
+constant, four lines, one cheap test.
+
+The tells, all of which appeared above:
+
+- A transform is being applied to get back something the input already had.
+- A constant is derived from another constant by a named statistical identity nobody asked for.
+- A test needs thousands of samples to assert a property of a distribution the code just picked.
+- The second attempt at a fix is more machinery than the first rather than less.
+
+When something reads as harder than the request sounded, that is the signal to delete rather than to
+add. Ask what the simplest thing that produces this behavior is, and write that. Elaboration in the
+tuning of a system's MODEL is earned — see the navigation notes below — but elaboration in the
+plumbing of a widget is a bug waiting to be found.
 
 ### Concepts freely, systems iteratively
 

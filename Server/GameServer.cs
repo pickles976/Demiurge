@@ -101,6 +101,14 @@ namespace Demiurge.GameServer
                 case ClientToServerId.PlayerInteract:
                     world.ApplyInteract(e.ClientId);
                     break;
+                case ClientToServerId.PlayerUse:
+                    world.ApplyUse(e.ClientId);
+                    break;
+                case ClientToServerId.MortarFire:
+                    world.ApplyMortarFire(
+                        e.ClientId,
+                        e.Message.GetSerializable<MortarFireData>());
+                    break;
                 case ClientToServerId.PlayerDig:
                     world.ApplyDig(e.ClientId, e.Message.GetSerializable<PlayerDigData>());
                     break;

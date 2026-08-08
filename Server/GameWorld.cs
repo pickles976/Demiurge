@@ -14,6 +14,7 @@ namespace Demiurge.GameServer
         private readonly MobSystem mobs;
         private readonly WeaponSystem weapons;
         private readonly GrenadeSystem grenades;
+        private readonly MortarSystem mortars;
         private readonly FlagSystem flags;
         private readonly TicketSystem tickets;
         private readonly TerrainSystem terrainEdits;
@@ -166,6 +167,7 @@ namespace Demiurge.GameServer
             flags = new FlagSystem(objects, activityFeed);
             tickets = new TicketSystem(server, flags, playableTeams);
             terrainEdits = new TerrainSystem(server, terrain);
+            mortars = new MortarSystem(objects, terrain, terrainEdits, activityFeed);
             grenades = new GrenadeSystem(
                 objects,
                 items,
@@ -201,6 +203,10 @@ namespace Demiurge.GameServer
                 SpawnRuntimePlacements(runtimeMap.Placements);
                 SpawnInitialTeamMobs(initialSpawns.NpcSpawns);
             }
+
+            // One mortar at the world origin, whatever the scenario. Not map-authored yet: it is
+            // there to be walked to and picked up while the weapon is being built out.
+            SpawnPickupOnSurface(ItemType.Mortar, 0f, 0f);
         }
 
         private void SpawnInitialTeamMobs(IReadOnlyList<RuntimePlacement> spawns)
@@ -399,7 +405,10 @@ namespace Demiurge.GameServer
                 && player.Status is { Health.Current: > 0 })
             {
                 if (!HotbarConfig.IsValid(fire.Hotbar)) return;
-                player.Hotbar = fire.Hotbar;
+                // Hands full: no shot, no throw, and not even a slot change. Refused here rather
+                // than inside each weapon path so a carried thing blocks EVERY use of the kit.
+                if (player.IsCarrying) return;
+                items.SelectHotbar(player, fire.Hotbar);
                 if (grenades.IsGrenadeEquipped(player))
                     grenades.ApplyThrow(player, fire, _Tick);
                 else
@@ -410,7 +419,8 @@ namespace Demiurge.GameServer
         public void ApplyReload(ushort clientId)
         {
             if (players.TryGetValue(clientId, out var player)
-                && player.Status is { Health.Current: > 0 })
+                && player.Status is { Health.Current: > 0 }
+                && !player.IsCarrying)
                 weapons.ApplyReload(player, _Tick);
         }
 
@@ -418,9 +428,10 @@ namespace Demiurge.GameServer
         {
             if (players.TryGetValue(clientId, out var player)
                 && player.Status is { Health.Current: > 0 }
-                && HotbarConfig.IsValid(dig.Hotbar))
+                && HotbarConfig.IsValid(dig.Hotbar)
+                && !player.IsCarrying)
             {
-                player.Hotbar = dig.Hotbar;
+                items.SelectHotbar(player, dig.Hotbar);
                 terrainEdits.ApplyDig(player, dig, _Tick);
             }
         }
@@ -431,6 +442,59 @@ namespace Demiurge.GameServer
                 && player.Status is { Health.Current: > 0 })
                 items.ApplyInteract(player);
         }
+
+        /// <summary>
+        /// F: get on, or off, the emplaced thing in reach. Resolving WHAT is in reach is shared with
+        /// E — same PickupTargeting rule, so the two keys can never disagree about which object the
+        /// player means, only about what to do with it.
+        ///
+        /// A toggle rather than a hold, because operating a mortar is a posture and not an action:
+        /// the gunner is on it for as long as it takes to lay and fire, and F is how he steps away.
+        /// </summary>
+        public void ApplyUse(ushort clientId)
+        {
+            if (!players.TryGetValue(clientId, out var player)
+                || player.Status is not { Health.Current: > 0 })
+                return;
+
+            if (player.IsOperating)
+            {
+                player.OperatingObjectId = 0;
+                return;
+            }
+
+            if (player.IsCarrying) return;   // hands full: put it down before working anything
+            if (items.EmplacedInReach(player) is not { } emplacement) return;
+            player.OperatingObjectId = emplacement.NetworkId;
+        }
+
+        /// <summary>
+        /// Drops a bomb on a point. The request carries the point and nothing else — which mortar,
+        /// where it is and which way it was laid all come from the server's own state, so a client
+        /// can choose WHERE inside the sector and nothing about the sector itself.
+        /// </summary>
+        public void ApplyMortarFire(ushort clientId, MortarFireData request)
+        {
+            if (!players.TryGetValue(clientId, out var player)
+                || player.Status is not { Health.Current: > 0 }
+                || !player.IsOperating
+                || !IsFiniteVector(request.Target))
+                return;
+
+            if (!objects.TryGet(player.OperatingObjectId, out var emplacement)
+                || !emplacement.Has.HasFlag(NetComponents.Transform)
+                || emplacement.Item.Type != ItemType.Mortar)
+            {
+                // Somebody picked it up out from under him.
+                player.OperatingObjectId = 0;
+                return;
+            }
+
+            mortars.TryFire(player, emplacement, request.Target, _Tick);
+        }
+
+        private static bool IsFiniteVector(Vector3 v)
+            => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
         public void ApplyInput(ushort clientId, PlayerInputData input)
         {
@@ -448,7 +512,7 @@ namespace Demiurge.GameServer
                 player.LastProcessedSequence = input.Sequence;
                 return;
             }
-            player.Hotbar = input.Hotbar;
+            items.SelectHotbar(player, input.Hotbar);
             player.PendingMoves.Enqueue(input);
         }
 
@@ -490,13 +554,17 @@ namespace Demiurge.GameServer
                     // and the queue can be a tick or two behind, so stepping against it would apply
                     // a weight the client had not yet applied to that move — a correction on every
                     // weapon switch. The client replays from the same field.
+                    // A gunner on an emplacement stands where the emplacement is. Zeroed here as
+                    // well as on the client so prediction and truth agree about a man who is holding
+                    // W with his hands on a mortar.
+                    var intent = player.IsOperating ? Vector3.Zero : move.Intent;
                     PlayerMovement.Step(
-                        terrain, ref player.Move, move.Intent, move.State, dt,
+                        terrain, ref player.Move, intent, move.State, dt,
                         items.MoveSpeedScale(player, move.Hotbar));
                     player.State = move.State;
                     player.Yaw = move.Yaw;
                     player.Pitch = move.Pitch;
-                    player.LastIntent = move.Intent;
+                    player.LastIntent = intent;
                     player.LastProcessedSequence = move.Sequence;
                     processedAny = true;
                 }
@@ -534,6 +602,7 @@ namespace Demiurge.GameServer
             weapons.Tick(dt, _Tick, players.Values);
             long afterWeapons = Stopwatch.GetTimestamp();
             grenades.Tick(dt, _Tick, players.Values);
+            mortars.Tick(dt, _Tick, players.Values);
             RegenerateHealth(dt);
             long afterGrenades = Stopwatch.GetTimestamp();
 
@@ -725,7 +794,11 @@ namespace Demiurge.GameServer
                         Position = player.Position,
                         Yaw = player.Yaw,
                         Pitch = player.Pitch,
-                        State = player.State,
+                        // Derived here rather than stored, so the bit and the Carried slot it
+                        // reflects cannot disagree: there is nowhere to forget to clear it.
+                        State = player.State
+                            .With(PlayerStateFlags.Carrying, player.IsCarrying)
+                            .With(PlayerStateFlags.Operating, player.IsOperating),
                         LastProcessedSequence = player.LastProcessedSequence,
                         Velocity = player.Move.Velocity,
                         Grounded = player.Move.Grounded,

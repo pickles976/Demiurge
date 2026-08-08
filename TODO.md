@@ -11,23 +11,13 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-- [ ] add mortar
-      - [ ] start with weapon. Spawn next to player. Top down view. WASD to rotate and move aim. Left click to fire. One round every 5s. 1.5x the size of grenade impact.
-- [ ] add picking up and carrying
-- [ ] add a crate pickup, add to top of hill
-
-- [ ] add prone
-- [ ] tune MG for firing while prone
-- [ ] add MG pickup crate at hilltop flag
-- [ ] allow NPCs to use it
-- [ ] grenades are too bouncy
-- [ ] dead soldiers drop their weapon and you can pick it up
-- [ ] limit ammo for playersw
+- [ ] replace 2 of the MG crates with mortars
 
 - [ ] json config for all items
 
-https://github.com/id-Software/Quake-III-Arena
-- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
+- [ ] add prone
+- [ ] tune MG for firing while prone
+
 
 AI IMPROVEMENTS
 
@@ -57,6 +47,15 @@ New Features
 
 - Try to add digging back in to combat
 
+https://github.com/id-Software/Quake-III-Arena
+- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
+
+- [ ] allow NPCs to use it
+- [ ] grenades are too bouncy
+- [ ] dead soldiers drop their weapon and you can pick it up
+- [ ] limit ammo for players
+
+
 - [ ] PVP
 
       - [ ] flag 3D model     
@@ -69,7 +68,7 @@ New Features
       - [ ] remove glock, AWP, and AK
       - [ ] fix audio cutting off
       - [ ] long range report sounds
-
+      - [ ] mortar whistle sound
 
       - [ ] add 4 more NPCs to each team
 

@@ -86,7 +86,29 @@ public class LocalPlayerController : SyncScript
 
 		// Position
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
-		HandleHotbarInput(local);
+
+		// Hands full. This gates the KIT and nothing else: walking, running, crouching and jumping
+		// are unaffected, because carrying something heavy makes you slow, not immobile — the weight
+		// is already priced into every speed by ItemConfig.MoveSpeedScale.
+		//
+		// Gated as conditions rather than as an early return, deliberately. Returning early here
+		// skipped the whole state block below, which is where Moving, Sprinting, Crouching and
+		// Jumping are read — so those froze at whatever they happened to be when the thing was
+		// picked up, and a man who pressed E mid-sprint stayed flagged sprinting until he put it
+		// down. The actions are what must stop; the man goes on being a man.
+		//
+		// Refused here as well as on the server so the two agree: predicting a shot the server will
+		// reject is how a phantom tracer gets drawn.
+		bool handsFull = local.IsCarrying;
+
+		// On an emplacement: the man is a gunner, not an infantryman. He does not walk, his kit is
+		// not to hand, and the left button belongs to MortarControlScript rather than to a rifle.
+		// Zeroed here as well as on the server so prediction agrees about a man holding W with his
+		// hands on a mortar.
+		bool operating = local.IsOperating;
+		if (operating) intent = Vector3.Zero;
+
+		if (!handsFull && !operating) HandleHotbarInput(local);
 
 		// State. A reload takes the sight picture away whether or not the button is still held —
 		// both hands are on the magazine. Working a bolt does NOT: the rifle stays on the shoulder
@@ -95,10 +117,14 @@ public class LocalPlayerController : SyncScript
 		// Not while the shovel is out. A tool has nothing to aim — WeaponMount already refuses to
 		// move it on right-click — but the shared aim flag would still narrow the field of view and
 		// halve the walk speed of somebody holding a spade.
-		bool aiming = Input.IsMouseButtonDown(MouseButton.Right)
+		bool aiming = !handsFull
+			&& !operating
+			&& Input.IsMouseButtonDown(MouseButton.Right)
 			&& !local.IsReloading
 			&& local.Hotbar != HotbarSlot.Shovel;
-		bool primaryDown = Input.IsMouseButtonDown(MouseButton.Left);
+		// Nothing is actuated with full hands, and clearing the button here is what turns the fire,
+		// grenade-prime and dig paths below off at once rather than one guard each.
+		bool primaryDown = !handsFull && !operating && Input.IsMouseButtonDown(MouseButton.Left);
 
 		// Shooting means "actuating the held item", which is why digging sets it too: it is the
 		// replicated signal every other client's view reads to swing the shovel, and it is
@@ -141,10 +167,7 @@ public class LocalPlayerController : SyncScript
 
 		// Where the line of sight lands, resolved AFTER the rotation block so hip fire and ADS
 		// both use this frame's camera rather than last frame's.
-		var cameraTransform = CameraEntity.Transform;
-		AimPoint = ComputeAimPoint(
-			cameraTransform.Position,
-			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
+		UpdateAimPoint();
 
 		// Automatic weapons remain level-triggered and let TryFire's cooldown produce their cadence;
 		// a SEMI-AUTOMATIC one wants the trigger PRESS, so holding the button pays out exactly one
@@ -177,12 +200,24 @@ public class LocalPlayerController : SyncScript
 		if (!primaryDown) primedGrenadeId = null;
 		primaryWasDown = primaryDown;
 
-		if (Input.IsKeyPressed(Keys.R))
+		if (Input.IsKeyPressed(Keys.R) && !handsFull && !operating)
 			local.TryReload();
 
 		if (Input.IsKeyPressed(Keys.E))
 			local.TryInteract();
 
+		if (Input.IsKeyPressed(Keys.F))
+			local.TryUse();
+
+	}
+
+	/// <summary>Where this frame's line of sight lands, for the reticle and for firing.</summary>
+	private void UpdateAimPoint()
+	{
+		var cameraTransform = CameraEntity.Transform;
+		AimPoint = ComputeAimPoint(
+			cameraTransform.Position,
+			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
 	}
 
 	/// <summary>

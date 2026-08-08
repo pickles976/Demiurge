@@ -15,6 +15,9 @@ namespace Demiurge
         Tree,
         Grenade,
         Flag,
+        /// <summary>A mortar bomb in the air. Distinct from Grenade so the client can tell the two
+        /// apart — they fly differently and only one of them draws a tracer.</summary>
+        MortarRound,
     }
 
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon
@@ -32,6 +35,7 @@ namespace Demiurge
         Ppsh = 8,
         Mosin = 9,
         Dp27 = 10,
+        Mortar = 11,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"

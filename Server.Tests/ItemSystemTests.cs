@@ -24,6 +24,84 @@ public class ItemSystemTests
         Assert.Single(objects.All);
     }
 
+    /// <summary>
+    /// Picking something heavy up does not make you throw your rifle away. It fills your hands: the
+    /// kit stays exactly where it was and simply cannot be reached, which is what IsCarrying means.
+    /// </summary>
+    [Fact]
+    public void HaulingSomethingKeepsYourWeaponsAndLocksThemAway()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 1 };
+        items.SpawnInfantryLoadout(actor);
+        uint rifleId = actor.Equipped[EquipSlot.HotbarPrimary];
+
+        var mortar = items.SpawnPickup(ItemType.Mortar, actor.Position);
+        items.ApplyInteract(actor);
+
+        Assert.True(actor.IsCarrying);
+        Assert.Equal(EquipSlot.Carried, objects.All
+            .Single(o => o.Has.HasFlag(NetComponents.Owner) && o.Item.Type == ItemType.Mortar)
+            .Attachment.Slot);
+
+        // The rifle is untouched — same object, same slot, still owned.
+        Assert.Equal(rifleId, actor.Equipped[EquipSlot.HotbarPrimary]);
+        Assert.True(objects.TryGet(rifleId, out _));
+
+        // And nothing of it was dropped on the ground in the process.
+        Assert.DoesNotContain(
+            objects.All,
+            o => o.Has.HasFlag(NetComponents.Transform) && o.Has.HasFlag(NetComponents.Item));
+
+        Assert.False(mortar.Has == default);   // the pickup existed before it was taken
+    }
+
+    /// <summary>
+    /// Putting something down is an act of aiming, not of tidying up: the heading it lands on is the
+    /// line a mortar's tube will traverse around, so it has to come from where the man was looking.
+    /// </summary>
+    [Fact]
+    public void PuttingSomethingDownEmplacesItOnTheHeadingYouWereFacing()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 1, Yaw = 1.25f };
+        actor.Move.Position = new Vector3(10f, 4f, -7f);
+        items.SpawnPickup(ItemType.Mortar, actor.Position);
+        items.ApplyInteract(actor);
+        Assert.True(actor.IsCarrying);
+
+        actor.Yaw = -2.5f;                       // turned around before setting it down
+        items.ApplyInteract(actor);              // E again: put it down
+
+        Assert.False(actor.IsCarrying);
+        var emplaced = objects.All.Single(o => o.Item.Type == ItemType.Mortar);
+        Assert.True(emplaced.Has.HasFlag(NetComponents.Transform));
+        Assert.False(emplaced.Has.HasFlag(NetComponents.Owner));
+        Assert.Equal(actor.Position, emplaced.Transform.Position);
+        Assert.Equal(-2.5f, emplaced.Transform.Yaw, 4);
+    }
+
+    /// <summary>A man with his hands full cannot change what is selected.</summary>
+    [Fact]
+    public void CarryingRefusesHotbarChanges()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 1 };
+        items.SpawnInfantryLoadout(actor);
+
+        items.SelectHotbar(actor, HotbarSlot.Shovel);
+        Assert.Equal(HotbarSlot.Shovel, actor.Hotbar);
+
+        items.SpawnPickup(ItemType.Mortar, actor.Position);
+        items.ApplyInteract(actor);
+
+        items.SelectHotbar(actor, HotbarSlot.Primary);
+        Assert.Equal(HotbarSlot.Shovel, actor.Hotbar);
+    }
+
     [Fact]
     public void PickupGetsTraitsFromCatalogType()
     {
