@@ -11,9 +11,6 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-- [ ] add prone
-- [ ] tune MG for firing while prone
-
 - [ ] json config for all items
 
 https://github.com/id-Software/Quake-III-Arena
@@ -43,6 +40,7 @@ If Digging still sucks
 - Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 
 New Features
+-  NPCs should be able to go prone
 - Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
 
 - Try to add digging back in to combat

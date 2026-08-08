@@ -513,6 +513,7 @@ namespace Demiurge.GameServer
                 return;
             }
             items.SelectHotbar(player, input.Hotbar);
+            input.State = input.State.StandForSprint();
             player.PendingMoves.Enqueue(input);
         }
 

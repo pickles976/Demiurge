@@ -19,6 +19,9 @@ namespace Demiurge
         /// what a man looks like he is doing, and because his own client draws a different camera
         /// for it.</summary>
         Operating = 1 << 8,
+        /// <summary>Lying flat. Unlike crouching this is a toggled stance, and sprinting always
+        /// clears it before movement is simulated.</summary>
+        Prone     = 1 << 9,
     }
 
     /// <summary>
@@ -43,5 +46,13 @@ namespace Demiurge
     {
         public static PlayerStateFlags With(this PlayerStateFlags flags, PlayerStateFlags flag, bool on)
             => on ? flags | flag : flags & ~flag;
+
+        /// <summary>A sprint request wins over prone on both sides of prediction. Keeping this in
+        /// Common prevents a fabricated or reordered input packet from producing an impossible
+        /// sprinting-prone state on the server.</summary>
+        public static PlayerStateFlags StandForSprint(this PlayerStateFlags flags)
+            => flags.HasFlag(PlayerStateFlags.Sprinting)
+                ? flags & ~PlayerStateFlags.Prone
+                : flags;
     }
 }

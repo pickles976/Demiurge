@@ -86,7 +86,7 @@ namespace Demiurge
     public struct WeaponSpreadState
     {
         private bool stanceInitialized;
-        private bool wasCrouching;
+        private PlayerStateFlags previousStance;
         private bool movementInitialized;
         private bool wasSprinting;
 
@@ -99,11 +99,11 @@ namespace Demiurge
         {
             if (!float.IsFinite(dt) || dt <= 0f) return;
 
-            bool crouching = state.HasFlag(PlayerStateFlags.Crouching);
-            if (stanceInitialized && crouching != wasCrouching)
+            var stance = state & (PlayerStateFlags.Crouching | PlayerStateFlags.Prone);
+            if (stanceInitialized && stance != previousStance)
                 StanceChangeMoa = BallisticsConfig.StanceChangeMoa;
             stanceInitialized = true;
-            wasCrouching = crouching;
+            previousStance = stance;
 
             bool sprinting = state.HasFlag(PlayerStateFlags.Sprinting);
             if (movementInitialized && wasSprinting && !sprinting)
@@ -127,10 +127,15 @@ namespace Demiurge
                 dt);
         }
 
-        public void AddRecoil(BallisticsStats weapon)
-            => RecoilMoa = MathF.Min(
-                weapon.RecoilCapMoa,
-                RecoilMoa + weapon.RecoilPerShotMoa);
+        public void AddRecoil(BallisticsStats weapon, PlayerStateFlags state)
+        {
+            float scale = state.HasFlag(PlayerStateFlags.Prone)
+                ? BallisticsConfig.ProneRecoilScale
+                : 1f;
+            RecoilMoa = MathF.Min(
+                weapon.RecoilCapMoa * scale,
+                RecoilMoa + weapon.RecoilPerShotMoa * scale);
+        }
 
         public void Suppress()
             => SuppressionMoa = BallisticsConfig.SuppressedMoa;
@@ -138,6 +143,7 @@ namespace Demiurge
         public readonly float TotalMoa(PlayerStateFlags state, BallisticsStats weapon)
         {
             float stance = state.HasFlag(PlayerStateFlags.Crouching)
+                           || state.HasFlag(PlayerStateFlags.Prone)
                 ? BallisticsConfig.CrouchedMoa
                 : BallisticsConfig.StandingMoa;
             bool sprinting = state.HasFlag(PlayerStateFlags.Sprinting);

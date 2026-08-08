@@ -122,7 +122,7 @@ namespace Demiurge.GameServer
                 Spread.SigmaRadians(moa),
                 Spread.ShotSeed(player.Id, sequence));
 
-            player.Spread.AddRecoil(ballistics);
+            player.Spread.AddRecoil(ballistics, player.State);
             gunshots.Enqueue(new AcceptedGunshot(
                 player.Id,
                 player.Team,

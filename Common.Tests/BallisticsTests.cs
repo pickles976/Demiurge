@@ -43,7 +43,7 @@ public class BallisticsTests
         var rifle = BallisticsConfig.Require(ItemType.Ak47);
         var settled = new WeaponSpreadState();
         var recoil = new WeaponSpreadState();
-        for (int i = 0; i < 20; i++) recoil.AddRecoil(rifle);
+        for (int i = 0; i < 20; i++) recoil.AddRecoil(rifle, PlayerStateFlags.None);
 
         float standing = settled.TotalMoa(PlayerStateFlags.Aiming, rifle);
         float sprinting = settled.TotalMoa(
@@ -68,7 +68,7 @@ public class BallisticsTests
         for (int shot = 0; shot < 5; shot++)
         {
             chances.Add(Chance(state.TotalMoa(PlayerStateFlags.Aiming, carbine), 100f));
-            state.AddRecoil(carbine);
+            state.AddRecoil(carbine, PlayerStateFlags.None);
             state.Advance(
                 PlayerStateFlags.Aiming,
                 carbine,
@@ -116,7 +116,7 @@ public class BallisticsTests
         var state = new WeaponSpreadState();
 
         for (int i = 0; i < 20; i++)
-            state.AddRecoil(weapon);
+            state.AddRecoil(weapon, PlayerStateFlags.None);
 
         Assert.Equal(weapon.RecoilCapMoa, state.RecoilMoa);
         state.Advance(PlayerStateFlags.Aiming, weapon, 10f);
@@ -125,6 +125,26 @@ public class BallisticsTests
             Spread.TotalMoa(weapon.BenchMoa, BallisticsConfig.StandingMoa, 0f, 0f),
             state.TotalMoa(PlayerStateFlags.Aiming, weapon),
             5);
+    }
+
+    [Fact]
+    public void ProneReducesRecoilByThirtyPercent()
+    {
+        var weapon = BallisticsConfig.Require(ItemType.Ak47);
+        var standing = new WeaponSpreadState();
+        var prone = new WeaponSpreadState();
+
+        standing.AddRecoil(weapon, PlayerStateFlags.None);
+        prone.AddRecoil(weapon, PlayerStateFlags.Prone);
+
+        Assert.Equal(
+            standing.RecoilMoa * BallisticsConfig.ProneRecoilScale,
+            prone.RecoilMoa,
+            5);
+
+        for (int i = 0; i < 20; i++)
+            prone.AddRecoil(weapon, PlayerStateFlags.Prone);
+        Assert.Equal(weapon.RecoilCapMoa * 0.70f, prone.RecoilMoa, 5);
     }
 
     [Fact]

@@ -33,7 +33,7 @@ public static class PlayerCosmetics
     public const string Model = WeaponMount.PlayerModel;
 
     /// <summary>
-    /// The five clips every body has, as Stride content paths. One model means one baked set, where
+    /// The clips every body has, as Stride content paths. One model means one baked set, where
     /// each team's export used to carry its own identical-but-not-shared copies.
     /// </summary>
     public static string AnimationPath(string clip)
@@ -112,7 +112,8 @@ public static class PlayerCosmetics
     }
 
     /// <summary>The clips <see cref="PlayerViewScript"/> selects between.</summary>
-    public static readonly string[] Clips = ["Walk", "Idle", "Aiming", "Crouch", "CrouchWalk"];
+    public static readonly string[] Clips =
+        ["Walk", "Idle", "Aiming", "Crouch", "CrouchWalk", "Prone", "ProneCrawl"];
 
     // ---- Headgear -------------------------------------------------------------------------------
     //

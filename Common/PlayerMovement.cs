@@ -22,10 +22,12 @@ namespace Demiurge
         public const float WalkSpeed = 4f;
         public const float SprintSpeed = 6f;
         public const float SlowSpeed = 2f;
+        public const float ProneSpeed = WalkSpeed * 0.30f;
         public const float CrouchEyeDrop = 0.45f;
+        public const float ProneEyeDrop = 1.0f;
 
         public const PlayerStateFlags SlowingStates =
-            PlayerStateFlags.Crouching | PlayerStateFlags.Aiming;
+            PlayerStateFlags.Crouching | PlayerStateFlags.Prone | PlayerStateFlags.Aiming;
 
         // ---- Vertical motion ----
 
@@ -134,7 +136,8 @@ namespace Demiurge
             if (intent != Vector3.Zero)
                 intent = Vector3.Normalize(intent);
 
-            float speed = ((flags & SlowingStates) != 0              ? SlowSpeed
+            float speed = (flags.HasFlag(PlayerStateFlags.Prone)    ? ProneSpeed
+                        : (flags & SlowingStates) != 0              ? SlowSpeed
                         : flags.HasFlag(PlayerStateFlags.Sprinting) ? SprintSpeed
                         : WalkSpeed) * speedScale;
 

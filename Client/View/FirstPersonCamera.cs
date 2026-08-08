@@ -25,6 +25,9 @@ namespace Demiurge
 		/// <summary>How much the view drops while crouching.</summary>
 		public float CrouchEyeDrop { get; set; } = PlayerMovement.CrouchEyeDrop;
 
+		/// <summary>How much the view drops while prone.</summary>
+		public float ProneEyeDrop { get; set; } = PlayerMovement.ProneEyeDrop;
+
 		/// <summary>
 		/// The camera follows predicted movement with this sharpness. Rotation stays unsmoothed; this
 		/// is only to keep fixed-tick movement from reading as visible frame stepping.
@@ -152,7 +155,9 @@ namespace Demiurge
 				followed = Vector3.Lerp(followed, feet, SharpStep(FollowSharpness, dt));
 			}
 
-			float targetEye = EyeHeight - (local.State.HasFlag(PlayerStateFlags.Crouching) ? CrouchEyeDrop : 0f);
+			float targetEye = EyeHeight - (local.State.HasFlag(PlayerStateFlags.Prone)
+				? ProneEyeDrop
+				: local.State.HasFlag(PlayerStateFlags.Crouching) ? CrouchEyeDrop : 0f);
 			eyeHeight = MathUtil.Lerp(eyeHeight, targetEye, SharpStep(StateSharpness, dt));
 
 			Entity.Transform.Position = followed + Vector3.UnitY * eyeHeight;

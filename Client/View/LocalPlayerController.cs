@@ -16,6 +16,8 @@ public class LocalPlayerController : SyncScript
 
 	private bool primaryWasDown;
 	private uint? primedGrenadeId;
+	private bool prone;
+	private bool proneKeyWasDown;
 
 	/// <summary>How far down the line of sight to look for something to aim at.</summary>
 	public float MaxAimDistance { get; set; } = 200f;
@@ -51,6 +53,8 @@ public class LocalPlayerController : SyncScript
 		{
 			primaryWasDown = false;
 			primedGrenadeId = null;
+			prone = false;
+			proneKeyWasDown = Input.IsKeyDown(Keys.Z);
 			AimPoint = null;
 			local.EnterDeath();
 			return;
@@ -71,11 +75,13 @@ public class LocalPlayerController : SyncScript
 		{
 			primaryWasDown = false;
 			primedGrenadeId = null;
+			proneKeyWasDown = Input.IsKeyDown(Keys.Z);
 			local.State = local.State
 				.With(PlayerStateFlags.Moving, false)
 				.With(PlayerStateFlags.Sprinting, false)
 				.With(PlayerStateFlags.Aiming, false)
 				.With(PlayerStateFlags.Crouching, false)
+				.With(PlayerStateFlags.Prone, prone)
 				.With(PlayerStateFlags.Jumping, false)
 				.With(PlayerStateFlags.Shooting, false)
 				.With(PlayerStateFlags.Reloading, local.IsReloading);   // let an in-flight reload finish
@@ -108,6 +114,17 @@ public class LocalPlayerController : SyncScript
 		bool operating = local.IsOperating;
 		if (operating) intent = Vector3.Zero;
 
+		// Prone is a toggle because the stance outlives a key press. Sprint is the explicit way out:
+		// pressing Shift clears it before this frame's predicted movement is built, so the client and
+		// server never spend a tick trying to crawl and sprint at the same time.
+		bool sprinting = Input.IsKeyDown(Keys.LeftShift);
+		bool proneKeyDown = Input.IsKeyDown(Keys.Z);
+		if (sprinting)
+			prone = false;
+		else if (proneKeyDown && !proneKeyWasDown)
+			prone = !prone;
+		proneKeyWasDown = proneKeyDown;
+
 		if (!handsFull && !operating) HandleHotbarInput(local);
 
 		// State. A reload takes the sight picture away whether or not the button is still held —
@@ -133,15 +150,17 @@ public class LocalPlayerController : SyncScript
 
 		local.State = local.State
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
-			.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
+			.With(PlayerStateFlags.Sprinting, sprinting)
 			.With(PlayerStateFlags.Aiming, aiming)
-			.With(PlayerStateFlags.Crouching, Input.IsKeyDown(Keys.LeftCtrl))
+			.With(PlayerStateFlags.Crouching, !prone && Input.IsKeyDown(Keys.LeftCtrl))
+			.With(PlayerStateFlags.Prone, prone)
 			// Level-triggered on purpose: the shared step only acts on Jumping while grounded, so
 			// holding Space jumps again the moment you land. It also sidesteps IsKeyPressed, which
 			// re-fires on OS auto-repeat and is not a reliable one-shot for a held key.
 			.With(PlayerStateFlags.Jumping, Input.IsKeyDown(Keys.Space))
 			.With(PlayerStateFlags.Shooting, usingItem)
-			.With(PlayerStateFlags.Reloading, local.IsReloading);
+			.With(PlayerStateFlags.Reloading, local.IsReloading)
+			.StandForSprint();
 
 		// Rotation. The active look camera owns facing — you look where the camera looks. Turning
 		// only while aiming or standing still, as the old cursor-aimed camera did, reads as the

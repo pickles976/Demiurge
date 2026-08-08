@@ -277,7 +277,7 @@ public class RemotePlayer : Player
         if (throwingGrenade && predicted.Ammo > 0)
             predicted.ReloadTicksLeft = predicted.Stats.ReloadTicks;
         else if (!throwingGrenade)
-            predicted.Spread.AddRecoil(ballistics);
+            predicted.Spread.AddRecoil(ballistics, State);
 
         network.SendFire(new PlayerFireData
         {

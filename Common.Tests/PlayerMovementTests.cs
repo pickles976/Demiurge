@@ -94,6 +94,31 @@ public class PlayerMovementTests
         Assert.Equal(sprint.Position.X, reloadSprint.Position.X, 4);
     }
 
+    [Fact]
+    public void ProneCrawlIsThirtyPercentOfWalkingSpeed()
+    {
+        var map = SyntheticTerrain.Flat();
+        var start = Settled(map, new Vector3(0f, Ground + 1f, 0f));
+
+        var walking = Run(map, start, Vector3.UnitX, PlayerStateFlags.None, 30);
+        var crawling = Run(map, start, Vector3.UnitX, PlayerStateFlags.Prone, 30);
+
+        float walkDistance = walking.Position.X - start.Position.X;
+        float crawlDistance = crawling.Position.X - start.Position.X;
+        Assert.Equal(walkDistance * 0.30f, crawlDistance, 3);
+    }
+
+    [Fact]
+    public void SprintingAlwaysClearsProne()
+    {
+        var impossible = PlayerStateFlags.Sprinting | PlayerStateFlags.Prone;
+
+        var resolved = impossible.StandForSprint();
+
+        Assert.True(resolved.HasFlag(PlayerStateFlags.Sprinting));
+        Assert.False(resolved.HasFlag(PlayerStateFlags.Prone));
+    }
+
     /// <summary>
     /// Standing on a slope must not creep downhill. Resolving penetration perpendicular to the surface
     /// has a horizontal component, so a body sinking under gravity and being pushed back out drifts a

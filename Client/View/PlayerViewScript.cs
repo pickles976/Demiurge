@@ -126,9 +126,11 @@ public class PlayerViewScript : SyncScript
         // Must stay at index 0 so overlays blend on top of it. We only (re)create
         // it when the clip actually changes, otherwise it would restart every frame
         // and wipe the aiming overlay.
-        string baseClip = State.HasFlag(PlayerStateFlags.Crouching) ?
-            (State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
-            (State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
+        string baseClip = State.HasFlag(PlayerStateFlags.Prone)
+            ? (State.HasFlag(PlayerStateFlags.Moving) ? "ProneCrawl" : "Prone")
+            : State.HasFlag(PlayerStateFlags.Crouching)
+                ? (State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch")
+                : (State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
 
         bool baseMissing = CurrentAnimation == null || !anim.PlayingAnimations.Contains(CurrentAnimation);
         if (baseMissing || CurrentAnimation!.Name != baseClip)

@@ -46,8 +46,8 @@ namespace Demiurge
         /// </summary>
         private const float StrideMetres = 2.2f;
 
-        /// <summary>Crouching is how you move without being heard; it should not be free, but it
-        /// should be worth doing.</summary>
+        /// <summary>Low stances are how you move without being heard; they should not be free, but
+        /// they should be worth using.</summary>
         private const float CrouchVolume = 0.35f;
         private const float WalkVolume = 0.9f;
 
@@ -128,7 +128,10 @@ namespace Demiurge
                 sound.PlayOneShotSpatial(
                     FootstepSounds[Random.Shared.Next(FootstepSounds.Length)],
                     position.ToStride(),
-                    player.State.HasFlag(PlayerStateFlags.Crouching) ? CrouchVolume : WalkVolume,
+                    player.State.HasFlag(PlayerStateFlags.Crouching)
+                    || player.State.HasFlag(PlayerStateFlags.Prone)
+                        ? CrouchVolume
+                        : WalkVolume,
                     SoundFalloff.Footstep);
             }
 

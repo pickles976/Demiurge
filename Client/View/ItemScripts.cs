@@ -486,7 +486,7 @@ public class ItemAttachScript : SyncScript
                 1f - MathF.Exp(-ViewModelSharpness * ItemCosmetics.AimSpeedScale(Object.Item.Type) * dt));
         }
 
-        UpdateRecoil(dt, aiming);
+        UpdateRecoil(dt, aiming, local.State.HasFlag(PlayerStateFlags.Prone));
 
         var cameraRotation = CameraEntity.Transform.Rotation;
         var weaponRotation = WeaponMount.FirstPersonRotationFor(Object.Item.Type, swing.Angle);
@@ -526,7 +526,7 @@ public class ItemAttachScript : SyncScript
         WeaponView.NetworkId = Object.NetworkId;
     }
 
-    private void UpdateRecoil(float dt, bool aiming)
+    private void UpdateRecoil(float dt, bool aiming, bool prone)
     {
         if (!Object.Has.HasFlag(NetComponents.Weapon) || Object.Item.Type == ItemType.Grenade) return;
 
@@ -547,9 +547,17 @@ public class ItemAttachScript : SyncScript
                 kick.Lift * PpshAdsKickScale,
                 kick.PitchRadians * PpshAdsKickScale);
         }
-        recoilBack = MathF.Min(MaxRecoilBack, recoilBack + kick.Back * shots);
-        recoilLift = MathF.Min(MaxRecoilLift, recoilLift + kick.Lift * shots);
-        recoilPitch = MathF.Min(MaxRecoilPitch, recoilPitch + kick.PitchRadians * shots);
+        if (prone)
+        {
+            kick = new RecoilKick(
+                kick.Back * BallisticsConfig.ProneRecoilScale,
+                kick.Lift * BallisticsConfig.ProneRecoilScale,
+                kick.PitchRadians * BallisticsConfig.ProneRecoilScale);
+        }
+        float capScale = prone ? BallisticsConfig.ProneRecoilScale : 1f;
+        recoilBack = MathF.Min(MaxRecoilBack * capScale, recoilBack + kick.Back * shots);
+        recoilLift = MathF.Min(MaxRecoilLift * capScale, recoilLift + kick.Lift * shots);
+        recoilPitch = MathF.Min(MaxRecoilPitch * capScale, recoilPitch + kick.PitchRadians * shots);
     }
 
     private static RecoilKick RecoilFor(ItemType type) => type switch

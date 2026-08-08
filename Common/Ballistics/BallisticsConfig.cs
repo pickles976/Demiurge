@@ -47,6 +47,10 @@ namespace Demiurge
         public const float SprintingMoa = 60f;
         public const float PostSprintMoa = 40f;
         public const float PostSprintSeconds = 3f;
+
+        /// <summary>Supported against the ground, each recoil impulse and its accumulated ceiling
+        /// are thirty percent smaller.</summary>
+        public const float ProneRecoilScale = 0.70f;
         /// <summary>
         /// Dispersion added while rounds are landing nearby.
         ///
