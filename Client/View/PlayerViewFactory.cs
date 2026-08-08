@@ -22,16 +22,17 @@ public class PlayerViewFactory : IDisposable
 
     private void CreatePlayerView(Player player)
     {
-        // Team decides the body. It arrives on the spawn packet, so it is already set when
-        // PlayerJoined fires; a team CHANGE would need the view rebuilt, which nothing does today.
         var animations = new AnimationComponent();
         foreach (string clip in PlayerCosmetics.Clips)
             animations.Animations.Add(
                 clip,
-                game.Content.Load<AnimationClip>(PlayerCosmetics.AnimationPath(player.Team, clip)));
+                game.Content.Load<AnimationClip>(PlayerCosmetics.AnimationPath(clip)));
 
-        var model = new ModelComponent(
-            GLTFLoader.LoadModel(game, PlayerCosmetics.Model(player.Team)));
+        // Everyone wears the same rig; team decides only the coat, as a per-slot material override
+        // on this instance. Team arrives on the spawn packet, so it is already set when PlayerJoined
+        // fires; a team CHANGE would need the material reassigned, which nothing does today.
+        var model = new ModelComponent(GLTFLoader.LoadModel(game, PlayerCosmetics.Model));
+        model.Materials[0] = PlayerCosmetics.Coat(game, player.Team);
         if (player is LocalPlayer)
         {
             // First-person keeps the local player entity and skeleton alive for prediction,

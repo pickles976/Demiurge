@@ -23,6 +23,19 @@ namespace Demiurge
         public static readonly Color Team2Color = new(198, 203, 209, 255);
         public const float TicketBarWidth = 190f;
         public const float TicketBarHeight = 7f;
+        /// <summary>Text that belongs to nobody — connecting words, coordinates, reasons.</summary>
+        public static readonly Color NeutralColor = new(235, 238, 242, 245);
+
+        /// <summary>
+        /// The colour a team is drawn in anywhere on the HUD: the ticket bar, the activity feed.
+        /// Team 1 is orange and team 2 grey, matching the cat models the two sides wear.
+        /// </summary>
+        public static Color TeamColor(int team) => team switch
+        {
+            1 => Team1Color,
+            2 => Team2Color,
+            _ => NeutralColor,
+        };
 
         public static Entity CreateTerminal(
             Game game,
@@ -259,15 +272,12 @@ namespace Demiurge
             }
             root.Children.Add(ticketPanel);
 
-            var activityText = new TextBlock
+            // One row per event, each row a horizontal run of text blocks, because a line mixes
+            // colours: the actors are drawn in their team colour and the words between them are not.
+            var activityLines = new StackPanel
             {
-                Text = "",
-                TextColor = new Color(235, 238, 242, 245),
-                Font = font,
-                TextSize = 18,
-                TextAlignment = TextAlignment.Right,
+                Orientation = Orientation.Vertical,
                 HorizontalAlignment = HorizontalAlignment.Right,
-                WrapText = false,
                 Margin = new Thickness(12, 8, 12, 8),
             };
             var activityPanel = new Border
@@ -276,7 +286,7 @@ namespace Demiurge
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 18, 18, 0),
-                Content = activityText,
+                Content = activityLines,
                 Visibility = Visibility.Collapsed,
             };
             root.Children.Add(activityPanel);
@@ -326,7 +336,8 @@ namespace Demiurge
                     RespawnText = respawnText,
                     Readiness = game.Services.GetService<SpawnReadiness>(),
                     ActivityPanel = activityPanel,
-                    ActivityText = activityText,
+                    ActivityLines = activityLines,
+                    ActivityFont = font,
                     TicketCounters = ticketCounters,
                     TicketFills = ticketFills,
                 },
@@ -538,15 +549,16 @@ namespace Demiurge
             public UIElement RespawnPanel { get; set; } = null!;
             public TextBlock RespawnText { get; set; } = null!;
             public UIElement ActivityPanel { get; set; } = null!;
-            public TextBlock ActivityText { get; set; } = null!;
+            public StackPanel ActivityLines { get; set; } = null!;
+            public SpriteFont ActivityFont { get; set; } = null!;
             /// <summary>Index 0 is team 1, index 1 is team 2 — the two sides the bar draws.</summary>
             public TextBlock[] TicketCounters { get; set; } = [];
             public Border[] TicketFills { get; set; } = [];
 
             private PlayerRegistry _registry = null!;
             private NetworkManager _network = null!;
-            private readonly Queue<(string Text, long Expires)> _activity = [];
-            private readonly Queue<string> _receivedActivity = [];
+            private readonly Queue<(ActivityFeedSegment[] Segments, long Expires)> _activity = [];
+            private readonly Queue<ActivityFeedSegment[]> _receivedActivity = [];
             private readonly object _activityGate = new();
             private const int MaximumActivityLines = 6;
             private static readonly long ActivityLifetimeTicks =
@@ -631,9 +643,9 @@ namespace Demiurge
 
             private void OnActivityFeed(ActivityFeedData activity)
             {
-                if (string.IsNullOrWhiteSpace(activity.Text)) return;
+                if (activity.Segments is not { Length: > 0 } segments) return;
                 lock (_activityGate)
-                    _receivedActivity.Enqueue(activity.Text);
+                    _receivedActivity.Enqueue(segments);
             }
 
             /// <summary>Network thread. Keeps only the newest score; an older one that overtakes it
@@ -673,9 +685,9 @@ namespace Demiurge
                 bool changed = false;
                 lock (_activityGate)
                 {
-                    while (_receivedActivity.TryDequeue(out string? text))
+                    while (_receivedActivity.TryDequeue(out var segments))
                     {
-                        _activity.Enqueue((text, now + ActivityLifetimeTicks));
+                        _activity.Enqueue((segments, now + ActivityLifetimeTicks));
                         changed = true;
                         while (_activity.Count > MaximumActivityLines)
                             _activity.Dequeue();
@@ -691,9 +703,34 @@ namespace Demiurge
 
                 ActivityPanel.Visibility =
                     _activity.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-                ActivityText.Text = string.Join(
-                    Environment.NewLine,
-                    _activity.Select(entry => entry.Text));
+
+                // Rebuilt whole rather than diffed: this runs only when a line arrived or expired,
+                // and the feed is six lines of a handful of words.
+                ActivityLines.Children.Clear();
+                foreach (var entry in _activity)
+                    ActivityLines.Children.Add(BuildActivityLine(entry.Segments));
+            }
+
+            private StackPanel BuildActivityLine(ActivityFeedSegment[] segments)
+            {
+                var line = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                };
+                foreach (var segment in segments)
+                {
+                    line.Children.Add(new TextBlock
+                    {
+                        Text = segment.Text ?? string.Empty,
+                        TextColor = TeamColor(segment.Team),
+                        Font = ActivityFont,
+                        TextSize = 18,
+                        WrapText = false,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    });
+                }
+                return line;
             }
 
             private void RefreshRespawn(LocalPlayer local)

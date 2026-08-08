@@ -512,7 +512,7 @@ namespace Demiurge.GameServer
                     || !stuck.IsMob)
                     continue;
                 activityFeed.ReportNpcRelocated(
-                    stuckMobId,
+                    stuck,
                     "stuck for 60 seconds while navigating");
                 Relocate(stuck);
             }

@@ -1,51 +1,114 @@
 using Demiurge;
+using Stride.Engine;
+using Stride.Graphics;
+using Stride.Rendering;
+using Stride.Rendering.Materials;
+using Stride.Rendering.Materials.ComputeColors;
+using StbImageSharp;
 
 namespace Demiurge.GameClient;
 
 /// <summary>
-/// Which body a player wears, keyed by team — the player-model counterpart to
-/// <see cref="ItemCosmetics"/>, and client-only for the same reason: the server and the wire never
-/// need to know what anybody looks like.
+/// What a player looks like — the player-model counterpart to <see cref="ItemCosmetics"/>, and
+/// client-only for the same reason: the server and the wire never need to know what anybody looks
+/// like.
 ///
-/// The two models are ONE RIG in two coats. Same 18 joints under the same names, same clip names,
-/// same 918 vertices between the same bounds — verified against the .gltf files, not assumed. That
-/// is what lets everything else here stay team-blind: the aim bone, the hand socket, the head
-/// collider and every locator measurement hold for both, so a new team costs a texture and a row in
-/// <see cref="Model"/> rather than a second set of numbers to keep in step.
+/// Every team wears ONE RIG in a different coat, and that is now structural rather than maintained:
+/// there is a single <see cref="Model"/>, and team only picks the texture hung on it through
+/// <see cref="Coat"/>. It used to be two .gltf exports that had to stay identical joint for joint,
+/// which meant every rig edit had to be made twice and a slip failed quietly — a weapon seated on a
+/// bone that moved, or a head sphere over empty air. One model cannot drift from itself.
 ///
-/// Break that and the failure is quiet — a weapon seated on a bone that moved, or a head sphere over
-/// empty air — so a model whose rig differs needs its own locator-derived numbers rather than a row
-/// here.
+/// So a new team costs a PNG and a row in <see cref="CoatTexture"/>. A body that genuinely needed a
+/// different rig would need its own locator-derived numbers too, and is the case this deliberately
+/// does not stretch to cover.
 /// </summary>
 public static class PlayerCosmetics
 {
-    /// <summary>
-    /// The rig the measurements are taken from. Both models share it, so
-    /// <see cref="WeaponMount.PlayerModel"/> stays a single reference rather than becoming
-    /// per-team: asking cat_orange for the hand bone gives cat_gray's hand bone too.
-    /// </summary>
+    /// <summary>The rig every measurement is taken from — see <see cref="WeaponMount.PlayerModel"/>,
+    /// which is the same asset because there is only one.</summary>
     public const string ReferenceModel = WeaponMount.PlayerModel;
 
+    /// <summary>The body everyone wears, whatever their team.</summary>
+    public const string Model = WeaponMount.PlayerModel;
+
     /// <summary>
-    /// An unknown team gets team 1's body rather than no body. Teams come off the wire, and a
-    /// player nobody can see is worse than a player wearing the wrong coat.
+    /// The five clips every body has, as Stride content paths. One model means one baked set, where
+    /// each team's export used to carry its own identical-but-not-shared copies.
     /// </summary>
-    public static string Model(int team) => team switch
+    public static string AnimationPath(string clip)
     {
-        2 => "assets/models/cat_gray.gltf",
-        _ => "assets/models/cat_orange.gltf",
+        int start = Model.LastIndexOf('/') + 1;
+        return $"models/{Model[start..^".gltf".Length]}_anim_{clip}";
+    }
+
+    /// <summary>
+    /// The coat a team wears. Authored in Blockbench beside the .bbmodel the rig is exported from,
+    /// and read from there rather than copied next to the model, so there is one file to repaint.
+    ///
+    /// An unknown team gets team 1's coat rather than no body. Teams come off the wire, and a player
+    /// nobody can see is worse than a player wearing the wrong colour.
+    /// </summary>
+    public static string CoatTexture(int team) => team switch
+    {
+        2 => "assets/blockbench/gray_cat_texture.png",
+        _ => "assets/blockbench/orange_cat_texture.png",
     };
 
     /// <summary>
-    /// The five clips every body has, as Stride content paths for the given team's model. Each
-    /// model carries its own baked copies — identical animation, but a clip is compiled against the
-    /// model it shipped in, so they are not shared across the two.
+    /// The material for a team's body, as a per-slot override for the one material slot the model
+    /// has. Built once per team and shared by every player and corpse on that side — a material is
+    /// immutable here, so there is no reason for each entity to own one.
+    ///
+    /// The attributes mirror what the asset pipeline bakes for the model's own material: point
+    /// filtering (the texture is a small hand-painted atlas and must not blur), Lambert diffuse,
+    /// alpha cutoff, and no backface culling for the flat pieces.
     /// </summary>
-    public static string AnimationPath(int team, string clip)
+    public static Material Coat(Game game, int team)
     {
-        string model = Model(team);
-        int start = model.LastIndexOf('/') + 1;
-        return $"models/{model[start..^".gltf".Length]}_anim_{clip}";
+        if (coats.TryGetValue(team, out var cached)) return cached;
+
+        var coat = Material.New(game.GraphicsDevice, new MaterialDescriptor
+        {
+            Attributes =
+            {
+                Diffuse = new MaterialDiffuseMapFeature(
+                    new ComputeTextureColor(CoatTexture(game, team))
+                    {
+                        Filtering = TextureFilter.Point,
+                    }),
+                DiffuseModel = new MaterialDiffuseLambertModelFeature(),
+                Transparency = new MaterialTransparencyCutoffFeature
+                {
+                    Alpha = new ComputeFloat(0.05f),
+                },
+                CullMode = CullMode.None,
+            },
+        });
+        coats[team] = coat;
+        return coat;
+    }
+
+    // Keyed by team and never evicted: two textures and two materials, on a device that outlives
+    // every session, against re-decoding the PNGs on each map load. Same shape as
+    // TreeViewFactory's leaf material.
+    private static readonly Dictionary<int, Material> coats = [];
+
+    /// <summary>
+    /// Texture.Load pulls in Windows-only System.Drawing.Common, so the PNG is decoded with
+    /// StbImageSharp and uploaded by hand — the same path the HUD and the terrain materials take.
+    /// </summary>
+    private static Texture CoatTexture(Game game, int team)
+    {
+        string path = CoatTexture(team);
+        using var stream = File.OpenRead(path);
+        var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+        return Texture.New2D(
+            game.GraphicsDevice,
+            image.Width,
+            image.Height,
+            PixelFormat.R8G8B8A8_UNorm_SRgb,
+            image.Data);
     }
 
     /// <summary>The clips <see cref="PlayerViewScript"/> selects between.</summary>

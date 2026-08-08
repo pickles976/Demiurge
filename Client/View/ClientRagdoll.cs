@@ -58,13 +58,13 @@ public sealed class RagdollViewFactory : IDisposable
             _ => NVector3.Zero,
         };
 
-        var modelEntity = new Entity($"RagdollModel_{player.Id}_{serial}")
-        {
-            // The corpse wears what the man wore — a body that changed colour on death would read
-            // as the wrong team's casualty.
-            new ModelComponent(
-                GLTFLoader.LoadModel(game, Demiurge.GameClient.PlayerCosmetics.Model(player.Team))),
-        };
+        // The corpse wears what the man wore — a body that changed colour on death would read as
+        // the wrong team's casualty. Same shared coat material the living body uses.
+        var corpse = new ModelComponent(
+            GLTFLoader.LoadModel(game, Demiurge.GameClient.PlayerCosmetics.Model));
+        corpse.Materials[0] = Demiurge.GameClient.PlayerCosmetics.Coat(game, player.Team);
+
+        var modelEntity = new Entity($"RagdollModel_{player.Id}_{serial}") { corpse };
         modelEntity.Transform.Position = new SVector3(0f, -PelvisHeight, 0f);
 
         var root = new Entity($"Ragdoll_{player.Id}_{serial++}");

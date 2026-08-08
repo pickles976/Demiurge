@@ -5,33 +5,58 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 1. Finish up AI
 2. Finish PVP MVP
-3. Make the environment richer
-4. Multiplayer test
+3. Switch to Stride 4.5
+4. Make the environment richer
+5. Multiplayer test
 
 # PVP Mechanics
 
-Map Upgrade for testing
+- [x] Kill feed needs to make the names of the NPCs orange for team 1, gray for team 2
+- [x] fix cat models, just one model, orange and gray textures for team 1 and 2.
+- [ ] impart a force on ragdolls so they dont just flop lifelessly
+- [ ] need pickup prompt for DP-27
+- [ ] camera placement relative to head collider
+- [ ] ppsh gunshot not heard
 
-- Kill feed needs to make the names of the NPCs orange for team 1, gray for team 2
+- [ ] add mortar
+      - [ ] start with weapon. Spawn next to player. Top down view. WASD to rotate and move aim. Left click to fire. One round every 5s. 1.5x the size of grenade impact.
+- [ ] add picking up and carrying
+- [ ] add a crate pickup, add to top of hill
 
+- [ ] add prone
+- [ ] tune MG for firing while prone
+- [ ] add MG pickup crate at hilltop flag
+- [ ] allow NPCs to use it
+- [ ] grenades are too bouncy
+- [ ] dead soldiers drop their weapon and you can pick it up
+- [ ] limit ammo for players
+
+- [ ] flag 3D model     
+- [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbag
+- [ ] dig dirt to place sandbags
 
 AI IMPROVEMENTS
+
+Take a look at ./docs/TODO.md and ./docs/BARITONE.md
 
 Overall the changes we made have caused the pace of the game to increase. NPC battles are much more exciting.
 
 It sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a     
   single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
 
-- Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 - NPCs will always have infinite ammo, take that into account
+- units still standing idle at flag -- if they are defending, we need visual feedback indicating so. Add a command to show NPC state above their head in white text.
+- Assault units are useless at long range, and extremely deadly at close range. They need to take this into account. The PPSH and grenades can absolutely massacre defenders.
+- Strategic AI usually just fights over 1-2 flags, seems like a self-reinforcing loop of "needs mass", never opportunistically sends a squad out to go capture a totally defenseless flag
+- If I shoot at enemies going to capture a flag from way outside of their engagement range, they will drop everything and run all the way to attack me. Even if I pose no real threat to them due to the distance.
+- NPCs still moving in a line, not in formation
 
 Bugs:
-- units still standing idle at flag -- if they are defending, we need visual feedback indicating so. Add a command to show NPC state above their head in white text
-- defenders at the castle still digging a giant hole
-- defenders are digging WAYYY too much
-- digging down to cross a big trench rather than just jumping in
 
-- Assault units are useless at long range, and extremely deadly at close range. They need to take this into account. The PPSH and grenades can absolutely massacre defenders.
+- NPCs sometimes digging down to cross a big trench rather than just jumping in
+
+If Digging still sucks
+- Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 
 New Features
 - Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
@@ -40,37 +65,21 @@ New Features
 
 - [ ] PVP
 
-      - [ ] add uniforms to cats
-      - [ ] flag 3D model
-
-      - [ ] fix cat models, just one model, orange and gray textures for team 1 and 2.
-      - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbag
-
-      - [ ] camera placement relative to head collider
-      - [ ] dig dirt to place sandbags
-      - [ ] add prone
-      - [ ] tune MG for firing while prone
-      - [ ] add MG pickup crate at hilltop flag
-      - [ ] allow NPCs to use it
-      - [ ] add 4 more NPCs to each team
-
-      - [ ] dead soldiers drop their weapon and you can pick it up
-      - [ ] limit ammo for players
-
-      - [ ] add mortar
-      - [ ] mortar, carry crate, unpack, repack
-      - [ ] add to map
-
     - [ ] Commander set crew-weapon objectives
       - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
       - [ ] remove glock, AWP, and AK
-      - [ ] impart a force on ragdolls so they dont just flop lifelessly
       - [ ] fix audio cutting off
       - [ ] long range report sounds
-      - [ ] need pickup prompt
 
       - [ ] json config for all items
+
+      - [ ] add 4 more NPCs to each team
+
+## Architecture Overhaul
+
+https://github.com/id-Software/Quake-III-Arena
+- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
 
 
 
@@ -90,7 +99,14 @@ New Features
       - [ ] trees have health and take damage and change models to a broken version
       - [ ] trees delete if the terrain beneath them goes away
 
+Try to upgrade Stride version and get particle system working
+https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/code-only/Example12_Particles
+
 # NPC AI Overhaul
+
+- Make AI skill variable 
+- Fuzzy logic for decision making
+http://www.datapax.com.au/mirror/20585341-The-Quake-III-Arena-Bot.pdf
 
 Design: [docs/superpowers/specs/2026-08-04-ai-overhaul-design.md](docs/superpowers/specs/2026-08-04-ai-overhaul-design.md)
 

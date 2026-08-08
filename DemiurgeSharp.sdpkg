@@ -16,22 +16,14 @@ TemplateFolders: []
 RootAssets:
     - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
     - 1a8baa39-b12d-505b-401c-4ec3beb60a50:models/body_armor
-    - af1a7827-5b60-fa77-ac21-ac449a67911c:models/cat_gray
-    - 25092207-ffde-4a38-6521-398f7bd0f950:models/cat_gray_skeleton
-    - c42c2ef7-568f-0283-688d-65de254e6581:models/cat_gray_anim_Walk
-    - 78291845-5f6f-648d-3805-219f187ebb65:models/cat_gray_anim_Idle
-    - ba272b45-7972-c49a-32d2-2a82dc97582b:models/cat_gray_anim_Aiming
-    - 7f69b23f-75fa-de4a-ee94-2c47a5987728:models/cat_gray_anim_Crouch
-    - 4e7ca3c8-a3fc-3e48-bca0-806230086688:models/cat_gray_anim_CrouchWalk
-    - 94bd20da-9ed5-add1-75ee-92519991a9a8:models/cat_gray_anim_Prone
-    - a9c9c33d-d0f7-8e22-959a-0ad5c3538937:models/cat_orange
-    - e13f8a9e-58fb-0f01-4923-3b3bd3d82899:models/cat_orange_skeleton
-    - fb7c8408-a6cd-ed2a-6b12-059c4acce042:models/cat_orange_anim_Walk
-    - b2a11960-b4e4-a0b3-3854-b8e81642cd37:models/cat_orange_anim_Idle
-    - 6571ef5b-6dac-4612-744c-3c63feceb0b0:models/cat_orange_anim_Aiming
-    - 0c2502c5-c18c-c2b2-f2f8-7f38f141a438:models/cat_orange_anim_Crouch
-    - 2dbe99ca-cefa-efdf-eb3f-f128fd299472:models/cat_orange_anim_CrouchWalk
-    - 0b9bcb77-d29b-9475-46e1-ab829f8e405d:models/cat_orange_anim_Prone
+    - 353d1f34-3ba8-f410-56c0-42f7b01a0db7:models/cat
+    - ddc290ac-af1e-4ff6-751b-17fb949f2c7c:models/cat_skeleton
+    - 6083b5dc-61c4-be12-ae26-8784e8800063:models/cat_anim_Walk
+    - ea5f1c8e-86d0-eb77-f8ba-3ad3ac419470:models/cat_anim_Idle
+    - e5598cab-9193-e105-678a-b5b313bb54ac:models/cat_anim_Aiming
+    - 6762ff9d-9a8b-63bd-9ba3-9e36f818bddb:models/cat_anim_Crouch
+    - 508a0c6f-ccdc-26dc-f769-b200611164b9:models/cat_anim_CrouchWalk
+    - 847e8e50-23aa-5b39-28a7-54d0b358e796:models/cat_anim_Prone
     - aa09233d-4762-44f7-a82e-1d2968738d31:models/crate
     - 5e701637-223b-4073-e81f-43aa55ad113a:models/dp_27
     - b6431852-c82a-4e9e-2134-1365f0b24e8f:models/dp_27_skeleton

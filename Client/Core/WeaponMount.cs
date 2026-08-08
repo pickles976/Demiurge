@@ -20,12 +20,14 @@ namespace Demiurge.GameClient
         /// <summary>
         /// The rig every player wears; the hand a weapon hangs off is on it.
         ///
-        /// One model NAMES the rig even though teams wear different bodies (see PlayerCosmetics):
-        /// they are the same skeleton with different textures, so every measurement taken here holds
-        /// for all of them. A team whose rig actually differed would need its own numbers, not a
-        /// second constant here.
+        /// One model, literally: teams differ by the texture PlayerCosmetics hangs on this rig, so
+        /// every measurement taken here holds for all of them. A team whose rig actually differed
+        /// would need its own numbers, not a second constant here.
+        ///
+        /// Also the key this file's locators are looked up under — see ModelLocators, which keys by
+        /// content path — so renaming the asset moves the measurements with it.
         /// </summary>
-        public const string PlayerModel = "assets/models/cat_orange.gltf";
+        public const string PlayerModel = "assets/models/cat.gltf";
 
         private const string HandBone = "right_hand";
 
