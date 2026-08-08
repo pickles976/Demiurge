@@ -96,7 +96,7 @@ namespace Demiurge
             };
         }
 
-        public static Entity CreateUI(Game game)
+        public static Entity CreateUI(Game game, ObjectRegistry objects)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
@@ -291,6 +291,30 @@ namespace Demiurge
             };
             root.Children.Add(activityPanel);
 
+            // Below the reticle, where the thing being offered is: the prompt is about what you are
+            // standing on, so it reads with the world rather than with the status corner.
+            var pickupText = new TextBlock
+            {
+                Text = "",
+                TextColor = new Color(240, 243, 247, 250),
+                Font = font,
+                TextSize = 20,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                WrapText = false,
+                Margin = new Thickness(16, 8, 16, 8),
+            };
+            var pickupPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 150),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 200, 0, 0),
+                Content = pickupText,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(pickupPanel);
+
             var respawnText = new TextBlock
             {
                 Text = "KILLCAM",
@@ -335,6 +359,9 @@ namespace Demiurge
                     RespawnPanel = respawnPanel,
                     RespawnText = respawnText,
                     Readiness = game.Services.GetService<SpawnReadiness>(),
+                    PickupPanel = pickupPanel,
+                    PickupText = pickupText,
+                    Objects = objects,
                     ActivityPanel = activityPanel,
                     ActivityLines = activityLines,
                     ActivityFont = font,
@@ -548,6 +575,11 @@ namespace Demiurge
                 = new Dictionary<ItemType, SpriteFromTexture>();
             public UIElement RespawnPanel { get; set; } = null!;
             public TextBlock RespawnText { get; set; } = null!;
+            public UIElement PickupPanel { get; set; } = null!;
+            public TextBlock PickupText { get; set; } = null!;
+            /// <summary>Every replicated object, so the prompt can find the pickup underfoot.
+            /// Netcode writes, view reads — the usual direction.</summary>
+            public ObjectRegistry Objects { get; set; } = null!;
             public UIElement ActivityPanel { get; set; } = null!;
             public StackPanel ActivityLines { get; set; } = null!;
             public SpriteFont ActivityFont { get; set; } = null!;
@@ -579,6 +611,9 @@ namespace Demiurge
             private int _lastGrenades = int.MinValue;
             private bool _lastDead;
             private int _lastRespawnSeconds = int.MinValue;
+            /// <summary>Network id the prompt currently names; 0 for none. Keyed by id rather than
+            /// by item type so walking between two identical rifles still refreshes.</summary>
+            private uint _promptedPickup;
 
             // Written on the network thread, read on the main thread — the whole message at once,
             // since it is the complete score rather than a delta. Applied in Update.
@@ -638,6 +673,7 @@ namespace Demiurge
 
                 RefreshDeploying();
                 RefreshHotbar(local);
+                RefreshPickupPrompt(local);
                 RefreshActivityFeed();
             }
 
@@ -678,6 +714,31 @@ namespace Demiurge
                         * Math.Clamp(entry.Tickets / (float)ConquestConfig.StartingTickets, 0f, 1f);
                 }
             }
+
+            /// <summary>
+            /// Offers what E would actually take. The choice is PickupTargeting's, in Common, and
+            /// the server runs the identical call in ItemSystem.ApplyInteract — so the prompt cannot
+            /// name one weapon while the key equips another.
+            /// </summary>
+            private void RefreshPickupPrompt(LocalPlayer local)
+            {
+                var pickup = local.IsDead
+                    ? null
+                    : PickupTargeting.Nearest(local.Position, Objects.Objects, Describe);
+
+                // A dozen or so world items, scanned once a frame. Cheap enough not to schedule,
+                // and it has to be live: the offer changes as you walk.
+                uint id = pickup?.NetworkId ?? 0u;
+                if (id == _promptedPickup) return;
+                _promptedPickup = id;
+
+                PickupPanel.Visibility = pickup is null ? Visibility.Collapsed : Visibility.Visible;
+                if (pickup is not null)
+                    PickupText.Text = $"Press E to pick up {ItemCatalog.Name(pickup.Item.Type)}";
+            }
+
+            private static PickupTargeting.Candidate Describe(NetObject obj)
+                => new(obj.Has, obj.Item.Type, obj.Transform.Position);
 
             private void RefreshActivityFeed()
             {

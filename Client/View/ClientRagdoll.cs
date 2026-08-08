@@ -76,6 +76,9 @@ public sealed class RagdollViewFactory : IDisposable
             Terrain = terrain,
             ModelEntity = modelEntity,
             InitialVelocity = velocity,
+            // The killing blow's shove, which arrived in the same bundle as the health that reached
+            // zero — see ImpulseState. Zero for a death nothing directional caused.
+            KillingBlow = status.Impulse.Velocity,
             PlayerId = player.Id,
             InitialYaw = player.Yaw,
         });
@@ -103,6 +106,13 @@ public sealed class ClientRagdollScript : SyncScript
     public required TerrainState Terrain { get; init; }
     public required Entity ModelEntity { get; init; }
     public required NVector3 InitialVelocity { get; init; }
+
+    /// <summary>
+    /// The shove the lethal blow imparted, in m/s, already scaled by damage on the server
+    /// (<see cref="RagdollImpulse"/>). Zero means nobody told us what killed this body, and the
+    /// deterministic topple in <see cref="Start"/> stands in for it.
+    /// </summary>
+    public required NVector3 KillingBlow { get; init; }
     public required ushort PlayerId { get; init; }
     public required float InitialYaw { get; init; }
 
@@ -116,6 +126,19 @@ public sealed class ClientRagdollScript : SyncScript
     private const float Restitution = 0.02f;
     private const float Friction = 0.72f;
     private const float InverseInertia = 2.4f;
+
+    /// <summary>
+    /// Where a killing blow is taken to land, relative to the pelvis the body rotates about: chest
+    /// height, which is both where most rounds go and high enough that the resulting torque topples
+    /// rather than merely nudges. One constant instead of the real impact point, because the wire
+    /// carries a direction and not a place — see ImpulseState.
+    /// </summary>
+    private static readonly NVector3 BlowLever = new(0f, 0.3f, 0f);
+
+    /// <summary>Ceiling on the spin a blow can impart, in rad/s. Held in proportion to
+    /// RagdollImpulse.MaxSpeed, since spin here is derived from the shove: past about this a corpse
+    /// reads as a prop being thrown rather than a body falling.</summary>
+    private const float MaxBlowSpin = 4f;
 
     // Bind-pose offsets from the pelvis/root, measured from the cat rig. Keep the radii close to
     // the visible body thickness: oversized contacts are stable but make the mesh visibly hover.
@@ -158,15 +181,30 @@ public sealed class ClientRagdollScript : SyncScript
     {
         position = Entity.Transform.Position.ToNumerics();
         velocity = InitialVelocity;
+        orientation = NQuaternion.CreateFromAxisAngle(NVector3.UnitY, InitialYaw);
 
-        // A small deterministic nudge makes a stationary victim topple without requiring a
-        // replicated impact impulse. It is intentionally subdued: the old impulse launched the
-        // body upward and gave it enough angular momentum to spin for several seconds.
+        if (KillingBlow.LengthSquared() > 1e-6f)
+        {
+            velocity += KillingBlow;
+
+            // Spin comes out of the same relation the contact solver uses — lever cross impulse,
+            // scaled by the inverse inertia — rather than a second made-up rule, so a shove that
+            // lands above the pelvis rotates the body away from it exactly as a floor contact under
+            // the pelvis rotates it the other way. That is what makes a man fall over backwards when
+            // shot in the chest instead of sliding away upright.
+            var spin = NVector3.Cross(BlowLever, KillingBlow) * InverseInertia;
+            float spinSpeed = spin.Length();
+            angularVelocity = spinSpeed > MaxBlowSpin ? spin * (MaxBlowSpin / spinSpeed) : spin;
+            return;
+        }
+
+        // Nothing directional killed this one. A small deterministic nudge still makes a stationary
+        // victim topple. It is intentionally subdued: the old impulse launched the body upward and
+        // gave it enough angular momentum to spin for several seconds.
         float side = (PlayerId & 1) == 0 ? 1f : -1f;
         var lateral = new NVector3(MathF.Cos(InitialYaw), 0f, -MathF.Sin(InitialYaw));
         velocity += lateral * (0.25f * side);
         angularVelocity = new NVector3(0.9f * side, 0.08f, 0.55f);
-        orientation = NQuaternion.CreateFromAxisAngle(NVector3.UnitY, InitialYaw);
     }
 
     public override void Update()

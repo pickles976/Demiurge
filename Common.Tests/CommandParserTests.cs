@@ -22,6 +22,19 @@ public class CommandParserTests
         Assert.Equal(ItemCatalog.All.Count, ItemCatalog.All.Select(item => item.Id).Distinct().Count());
     }
 
+    /// <summary>
+    /// A new weapon with no display name would reach a player as "Press E to pick up " — an empty
+    /// gap rather than an error, which is the kind of omission nobody notices until it ships.
+    /// </summary>
+    [Fact]
+    public void EveryItemCanBeNamedToAPlayer()
+    {
+        foreach (var definition in ItemCatalog.All)
+            Assert.False(
+                string.IsNullOrWhiteSpace(definition.Name),
+                $"{definition.Id} has no display name");
+    }
+
     [Fact]
     public void ParsesSpawnMobWithOptionalSlash()
     {

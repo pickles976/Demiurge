@@ -282,6 +282,40 @@ shoulders unhittable by anyone and made peeking over cover invulnerable. Every e
 `GunConfig.AimHeights` must stay inside that capsule — an AI must never aim at a point it can see and
 cannot damage. `docs/networking/Shooting.md` carries the detail.
 
+### Shooting facts worth not re-deriving
+
+**Bullets are blocked by terrain.** `WeaponSystem.TryHit` casts the segment against the field first
+and treats the result as a distance ceiling, so an actor further along the ray than the ground is not
+hit. Projectiles are swept over the whole tick and collide forward only — targets are not rewound.
+
+Heights, in metres above the feet, standing. These are separate constants that are easy to assume
+agree and mostly do not:
+
+| what | height | constant |
+|---|---|---|
+| Eye — first-person camera AND every AI's LOS origin | 1.55 | `Digging.EyeHeight` (`CrouchEyeDrop` 0.45) |
+| Hittable capsule | 0 – 1.80, radius 0.6 | `PlayerMovement.Body.Height`, `GunConfig.HitRadius` |
+| Drawn model crown | 1.48 | cat rig `head` joint |
+| Head sphere, the 2x volume | 1.06 – 1.46 | `HeadCenterHeight` 1.26 ± `HeadRadius` 0.20 |
+| AI aim points: centre mass, then peek | 0.50, 1.45 | `GunConfig.AimHeights` |
+
+Two consequences that have already caused a "the AI is cheating" report, both still live as of
+2026-08-08:
+
+- **The two sides do not shoot from the same place.** An NPC fires from its EYE
+  (`CombatBehavior.cs`, `mob.Position + eyeHeight`) — the exact point it verified line of sight from,
+  so a visible target is a shootable one by construction. A player fires from the first-person
+  view-model muzzle (`LocalPlayerController.FireOrigin`), 0.34 m below the eye hip-firing and 0.22 m
+  ADS. Peeking a crest, a player therefore sees a target their rounds cannot reach; an NPC never
+  does.
+- **`PlayerPeekHeight` (1.45) is INSIDE the head sphere** by a centimetre — 0.19 from a 0.20 radius —
+  so an AI falling through to the peek aim point is aiming at 2x damage. `GunConfig`'s own comment
+  says this was deliberately avoided; it misses by 1 cm. `GunMathTests` does not catch it because it
+  only asserts aim heights are inside the CAPSULE, never outside the HEAD.
+
+NPCs are not quick: `CombatBehavior.ReactionTicks` is 0.567 s after acquisition, plus an aim-settle
+gate and a 180 deg/s turn rate. If a fight feels lost before it starts, look at geometry, not timing.
+
 Navigation search is the exception to main-thread computation: `NavigationSystem` uses a prioritized
 pool capped at eight workers and returns plain paths. Riptide messages, actor mutation, terrain edits,
 and result installation stay on the main thread. Paths carry chunk-corridor revisions rather than

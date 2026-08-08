@@ -227,6 +227,9 @@ namespace Demiurge.GameServer
                             actors.FirstOrDefault(actor => actor.Status == target),
                             headshot ? GunConfig.Headshot(projectile.Damage) : projectile.Damage,
                             projectile.Origin,
+                            // Where the round was going when it landed, not where it was aimed:
+                            // drop has been bending it the whole way, so the two differ at range.
+                            projectile.Velocity,
                             tick);
                     SuppressNearImpact(projectile, step.End, actors, tick);
                     projectiles.RemoveAt(i);
@@ -332,6 +335,7 @@ namespace Demiurge.GameServer
             ServerPlayer? victim,
             ushort damage,
             Vector3 shotOrigin,
+            Vector3 shotVelocity,
             uint tick)
         {
             // Being SHOT is the least ambiguous way to learn you are under fire, and it used to be
@@ -364,8 +368,16 @@ namespace Demiurge.GameServer
             });
             if (!shooter.IsMob)
                 server.Send(confirm, shooter.Id);
-            if (wasAlive && hit.Health.Current == 0 && victim is not null)
-                activityFeed?.ReportKill(shooter, victim);
+            if (wasAlive && hit.Health.Current == 0)
+            {
+                // Rides the same dirty bundle as the health that just hit zero, so the client sees
+                // the death and what caused it together. Set on the lethal blow only — a corpse is
+                // the only thing that reads it.
+                hit.Impulse.Velocity = RagdollImpulse.FromBullet(shotVelocity, damage);
+                hit.Dirty |= NetComponents.Impulse;
+
+                if (victim is not null) activityFeed?.ReportKill(shooter, victim);
+            }
         }
 
         private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);

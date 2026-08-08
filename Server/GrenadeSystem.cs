@@ -283,6 +283,12 @@ public sealed class GrenadeSystem
             float fraction = GrenadeConfig.DamageFraction(distance);
             if (fraction <= 0f) continue;
 
+            // The blow's own magnitude, which inside the lethal radius is everything a man has even
+            // though the health assignment below does not go through a damage number. The ragdoll
+            // shove scales off this rather than off health removed, so a wounded man and a whole one
+            // are thrown the same distance by the same grenade.
+            float blowDamage = status.Health.Max * fraction;
+
             if (distance <= GrenadeConfig.LethalRadius)
             {
                 status.Health.Current = 0;
@@ -301,7 +307,15 @@ public sealed class GrenadeSystem
             player.LastDamagedTick = tick;
             status.Dirty |= NetComponents.Health;
             if (wasAlive && status.Health.Current == 0)
+            {
+                // Out from the blast through the body's middle, not its feet: an explosion on the
+                // ground beside a man should tip him over, and origin-to-centre says that by itself.
+                var centre = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                status.Impulse.Velocity = RagdollImpulse.FromBlast(origin, centre, blowDamage);
+                status.Dirty |= NetComponents.Impulse;
+
                 killed?.Invoke(player);
+            }
         }
     }
 

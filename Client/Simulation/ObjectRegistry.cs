@@ -97,6 +97,11 @@ public class ObjectRegistry : IDisposable
             obj.Transform = state.Transform;
             obj.Snapshots.Store(tick, state.Transform.Position);
         }
+        // Before Health, and that ordering is load-bearing: HealthDepleted fires from inside the
+        // branch below, and what it wakes up — the ragdoll — reads the impulse off this object. The
+        // WIRE order is still append-only over in ComponentBundle; by the time we are here the whole
+        // bundle is already decoded, so the order these land in is ours to choose.
+        if (state.Mask.HasFlag(NetComponents.Impulse)) obj.Impulse = state.Impulse;
         if (state.Mask.HasFlag(NetComponents.Health))
         {
             var previous = obj.Health;

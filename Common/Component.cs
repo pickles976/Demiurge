@@ -49,6 +49,7 @@ namespace Demiurge
         Item = 1 << 5,
         Attachment = 1 << 6,
         Team = 1 << 7,
+        Impulse = 1 << 8,
     }
 
     public struct TransformState : IMessageSerializable
@@ -143,6 +144,29 @@ namespace Demiurge
         }
     }
 
+    /// <summary>
+    /// The push the blow that killed this object imparted, as a velocity the corpse starts with.
+    /// A gun's points along the bullet, a blast's points out from where it went off, and both scale
+    /// with the damage dealt — see <see cref="RagdollImpulse"/>, which is the one place that maths
+    /// lives.
+    ///
+    /// It rides as a component rather than its own message so it lands in the SAME bundle as the
+    /// health that reached zero. Reliable delivery here is unordered and at-least-once, so a
+    /// separate message would arrive before, after, or twice around the death it belongs to, and the
+    /// client would need a pending-impulse cache to sort that out. In the bundle there is nothing to
+    /// sort: the death and its cause are one snapshot.
+    ///
+    /// Zero means "nothing told us" — a death from some path that does not deal a directional blow —
+    /// and the corpse falls back to its own topple.
+    /// </summary>
+    public struct ImpulseState : IMessageSerializable
+    {
+        public Vector3 Velocity;
+
+        public void Serialize(Message m) => m.AddVector3(Velocity);
+        public void Deserialize(Message m) => Velocity = m.GetVector3();
+    }
+
     /// <summary>Some subset of an object's components, mask-prefixed. The if-chain
     /// order is the wire format; new components go at the end of both methods.</summary>
     public struct ComponentBundle : IMessageSerializable
@@ -156,6 +180,7 @@ namespace Demiurge
         public ItemState Item;
         public AttachmentState Attachment;
         public TeamState Team;
+        public ImpulseState Impulse;
 
         public void Serialize(Message m)
         {
@@ -168,6 +193,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Item)) m.AddSerializable(Item);
             if (Mask.HasFlag(NetComponents.Attachment)) m.AddSerializable(Attachment);
             if (Mask.HasFlag(NetComponents.Team)) m.AddSerializable(Team);
+            if (Mask.HasFlag(NetComponents.Impulse)) m.AddSerializable(Impulse);
         }
 
         public void Deserialize(Message m)
@@ -181,6 +207,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Item)) Item = m.GetSerializable<ItemState>();
             if (Mask.HasFlag(NetComponents.Attachment)) Attachment = m.GetSerializable<AttachmentState>();
             if (Mask.HasFlag(NetComponents.Team)) Team = m.GetSerializable<TeamState>();
+            if (Mask.HasFlag(NetComponents.Impulse)) Impulse = m.GetSerializable<ImpulseState>();
         }
     }
 }

@@ -12,7 +12,9 @@ namespace Demiurge.GameServer
     {
         private readonly ObjectReplication objects;
 
-        private const float PickupRadiusSq = 0.75f * 0.75f;
+        /// <summary>How a replicated object looks to <see cref="PickupTargeting"/>.</summary>
+        private static PickupTargeting.Candidate Describe(ServerObject obj)
+            => new(obj.Has, obj.Item.Type, obj.Transform.Position);
 
         public ItemSystem(ObjectReplication objects) => this.objects = objects;
 
@@ -194,24 +196,15 @@ namespace Demiurge.GameServer
         {
             // Find first, act after: Despawn/Spawn mutate the object dictionary
             // and must not run inside its enumeration.
-            ServerObject? pickup = null;
-            float bestSq = PickupRadiusSq;
-            foreach (var obj in objects.All)
-            {
-                if (!obj.Has.HasFlag(NetComponents.Item | NetComponents.Transform)) continue;
-                float dSq = Vector3.DistanceSquared(obj.Transform.Position, player.Position);
-                if (dSq > bestSq) continue;
-                pickup = obj;
-                bestSq = dSq;
-            }
+            //
+            // The choice itself is PickupTargeting's, in Common, because the client runs the same
+            // one to decide what its "Press E" prompt should name — see that file.
+            var pickup = PickupTargeting.Nearest(player.Position, objects.All, Describe);
             if (pickup == null) return;
-
-            var stats = ItemConfig.Get(pickup.Item.Type);
-            if (stats.Category != ItemCategory.Equippable) return;   // walk-over inventory items: future
 
             var slot = pickup.Has.HasFlag(NetComponents.Weapon)
                 ? HotbarConfig.StorageSlot(HotbarConfig.SlotFor(pickup.Item.Type))
-                : stats.Slot;
+                : ItemConfig.Get(pickup.Item.Type).Slot;
             Equip(player, pickup, slot);
         }
 

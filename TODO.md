@@ -11,13 +11,6 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-- [x] Kill feed needs to make the names of the NPCs orange for team 1, gray for team 2
-- [x] fix cat models, just one model, orange and gray textures for team 1 and 2.
-- [ ] impart a force on ragdolls so they dont just flop lifelessly
-- [ ] need pickup prompt for DP-27
-- [ ] camera placement relative to head collider
-- [ ] ppsh gunshot not heard
-
 - [ ] add mortar
       - [ ] start with weapon. Spawn next to player. Top down view. WASD to rotate and move aim. Left click to fire. One round every 5s. 1.5x the size of grenade impact.
 - [ ] add picking up and carrying
@@ -29,11 +22,12 @@ For weapons, need to model sights and add anchors for camera to figure out where
 - [ ] allow NPCs to use it
 - [ ] grenades are too bouncy
 - [ ] dead soldiers drop their weapon and you can pick it up
-- [ ] limit ammo for players
+- [ ] limit ammo for playersw
 
-- [ ] flag 3D model     
-- [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbag
-- [ ] dig dirt to place sandbags
+- [ ] json config for all items
+
+https://github.com/id-Software/Quake-III-Arena
+- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
 
 AI IMPROVEMENTS
 
@@ -65,6 +59,10 @@ New Features
 
 - [ ] PVP
 
+      - [ ] flag 3D model     
+      - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbaga
+      - [ ] dig dirt to place sandbags
+
     - [ ] Commander set crew-weapon objectives
       - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
 
@@ -72,16 +70,8 @@ New Features
       - [ ] fix audio cutting off
       - [ ] long range report sounds
 
-      - [ ] json config for all items
 
       - [ ] add 4 more NPCs to each team
-
-## Architecture Overhaul
-
-https://github.com/id-Software/Quake-III-Arena
-- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
-
-
 
 ## Richer Environment 
 

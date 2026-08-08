@@ -211,7 +211,7 @@ public sealed class RuntimeClientSession : IClientSession
         terrainView = embedding?.TerrainView
             ?? new ClientTerrain(scene, new ChunkMeshFactory(game, new TerrainMaterials(game)), terrainState);
 
-        Add(HUD.CreateUI(game));
+        Add(HUD.CreateUI(game, objectRegistry));
         Add(HUD.CreateDebugStats(game));
         Add(new Entity("TracerSystem")
         {

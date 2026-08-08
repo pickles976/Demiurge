@@ -253,7 +253,8 @@ namespace Demiurge.GameServer
         {
             var position = requestedPosition ?? mobs.RandomSpawnPoint();
             var mob = mobs.CreateMob(AllocateMobId(), position, team);
-            mob.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, mob.Position,
+            mob.Status = objects.Spawn(ObjectType.PlayerStatus,
+                NetComponents.Owner | NetComponents.Health | NetComponents.Impulse, mob.Position,
             obj =>
             {
                 obj.Owner = new OwnerState { PlayerId = mob.Id };
@@ -352,7 +353,8 @@ namespace Demiurge.GameServer
             int team = AssignPlayerTeam();
             var player = new ServerPlayer { Id = clientId, Team = team };
             player.Move = SpawnPlayerMove(team, useOverride: true);
-            player.Status = objects.Spawn(ObjectType.PlayerStatus, NetComponents.Owner | NetComponents.Health, player.Position,
+            player.Status = objects.Spawn(ObjectType.PlayerStatus,
+                NetComponents.Owner | NetComponents.Health | NetComponents.Impulse, player.Position,
             obj =>
             {
                 obj.Owner = new OwnerState { PlayerId = clientId};

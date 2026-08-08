@@ -32,6 +32,48 @@ public class GrenadeSystemTests
         Assert.Equal([thrower.Id, mob.Id], killed);
     }
 
+    /// <summary>
+    /// The ragdoll shove has to reach the client to exist, and it reaches it by riding the same
+    /// dirty bundle as the death — so the dirty bit is as much the behaviour here as the vector is.
+    /// </summary>
+    [Fact]
+    public void ABlastShovesOnlyWhatItKilled()
+    {
+        var killed = PlayerAt(1, 3f);
+        var wounded = PlayerAt(2, 7f);
+
+        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [killed, wounded], tick: 0);
+
+        Assert.True(killed.Status!.Dirty.HasFlag(NetComponents.Impulse));
+        Assert.True(killed.Status.Impulse.Velocity.X > 0f, "thrown away from the blast");
+        Assert.True(killed.Status.Impulse.Velocity.Y > 0f, "and lifted, the charge being below him");
+
+        // Survivors keep walking; only a corpse reads an impulse, so sending one would be noise.
+        Assert.False(wounded.Status!.Dirty.HasFlag(NetComponents.Impulse));
+        Assert.Equal(Vector3.Zero, wounded.Status.Impulse.Velocity);
+    }
+
+    /// <summary>
+    /// Scaling off health removed rather than off the blow would make a nearly-dead man barely move
+    /// when a grenade goes off at his feet, which is the one case a player is most likely to see.
+    /// </summary>
+    [Fact]
+    public void TheSameGrenadeThrowsAWoundedManAsFarAsAWholeOne()
+    {
+        var whole = PlayerAt(1, 3f);
+        var nearlyDead = PlayerAt(2, 3f);
+        nearlyDead.Status!.Health.Current = 1;
+
+        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [whole, nearlyDead], tick: 0);
+
+        Assert.Equal(0, whole.Status!.Health.Current);
+        Assert.Equal(0, nearlyDead.Status.Health.Current);
+        Assert.Equal(
+            whole.Status.Impulse.Velocity.Length(),
+            nearlyDead.Status.Impulse.Velocity.Length(),
+            4);
+    }
+
     [Fact]
     public void GrenadeStackCyclesForOneAndAHalfSecondsBetweenThrows()
     {
