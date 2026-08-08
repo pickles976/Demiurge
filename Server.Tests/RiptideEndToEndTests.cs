@@ -77,6 +77,8 @@ public class RiptideEndToEndTests(ITestOutputHelper output)
         // envelope carried it as a byte blob, and the far end read it back with the fields intact.
         Assert.NotEqual(0, welcome!.Value.ClientId);
         Assert.NotEqual(Guid.Empty, welcome.Value.ChunkToken);
+        Assert.Equal(NetworkConfig.ProtocolVersion, welcome.Value.ProtocolVersion);
+        Assert.Equal(ItemCatalog.Registry.GameplayHash, welcome.Value.GameplayHash);
 
         output.WriteLine($"joined as client {welcome.Value.ClientId}, chunk token {welcome.Value.ChunkToken}");
     }

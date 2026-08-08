@@ -11,12 +11,12 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 # PVP Mechanics
 
-- [ ] json config for all items
+## Event Queue
+We also want to start building a theater-style replay system like Halo has. The first step is likely going to be an event queue. Take a look at Quake 3's event queue implementation.
+  `https://github.com/id-Software/Quake-III-Arena`. We want to support replays, debugging using logs of the event queue, and using the event queue for testing. Come back to me with a plan
+  like you did for the datapack system.
 
-https://github.com/id-Software/Quake-III-Arena
-- [ ] Quake 3-style event queue. All events, input, network, time, needs to go to a queue. Enable replays.
-
-AI IMPROVEMENTS
+## AI Improvements
 
 Take a look at ./docs/TODO.md and ./docs/BARITONE.md
 
@@ -45,7 +45,7 @@ New Features
 
 - Try to add digging back in to combat
 
-- [ ] PVP
+## PVP changes
 
       - [ ] allow NPCs to use the mortar
       - [ ] grenades are too bouncy
@@ -81,6 +81,8 @@ New Features
       - [ ] low LOD tree
       - [ ] trees have health and take damage and change models to a broken version
       - [ ] trees delete if the terrain beneath them goes away
+
+## Stride Upgrade
 
 Try to upgrade Stride version and get particle system working
 https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/code-only/Example12_Particles

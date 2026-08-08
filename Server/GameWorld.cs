@@ -185,14 +185,11 @@ namespace Demiurge.GameServer
             if (runtimeMap is null)
             {
                 SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
-                SpawnPickupOnSurface(ItemType.AWP, 3f, 0f);
-                SpawnPickupOnSurface(ItemType.Ak47, -3f, -3f);
                 SpawnPickupOnSurface(ItemType.Sks, -3f, 0f);
                 SpawnPickupOnSurface(ItemType.Ppsh, 0f, -3f);
                 SpawnPickupOnSurface(ItemType.Mosin, 0f, 3f);
                 SpawnPickupOnSurface(ItemType.Dp27, 3f, -3f);
                 SpawnPickupOnSurface(ItemType.Shovel, -1.5f, 1.5f);
-                SpawnPickupOnSurface(ItemType.Glock, -5f, -5f);
                 SpawnPickupOnSurface(ItemType.Grenade, 1.5f, 1.5f);
 
                 SpawnMob();
@@ -483,7 +480,7 @@ namespace Demiurge.GameServer
 
             if (!objects.TryGet(player.OperatingObjectId, out var emplacement)
                 || !emplacement.Has.HasFlag(NetComponents.Transform)
-                || emplacement.Item.Type != ItemType.Mortar)
+                || !ItemCatalog.HasBehavior(emplacement.Item.Type, ItemBehavior.Mortar))
             {
                 // Somebody picked it up out from under him.
                 player.OperatingObjectId = 0;

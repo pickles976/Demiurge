@@ -143,7 +143,7 @@ public class ItemAttachScript : SyncScript
         // A swing is driven by the Shooting flag, which is replicated, so everybody sees the same
         // dig from their own angle. Cycling the bolt is driven by ammo falling, which is likewise
         // replicated — predicted locally, off the wire for everyone else.
-        bool holdingTool = Object.Item.Type == ItemType.Shovel;
+        bool holdingTool = ItemCatalog.HasBehavior(Object.Item.Type, ItemBehavior.Shovel);
         swing.Update(holdingTool && IsSelected(player) && player.State.HasFlag(PlayerStateFlags.Shooting), dt);
 
         shotsThisFrame = ShotsSince(player);
@@ -430,7 +430,8 @@ public class ItemAttachScript : SyncScript
         }
 
         var local = Registry.LocalPlayer!;
-        if (Object.Item.Type == ItemType.Grenade && (local.Ammo == 0 || local.IsReloading))
+        if (ItemCatalog.HasBehavior(Object.Item.Type, ItemBehavior.Grenade)
+            && (local.Ammo == 0 || local.IsReloading))
         {
             model.Enabled = false;
             WeaponView.Clear();
@@ -438,7 +439,7 @@ public class ItemAttachScript : SyncScript
         }
 
         bool aiming = local.State.HasFlag(PlayerStateFlags.Aiming);
-        bool pullingGrenade = Object.Item.Type == ItemType.Grenade
+        bool pullingGrenade = ItemCatalog.HasBehavior(Object.Item.Type, ItemBehavior.Grenade)
             && local.State.HasFlag(PlayerStateFlags.Shooting);
         float modelScale = ItemCosmetics.FirstPersonScale(Object.Item.Type);
 
@@ -528,7 +529,8 @@ public class ItemAttachScript : SyncScript
 
     private void UpdateRecoil(float dt, bool aiming, bool prone)
     {
-        if (!Object.Has.HasFlag(NetComponents.Weapon) || Object.Item.Type == ItemType.Grenade) return;
+        if (!Object.Has.HasFlag(NetComponents.Weapon)
+            || ItemCatalog.HasBehavior(Object.Item.Type, ItemBehavior.Grenade)) return;
 
         float recovery = MathF.Exp(-RecoilReturnSharpness * dt);
         recoilBack *= recovery;
@@ -539,13 +541,13 @@ public class ItemAttachScript : SyncScript
         if (shots == 0) return;
 
         var kick = RecoilFor(Object.Item.Type);
-        if (aiming && Object.Item.Type == ItemType.Ppsh)
+        float adsScale = ItemCatalog.Get(Object.Item.Type).Presentation.AdsRecoilScale;
+        if (aiming && adsScale < 1f)
         {
-            const float PpshAdsKickScale = 0.30f;
             kick = new RecoilKick(
-                kick.Back * PpshAdsKickScale,
-                kick.Lift * PpshAdsKickScale,
-                kick.PitchRadians * PpshAdsKickScale);
+                kick.Back * adsScale,
+                kick.Lift * adsScale,
+                kick.PitchRadians * adsScale);
         }
         if (prone)
         {
@@ -560,12 +562,11 @@ public class ItemAttachScript : SyncScript
         recoilPitch = MathF.Min(MaxRecoilPitch * capScale, recoilPitch + kick.PitchRadians * shots);
     }
 
-    private static RecoilKick RecoilFor(ItemType type) => type switch
+    private static RecoilKick RecoilFor(ItemType type)
     {
-        ItemType.AWP or ItemType.Mosin => new RecoilKick(0.10f, 0.020f, MathUtil.DegreesToRadians(6f)),
-        ItemType.Glock or ItemType.Ppsh => new RecoilKick(0.040f, 0.008f, MathUtil.DegreesToRadians(3.5f)),
-        _ => new RecoilKick(0.050f, 0.010f, MathUtil.DegreesToRadians(2.5f)),
-    };
+        var recoil = ItemCatalog.Get(type).Presentation.VisualRecoil;
+        return new RecoilKick(recoil.Back, recoil.Lift, MathUtil.DegreesToRadians(recoil.PitchDegrees));
+    }
 }
 
 /// <summary>

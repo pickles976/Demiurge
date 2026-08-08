@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:sks",
+  "networkId": 6,
+  "displayName": "SKS",
+  "aliases": ["sks"],
+  "category": "equippable",
+  "slot": "hand",
+  "hotbar": "primary",
+  "behavior": "firearm",
+  "weapon": {
+    "magazineCapacity": 10,
+    "roundsPerMinute": 600,
+    "reloadSeconds": 1.8,
+    "damage": 30,
+    "ballistics": "demiurge:carbine",
+    "fireMode": "semiAutomatic"
+  },
+  "presentation": {
+    "model": "assets/models/sks.gltf",
+    "shotSounds": ["assets/sfx/sks_shot_1.wav", "assets/sfx/sks_shot_2.wav", "assets/sfx/sks_shot_3.wav"],
+    "reloadSound": "assets/sfx/sks_reload.wav"
+  }
+}

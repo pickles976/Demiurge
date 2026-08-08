@@ -31,7 +31,6 @@ public class CombatBehaviorTests
 
     [Theory]
     [InlineData(ItemType.Ppsh)]
-    [InlineData(ItemType.Ak47)]
     [InlineData(ItemType.Sks)]
     [InlineData(ItemType.Mosin)]
     public void EveryWeaponEventuallyStopsBeingWorthFiring(ItemType weapon)
@@ -45,8 +44,7 @@ public class CombatBehaviorTests
     [Fact]
     public void ReachOrdersWeaponsFromSubmachineGunToBoltAction()
     {
-        Assert.True(Reach(ItemType.Ppsh) < Reach(ItemType.Ak47));
-        Assert.True(Reach(ItemType.Ak47) < Reach(ItemType.Sks));
+        Assert.True(Reach(ItemType.Ppsh) < Reach(ItemType.Sks));
         Assert.True(Reach(ItemType.Sks) < Reach(ItemType.Mosin));
     }
 

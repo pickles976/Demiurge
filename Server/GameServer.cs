@@ -73,7 +73,13 @@ namespace Demiurge.GameServer
             Guid chunkToken = world.RegisterChunkStream(e.ClientId);
 
             Message msg = Message.Create(MessageSendMode.Reliable, ServerToClientId.Welcome);
-            msg.AddSerializable(new WelcomeData { ClientId = e.ClientId, ChunkToken = chunkToken });
+            msg.AddSerializable(new WelcomeData
+            {
+                ClientId = e.ClientId,
+                ChunkToken = chunkToken,
+                ProtocolVersion = NetworkConfig.ProtocolVersion,
+                GameplayHash = ItemCatalog.Registry.GameplayHash,
+            });
             server.Send(msg, e.ClientId);
 
             world.AddPlayer(e.ClientId);

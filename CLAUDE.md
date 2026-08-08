@@ -63,9 +63,9 @@ Backtick/tilde opens the in-game terminal; `F3` toggles the runtime free camera.
 process-owned and survives transitions among editor, local host, and remote runtime sessions.
 World-changing runtime commands are parsed into typed values in Common and executed authoritatively
 on the server. Single-player enables client-issued commands; a standalone server requires
-`--allow-cheats` for clients but its local stdin console is always trusted. Canonical item names live
-in `ItemCatalog` and are namespaced (`demiurge:ak47`), while `ItemType` remains the append-only
-numeric wire identity. Runtime mob IDs are actor selectors (`@60000`); replicated object IDs use
+`--allow-cheats` for clients but its local stdin console is always trusted. Canonical item names come
+from `datapacks/` and are namespaced (`demiurge:sks`); `ItemType` is only the compact runtime/wire
+handle assigned by the resolved registry. Runtime mob IDs are actor selectors (`@60000`); replicated object IDs use
 `#1`. Runtime spawn/equip commands mutate only the current server session and never modify or save
 the editor source map. Editor placements use stable GUIDs displayed as unique eight-character
 prefixes; `editor object equip` persists a mob weapon in that source placement. `ai stats` reports the

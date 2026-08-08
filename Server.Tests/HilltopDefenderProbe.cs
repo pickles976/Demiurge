@@ -27,7 +27,7 @@ public class HilltopDefenderProbe(ITestOutputHelper output)
                 (ushort)(60_000 + i),
                 SurfaceQuery.SurfacePosition(terrain, -10f + i * 4f, 0f),
                 team: 1,
-                primary: ItemType.Ak47));
+                primary: ItemType.Sks));
 
         // The player, 55 m away with a bolt gun.
         var defender = world.AddMob(

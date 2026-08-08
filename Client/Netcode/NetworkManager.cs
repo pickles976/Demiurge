@@ -159,6 +159,25 @@ namespace Demiurge.GameClient
                     var welcome = e.Message.GetSerializable<WelcomeData>();
                     Dispatch(() =>
                     {
+                        if (welcome.ProtocolVersion != NetworkConfig.ProtocolVersion)
+                        {
+                            Log.Error(
+                                $"Server protocol {welcome.ProtocolVersion} does not match client protocol {NetworkConfig.ProtocolVersion}");
+                            client.Disconnect();
+                            return;
+                        }
+
+                        if (!string.Equals(
+                                welcome.GameplayHash,
+                                ItemCatalog.Registry.GameplayHash,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            Log.Error(
+                                $"Server datapacks ({welcome.GameplayHash}) do not match client datapacks ({ItemCatalog.Registry.GameplayHash})");
+                            client.Disconnect();
+                            return;
+                        }
+
                         ClientId = welcome.ClientId;
                         Welcomed?.Invoke(welcome);
                     });

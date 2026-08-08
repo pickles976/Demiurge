@@ -20,7 +20,7 @@ public class SquadTacticsTests
         ushort id,
         float x,
         float z,
-        ItemType weapon = ItemType.Ak47,
+        ItemType weapon = ItemType.Sks,
         float exposure = 1f,
         int boundIndex = 0,
         uint movingSince = 0)
@@ -28,7 +28,7 @@ public class SquadTacticsTests
             SkillFactor: 1f, boundIndex, movingSince);
 
     private static List<SquadTacticalOrder> Plan(
-        ItemType threatWeapon = ItemType.Ak47,
+        ItemType threatWeapon = ItemType.Sks,
         uint tick = 0,
         params SquadMemberState[] members)
     {
@@ -176,7 +176,7 @@ public class SquadTacticsTests
     {
         var orders = new List<SquadTacticalOrder>();
         SquadTactics.Plan(
-            new SquadPlanInput(Vector3.Zero, HasThreat: false, ItemType.Ak47, CombatValue.DefaultAggression, 0),
+            new SquadPlanInput(Vector3.Zero, HasThreat: false, ItemType.Sks, CombatValue.DefaultAggression, 0),
             [Man(1, 0, 0), Man(2, 4, 0)],
             orders);
 
@@ -188,7 +188,7 @@ public class SquadTacticsTests
     {
         var orders = new List<SquadTacticalOrder>();
         SquadTactics.Plan(
-            new SquadPlanInput(Threat, true, ItemType.Ak47, CombatValue.DefaultAggression, 0),
+            new SquadPlanInput(Threat, true, ItemType.Sks, CombatValue.DefaultAggression, 0),
             [],
             orders);
 
@@ -267,13 +267,13 @@ public class SquadTacticsTests
         // Added in quadrature, so it hurts most where there is least inherent dispersion to hide it
         // in. That asymmetry is why forming a base of fire against a marksman is worth doing.
         Assert.True(
-            FractionSuppressed(ItemType.Mosin) > FractionSuppressed(ItemType.Ak47),
+            FractionSuppressed(ItemType.Mosin) > FractionSuppressed(ItemType.Sks),
             "suppression should degrade a bolt gun more than a carbine");
     }
 
     private static float FractionSuppressed(ItemType weapon)
     {
-        var target = new Combatant(ItemType.Ak47, 0f, 1f);
+        var target = new Combatant(ItemType.Sks, 0f, 1f);
         var calm = new Engagement(
             60f, weapon, 0f, TargetExposure.Full, SelfExposure.Full, 1f);
         var suppressed = calm with { TheirExtraMoa = BallisticsConfig.SuppressedMoa };

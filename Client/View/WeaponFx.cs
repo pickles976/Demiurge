@@ -3,8 +3,8 @@ using Stride.Core.Mathematics;
 
 // Client-only weapon shot effects (sound, tracer), keyed by ItemType like
 // WeaponConfig. Split from ItemCosmetics so non-weapons don't carry shot
-// fields. Unknown types get AK stand-ins — wrong FX beats a crash, and this
-// table is fed straight off the wire (PlayerFired broadcasts).
+// fields. This table is fed straight off the wire (PlayerFired broadcasts), after the
+// datapack-hash handshake has guaranteed that both peers resolve the same handles.
 public static class WeaponFx
 {
     /// <summary>
@@ -72,69 +72,37 @@ public static class WeaponFx
         public BoltCycle Cycle => Bolt ?? BoltCycle.SelfLoading;
     }
 
-    public static Entry Get(ItemType type) => type switch
+    public static Entry Get(ItemType type)
     {
-        ItemType.Ak47 => new("assets/sfx/ak47_shot.wav", Color.Yellow),
-        ItemType.Sks => new(
-            [
-                "assets/sfx/sks_shot_1.wav",
-                "assets/sfx/sks_shot_2.wav",
-                "assets/sfx/sks_shot_3.wav",
-            ],
-            Color.Yellow,
-            ReloadSoundPath: "assets/sfx/sks_reload.wav"),
-        ItemType.Ppsh => new(
-            [
-                "assets/sfx/ppsh_shot_1.wav",
-                "assets/sfx/ppsh_shot_2.wav",
-            ],
-            Color.Yellow,
-            ReloadSoundPath: "assets/sfx/ppsh_reload.wav",
-            DistantReportSoundPath: "assets/sfx/ppsh_shot_far.wav",
-            ReloadVolume: 0.6f),
-        // The cycle is timed against the recording rather than eyeballed: the sample's own lift and
-        // pull land 0.2-0.4 s in, its close lands at 0.9 s and its lock at 1.3 s, so the bolt starts
-        // moving a beat after the shot, is back while the pull is audible, and runs forward through
-        // the closing thump.
-        //
-        // The two MOVING legs are the hand's speed and are tuned as a pair — a stroke that takes
-        // longer to draw than to run home reads as a stuck bolt. Delay and hold are the sync
-        // surface against the recording and are tuned separately; the delay in particular is the
-        // gap between the shot and the hand reaching the handle, not part of the working.
-        //
-        // Whatever the four come to has to stay under the 1.5 s cadence, or the rifle fires
-        // mid-cycle: this is the one weapon whose animation nearly fills its own shot interval.
-        ItemType.Mosin => new(
-            [
-                "assets/sfx/mosin_shot_1.wav",
-                "assets/sfx/mosin_shot_2.wav",
-            ],
-            Color.Yellow,
-            ReloadSoundPath: "assets/sfx/mosin_reload.wav",
-            DistantReportSoundPath: RifleReport,
-            Bolt: new BoltCycle(
-                DelaySeconds: 0.15f,
-                TravelSeconds: 0.286f,
-                HoldSeconds: 0.65f,
-                ReturnSeconds: 0.286f,
-                SoundPath: "assets/sfx/mosin_bolt.wav")),
-        // Four samples rather than two: at 550 rounds a minute a pair alternating is audibly a pair,
-        // which is the machine-gun buzz the list exists to break up.
-        ItemType.Dp27 => new(
-            [
-                "assets/sfx/dp_27_shot_1.wav",
-                "assets/sfx/dp_27_shot_2.wav",
-                "assets/sfx/dp_27_shot_3.wav",
-                "assets/sfx/dp_27_shot_4.wav",
-            ],
-            Color.Yellow,
-            ReloadSoundPath: "assets/sfx/dp_27_reload.wav",
-            DistantReportSoundPath: RifleReport),
-        ItemType.AWP => new("assets/sfx/ak47_shot.wav", Color.Yellow),
-        ItemType.Glock => new("assets/sfx/ak47_shot.wav", Color.Yellow),
+        var presentation = ItemCatalog.Get(type).Presentation;
+        IReadOnlyList<string> shots = presentation.ShotSounds.Count > 0
+            ? presentation.ShotSounds
+            : ["assets/sfx/rifle_shot_far.wav"];
+        BoltCycle? bolt = presentation.Bolt is { } source
+            ? new BoltCycle(
+                source.DelaySeconds,
+                source.TravelSeconds,
+                source.HoldSeconds,
+                source.ReturnSeconds,
+                source.SoundPath)
+            : null;
+        return new Entry(
+            shots,
+            ParseColor(presentation.TracerColor),
+            presentation.ReloadSound,
+            presentation.DistantReportSound,
+            presentation.ReloadVolume,
+            bolt);
+    }
 
-        _ => new("assets/sfx/ak47_shot.wav", Color.Yellow),
-    };
+    private static Color ParseColor(string hex)
+    {
+        byte r = Convert.ToByte(hex.Substring(1, 2), 16);
+        byte g = Convert.ToByte(hex.Substring(3, 2), 16);
+        byte b = Convert.ToByte(hex.Substring(5, 2), 16);
+        byte a = hex.Length == 9 ? Convert.ToByte(hex.Substring(7, 2), 16) : (byte)255;
+        return new Color(r, g, b, a);
+    }
 
     /// <summary>
     /// Past this, a shot is not the crack of a rifle near you — it is a report rolling in from

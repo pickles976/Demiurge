@@ -48,6 +48,9 @@
     <Content Include="assets/locators.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="datapacks/**/*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- Workaround: Stride's .ssdeps uses Windows backslash paths for Linux native libs, so the

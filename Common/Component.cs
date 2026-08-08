@@ -25,9 +25,8 @@ namespace Demiurge
     /// into ItemConfig + ItemCosmetics — append-only.</summary>
     public enum ItemType : ushort
     {
-        Ak47 = 1,
-        AWP = 2,
-        Glock = 3,
+        // 1-3 are retired wire values. They must never be reused: an old packet should be unknown,
+        // not silently become another item.
         BodyArmor = 4,
         Grenade = 5,
         Sks = 6,

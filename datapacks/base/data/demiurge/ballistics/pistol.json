@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:pistol",
+  "projectileSpeed": 375,
+  "benchMoa": 8,
+  "recoilPerShotMoa": 30,
+  "recoilDecayMoaPerSecond": 35,
+  "recoilCapMoa": 150,
+  "sightingMoa": 400
+}

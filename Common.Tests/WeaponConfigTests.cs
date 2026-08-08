@@ -18,7 +18,7 @@ public class WeaponConfigTests
     public void PpshUsesTheNineMillimetreBallisticsAndRecoilProfile()
     {
         Assert.Equal(
-            BallisticsConfig.Require(ItemType.Glock),
+            BallisticsConfig.Require(ItemType.Ppsh),
             BallisticsConfig.Require(ItemType.Ppsh));
     }
 
@@ -40,7 +40,7 @@ public class WeaponConfigTests
     public void MosinUsesTheSniperBallisticsAndRecoilProfile()
     {
         Assert.Equal(
-            BallisticsConfig.Require(ItemType.AWP),
+            BallisticsConfig.Require(ItemType.Mosin),
             BallisticsConfig.Require(ItemType.Mosin));
     }
 

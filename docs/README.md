@@ -12,6 +12,7 @@ Start with:
 - [Recipes](RECIPES.md): append-only checklists for extending gameplay and replication
 - [Editor](EDITOR.md): source/runtime map formats and editor lifecycle
 - [Commands](COMMANDS.md): developer, server, map, and editor commands
+- [Gameplay datapacks](DATAPACKS.md): JSON item, weapon, ballistics, and compatibility format
 - [Asset loading](ASSET_LOADING.md): glTF synchronization and Stride asset descriptors
 - [Linux setup](LINUX_SETUP_GUIDE.md): platform-specific development setup
 

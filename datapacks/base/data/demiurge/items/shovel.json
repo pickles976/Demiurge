@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:shovel",
+  "networkId": 7,
+  "displayName": "Shovel",
+  "aliases": ["shovel", "spade"],
+  "category": "equippable",
+  "slot": "hotbarShovel",
+  "hotbar": "shovel",
+  "behavior": "shovel",
+  "presentation": {
+    "model": "assets/models/shovel.gltf",
+    "worldScale": 0.2,
+    "cameraTrauma": 0,
+    "visualRecoil": { "back": 0, "lift": 0, "pitchDegrees": 0 }
+  }
+}

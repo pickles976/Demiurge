@@ -18,5 +18,8 @@
       <PackageReference Include="RiptideNetworking.Riptide" Version="2.2.1" />
       <!-- Shared protocol, compiled into both sides -->
       <ProjectReference Include="../Common/DemiurgeCommon.csproj" />
+      <Content Include="../datapacks/**/*.json" Link="datapacks/%(RecursiveDir)%(Filename)%(Extension)">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
   </Project>

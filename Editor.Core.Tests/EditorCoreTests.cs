@@ -78,7 +78,7 @@ public sealed class EditorCoreTests
             Kind = EditorPlacementKind.Mob,
             ArchetypeId = "demiurge:mob",
             Cell = new Int3(2, 80, 2),
-            WeaponId = "demiurge:glock",
+            WeaponId = "demiurge:ppsh",
             Team = 2,
         };
         document.Placements.Add(mob);
@@ -155,7 +155,7 @@ public sealed class EditorCoreTests
             Kind = EditorPlacementKind.Mob,
             ArchetypeId = "demiurge:mob",
             Cell = new Int3(2, 50, 2),
-            WeaponId = "demiurge:glock",
+            WeaponId = "demiurge:ppsh",
             Team = 2,
         });
 
@@ -168,7 +168,7 @@ public sealed class EditorCoreTests
             Assert.Equal(SourceMapSerializer.Hash(document), SourceMapSerializer.Hash(loaded));
             Assert.Equal([1L, 2L], loaded.Blocks.Select(block => block.Sequence));
             Assert.Equal(
-                "demiurge:glock",
+                "demiurge:ppsh",
                 Assert.Single(loaded.Placements, placement =>
                     placement.Kind == EditorPlacementKind.Mob).WeaponId);
             Assert.Equal(
@@ -272,7 +272,7 @@ public sealed class EditorCoreTests
             Kind = EditorPlacementKind.Mob,
             ArchetypeId = "demiurge:mob",
             Cell = document.Placements[0].Cell with { X = 2 },
-            WeaponId = "demiurge:glock",
+            WeaponId = "demiurge:ppsh",
             Team = 2,
         });
         document.Placements.Add(new EditorPlacement
@@ -298,7 +298,7 @@ public sealed class EditorCoreTests
             Assert.Equal(runtime.ContentHash, loaded.ContentHash);
             Assert.Equal(runtime.Terrain.Count, loaded.Terrain.Count);
             Assert.Equal(
-                ItemType.Glock,
+                ItemType.Ppsh,
                 Assert.Single(loaded.Placements, placement =>
                     placement.Kind == RuntimePlacementKind.Mob).Item);
             Assert.Equal(

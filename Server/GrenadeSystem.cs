@@ -60,7 +60,7 @@ public sealed class GrenadeSystem
             return player.Equipped.TryGetValue(slot, out uint grenadeId)
                && objects.TryGet(grenadeId, out item)
                && item.Has.HasFlag(NetComponents.Item | NetComponents.Weapon)
-               && item.Item.Type == ItemType.Grenade;
+               && ItemCatalog.HasBehavior(item.Item.Type, ItemBehavior.Grenade);
 
         // Legacy tests/admin equips place their grenade directly in Hand.
         slot = EquipSlot.Hand;
@@ -68,7 +68,7 @@ public sealed class GrenadeSystem
            && player.Equipped.TryGetValue(slot, out uint itemId)
            && objects.TryGet(itemId, out item)
            && item.Has.HasFlag(NetComponents.Item | NetComponents.Weapon)
-           && item.Item.Type == ItemType.Grenade;
+           && ItemCatalog.HasBehavior(item.Item.Type, ItemBehavior.Grenade);
     }
 
     public bool ApplyThrow(ServerPlayer player, PlayerFireData fire, uint tick)
@@ -99,7 +99,7 @@ public sealed class GrenadeSystem
         {
             item.Dirty |= NetComponents.Weapon;
             player.NextGrenadeThrowTick =
-                tick + (uint)WeaponConfig.Require(ItemType.Grenade).ReloadTicks;
+                tick + (uint)WeaponConfig.Require(ItemCatalog.RequireBehavior(ItemBehavior.Grenade)).ReloadTicks;
         }
 
         var direction = Vector3.Normalize(fire.Direction);

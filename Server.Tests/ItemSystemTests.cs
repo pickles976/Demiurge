@@ -13,13 +13,13 @@ public class ItemSystemTests
         var items = new ItemSystem(objects);
         var actor = new ServerPlayer { Id = 60000 };
 
-        var first = items.SpawnEquipped(actor, ItemType.Ak47, dropReplaced: false);
-        var second = items.SpawnEquipped(actor, ItemType.Glock, dropReplaced: false);
+        var first = items.SpawnEquipped(actor, ItemType.Sks, dropReplaced: false);
+        var second = items.SpawnEquipped(actor, ItemType.Ppsh, dropReplaced: false);
 
         Assert.False(objects.TryGet(first.NetworkId, out _));
         Assert.True(objects.TryGet(second.NetworkId, out var equipped));
         Assert.Equal(actor.Id, equipped.Owner.PlayerId);
-        Assert.Equal(ItemType.Glock, equipped.Item.Type);
+        Assert.Equal(ItemType.Ppsh, equipped.Item.Type);
         Assert.Equal(second.NetworkId, actor.Equipped[EquipSlot.Hand]);
         Assert.Single(objects.All);
     }

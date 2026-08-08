@@ -5,8 +5,8 @@ namespace Demiurge.CommonTests;
 public class BallisticsTests
 {
     [Fact]
-    public void Ak47DealsThirtyDamagePerProjectile()
-        => Assert.Equal((ushort)30, WeaponConfig.Require(ItemType.Ak47).Damage);
+    public void SksDealsThirtyDamagePerProjectile()
+        => Assert.Equal((ushort)30, WeaponConfig.Require(ItemType.Sks).Damage);
 
     [Fact]
     public void MoaConversionUsesGroupDiameterAtNinetyFivePercent()
@@ -40,7 +40,7 @@ public class BallisticsTests
     [Fact]
     public void RifleNumbersMatchTheDesignTable()
     {
-        var rifle = BallisticsConfig.Require(ItemType.Ak47);
+        var rifle = BallisticsConfig.Require(ItemType.Sks);
         var settled = new WeaponSpreadState();
         var recoil = new WeaponSpreadState();
         for (int i = 0; i < 20; i++) recoil.AddRecoil(rifle, PlayerStateFlags.None);
@@ -60,8 +60,8 @@ public class BallisticsTests
     [Fact]
     public void RapidCarbineFireBloomsAggressively()
     {
-        var carbine = BallisticsConfig.Require(ItemType.Ak47);
-        var weapon = WeaponConfig.Require(ItemType.Ak47);
+        var carbine = BallisticsConfig.Require(ItemType.Sks);
+        var weapon = WeaponConfig.Require(ItemType.Sks);
         var state = new WeaponSpreadState();
         var chances = new List<float>();
 
@@ -84,19 +84,19 @@ public class BallisticsTests
     [Fact]
     public void WeaponsMapToReusableBallisticsProfiles()
     {
-        Assert.Equal(WeaponBallisticsProfile.SniperRifle, BallisticsConfig.ProfileFor(ItemType.AWP));
-        Assert.Equal(WeaponBallisticsProfile.Carbine, BallisticsConfig.ProfileFor(ItemType.Ak47));
-        Assert.Equal(WeaponBallisticsProfile.Pistol, BallisticsConfig.ProfileFor(ItemType.Glock));
+        Assert.Equal("demiurge:sniper_rifle", BallisticsConfig.ProfileFor(ItemType.Mosin));
+        Assert.Equal("demiurge:carbine", BallisticsConfig.ProfileFor(ItemType.Sks));
+        Assert.Equal("demiurge:pistol", BallisticsConfig.ProfileFor(ItemType.Ppsh));
 
-        var semiAutomatic = BallisticsConfig.Get(WeaponBallisticsProfile.SemiAutomaticRifle);
-        Assert.True(semiAutomatic.ProjectileSpeed > BallisticsConfig.Require(ItemType.Glock).ProjectileSpeed);
-        Assert.True(semiAutomatic.BenchMoa < BallisticsConfig.Require(ItemType.Ak47).BenchMoa);
+        var semiAutomatic = BallisticsConfig.Get("demiurge:semi_automatic_rifle");
+        Assert.True(semiAutomatic.ProjectileSpeed > BallisticsConfig.Require(ItemType.Ppsh).ProjectileSpeed);
+        Assert.True(semiAutomatic.BenchMoa < BallisticsConfig.Require(ItemType.Sks).BenchMoa);
     }
 
     [Fact]
     public void BreathingPenaltyStartsAfterSprintAndDecays()
     {
-        var rifle = BallisticsConfig.Require(ItemType.Ak47);
+        var rifle = BallisticsConfig.Require(ItemType.Sks);
         var state = new WeaponSpreadState();
 
         state.Advance(PlayerStateFlags.Sprinting, rifle, NetworkConfig.FixedDt);
@@ -112,7 +112,7 @@ public class BallisticsTests
     [Fact]
     public void RecoilAccumulatesToCapAndDecaysToZero()
     {
-        var weapon = BallisticsConfig.Require(ItemType.Ak47);
+        var weapon = BallisticsConfig.Require(ItemType.Sks);
         var state = new WeaponSpreadState();
 
         for (int i = 0; i < 20; i++)
@@ -130,7 +130,7 @@ public class BallisticsTests
     [Fact]
     public void ProneReducesRecoilByThirtyPercent()
     {
-        var weapon = BallisticsConfig.Require(ItemType.Ak47);
+        var weapon = BallisticsConfig.Require(ItemType.Sks);
         var standing = new WeaponSpreadState();
         var prone = new WeaponSpreadState();
 

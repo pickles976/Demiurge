@@ -5,7 +5,7 @@ mouse; Escape or backtick closes it. Shift+tilde enters `~` for relative coordin
 session, `F3` toggles the free camera.
 
 Press `Tab` to complete command tokens. Block and item arguments complete to canonical IDs such as
-`demiurge:stone` and `demiurge:ak47`; when several candidates remain, press `Tab` again to list them.
+`demiurge:stone` and `demiurge:sks`; when several candidates remain, press `Tab` again to list them.
 
 Session and map commands are handled locally by the persistent client coordinator. Runtime `spawn`
 and `equip` commands are sent to the authoritative server. Editor commands mutate only the local
@@ -36,9 +36,9 @@ Examples:
 
 ```text
 spawn mob
-spawn pickup demiurge:glock ~3 ~
+spawn pickup demiurge:ppsh ~3 ~
 equip @s demiurge:body_armor
-equip @60002 demiurge:ak47
+equip @60002 demiurge:sks
 ai track on
 ai track beacons clustering
 ```
@@ -89,24 +89,23 @@ survives session transitions and can be set before a session exists.
 Runtime commands mutate the current server session only. They do not modify `source.json`, so
 `map save` does not preserve a runtime-spawned mob or a weapon assigned with runtime `equip`.
 Editor mob placements have a separate persistent `WeaponId`; existing placements without one
-default to an AK-47.
+default to the active datapack's `npcPrimary` item.
 
 Canonical item IDs:
 
 ```text
-demiurge:ak47
 demiurge:sks
 demiurge:ppsh
 demiurge:mosin
-demiurge:awp
-demiurge:glock
+demiurge:dp27
 demiurge:shovel
 demiurge:body_armor
 demiurge:grenade
+demiurge:mortar
 ```
 
 Short aliases are accepted as input, but results always print canonical IDs. Add new canonical names
-and aliases in `Common/ItemCatalog.cs`; never use `ItemType.ToString()` as external identity.
+and aliases in a datapack item JSON file; never use `ItemType.ToString()` as external identity.
 
 ## Architecture
 
@@ -288,9 +287,9 @@ Examples:
 
 ```text
 spawn mob 10 -15
-spawn pickup ak47 0 0
+spawn pickup sks 0 0
 players
-equip @60000 glock
+equip @60000 ppsh
 map load trench-test
 ```
 

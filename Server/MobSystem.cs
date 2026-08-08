@@ -428,18 +428,18 @@ namespace Demiurge.GameServer
                 var self = new Combatant(
                     weapons.TryGetPrimaryWeapon(mob, out var selfWeapon)
                         ? selfWeapon.Item.Type
-                        : ItemType.Ak47,
+                        : ItemConfig.UnidentifiedThreatWeapon,
                     0f,
                     brain.SkillFactor);
                 float range = HorizontalDistance(mob.Position, incomingFrom.Position);
 
                 float takenNow = CombatValue.Taken(
                     self,
-                    [new Engagement(range, ItemType.Ak47, 0f, TargetExposure.Full,
+                    [new Engagement(range, ItemConfig.UnidentifiedThreatWeapon, 0f, TargetExposure.Full,
                         brain.SelfExposure, 1f)]);
                 float takenDugIn = CombatValue.Taken(
                     self,
-                    [new Engagement(range, ItemType.Ak47, 0f, TargetExposure.Full,
+                    [new Engagement(range, ItemConfig.UnidentifiedThreatWeapon, 0f, TargetExposure.Full,
                         MobBrain.EntrenchedSelfExposure, 1f)]);
 
                 mustEntrench = takenNow - takenDugIn >= EntrenchWorthwhileDamagePerSecond;
@@ -1070,7 +1070,7 @@ namespace Demiurge.GameServer
                 ItemType threatWeapon = threatActor is { } armed
                     && weapons.TryGetPrimaryWeapon(armed, out var threatPrimary)
                         ? threatPrimary.Item.Type
-                        : ItemType.Ak47;
+                        : ItemConfig.UnidentifiedThreatWeapon;
 
                 tacticalInputs.Clear();
                 foreach (ushort actorId in squad.Roster)
@@ -1084,7 +1084,7 @@ namespace Demiurge.GameServer
                         actor.Position,
                         weapons.TryGetPrimaryWeapon(actor, out var primary)
                             ? primary.Item.Type
-                            : ItemType.Ak47,
+                            : ItemConfig.UnidentifiedThreatWeapon,
                         // How exposed HE is, not how exposed his target is. Passing PerceivedExposure
                         // here told a squad it was protected whenever the man it was shooting at
                         // happened to be behind cover, so holding scored brilliantly, moving scored

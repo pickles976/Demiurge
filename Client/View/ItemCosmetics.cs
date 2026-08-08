@@ -19,23 +19,8 @@ public static class ItemCosmetics
 {
     public readonly record struct Socket(string? Node, Vector3 Seat, Quaternion Rotation);
 
-    public static string Model(ItemType type) => type switch
-    {
-        ItemType.Ak47 => "assets/models/ak47.gltf",
-        ItemType.Sks => "assets/models/sks.gltf",
-        ItemType.Ppsh => "assets/models/ppsh.gltf",
-        ItemType.Mosin => "assets/models/mosin.gltf",
-        ItemType.Dp27 => "assets/models/dp_27.gltf",
-        ItemType.AWP => "assets/models/sniper_rifle.gltf",
-        ItemType.Glock => "assets/models/glock.gltf",
-        ItemType.Shovel => "assets/models/shovel.gltf",
-        ItemType.BodyArmor => "assets/models/body_armor.gltf",
-        ItemType.Grenade => "assets/models/grenade.gltf",
-        ItemType.Mortar => "assets/models/mortar_tube.gltf",
-
-        // Unknown type off the wire: AK stand-in rather than a crash.
-        _ => "assets/models/ak47.gltf",
-    };
+    public static string Model(ItemType type)
+        => ItemCatalog.TryGet(type)?.Presentation.Model ?? "assets/models/dummy.gltf";
 
     /// <summary>
     /// Map-authored weapon supply, drawn as the crate rather than as the weapon inside it. One
@@ -51,14 +36,8 @@ public static class ItemCosmetics
     /// not authored to a shared scale: the rifles come out at about a metre and the shovel comes
     /// out at 2.26, which reads as a pike rather than an entrenching tool.
     /// </summary>
-    public static float WorldScale(ItemType type) => type switch
-    {
-        // The shovel is modelled at 2.26 units end to end, which is a pike. Eyeballed against the
-        // rig rather than against the rifles: matching the AK's 0.93 was the obvious guess and came
-        // out twice too big, because the AK is itself drawn large next to this character.
-        ItemType.Shovel => 0.2f,
-        _ => 1f,
-    };
+    public static float WorldScale(ItemType type)
+        => ItemCatalog.TryGet(type)?.Presentation.WorldScale ?? 1f;
 
     /// <summary>
     /// The view model is drawn larger than the world model — the usual first-person cheat, so the
@@ -66,7 +45,7 @@ public static class ItemCosmetics
     /// only ever needs sizing once.
     /// </summary>
     public static float FirstPersonScale(ItemType type)
-        => type == ItemType.Grenade || ItemConfig.IsCarryable(type)
+        => ItemCatalog.HasBehavior(type, ItemBehavior.Grenade) || ItemConfig.IsCarryable(type)
             ? WorldScale(type)
             : WorldScale(type) * WeaponMount.FirstPersonScale;
 
@@ -83,11 +62,8 @@ public static class ItemCosmetics
     /// scope makes a target easier for the PLAYER to lay the reticle on and buys no accuracy; the
     /// reticle's own bloom already reads the live field of view and follows this for free.
     /// </summary>
-    public static float AimMagnification(ItemType type) => type switch
-    {
-        ItemType.Mosin => 2f,
-        _ => 1f,
-    };
+    public static float AimMagnification(ItemType type)
+        => ItemCatalog.TryGet(type)?.Presentation.AimMagnification ?? 1f;
 
     /// <summary>
     /// How fast this weapon comes up to the sights, as a multiple of the ordinary rate — 0.7 being
@@ -100,13 +76,8 @@ public static class ItemCosmetics
     /// having arrived; what the weight of a weapon costs in the SIM is
     /// <see cref="ItemStats.MoveSpeedScale"/>.
     /// </summary>
-    public static float AimSpeedScale(ItemType type) => type switch
-    {
-        // Nine kilos with a pan magazine on top of it. The same 0.7 its movement carries, because
-        // it is the same weight doing both.
-        ItemType.Dp27 => 0.7f,
-        _ => 1f,
-    };
+    public static float AimSpeedScale(ItemType type)
+        => ItemCatalog.TryGet(type)?.Presentation.AimSpeedScale ?? 1f;
 
     // A new EquipSlot needs a row here — that's the whole client cost of a slot.
     // Seats are the FALLBACK for models with no grip locator; a Hand item's real seat

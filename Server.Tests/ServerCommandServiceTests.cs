@@ -39,13 +39,13 @@ public class ServerCommandServiceTests
         world.AddActor(1, Vector3.Zero);
         var service = new ServerCommandService(world, allowCheats: true);
 
-        var result = Execute(service, 1, "spawn pickup ak-47 4 8");
+        var result = Execute(service, 1, "spawn pickup sks 4 8");
 
         Assert.True(result.Success);
         var pickup = Assert.Single(world.SpawnedPickups);
-        Assert.Equal(ItemType.Ak47, pickup.Item);
+        Assert.Equal(ItemType.Sks, pickup.Item);
         Assert.Equal(new Vector3(4, 42, 8), pickup.Position);
-        Assert.Contains("demiurge:ak47", result.Output);
+        Assert.Contains("demiurge:sks", result.Output);
         Assert.Contains("object ID #1", result.Output);
     }
 
@@ -57,11 +57,11 @@ public class ServerCommandServiceTests
         world.AddActor(60000, new Vector3(5, 0, 5), isMob: true);
         var service = new ServerCommandService(world, allowCheats: true);
 
-        var result = Execute(service, 1, "equip @60000 demiurge:glock");
+        var result = Execute(service, 1, "equip @60000 demiurge:ppsh");
 
         Assert.True(result.Success);
         Assert.Equal((ushort)60000, world.EquippedActor);
-        Assert.Equal(ItemType.Glock, world.EquippedItem);
+        Assert.Equal(ItemType.Ppsh, world.EquippedItem);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class ServerCommandServiceTests
         world.AddActor(1, Vector3.Zero);
         var service = new ServerCommandService(world, allowCheats: true);
 
-        var result = Execute(service, 1, "equip @60000 glock");
+        var result = Execute(service, 1, "equip @60000 ppsh");
 
         Assert.False(result.Success);
         Assert.Contains("does not exist", result.Output);
@@ -100,8 +100,8 @@ public class ServerCommandServiceTests
         world.AddActor(60000, Vector3.Zero, isMob: true);
         var service = new ServerCommandService(world, allowCheats: false);
 
-        Assert.False(service.ExecuteConsole("equip @s glock").Success);
-        Assert.True(service.ExecuteConsole("equip @60000 glock").Success);
+        Assert.False(service.ExecuteConsole("equip @s ppsh").Success);
+        Assert.True(service.ExecuteConsole("equip @60000 ppsh").Success);
         Assert.Equal((ushort)60000, world.EquippedActor);
     }
 
@@ -116,9 +116,9 @@ public class ServerCommandServiceTests
         Assert.Contains("spawn pickup <item> <x> <z>", root);
         Assert.Contains("ai stats", root);
         Assert.Contains("spawn mob 10 -15", spawn);
-        Assert.Contains("spawn pickup ak47 0 0", pickup);
-        Assert.Contains("demiurge:ak47", items);
-        Assert.Contains("aliases: ak47", items);
+        Assert.Contains("spawn pickup sks 0 0", pickup);
+        Assert.Contains("demiurge:sks", items);
+        Assert.Contains("aliases: sks", items);
     }
 
     [Fact]

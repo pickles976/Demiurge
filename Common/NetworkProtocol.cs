@@ -7,6 +7,7 @@ namespace Demiurge
     public static class NetworkConfig
     {
         public const ushort Port = 7777;
+        public const int ProtocolVersion = 2;
 
         /// <summary>
         /// Who to connect to. Here rather than at the call site because the client now opens TWO

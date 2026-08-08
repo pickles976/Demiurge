@@ -403,7 +403,7 @@ namespace Demiurge.GameServer
             return player.Equipped.TryGetValue(slot, out uint weaponId)
                 && objects.TryGet(weaponId, out weapon!)
                 && weapon.Has.HasFlag(NetComponents.Weapon)
-                && weapon.Item.Type != ItemType.Grenade;
+                && !ItemCatalog.HasBehavior(weapon.Item.Type, ItemBehavior.Grenade);
         }
 
         /// <summary>
@@ -419,7 +419,7 @@ namespace Demiurge.GameServer
             return player.Equipped.TryGetValue(slot, out uint weaponId)
                 && objects.TryGet(weaponId, out weapon!)
                 && weapon.Has.HasFlag(NetComponents.Weapon)
-                && weapon.Item.Type != ItemType.Grenade;
+                && !ItemCatalog.HasBehavior(weapon.Item.Type, ItemBehavior.Grenade);
         }
 
     }

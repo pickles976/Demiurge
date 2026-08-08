@@ -198,7 +198,8 @@ public class LocalPlayerController : SyncScript
 		// A POINT, not a direction. The muzzle is not the camera, so a direction copied from the
 		// camera would send the bullet parallel to the line of sight and never onto the reticle —
 		// see TryFire. Hip fire uses this same centre point; its lower accuracy comes from spread.
-		bool grenadeEquipped = local.Weapon?.Item.Type == ItemType.Grenade;
+		bool grenadeEquipped = local.Weapon is { } equipped
+			&& ItemCatalog.HasBehavior(equipped.Item.Type, ItemBehavior.Grenade);
 		if (grenadeEquipped)
 		{
 			if (primaryDown)
@@ -273,7 +274,7 @@ public class LocalPlayerController : SyncScript
 		var cameraTransform = CameraEntity.Transform;
 		var type = local.Weapon!.Item.Type;
 		float scale = ItemCosmetics.FirstPersonScale(type);
-		var grip = type == ItemType.Grenade
+		var grip = ItemCatalog.HasBehavior(type, ItemBehavior.Grenade)
 			? WeaponMount.GrenadePullbackGripOffset
 			: Mount.FirstPersonGripOffset(type, local.State.HasFlag(PlayerStateFlags.Aiming), scale);
 		var offset = Mount.FirstPersonMuzzleOffset(type, grip, scale).ToStride();

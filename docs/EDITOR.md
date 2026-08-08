@@ -176,7 +176,7 @@ editor terrain material demiurge:grass
 
 editor block demiurge:stone
 
-editor object pickup demiurge:ak47
+editor object pickup demiurge:sks
 editor object pickup demiurge:body_armor
 editor object mob
 editor object spawn default
@@ -195,6 +195,9 @@ names, matching the current `ItemCatalog` behavior.
 
 `editor status` prints the current mode, selected palette entry, brush settings, and selection.
 `map status` prints source path, dirty state, source hash, last bake hash, and last bake path.
+
+For headless or batch rebakes, run `dotnet run --project tools/MapBaker/MapBaker.csproj -- maps`.
+Append map names after the root to bake only those maps.
 
 Grass is the default automatic terrain fill. Additive CSG derives surface material from its local
 slope: grass through the 55-degree movement limit and stone above it. Explicitly selecting dirt or
@@ -767,7 +770,7 @@ Use explicit DTO vector types rather than relying on reflection-based serializat
 - Canonical archetype ID
 - Integer anchor cell
 - Yaw
-- Optional canonical mob weapon ID; missing values retain the AK-47 default
+- Optional canonical mob weapon ID; missing values use the active datapack's NPC default
 - Optional group ID
 - Kind-specific properties through versioned typed fields, not an unbounded string dictionary
 
@@ -782,9 +785,10 @@ demiurge:grass
 demiurge:dirt
 demiurge:stone
 
-demiurge:ak47
-demiurge:awp
-demiurge:glock
+demiurge:sks
+demiurge:ppsh
+demiurge:mosin
+demiurge:dp27
 demiurge:body_armor
 
 demiurge:mob

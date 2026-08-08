@@ -38,7 +38,8 @@ dotnet build DemiurgeSharp.slnx --no-incremental
 
 Single player starts a real authoritative server inside the client process and connects through the
 normal network paths. It currently loads the authored `conquest` source map, puts the player on team
-1 with an AK-47, and creates 16 AK/grenade/shovel NPCs per team around the authored team spawns.
+1 with the datapack's default Mosin, and creates 16 PPSh/SKS/Mosin NPCs per team around the authored
+team spawns.
 This is the fastest integrated AI, gameplay, and server test:
 
 ```bash
@@ -164,7 +165,7 @@ Successful mob spawns print an actor ID such as `@60000`; pass that value to `eq
 spawns print a network object ID such as `#1`. Runtime spawns and equipment changes are temporary
 session state and are not written by `map save`. Editor placements instead use stable eight-character
 IDs: `editor object list` prints them, and `editor object equip <placement-id> <weapon>` persists a
-mob weapon in the source and runtime bake. Existing mobs default to an AK-47.
+mob weapon in the source and runtime bake. Existing mobs use the active datapack's NPC default.
 
 Session commands:
 
@@ -219,6 +220,7 @@ logic remains headless and testable.
 - [docs/RECIPES.md](docs/RECIPES.md): checklists for adding replicated gameplay features
 - [docs/EDITOR.md](docs/EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
 - [docs/COMMANDS.md](docs/COMMANDS.md): terminal command reference
+- [docs/DATAPACKS.md](docs/DATAPACKS.md): JSON item, weapon, ballistics, and compatibility format
 - [docs/voxel/](docs/voxel/): voxel data, generation, meshing, and collision
 - [docs/networking/](docs/networking/): replication and gameplay message flows
 - [docs/stride/](docs/stride/): Stride-specific runtime and rendering findings

@@ -158,7 +158,7 @@ public class ShotEffectsScript : SyncScript
     private void OnLocalShot(System.Numerics.Vector3 origin, System.Numerics.Vector3 direction)
     {
         if (subscribed is not { IsArmed: true } local) return;   // ShotFired implies armed, but be safe
-        if (local.Weapon!.Item.Type == ItemType.Grenade) return; // replicated sphere is the visual
+        if (ItemCatalog.HasBehavior(local.Weapon!.Item.Type, ItemBehavior.Grenade)) return;
 
         // Only YOUR shots shake YOUR camera. Firing is the one trauma source the player causes on
         // purpose, so it is deliberately small: enough to punch, little enough to hold a burst on
@@ -173,25 +173,13 @@ public class ShotEffectsScript : SyncScript
     /// toward the clamp faster than it decays, which is the point; hosing should cost you the sight
     /// picture.
     /// </summary>
-    private static float ShotTrauma(ItemType weapon) => weapon switch
-    {
-        ItemType.AWP or ItemType.Mosin => 0.75f,
-        ItemType.Glock => 0.26f,
-        // Twenty additions per second would pin the shared trauma pool at one if this inherited a
-        // rifle's 0.40. The small per-round impulse still stacks into a burst without turning a
-        // 35-round magazine into continuous full-strength camera shake.
-        ItemType.Ppsh => 0.12f,
-        // Half a rifle's. Nine rounds a second into a shared pool that decays slower than it fills
-        // means the full-strength impulse never gets a gap to drain through, and the gun is heavy
-        // enough that it should be the steadiest thing in the game to hold on target anyway.
-        ItemType.Dp27 => 0.20f,
-        _ => 0.40f,
-    };
+    private static float ShotTrauma(ItemType weapon)
+        => ItemCatalog.Get(weapon).Presentation.CameraTrauma;
 
     private void OnRemoteFired(PlayerFiredData data)
     {
         if (data.PlayerId == Network.ClientId) return;   // our shots already played predictively
-        if (data.Weapon == ItemType.Grenade) return;
+        if (ItemCatalog.HasBehavior(data.Weapon, ItemBehavior.Grenade)) return;
         // Unknown off-the-wire weapon types cannot provide a meaningful projectile speed.
         if (WeaponConfig.Get(data.Weapon) is null) return;
         PlayEffects(data.Origin, data.Direction, data.Weapon, data.PlayerId);

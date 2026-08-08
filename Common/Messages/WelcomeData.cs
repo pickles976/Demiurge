@@ -14,16 +14,24 @@ namespace Demiurge
         /// </summary>
         public Guid ChunkToken;
 
+        /// <summary>The wire protocol and resolved gameplay data the server is running.</summary>
+        public int ProtocolVersion;
+        public string GameplayHash;
+
         public void Serialize(Message message)
         {
             message.AddUShort(ClientId);
             message.AddBytes(ChunkToken.ToByteArray());
+            message.AddInt(ProtocolVersion);
+            message.AddString(GameplayHash ?? string.Empty);
         }
 
         public void Deserialize(Message message)
         {
             ClientId = message.GetUShort();
             ChunkToken = new Guid(message.GetBytes());
+            ProtocolVersion = message.GetInt();
+            GameplayHash = message.GetString();
         }
     }
 }

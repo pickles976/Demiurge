@@ -125,14 +125,18 @@ public class ObjectViewFactory : IDisposable
     private Entity CreateMortarRound()
         => new()
         {
-            new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(ItemType.Grenade))),
+            new ModelComponent(GLTFLoader.LoadModel(
+                game,
+                ItemCosmetics.Model(ItemCatalog.RequireBehavior(ItemBehavior.Grenade)))),
             new MortarRoundScript { Priority = 10 },
         };
 
     private Entity CreateThrownGrenade()
         => new()
         {
-            new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.Model(ItemType.Grenade))),
+            new ModelComponent(GLTFLoader.LoadModel(
+                game,
+                ItemCosmetics.Model(ItemCatalog.RequireBehavior(ItemBehavior.Grenade)))),
             new ThrownGrenadeScript { Priority = 10 },
         };
 

@@ -17,8 +17,8 @@ public class WeaponEffectivenessTests
         // The property that makes rate a real choice: recoil must vary CONTINUOUSLY with rate. A
         // step model returns the same dispersion for every rate on a weapon's ladder, which silently
         // reduces rate selection to "always pick the fastest".
-        var carbine = BallisticsConfig.Get(WeaponBallisticsProfile.Carbine);
-        int magazine = WeaponConfig.Require(ItemType.Ak47).MagazineCapacity;
+        var carbine = BallisticsConfig.Get("demiurge:carbine");
+        int magazine = WeaponConfig.Require(ItemType.Sks).MagazineCapacity;
 
         float previous = -1f;
         foreach (float rate in new[] { 1f, 2.5f, 5f, 10f })
@@ -35,7 +35,7 @@ public class WeaponEffectivenessTests
         => Assert.Equal(
             0f,
             WeaponEffectiveness.AverageRecoilMoa(
-                BallisticsConfig.Get(WeaponBallisticsProfile.Carbine),
+                BallisticsConfig.Get("demiurge:carbine"),
                 magazineCapacity: 30,
                 shotsPerSecond: 0f));
 
@@ -53,8 +53,8 @@ public class WeaponEffectivenessTests
     [Fact]
     public void RequestingLessThanCyclicIsHonoured()
     {
-        var ak = WeaponConfig.Require(ItemType.Ak47);
-        float slow = WeaponEffectiveness.SustainedShotsPerSecond(ak, requestedShotsPerSecond: 1f);
+        var sks = WeaponConfig.Require(ItemType.Sks);
+        float slow = WeaponEffectiveness.SustainedShotsPerSecond(sks, requestedShotsPerSecond: 1f);
         Assert.True(slow <= 1f);
     }
 
@@ -84,7 +84,7 @@ public class WeaponEffectivenessTests
         float previous = float.MaxValue;
         for (float range = 5f; range <= 200f; range += 5f)
         {
-            float now = Best(ItemType.Ak47, range).DamagePerSecond;
+            float now = Best(ItemType.Sks, range).DamagePerSecond;
             Assert.True(now <= previous + 1e-3f, $"non-monotonic at {range} m");
             previous = now;
         }
@@ -93,8 +93,8 @@ public class WeaponEffectivenessTests
     [Fact]
     public void CoverReducesEffectivenessWithoutEliminatingIt()
     {
-        float open = Best(ItemType.Ak47, 40f, exposure: 1f).DamagePerSecond;
-        float peeking = Best(ItemType.Ak47, 40f, exposure: 0.2f).DamagePerSecond;
+        float open = Best(ItemType.Sks, 40f, exposure: 1f).DamagePerSecond;
+        float peeking = Best(ItemType.Sks, 40f, exposure: 0.2f).DamagePerSecond;
 
         Assert.True(peeking < open, "a target in cover must be harder to kill");
         Assert.True(peeking > 0f, "a target that can shoot back can be shot at");
@@ -127,8 +127,8 @@ public class WeaponEffectivenessTests
     [Fact]
     public void FireDisciplineEmerges_SlowAtRange_FastUpClose()
     {
-        float far = Best(ItemType.Ak47, 150f).ShotsPerSecond;
-        float near = Best(ItemType.Ak47, 10f).ShotsPerSecond;
+        float far = Best(ItemType.Sks, 150f).ShotsPerSecond;
+        float near = Best(ItemType.Sks, 10f).ShotsPerSecond;
 
         Assert.True(
             far < near,
@@ -155,10 +155,10 @@ public class WeaponEffectivenessTests
         // an answer at all.
         for (float range = 5f; range <= 400f; range += 5f)
         {
-            var solution = Best(ItemType.Ak47, range);
+            var solution = Best(ItemType.Sks, range);
             if (solution.ShotsPerSecond <= 0f) continue;
 
-            float perRound = solution.HitProbability * WeaponConfig.Require(ItemType.Ak47).Damage;
+            float perRound = solution.HitProbability * WeaponConfig.Require(ItemType.Sks).Damage;
             Assert.True(
                 perRound >= WeaponEffectiveness.MinimumExpectedDamagePerRound,
                 $"fired at {range} m for {perRound:0.00} HP per round");

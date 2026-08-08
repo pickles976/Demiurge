@@ -5,9 +5,9 @@ public class CommandParserTests
     [Fact]
     public void ItemCatalogResolvesCanonicalNamesAndAliases()
     {
-        Assert.True(ItemCatalog.TryResolve("demiurge:ak47", out var canonical));
-        Assert.True(ItemCatalog.TryResolve("AK-47", out var alias));
-        Assert.Equal(ItemType.Ak47, canonical);
+        Assert.True(ItemCatalog.TryResolve("demiurge:ppsh", out var canonical));
+        Assert.True(ItemCatalog.TryResolve("PPSh-41", out var alias));
+        Assert.Equal(ItemType.Ppsh, canonical);
         Assert.Equal(canonical, alias);
         Assert.Equal("demiurge:body_armor", ItemCatalog.Id(ItemType.BodyArmor));
     }
@@ -47,10 +47,10 @@ public class CommandParserTests
     [Fact]
     public void ParsesPickupWithCanonicalItemAndRelativePosition()
     {
-        var result = GameCommandParser.Parse("spawn pickup demiurge:glock ~3 ~-2.5");
+        var result = GameCommandParser.Parse("spawn pickup demiurge:ppsh ~3 ~-2.5");
 
         var command = Assert.IsType<SpawnPickupCommand>(result.Command);
-        Assert.Equal(ItemType.Glock, command.Item);
+        Assert.Equal(ItemType.Ppsh, command.Item);
         Assert.True(command.Position!.Value.X.Relative);
         Assert.Equal(13f, command.Position.Value.X.Resolve(10f));
         Assert.Equal(17.5f, command.Position.Value.Z.Resolve(20f));
@@ -60,12 +60,12 @@ public class CommandParserTests
     public void ParsesSelfAndNumericActorSelectors()
     {
         var self = Assert.IsType<EquipCommand>(
-            GameCommandParser.Parse("equip @s ak").Command);
+            GameCommandParser.Parse("equip @s sks").Command);
         var mob = Assert.IsType<EquipCommand>(
             GameCommandParser.Parse("equip @60002 body-armor").Command);
 
         Assert.True(self.Target.IsSelf);
-        Assert.Equal(ItemType.Ak47, self.Item);
+        Assert.Equal(ItemType.Sks, self.Item);
         Assert.False(mob.Target.IsSelf);
         Assert.Equal((ushort)60002, mob.Target.ActorId);
         Assert.Equal(ItemType.BodyArmor, mob.Item);
@@ -79,7 +79,7 @@ public class CommandParserTests
     [InlineData("spawn")]
     [InlineData("spawn mob 1")]
     [InlineData("spawn pickup missing")]
-    [InlineData("equip 60000 ak47")]
+    [InlineData("equip 60000 missing")]
     [InlineData("spawn mob NaN 0")]
     [InlineData("spawn mob Infinity 0")]
     [InlineData("\"spawn mob")]
@@ -103,11 +103,11 @@ public class CommandParserTests
     [Fact]
     public void SuggestsPickupGrammarWhenAnItemIsUsedAsTheSpawnKind()
     {
-        var result = GameCommandParser.Parse("spawn ak47 0 0");
+        var result = GameCommandParser.Parse("spawn sks 0 0");
 
         Assert.False(result.Success);
         Assert.Equal(
-            "'ak47' is an item. Use 'spawn pickup demiurge:ak47 <x> <z>'",
+            "'sks' is an item. Use 'spawn pickup demiurge:sks <x> <z>'",
             result.Error);
     }
 }

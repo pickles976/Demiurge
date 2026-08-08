@@ -116,7 +116,7 @@ public class RemotePlayer : Player
     public int Ammo => ActiveWeapon?.Ammo ?? 0;
     public bool IsReloading => ActiveWeapon?.ReloadTicksLeft > 0;
     public float CurrentSpreadMoa => IsArmed
-        ? Weapon!.Item.Type == ItemType.Grenade
+        ? ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade)
             ? 0f
             : ActiveWeapon!.Spread.TotalMoa(State, BallisticsConfig.Require(Weapon.Item.Type))
         : 0f;
@@ -259,7 +259,7 @@ public class RemotePlayer : Player
         var toTarget = aimPoint - origin;
         if (toTarget.LengthSquared() < 1e-6f) return;
         var aimDirection = Vector3.Normalize(toTarget);
-        bool throwingGrenade = Weapon!.Item.Type == ItemType.Grenade;
+        bool throwingGrenade = ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade);
         var ballistics = BallisticsConfig.Require(Weapon.Item.Type);
         var direction = throwingGrenade
             ? aimDirection
@@ -295,7 +295,7 @@ public class RemotePlayer : Player
     public void TryReload()
     {
         if (!IsArmed
-            || Weapon!.Item.Type == ItemType.Grenade
+            || ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade)
             || IsReloading
             || Ammo == Stats.MagazineCapacity)
             return;
@@ -341,10 +341,10 @@ public class RemotePlayer : Player
                 if (predicted.CooldownTicks > 0) predicted.CooldownTicks -= 1f;
                 if (predicted.ReloadTicksLeft > 0
                     && --predicted.ReloadTicksLeft == 0
-                    && predicted.Object.Item.Type != ItemType.Grenade)
+                    && !ItemCatalog.HasBehavior(predicted.Object.Item.Type, ItemBehavior.Grenade))
                     predicted.Ammo = predicted.Stats.MagazineCapacity;
             }
-            if (IsArmed && Weapon!.Item.Type != ItemType.Grenade)
+            if (IsArmed && !ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade))
                 ActiveWeapon!.Spread.Advance(
                     State,
                     BallisticsConfig.Require(Weapon!.Item.Type),

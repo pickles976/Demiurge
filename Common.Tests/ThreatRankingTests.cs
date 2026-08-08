@@ -17,9 +17,9 @@ public class ThreatRankingTests
     [Fact]
     public void TheBoundIsNeverBelowTheTrueContribution()
     {
-        var me = new Combatant(ItemType.Ak47, 0f, 1f);
+        var me = new Combatant(ItemType.Sks, 0f, 1f);
 
-        foreach (var weapon in new[] { ItemType.Ppsh, ItemType.Ak47, ItemType.Sks, ItemType.Mosin })
+        foreach (var weapon in new[] { ItemType.Ppsh, ItemType.Sks, ItemType.Sks, ItemType.Mosin })
             for (float range = 5f; range <= 250f; range += 5f)
                 foreach (float exposure in new[] { 0f, 0.05f, 0.3f, 0.75f, 1f })
                 {
@@ -55,7 +55,7 @@ public class ThreatRankingTests
     {
         Span<ThreatBound> ranked = stackalloc ThreatBound[4];
         int count = ThreatRanking.Rank(
-            [At(ItemType.Ak47, 60f), At(ItemType.Ak47, 10f), At(ItemType.Ak47, 120f), At(ItemType.Ak47, 30f)],
+            [At(ItemType.Sks, 60f), At(ItemType.Sks, 10f), At(ItemType.Sks, 120f), At(ItemType.Sks, 30f)],
             ranked);
 
         for (int i = 1; i < count; i++)
@@ -65,7 +65,7 @@ public class ThreatRankingTests
     [Fact]
     public void AnEnemyLookingElsewhereRanksLower()
     {
-        var focused = At(ItemType.Ak47, 40f);
+        var focused = At(ItemType.Sks, 40f);
         var distracted = focused with { TheirTargetingLikelihood = 0.05f };
 
         Assert.True(ThreatRanking.UpperBound(distracted) < ThreatRanking.UpperBound(focused));
@@ -76,7 +76,7 @@ public class ThreatRankingTests
     {
         Span<ThreatBound> ranked = stackalloc ThreatBound[2];
         int count = ThreatRanking.Rank(
-            [At(ItemType.Ak47, 60f), At(ItemType.Ak47, 10f), At(ItemType.Ak47, 120f)],
+            [At(ItemType.Sks, 60f), At(ItemType.Sks, 10f), At(ItemType.Sks, 120f)],
             ranked);
 
         Assert.Equal(2, count);

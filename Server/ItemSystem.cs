@@ -70,7 +70,7 @@ namespace Demiurge.GameServer
         {
             ItemType primary = primaryWeapon ?? DefaultPrimary(actor);
             SpawnHotbar(actor, primary, HotbarSlot.Primary);
-            SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
+            SpawnHotbar(actor, ItemCatalog.RequireBehavior(ItemBehavior.Shovel), HotbarSlot.Shovel);
             if (CarriesGrenades(actor, primary)) SpawnGrenades(actor);
             actor.Hotbar = HotbarSlot.Primary;
         }
@@ -94,11 +94,14 @@ namespace Demiurge.GameServer
             => !actor.IsMob || NpcSquadLoadout.CarriesGrenades(primary);
 
         private void SpawnGrenades(ServerPlayer actor)
-            => SpawnHotbar(
+        {
+            ItemType grenade = ItemCatalog.RequireBehavior(ItemBehavior.Grenade);
+            SpawnHotbar(
                 actor,
-                ItemType.Grenade,
+                grenade,
                 HotbarSlot.Grenade,
-                ammo: WeaponConfig.Require(ItemType.Grenade).MagazineCapacity);
+                ammo: WeaponConfig.Require(grenade).MagazineCapacity);
+        }
 
         /// <summary>
         /// Restores every equipped weapon to a full magazine after a death. Consumed default slots
@@ -135,11 +138,12 @@ namespace Demiurge.GameServer
                     primary = item.Item.Type;
                 }
                 hasGrenades |= pair.Key == EquipSlot.HotbarGrenade
-                    && item.Item.Type == ItemType.Grenade;
+                    && ItemCatalog.HasBehavior(item.Item.Type, ItemBehavior.Grenade);
             }
 
             if (!hasPrimary) SpawnHotbar(actor, primary, HotbarSlot.Primary);
-            if (!hasShovel) SpawnHotbar(actor, ItemType.Shovel, HotbarSlot.Shovel);
+            if (!hasShovel)
+                SpawnHotbar(actor, ItemCatalog.RequireBehavior(ItemBehavior.Shovel), HotbarSlot.Shovel);
 
             // A stack he still has was refilled by the loop above, whoever he is. This only decides
             // who is ISSUED a new one, so a man who came by grenades some other way keeps them

@@ -101,7 +101,6 @@ namespace Demiurge.GameClient
         public const float FirstPersonScale = 1.5f;
         public static readonly Vector3 HipGripOffset = new(0.30f, -0.34f, -0.38f);
         public static readonly Vector3 AimGripOffset = new(0f, -0.22f, -0.30f);
-        public static readonly Vector3 GlockAimGripOffset = new(0f, -0.22f, -0.55f);
         public static readonly Vector3 GrenadePullbackGripOffset = new(0.42f, -0.30f, -0.10f);
 
         /// <summary>
@@ -155,13 +154,10 @@ namespace Demiurge.GameClient
             => IsTool(type) ? ToolGripOffset : HipGripOffset;
 
         /// <summary>
-        /// The hand-tuned ADS position, used by weapons with no sight locators. The compact Glock
-        /// needs extra eye relief; using this one entry point keeps its rendered model and muzzle
-        /// origin together.
+        /// The hand-tuned ADS position, used by items with no sight locators.
         /// </summary>
         public static Vector3 FallbackAimGripOffset(ItemType type)
             => IsTool(type) ? ToolGripOffset
-             : type == ItemType.Glock ? GlockAimGripOffset
              : AimGripOffset;
 
         /// <summary>Held, but not a gun — the weapon trait table is what says so.</summary>
@@ -180,7 +176,7 @@ namespace Demiurge.GameClient
         /// is already posing the arm.
         /// </summary>
         public static Quaternion FirstPersonRestRotation(ItemType type)
-            => type == ItemType.Shovel
+            => ItemCatalog.HasBehavior(type, ItemBehavior.Shovel)
                 ? Quaternion.CreateFromAxisAngle(Vector3.UnitY, -MathF.PI / 3f)   // -60 degrees
                 : ItemConfig.IsCarryable(type)
                     ? Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 6f)   // 30 degrees

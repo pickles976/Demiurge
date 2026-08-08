@@ -19,7 +19,7 @@ public class SquadAllocationPropertyTests
     private const int Cases = 400;
 
     private static readonly ItemType[] Weapons =
-        [ItemType.Ppsh, ItemType.Ak47, ItemType.Sks, ItemType.Mosin];
+        [ItemType.Ppsh, ItemType.Sks, ItemType.Sks, ItemType.Mosin];
 
     private static (SquadPlanInput Input, SquadMemberState[] Members) Squad(Random random)
     {

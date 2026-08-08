@@ -319,7 +319,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  editor object set-team <placement-id|selected> <positive-integer>",
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
                 "A crate is the same pickup drawn as a supply crate; it rests still on the ground.",
-                "Examples: editor object pickup demiurge:ak47 | editor object crate demiurge:dp27",
+                "Examples: editor object pickup demiurge:sks | editor object crate demiurge:dp27",
                 "Left click places the selected archetype and reports its stable placement ID.",
             ],
             "session" =>

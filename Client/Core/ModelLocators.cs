@@ -28,7 +28,7 @@ namespace Demiurge.GameClient
         public readonly record struct Pose(Vector3 Translation, Quaternion Rotation);
 
         // (model content path optionally suffixed @clip, locator name) -> pose. Content
-        // paths are keyed the way GLTFLoader keys them ("models/ak47"), so an asset path
+        // paths are keyed the way GLTFLoader keys them (for example, "models/sks"), so an asset path
         // converts the same way.
         private readonly Dictionary<(string Model, string Name), Pose> poses = new();
 

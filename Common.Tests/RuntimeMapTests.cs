@@ -112,12 +112,12 @@ public sealed class RuntimeMapTests
                     RuntimePlacementKind.PlayerSpawn,
                     new Vector3(0, 1, 0),
                     Team: 2),
-                new RuntimePlacement(RuntimePlacementKind.Pickup, new Vector3(2, 1, 2), Item: ItemType.Ak47),
+                new RuntimePlacement(RuntimePlacementKind.Pickup, new Vector3(2, 1, 2), Item: ItemType.Sks),
                 new RuntimePlacement(
                     RuntimePlacementKind.Mob,
                     new Vector3(-2, 1, -2),
                     Yaw: 1.5f,
-                    Item: ItemType.Glock,
+                    Item: ItemType.Ppsh,
                     Team: 2),
                 new RuntimePlacement(
                     RuntimePlacementKind.Flag,

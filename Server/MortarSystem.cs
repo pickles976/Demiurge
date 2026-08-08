@@ -71,7 +71,8 @@ public sealed class MortarSystem
 
         // The tube is empty until it is loaded again — five seconds during which the gunner is doing
         // nothing else, which is the cost of the weapon.
-        gunner.ReloadDoneTick = tick + (uint)WeaponConfig.Require(ItemType.Mortar).ReloadTicks;
+        gunner.ReloadDoneTick = tick
+            + (uint)WeaponConfig.Require(ItemCatalog.RequireBehavior(ItemBehavior.Mortar)).ReloadTicks;
 
         var bomb = objects.Spawn(ObjectType.MortarRound, NetComponents.Transform, muzzle);
         inFlight.Add(new Bomb

@@ -252,7 +252,7 @@ return 0;
 // ValidationMode.Skip is NOT enough on its own: a null inside a translation/rotation/
 // scale array fails while System.Text.Json is still READING the number, long before
 // any validation rule gets a say, so the whole build dies on one bad export. (A
-// Blockbench 5.1.6 export of sniper_rifle.gltf did exactly that, writing
+// One malformed Blockbench 5.1.6 export did exactly that, writing
 // "scale":[null,null,null] on its locator nodes.) A null component is the exporter
 // failing to write a value, so the identity default for that channel is the honest
 // reading of it — and it is repaired loudly, not silently.
@@ -341,7 +341,7 @@ static bool HasMeshDescendant(SharpGLTF.Schema2.Node node)
 // That same baking is why the offsets are directly usable: vertices end up expressed in
 // root space, which is the space these transforms are measured in.
 //
-// MESH-LESS is the load-bearing filter, not a tidiness one — sniper_rifle.gltf has a
+// MESH-LESS is the load-bearing filter, not a tidiness one — a malformed export can have a
 // MESH node named `barrel` as well as a locator named `barrel`, and only the second is
 // a locator. Blockbench also writes each locator as a PAIR of same-named nodes, a parent
 // holding the position and a child holding an internal unit scale; both resolve to the

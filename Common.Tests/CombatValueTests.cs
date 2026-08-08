@@ -48,9 +48,9 @@ public class CombatValueTests
     {
         // This is why Entrench has value at all, and why it has NO value once you are already
         // protected: the term it improves is already at its floor.
-        var me = Man(ItemType.Ak47);
-        float exposed = CombatValue.Taken(me, [Duel(ItemType.Ak47, 40f, myExposure: 1f)]);
-        float behindCover = CombatValue.Taken(me, [Duel(ItemType.Ak47, 40f, myExposure: 0.15f)]);
+        var me = Man(ItemType.Sks);
+        float exposed = CombatValue.Taken(me, [Duel(ItemType.Sks, 40f, myExposure: 1f)]);
+        float behindCover = CombatValue.Taken(me, [Duel(ItemType.Sks, 40f, myExposure: 0.15f)]);
 
         Assert.True(behindCover < exposed);
         Assert.True(behindCover >= 0f);
@@ -61,10 +61,10 @@ public class CombatValueTests
     {
         // The castle case. Going from 5% exposed to 2% exposed is worth almost nothing, so any
         // action that costs time beats it. No "is there cover nearby" check is involved.
-        var me = Man(ItemType.Ak47);
-        float alreadySafe = CombatValue.Taken(me, [Duel(ItemType.Ak47, 40f, myExposure: 0.05f)]);
-        float dugIn = CombatValue.Taken(me, [Duel(ItemType.Ak47, 40f, myExposure: 0.02f)]);
-        float inTheOpen = CombatValue.Taken(me, [Duel(ItemType.Ak47, 40f, myExposure: 1f)]);
+        var me = Man(ItemType.Sks);
+        float alreadySafe = CombatValue.Taken(me, [Duel(ItemType.Sks, 40f, myExposure: 0.05f)]);
+        float dugIn = CombatValue.Taken(me, [Duel(ItemType.Sks, 40f, myExposure: 0.02f)]);
+        float inTheOpen = CombatValue.Taken(me, [Duel(ItemType.Sks, 40f, myExposure: 1f)]);
 
         float gainWhenSafe = alreadySafe - dugIn;
         float gainWhenExposed = inTheOpen - dugIn;
@@ -79,7 +79,7 @@ public class CombatValueTests
     {
         // The mechanism the whole squad layer rests on. If this ever stops being true, bounding
         // stops paying and the squad reverts to standing still.
-        var me = Man(ItemType.Ak47);
+        var me = Man(ItemType.Sks);
         float unsuppressed = CombatValue.Taken(me, [Duel(ItemType.Mosin, 80f)]);
         float suppressed = CombatValue.Taken(
             me,
@@ -93,9 +93,9 @@ public class CombatValueTests
     [Fact]
     public void AnEnemyLookingElsewhereIsLessDangerous()
     {
-        var me = Man(ItemType.Ak47);
+        var me = Man(ItemType.Sks);
         var engaged = new Engagement(
-            50f, ItemType.Ak47, 0f, TargetExposure.Full, SelfExposure.Full,
+            50f, ItemType.Sks, 0f, TargetExposure.Full, SelfExposure.Full,
             TheirTargetingLikelihood: 1f);
         var distracted = engaged with { TheirTargetingLikelihood = 0.1f };
 
@@ -117,14 +117,14 @@ public class CombatValueTests
     [Fact]
     public void MoreEnemiesIsStrictlyWorse()
     {
-        var me = Man(ItemType.Ak47);
-        var one = new[] { Duel(ItemType.Ak47, 50f) };
-        var three = new[] { Duel(ItemType.Ak47, 50f), Duel(ItemType.Ak47, 55f), Duel(ItemType.Ak47, 60f) };
+        var me = Man(ItemType.Sks);
+        var one = new[] { Duel(ItemType.Sks, 50f) };
+        var three = new[] { Duel(ItemType.Sks, 50f), Duel(ItemType.Sks, 55f), Duel(ItemType.Sks, 60f) };
 
         Assert.True(CombatValue.Taken(me, three) > CombatValue.Taken(me, one));
     }
 
     [Fact]
     public void NoEnemiesScoresZero()
-        => Assert.Equal(0f, CombatValue.Score(Man(ItemType.Ak47), [], CombatValue.DefaultAggression));
+        => Assert.Equal(0f, CombatValue.Score(Man(ItemType.Sks), [], CombatValue.DefaultAggression));
 }

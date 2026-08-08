@@ -27,7 +27,7 @@ public readonly record struct RuntimePlacement(
 
 public sealed class RuntimeMap
 {
-    public const int CurrentFormatVersion = 2;
+    public const int CurrentFormatVersion = 3;
 
     public required Guid MapId { get; init; }
     public required string Name { get; init; }

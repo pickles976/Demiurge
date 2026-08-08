@@ -1,16 +1,5 @@
 namespace Demiurge
 {
-    public enum WeaponBallisticsProfile
-    {
-        SniperRifle,
-        SemiAutomaticRifle,
-        Carbine,
-        Pistol,
-        Throwable,
-        MachineGun,
-        Mortar,
-    }
-
     /// <summary>
     /// Projectile, accuracy, and recoil characteristics shared by a weapon class.
     /// MOA values describe the diameter of the circle containing 95% of shots.
@@ -73,75 +62,9 @@ namespace Demiurge
         public const float StanceChangeMoa = 30f;
         public const float StanceChangeSeconds = 0.5f;
 
-        public static WeaponBallisticsProfile? ProfileFor(ItemType type)
-            => WeaponConfig.Get(type)?.BallisticsProfile;
+        public static string? ProfileFor(ItemType type) => WeaponConfig.Get(type)?.BallisticsId;
 
-        public static BallisticsStats Get(WeaponBallisticsProfile profile) => profile switch
-        {
-            WeaponBallisticsProfile.SniperRifle => new BallisticsStats(
-                ProjectileSpeed: 850f,
-                BenchMoa: 2f,
-                RecoilPerShotMoa: 70f,
-                RecoilDecayMoaPerSecond: 70f,
-                RecoilCapMoa: 70f,
-                SightingMoa: 60f),
-            WeaponBallisticsProfile.SemiAutomaticRifle => new BallisticsStats(
-                ProjectileSpeed: 800f,
-                BenchMoa: 3f,
-                RecoilPerShotMoa: 32f,
-                RecoilDecayMoaPerSecond: 40f,
-                RecoilCapMoa: 190f,
-                SightingMoa: 150f),
-            WeaponBallisticsProfile.Carbine => new BallisticsStats(
-                ProjectileSpeed: 715f,
-                BenchMoa: 4f,
-                RecoilPerShotMoa: 36f,
-                RecoilDecayMoaPerSecond: 30f,
-                RecoilCapMoa: 220f,
-                SightingMoa: 200f),
-            WeaponBallisticsProfile.Pistol => new BallisticsStats(
-                ProjectileSpeed: 375f,
-                BenchMoa: 8f,
-                RecoilPerShotMoa: 30f,
-                RecoilDecayMoaPerSecond: 35f,
-                RecoilCapMoa: 150f,
-                SightingMoa: 400f),
-            // The same full-power cartridge as the bolt gun, out of a shorter barrel: every term is
-            // the sniper profile's, moved a little the wrong way. Speed and bench accuracy are the
-            // barrel; the recoil terms are not, and they are why this is a profile of its own rather
-            // than the sniper row reused. A nine-kilo gun firing 550 rounds a minute barely moves per
-            // shot and never settles between them, so the per-shot kick is small and the CEILING is
-            // what a sustained burst actually runs into — the opposite shape to a rifle that kicks
-            // hard once and recovers.
-            WeaponBallisticsProfile.MachineGun => new BallisticsStats(
-                ProjectileSpeed: 800f,
-                BenchMoa: 3f,
-                RecoilPerShotMoa: 26f,
-                RecoilDecayMoaPerSecond: 55f,
-                RecoilCapMoa: 200f,
-                // Iron sights on a long sight radius, held by a weapon heavy enough to stay where it
-                // is put — better than a carbine's, well short of the Mosin's glass.
-                SightingMoa: 150f),
-            WeaponBallisticsProfile.Throwable => new BallisticsStats(
-                ProjectileSpeed: GrenadeConfig.ThrowSpeed,
-                BenchMoa: 0f,
-                RecoilPerShotMoa: 0f,
-                RecoilDecayMoaPerSecond: 0f,
-                RecoilCapMoa: 0f,
-                SightingMoa: 0f),
-            // A lobbed bomb, not a shot: the speed is solved per round from the range the gunner
-            // picked (MortarConfig), so the figure here is only the fallback any code that asks a
-            // mortar for "its" muzzle velocity would get. Accuracy terms are zero because a mortar
-            // does not miss by dispersion around a line — it misses by landing somewhere else.
-            WeaponBallisticsProfile.Mortar => new BallisticsStats(
-                ProjectileSpeed: MortarConfig.NominalSpeed,
-                BenchMoa: 0f,
-                RecoilPerShotMoa: 0f,
-                RecoilDecayMoaPerSecond: 0f,
-                RecoilCapMoa: 0f,
-                SightingMoa: 0f),
-            _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, null),
-        };
+        public static BallisticsStats Get(string id) => ItemCatalog.Registry.RequireBallistics(id);
 
         public static BallisticsStats? Get(ItemType type)
             => ProfileFor(type) is { } profile ? Get(profile) : null;

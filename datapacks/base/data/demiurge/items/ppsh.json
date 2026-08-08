@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:ppsh",
+  "networkId": 8,
+  "displayName": "PPSh-41",
+  "aliases": ["ppsh", "ppsh-41", "ppsh41"],
+  "category": "equippable",
+  "slot": "hand",
+  "hotbar": "primary",
+  "behavior": "firearm",
+  "weapon": {
+    "magazineCapacity": 35,
+    "roundsPerMinute": 1200,
+    "reloadSeconds": 1.5,
+    "damage": 18,
+    "ballistics": "demiurge:pistol",
+    "fireMode": "automatic"
+  },
+  "presentation": {
+    "model": "assets/models/ppsh.gltf",
+    "shotSounds": ["assets/sfx/ppsh_shot_1.wav", "assets/sfx/ppsh_shot_2.wav"],
+    "reloadSound": "assets/sfx/ppsh_reload.wav",
+    "distantReportSound": "assets/sfx/ppsh_shot_far.wav",
+    "reloadVolume": 0.6,
+    "cameraTrauma": 0.12,
+    "visualRecoil": { "back": 0.04, "lift": 0.008, "pitchDegrees": 3.5 },
+    "adsRecoilScale": 0.3
+  }
+}

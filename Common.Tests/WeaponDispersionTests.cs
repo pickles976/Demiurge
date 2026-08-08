@@ -10,10 +10,10 @@ public class WeaponDispersionTests
     [Fact]
     public void SightingErrorOrdersWeaponsFromPrecisionToSpray()
     {
-        float sniper = BallisticsConfig.Get(WeaponBallisticsProfile.SniperRifle).SightingMoa;
-        float semiAuto = BallisticsConfig.Get(WeaponBallisticsProfile.SemiAutomaticRifle).SightingMoa;
-        float carbine = BallisticsConfig.Get(WeaponBallisticsProfile.Carbine).SightingMoa;
-        float pistol = BallisticsConfig.Get(WeaponBallisticsProfile.Pistol).SightingMoa;
+        float sniper = BallisticsConfig.Get("demiurge:sniper_rifle").SightingMoa;
+        float semiAuto = BallisticsConfig.Get("demiurge:semi_automatic_rifle").SightingMoa;
+        float carbine = BallisticsConfig.Get("demiurge:carbine").SightingMoa;
+        float pistol = BallisticsConfig.Get("demiurge:pistol").SightingMoa;
 
         Assert.True(sniper < semiAuto, "a scoped bolt gun must aim tighter than a semi-automatic rifle");
         Assert.True(semiAuto < carbine, "a marksman rifle must aim tighter than a carbine");
@@ -25,7 +25,7 @@ public class WeaponDispersionTests
     {
         // The point of the field: bench dispersion (2-8 MOA) is irrelevant next to how well a
         // person can hold the sights. If these were the same order, the field would be pointless.
-        var carbine = BallisticsConfig.Get(WeaponBallisticsProfile.Carbine);
+        var carbine = BallisticsConfig.Get("demiurge:carbine");
         Assert.True(
             carbine.SightingMoa > carbine.BenchMoa * 10f,
             $"sighting {carbine.SightingMoa} should dwarf bench {carbine.BenchMoa}");
@@ -33,5 +33,5 @@ public class WeaponDispersionTests
 
     [Fact]
     public void ThrowableHasNoSightingError()
-        => Assert.Equal(0f, BallisticsConfig.Get(WeaponBallisticsProfile.Throwable).SightingMoa);
+        => Assert.Equal(0f, BallisticsConfig.Get("demiurge:throwable").SightingMoa);
 }

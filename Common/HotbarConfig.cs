@@ -42,10 +42,6 @@ public static class HotbarConfig
         return hotbar != default;
     }
 
-    public static HotbarSlot SlotFor(ItemType type) => type switch
-    {
-        ItemType.Grenade => HotbarSlot.Grenade,
-        ItemType.Shovel => HotbarSlot.Shovel,
-        _ => HotbarSlot.Primary,
-    };
+    public static HotbarSlot SlotFor(ItemType type)
+        => ItemCatalog.TryGet(type)?.Hotbar ?? HotbarSlot.Primary;
 }

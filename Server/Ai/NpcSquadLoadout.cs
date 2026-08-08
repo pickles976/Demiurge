@@ -16,7 +16,7 @@ internal static class NpcSquadLoadout
     /// everything else already applies — MobSystem reads it off the gun in his hands to decide who
     /// closes — and a role field would be a second answer to the same question.
     /// </summary>
-    public const ItemType AssaultWeapon = ItemType.Ppsh;
+    public static ItemType AssaultWeapon => ItemConfig.DefaultAssaultWeapon;
 
     /// <summary>
     /// Who is issued grenades. The assault pair and nobody else: a grenade is a closing weapon and
@@ -34,7 +34,7 @@ internal static class NpcSquadLoadout
         int member = Math.Max(0, ordinal) % SquadBlackboard.MaximumMembers;
         if (member < AssaultWeaponsPerSquad) return AssaultWeapon;
         return member >= SquadBlackboard.MaximumMembers - MarksmenPerSquad
-            ? ItemType.Mosin
+            ? ItemConfig.DefaultMarksmanWeapon
             : ItemConfig.DefaultNpcPrimaryWeapon;
     }
 }
