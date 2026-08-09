@@ -86,20 +86,17 @@ public class ObjectViewFactory : IDisposable
         entity.Name = $"NetObject_{obj.NetworkId}";
 
         // View behavior per component the object HAS — the mask decides.
-        // Item+Transform sits in the world: the bob presenter OWNS the entity
-        // transform (so no NetTransformScript alongside). Item+Owner is worn:
-        // the attach presenter owns it instead. A crated pickup is the exception
-        // to the hover-and-spin: a supply crate rests where the server put it.
-        // A carryable joins the supply crate as an exception to the hover-and-spin: it was SET
-        // DOWN somewhere, deliberately, facing a particular way, and a pickup that turns on the spot
-        // would be lying about the one fact that matters most about it. NetTransformScript takes it
-        // instead, which applies the replicated yaw — the heading it was emplaced on.
-        bool bobs = isItem && !typedView && obj.Has.HasFlag(NetComponents.Transform)
-                    && !ItemConfig.IsCarryable(obj.Item.Type);
-        if (bobs) entity.Add(new PickupBobScript { Object = obj });
+        // Item+Transform sits in the world at the position and yaw the server replicated; Item+Owner
+        // is worn, and the attach presenter owns its transform instead.
+        //
+        // Nothing hovers or spins any more. A pickup used to float 0.4 m up and turn on the spot,
+        // which read as a spawned collectible; every weapon in the world now arrives by being SET
+        // DOWN or DROPPED, and where and which way round it landed is a fact about the fight. The
+        // supply crate and the carryable were already exceptions to the hover for exactly that
+        // reason — this makes their behaviour the rule rather than the special case.
         if (isItem && obj.Has.HasFlag(NetComponents.Owner))
             entity.Add(new ItemAttachScript { Object = obj, Mount = mount, Registry = players, CameraEntity = cameraEntity, WeaponView = weaponView, Locators = modelLocators, Priority = 25 });
-        if (!bobs && obj.Has.HasFlag(NetComponents.Transform)
+        if (obj.Has.HasFlag(NetComponents.Transform)
             && !obj.Has.HasFlag(NetComponents.Owner))
             entity.Add(new NetTransformScript { Object = obj });
         if (obj.Has.HasFlag(NetComponents.Health)) entity.Add(new HealthScaleScript { Object = obj });

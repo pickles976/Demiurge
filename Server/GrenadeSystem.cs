@@ -226,14 +226,21 @@ public sealed class GrenadeSystem
 
     private void Detonate(ActiveGrenade grenade, uint tick, IEnumerable<ServerPlayer> players)
     {
+        // Hole first, then casualties. The blast has to see a man to hurt him, so the wall it just
+        // blew through must be gone by the time anyone is checked against it.
+        Crater(terrainEdits, terrain, grenade.Position, GrenadeConfig.Blast);
+
         ApplyBlastDamage(
+            terrain,
             grenade.Position,
             players,
             tick,
             GrenadeConfig.Blast,
             victim => activityFeed?.ReportKill(grenade.Owner, victim));
 
-        Crater(terrainEdits, terrain, grenade.Position, GrenadeConfig.Blast);
+        // Same reason as the mortar: the fuse expires mid-tick, so a grenade still in the air has
+        // moved since its last broadcast and the burst belongs where it actually went off.
+        grenade.Object.Transform.Position = grenade.Position;
         objects.Despawn(grenade.Object.NetworkId);
     }
 
@@ -275,10 +282,15 @@ public sealed class GrenadeSystem
     }
 
     /// <summary>
-    /// Applies radial damage to every actor, including the thrower and other friendly actors.
-    /// There is deliberately no team or owner exclusion: grenade friendly fire is always enabled.
+    /// Applies radial damage to every actor the blast can both reach and see, including the thrower
+    /// and other friendly actors. There is deliberately no team or owner exclusion: grenade friendly
+    /// fire is always enabled.
+    ///
+    /// Range alone used to be the whole test, which killed men through walls and floors — the one
+    /// thing a trench is for. Terrain now blocks a blast the way it already blocked a bullet.
     /// </summary>
     internal static void ApplyBlastDamage(
+        ChunkMap terrain,
         Vector3 origin,
         IEnumerable<ServerPlayer> players,
         uint tick,
@@ -293,6 +305,10 @@ public sealed class GrenadeSystem
             float distance = Vector3.Distance(origin, player.Position);
             float fraction = blast.DamageFraction(distance);
             if (fraction <= 0f) continue;
+
+            // Cast only for those the falloff has already admitted: the rays are the expensive part
+            // and most of the world is out of range of any given bang.
+            if (!HasLineOfSight(terrain, origin, player)) continue;
 
             // The blow's own magnitude, which inside the lethal radius is everything a man has even
             // though the health assignment below does not go through a damage number. The ragdoll
@@ -328,6 +344,71 @@ public sealed class GrenadeSystem
                 killed?.Invoke(player);
             }
         }
+    }
+
+    /// <summary>
+    /// How far off the origin a sight ray starts. A bomb detonates ON a surface, and the crossing
+    /// <see cref="TerrainRaycast"/> reports can sit a hundredth of a voxel inside it — from there
+    /// every ray hits at once and the blast harms nobody. Stepping clear costs nothing in open air
+    /// and still reports the wall when the man is on the far side of one.
+    /// </summary>
+    private const float SightOriginClearance = 0.05f;
+
+    /// <summary>
+    /// How far above the impact point the second set of rays starts.
+    ///
+    /// A blast is not a point on the floor. It goes off ON the surface it landed on, so a ray from
+    /// exactly there runs along the ground and is stopped by the first tussock or lip it grazes —
+    /// which made a grenade in a shallow dip harmless to a man standing beside it, and a bomb
+    /// bursting against a forward slope harmless to everything behind the crest of it. Half a metre
+    /// up is roughly where the fireball and the fragments actually come from.
+    ///
+    /// It is an ADDITIONAL origin rather than a replacement: raising the only origin would let a
+    /// charge in a tunnel or under an overhang see through the roof it is pressed against. Either
+    /// origin reaching a man is enough, so the pair is self-correcting — whichever one is buried
+    /// simply contributes nothing.
+    /// </summary>
+    private const float BurstRise = 0.5f;
+
+    /// <summary>
+    /// Whether the blast can see the man at all: two origins by three body points, and any one of
+    /// the six arriving is enough.
+    ///
+    /// One body point cannot answer this, and which one you pick only chooses which mistake to make.
+    /// To the feet alone shelters a man whose head is over the parapet; to the head alone shelters
+    /// one lying behind a berm with his legs in the open. Feet, centre mass and head together mean
+    /// cover has to actually cover him.
+    /// </summary>
+    internal static bool HasLineOfSight(ChunkMap terrain, Vector3 origin, ServerPlayer player)
+    {
+        var feet = player.Position;
+        bool crouching = player.State.HasFlag(PlayerStateFlags.Crouching);
+        var centre = feet + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+        var head = GunConfig.HeadCenter(feet, crouching);
+        var burst = origin + new Vector3(0f, BurstRise, 0f);
+
+        // Raised origin first and centre mass first within each, which is the order they are most
+        // likely to arrive in — so the common case answers on one ray rather than six.
+        return Reaches(terrain, burst, centre)
+            || Reaches(terrain, burst, head)
+            || Reaches(terrain, burst, feet)
+            || Reaches(terrain, origin, centre)
+            || Reaches(terrain, origin, head)
+            || Reaches(terrain, origin, feet);
+    }
+
+    private static bool Reaches(ChunkMap terrain, Vector3 origin, Vector3 target)
+    {
+        var segment = target - origin;
+        float distance = segment.Length();
+        if (distance <= SightOriginClearance) return true;
+
+        var direction = segment / distance;
+        return TerrainRaycast.Cast(
+            terrain,
+            origin + direction * SightOriginClearance,
+            direction,
+            distance - SightOriginClearance) is null;
     }
 
     private static bool IsFinite(Vector3 value)

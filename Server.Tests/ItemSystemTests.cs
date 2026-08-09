@@ -260,4 +260,92 @@ public class ItemSystemTests
             grenades.Weapon.CurrentAmmo);
         Assert.Equal(HotbarSlot.Primary, actor.Hotbar);
     }
+
+    /// <summary>
+    /// A dead man leaves his rifle and nothing else. The rest of his kit staying equipped is the
+    /// half that is easy to lose: dropping the lot would strip his armour and carpet the ground in
+    /// shovels, and neither is what "drop your weapon" means.
+    /// </summary>
+    [Fact]
+    public void DeathLeavesTheWeaponHeWasHoldingAndKeepsTheRestOfTheKit()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 3, Move = new MoveState { Position = new Vector3(5f, 0f, 9f) } };
+        items.SpawnInfantryLoadout(actor);
+
+        // Killed part way through a magazine and part way through his pouches.
+        Assert.True(objects.TryGet(actor.Equipped[EquipSlot.HotbarPrimary], out var carried));
+        carried.Weapon.CurrentAmmo = 2;
+        carried.Weapon.ReserveAmmo = 13;
+
+        items.DropOnDeath(actor);
+
+        Assert.False(actor.Equipped.ContainsKey(EquipSlot.HotbarPrimary));
+        Assert.True(actor.Equipped.ContainsKey(EquipSlot.HotbarShovel));
+        Assert.True(actor.Equipped.ContainsKey(EquipSlot.HotbarGrenade));
+
+        var onGround = Assert.Single(
+            objects.All,
+            o => o.Has.HasFlag(NetComponents.Transform) && o.Has.HasFlag(NetComponents.Item));
+        Assert.Equal(carried.Item.Type, onGround.Item.Type);
+        Assert.Equal(actor.Position, onGround.Transform.Position);
+
+        // The gun as he left it: taking it is a gamble on what he had spent.
+        Assert.Equal(2, onGround.Weapon.CurrentAmmo);
+        Assert.Equal(13, onGround.Weapon.ReserveAmmo);
+    }
+
+    /// <summary>
+    /// Litter rots; scenery does not. Both are pickups sitting in the world with identical masks, so
+    /// the only thing separating them is how they got there.
+    /// </summary>
+    [Fact]
+    public void DroppedWeaponsExpireAndPlacedOnesDoNot()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 4 };
+        items.SpawnInfantryLoadout(actor);
+
+        items.Tick(100);
+        items.DropOnDeath(actor);
+        var placed = items.SpawnPickup(ItemType.Sks, new Vector3(20f, 0f, 20f));
+
+        uint dropped = Assert.Single(
+            objects.All,
+            o => o.Has.HasFlag(NetComponents.Transform)
+                 && o.Has.HasFlag(NetComponents.Item)
+                 && o.NetworkId != placed.NetworkId).NetworkId;
+
+        items.Tick(100 + (uint)ItemConfig.DroppedLifetimeTicks - 1);
+        Assert.True(objects.TryGet(dropped, out _));
+
+        items.Tick(100 + (uint)ItemConfig.DroppedLifetimeTicks);
+        Assert.False(objects.TryGet(dropped, out _));
+        Assert.True(objects.TryGet(placed.NetworkId, out _));
+    }
+
+    /// <summary>
+    /// A man is issued <see cref="ItemConfig.SpareMagazines"/> magazines for his pouches ON TOP of
+    /// the full one in the weapon, so he can reload that many times. The grenade stack is issued
+    /// none — its magazine is the grenades themselves and no reload could ever reach a reserve
+    /// behind it.
+    /// </summary>
+    [Fact]
+    public void ALoadoutIsAFullWeaponPlusFiveSpareMagazines()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var actor = new ServerPlayer { Id = 5 };
+        items.SpawnInfantryLoadout(actor);
+
+        Assert.True(objects.TryGet(actor.Equipped[EquipSlot.HotbarPrimary], out var primary));
+        int capacity = WeaponConfig.Require(primary.Item.Type).MagazineCapacity;
+        Assert.Equal(capacity, primary.Weapon.CurrentAmmo);
+        Assert.Equal(capacity * ItemConfig.SpareMagazines, primary.Weapon.ReserveAmmo);
+
+        Assert.True(objects.TryGet(actor.Equipped[EquipSlot.HotbarGrenade], out var grenades));
+        Assert.Equal(0, grenades.Weapon.ReserveAmmo);
+    }
 }

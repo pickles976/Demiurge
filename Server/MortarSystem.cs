@@ -134,15 +134,21 @@ public sealed class MortarSystem
 
     private void Detonate(Bomb bomb, Vector3 where, uint tick, IEnumerable<ServerPlayer> players)
     {
+        // The despawn carries this position to the client, which draws the burst there. Impact is
+        // decided mid-tick, so the bomb's last BROADCAST position is up to 2 m short of it.
+        bomb.Object.Transform.Position = where;
         objects.Despawn(bomb.Object.NetworkId);
 
+        // Crater before casualties, as the grenade does: the blast has to see a man to hurt him, and
+        // what it has just dug through is no longer in the way.
+        GrenadeSystem.Crater(terrainEdits, terrain, where, MortarConfig.Blast);
+
         GrenadeSystem.ApplyBlastDamage(
+            terrain,
             where,
             players,
             tick,
             MortarConfig.Blast,
             victim => activityFeed?.ReportKill(bomb.Owner, victim));
-
-        GrenadeSystem.Crater(terrainEdits, terrain, where, MortarConfig.Blast);
     }
 }

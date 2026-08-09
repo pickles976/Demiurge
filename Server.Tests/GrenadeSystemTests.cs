@@ -16,6 +16,7 @@ public class GrenadeSystemTests
         var killed = new List<ushort>();
 
         GrenadeSystem.ApplyBlastDamage(
+            NoCover,
             Vector3.Zero,
             [thrower, friendly, mob, outside],
             tick: 0,
@@ -43,7 +44,7 @@ public class GrenadeSystemTests
         var killed = PlayerAt(1, 3f);
         var wounded = PlayerAt(2, 7f);
 
-        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [killed, wounded], tick: 0, GrenadeConfig.Blast);
+        GrenadeSystem.ApplyBlastDamage(NoCover, Vector3.Zero, [killed, wounded], tick: 0, GrenadeConfig.Blast);
 
         Assert.True(killed.Status!.Dirty.HasFlag(NetComponents.Impulse));
         Assert.True(killed.Status.Impulse.Velocity.X > 0f, "thrown away from the blast");
@@ -65,7 +66,7 @@ public class GrenadeSystemTests
         var nearlyDead = PlayerAt(2, 3f);
         nearlyDead.Status!.Health.Current = 1;
 
-        GrenadeSystem.ApplyBlastDamage(Vector3.Zero, [whole, nearlyDead], tick: 0, GrenadeConfig.Blast);
+        GrenadeSystem.ApplyBlastDamage(NoCover, Vector3.Zero, [whole, nearlyDead], tick: 0, GrenadeConfig.Blast);
 
         Assert.Equal(0, whole.Status!.Health.Current);
         Assert.Equal(0, nearlyDead.Status.Health.Current);
@@ -179,12 +180,134 @@ public class GrenadeSystemTests
         Assert.Equal(0f, bounced.Z);
     }
 
+    /// <summary>
+    /// The wall is the whole point of a trench, and range alone used to shoot straight through it.
+    /// Both men here are inside the LETHAL radius, so nothing but sight separates them.
+    /// </summary>
+    [Fact]
+    public void ABlastDoesNotReachThroughAWall()
+    {
+        var terrain = Terrain(parapetCrest: 20f);
+        var origin = new Vector3(2f, GroundHeight + 0.5f, 8f);
+        var exposed = PlayerAt(1, new Vector3(0.5f, GroundHeight, 8f));
+        var sheltered = PlayerAt(2, new Vector3(5.5f, GroundHeight, 8f));
+
+        Assert.True(Vector3.Distance(origin, sheltered.Position) < GrenadeConfig.LethalRadius);
+
+        GrenadeSystem.ApplyBlastDamage(terrain, origin, [exposed, sheltered], tick: 0, GrenadeConfig.Blast);
+
+        Assert.Equal(0, exposed.Status!.Health.Current);
+        Assert.Equal(100, sheltered.Status!.Health.Current);
+        Assert.False(sheltered.Status.Dirty.HasFlag(NetComponents.Health));
+    }
+
+    /// <summary>
+    /// Why three sight points rather than one. A metre of parapet covers this man's feet and his
+    /// chest and not the top of his head, and a grenade bursting at head height over open ground
+    /// on the far side can see exactly that much of him — which is enough.
+    /// </summary>
+    [Fact]
+    public void AManWithHisHeadOverTheParapetIsNotSheltered()
+    {
+        var origin = new Vector3(2f, GroundHeight + GunConfig.HeadCenterHeight, 8f);
+        var here = new Vector3(5.5f, GroundHeight, 8f);
+
+        var peeking = PlayerAt(1, here);
+        GrenadeSystem.ApplyBlastDamage(
+            Terrain(parapetCrest: GroundHeight + 1f), origin, [peeking], tick: 0, GrenadeConfig.Blast);
+        Assert.Equal(0, peeking.Status!.Health.Current);
+
+        // The same man behind the same wall built a metre higher. Nothing else differs, so the
+        // parapet is doing the work rather than the range: it is the head point being covered too.
+        var down = PlayerAt(2, here);
+        GrenadeSystem.ApplyBlastDamage(
+            Terrain(parapetCrest: GroundHeight + 2f), origin, [down], tick: 0, GrenadeConfig.Blast);
+        Assert.Equal(100, down.Status!.Health.Current);
+    }
+
+    /// <summary>
+    /// A blast goes off ON the ground, so sighting from exactly the impact point means the first
+    /// ankle-high fold of dirt between it and a man protects him completely. Rising half a metre is
+    /// what stops that; a real parapet still has to work.
+    /// </summary>
+    [Fact]
+    public void ALowLipDoesNotShelterAManButAParapetDoes()
+    {
+        // On the ground, right up against the near face of the lip — the worst case for sighting.
+        var origin = new Vector3(3f, GroundHeight, 8f);
+        var here = new Vector3(5.5f, GroundHeight, 8f);
+
+        var behindLip = PlayerAt(1, here);
+        GrenadeSystem.ApplyBlastDamage(
+            Terrain(parapetCrest: GroundHeight + 0.45f), origin, [behindLip], tick: 0, GrenadeConfig.Blast);
+        Assert.True(
+            behindLip.Status!.Health.Current < 100,
+            "half a metre of dirt is not cover from a grenade at its foot");
+
+        // Chest high. Nothing the blast can see over from any height it plausibly bursts at.
+        var behindParapet = PlayerAt(2, here);
+        GrenadeSystem.ApplyBlastDamage(
+            Terrain(parapetCrest: GroundHeight + 1.4f), origin, [behindParapet], tick: 0, GrenadeConfig.Blast);
+        Assert.Equal(100, behindParapet.Status!.Health.Current);
+    }
+
+    private const float GroundHeight = 12f;
+
+    /// <summary>Terrain that blocks nothing. An empty map is unloaded world, and a ray that leaves
+    /// the loaded world is a miss, so every blast in the tests using it has clear sight.</summary>
+    private static ChunkMap NoCover => new();
+
+    /// <summary>
+    /// Flat ground at <see cref="GroundHeight"/> with one wall standing on it, spanning x 3.5 to 4.5
+    /// and rising to <paramref name="parapetCrest"/>. The field is the union of the two, which for
+    /// signed distances is the smaller of them.
+    /// </summary>
+    private static ChunkMap Terrain(float parapetCrest)
+    {
+        var wallCentre = new Vector3(4f, (ChunkConstants.WorldMinY + parapetCrest) * 0.5f, 8f);
+        var wallHalf = new Vector3(0.5f, (parapetCrest - ChunkConstants.WorldMinY) * 0.5f, 64f);
+
+        var map = new ChunkMap();
+        for (int cz = -1; cz <= 1; cz++)
+            for (int cx = -1; cx <= 1; cx++)
+            {
+                var index = new ChunkIndex { x = cx, z = cz };
+                var chunk = new TerrainChunk(index);
+                for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
+                {
+                    var column = ChunkTransforms.ColumnWorldPosition(index, ChunkTransforms.ColumnIndexOf(i));
+                    int worldY = ChunkConstants.WorldMinY + ChunkTransforms.LocalYOf(i);
+                    var at = new Vector3(column.X, worldY, column.Y);
+
+                    float distance = ChunkConstants.ClampToWorldFloor(
+                        worldY,
+                        MathF.Min(worldY - GroundHeight, BoxDistance(at, wallCentre, wallHalf)));
+
+                    var voxel = new Voxel { Distance = distance };
+                    voxel.Material = ChunkGenerator.DensityToMaterial(voxel.Distance, distance);
+                    chunk[i] = voxel;
+                }
+                map.Insert(chunk);
+            }
+        return map;
+    }
+
+    private static float BoxDistance(Vector3 point, Vector3 centre, Vector3 half)
+    {
+        var q = Vector3.Abs(point - centre) - half;
+        return Vector3.Max(q, Vector3.Zero).Length()
+             + MathF.Min(MathF.Max(q.X, MathF.Max(q.Y, q.Z)), 0f);
+    }
+
     private static ServerPlayer PlayerAt(ushort id, float x, bool isMob = false)
+        => PlayerAt(id, new Vector3(x, 0f, 0f), isMob);
+
+    private static ServerPlayer PlayerAt(ushort id, Vector3 position, bool isMob = false)
         => new()
         {
             Id = id,
             IsMob = isMob,
-            Move = new MoveState { Position = new Vector3(x, 0f, 0f) },
+            Move = new MoveState { Position = position },
             Status = new ServerObject
             {
                 Has = NetComponents.Health,

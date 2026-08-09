@@ -1,3 +1,4 @@
+using Demiurge.GameServer;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
@@ -18,7 +19,19 @@ public enum NpcTrackerLayers
     /// <summary>A line between every pair of NPCs within bunching distance of each other.</summary>
     Clustering = 4,
 
-    All = Beacons | Facing | Clustering,
+    /// <summary>
+    /// The volumes a shot is tested against — head sphere and hit capsule — for EVERY actor rather
+    /// than only the NPCs, since the question this answers is usually about a player.
+    /// </summary>
+    Colliders = 8,
+
+    /// <summary>Each NPC's actor id over its head, so the overlay and the terminal name the same man.</summary>
+    Ids = 16,
+
+    /// <summary>Each NPC's current decision over its head. See <see cref="MobDebugFeed"/>.</summary>
+    States = 32,
+
+    All = Beacons | Facing | Clustering | Colliders | Ids | States,
 }
 
 /// <summary>
@@ -64,6 +77,25 @@ public sealed class NpcTrackerScript : SyncScript
 
     private static readonly Color BunchedColor = new(255, 80, 200, 210);
 
+    /// <summary>The capsule a bullet is tested against, and the head sphere that doubles the damage.</summary>
+    private static readonly Color HitVolumeColor = new(255, 235, 120, 200);
+    private static readonly Color HeadVolumeColor = new(255, 120, 120, 220);
+
+    /// <summary>
+    /// The MOVEMENT capsule, which is a different volume from the one shots use — 0.4 m of radius
+    /// against 0.6 m, on the same 1.8 m of height. Dimmer because it is the secondary answer, and
+    /// drawn because two capsules that are easy to assume agree do not.
+    /// </summary>
+    private static readonly Color BodyVolumeColor = new(120, 200, 255, 130);
+
+    private const int VolumeSegments = 16;
+
+    /// <summary>Cell height of a label, and how far over the head it floats.</summary>
+    private const float LabelHeight = 0.22f;
+    private const float LabelRise = 0.35f;
+    private static readonly Color LabelColor = new(255, 255, 255, 235);
+    private static readonly Color StateColor = new(140, 255, 190, 235);
+
     private readonly List<Player> visible = [];
 
     public required PlayerRegistry Registry { get; init; }
@@ -78,8 +110,39 @@ public sealed class NpcTrackerScript : SyncScript
         visible.Clear();
         foreach (var player in Registry.Players)
         {
-            if (!ActorIds.IsMob(player.Id) || player.IsDead) continue;
+            if (player.IsDead) continue;
+
+            // Colliders are the one layer that is about actors rather than about AI: a player's own
+            // hit volume is usually the thing in question, and he is not in `visible`.
+            if (layers.HasFlag(NpcTrackerLayers.Colliders)) DrawVolumes(player);
+            if (!ActorIds.IsMob(player.Id)) continue;
             visible.Add(player);
+        }
+
+        var states = layers.HasFlag(NpcTrackerLayers.States)
+            ? MobDebugFeed.Latest
+            : null;
+
+        foreach (var npc in visible)
+        {
+            // Stacked upward so both labels are readable at once rather than one over the other.
+            float labelY = PlayerMovement.Body.Height + LabelRise;
+            if (layers.HasFlag(NpcTrackerLayers.Ids))
+            {
+                LineText.Draw(
+                    npc.Position.ToStride() + Vector3.UnitY * labelY,
+                    npc.Id.ToString(),
+                    LabelColor,
+                    LabelHeight);
+                labelY += LabelHeight * 1.6f;
+            }
+
+            if (states is not null && states.TryGetValue(npc.Id, out var state))
+                LineText.Draw(
+                    npc.Position.ToStride() + Vector3.UnitY * labelY,
+                    state,
+                    StateColor,
+                    LabelHeight);
         }
 
         foreach (var npc in visible)
@@ -111,6 +174,96 @@ public sealed class NpcTrackerScript : SyncScript
                 Vector3 up = Vector3.UnitY * GunConfig.PlayerCenterHeight;
                 LineRenderer.DrawLine(a.ToStride() + up, b.ToStride() + up, BunchedColor);
             }
+    }
+
+    /// <summary>
+    /// The three volumes an actor occupies, drawn from the same constants the server tests against
+    /// rather than from anything measured off the model — the whole point is to see where those
+    /// constants actually put the geometry.
+    /// </summary>
+    private static void DrawVolumes(Player player)
+    {
+        Vector3 feet = player.Position.ToStride();
+        bool crouching = player.State.HasFlag(PlayerStateFlags.Crouching);
+
+        // Cap centres exactly as GunMath.PlayerHitAt derives them, so the drawing cannot claim a
+        // capsule the hit test does not use.
+        float hitRadius = GunConfig.HitRadius;
+        float height = PlayerMovement.Body.Height;
+        DrawCapsule(feet, hitRadius, height, HitVolumeColor);
+        DrawCapsule(feet, PlayerMovement.Body.Radius, height, BodyVolumeColor);
+
+        var head = GunConfig.HeadCenter(player.Position, crouching).ToStride();
+        DrawSphere(head, GunConfig.HeadRadius, HeadVolumeColor);
+    }
+
+    /// <summary>
+    /// A capsule spanning exactly [feet, feet + height], as three rings and four uprights. Wireframe
+    /// rather than a swept outline because it has to be readable from inside as well as outside.
+    /// </summary>
+    private static void DrawCapsule(Vector3 feet, float radius, float height, Color color)
+    {
+        float capOffset = MathF.Min(radius, height * 0.5f);
+        DrawRing(feet + Vector3.UnitY * capOffset, radius, color);
+        DrawRing(feet + Vector3.UnitY * (height * 0.5f), radius, color);
+        DrawRing(feet + Vector3.UnitY * (height - capOffset), radius, color);
+
+        for (int i = 0; i < 4; i++)
+        {
+            float angle = MathF.Tau * i / 4f;
+            var offset = new Vector3(MathF.Cos(angle) * radius, 0f, MathF.Sin(angle) * radius);
+            LineRenderer.DrawDepthTestedLine(
+                feet + Vector3.UnitY * capOffset + offset,
+                feet + Vector3.UnitY * (height - capOffset) + offset,
+                color);
+        }
+
+        // The domes, as two arcs each, so the ends read as rounded rather than flat.
+        DrawArc(feet + Vector3.UnitY * (height - capOffset), radius, Vector3.UnitX, color);
+        DrawArc(feet + Vector3.UnitY * (height - capOffset), radius, Vector3.UnitZ, color);
+        DrawArc(feet + Vector3.UnitY * capOffset, -radius, Vector3.UnitX, color);
+        DrawArc(feet + Vector3.UnitY * capOffset, -radius, Vector3.UnitZ, color);
+    }
+
+    private static void DrawSphere(Vector3 centre, float radius, Color color)
+    {
+        DrawRing(centre, radius, color);
+        DrawArc(centre, radius, Vector3.UnitX, color);
+        DrawArc(centre, -radius, Vector3.UnitX, color);
+        DrawArc(centre, radius, Vector3.UnitZ, color);
+        DrawArc(centre, -radius, Vector3.UnitZ, color);
+    }
+
+    private static void DrawRing(Vector3 centre, float radius, Color color)
+    {
+        Vector3 previous = default;
+        for (int i = 0; i <= VolumeSegments; i++)
+        {
+            float angle = MathF.Tau * i / VolumeSegments;
+            var point = centre + new Vector3(
+                MathF.Cos(angle) * radius,
+                0f,
+                MathF.Sin(angle) * radius);
+            if (i > 0) LineRenderer.DrawDepthTestedLine(previous, point, color);
+            previous = point;
+        }
+    }
+
+    /// <summary>Half a vertical circle, from the equator up over the pole. A negative
+    /// <paramref name="radius"/> sweeps the lower half instead.</summary>
+    private static void DrawArc(Vector3 centre, float radius, Vector3 axis, Color color)
+    {
+        Vector3 previous = default;
+        int segments = VolumeSegments / 2;
+        for (int i = 0; i <= segments; i++)
+        {
+            float angle = MathF.PI * i / segments;
+            var point = centre
+                + axis * (MathF.Cos(angle) * MathF.Abs(radius))
+                + Vector3.UnitY * (MathF.Sin(angle) * radius);
+            if (i > 0) LineRenderer.DrawDepthTestedLine(previous, point, color);
+            previous = point;
+        }
     }
 
     private static void DrawGroundRing(Vector3 centre, Color color)

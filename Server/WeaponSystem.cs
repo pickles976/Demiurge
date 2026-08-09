@@ -251,6 +251,17 @@ namespace Demiurge.GameServer
             }
         }
 
+        /// <summary>
+        /// Who spends their reserve. Players do; NPCs never will — that is settled design, not a
+        /// gap waiting to be closed, so nothing downstream should be built to expect NPC resupply,
+        /// ammunition scarcity as a pressure on the AI, or a squad that can be starved out.
+        ///
+        /// Their rifles still CARRY a full reserve, and that number is not decoration: it is what a
+        /// player inherits when he takes one off a body. An NPC's weapon is therefore always worth
+        /// exactly a fresh load, because the man holding it never drew it down.
+        /// </summary>
+        private static bool AmmoLimited(ServerPlayer player) => !player.IsMob;
+
         public void ApplyReload(ServerPlayer player, uint tick)
         {
             if (!TryGetActiveWeapon(player, out var weapon)) return;
@@ -259,10 +270,18 @@ namespace Demiurge.GameServer
             if (tick < player.ReloadDoneTick) return;   // already reloading
             if (weapon.Weapon.CurrentAmmo == stats.MagazineCapacity) return;
 
+            // What the pouches can actually put in the magazine. A partial magazine is topped up
+            // rather than replaced, so reloading with rounds still in the gun does not throw them
+            // away — this is a pool of loose ammunition, not a stack of discrete magazines.
+            int wanted = stats.MagazineCapacity - weapon.Weapon.CurrentAmmo;
+            int loaded = AmmoLimited(player) ? Math.Min(wanted, weapon.Weapon.ReserveAmmo) : wanted;
+            if (loaded <= 0) return;   // dry: nothing to load, and no reload window to sit through
+
             // Refill now, block firing until the window passes — observably identical
             // to refilling at the end, with no completion bookkeeping. (The client
             // refills at the end instead so its HUD reads 0 during the reload.)
-            weapon.Weapon.CurrentAmmo = stats.MagazineCapacity;
+            weapon.Weapon.CurrentAmmo += loaded;
+            if (AmmoLimited(player)) weapon.Weapon.ReserveAmmo -= loaded;
             weapon.Dirty |= NetComponents.Weapon;
             player.ReloadDoneTick = tick + (uint)stats.ReloadTicks;
         }

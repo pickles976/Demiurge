@@ -77,9 +77,28 @@ namespace Demiurge
     /// drift mid-match. Present only on items whose config has a weapon section.</summary>
     public struct WeaponState : IMessageSerializable
     {
+        /// <summary>Rounds in the magazine — what firing spends.</summary>
         public int CurrentAmmo;
-        public void Serialize(Message m) => m.AddInt(CurrentAmmo);
-        public void Deserialize(Message m) => CurrentAmmo = m.GetInt();
+
+        /// <summary>
+        /// Rounds in the pouches — what reloading spends. On the WEAPON rather than on the player
+        /// because that is what makes a dead man's rifle worth taking: the reserve rides the object
+        /// through drop and pickup on the same CopyComponents line the magazine does, so what you
+        /// get is the gun as he left it and not a fresh one.
+        /// </summary>
+        public int ReserveAmmo;
+
+        public void Serialize(Message m)
+        {
+            m.AddInt(CurrentAmmo);
+            m.AddInt(ReserveAmmo);
+        }
+
+        public void Deserialize(Message m)
+        {
+            CurrentAmmo = m.GetInt();
+            ReserveAmmo = m.GetInt();
+        }
     }
 
     /// <summary>Which player an object belongs to / is attached to. The view uses

@@ -221,6 +221,7 @@ namespace Demiurge.GameServer
 
         public void BeginTick(uint tick, ICollection<ServerPlayer> actors)
         {
+            PublishDebugStates(actors);
             coverQueriesRemaining = CoverQueriesPerTick;
             // Squads must exist before the commander assigns them anything, and the tactical plan reads
             // the roster the re-formation produced, so this ordering is load-bearing.
@@ -360,6 +361,7 @@ namespace Demiurge.GameServer
 
             if (grenadeCombat.TryThrow(mob, brain, squad, actors, tick))
             {
+                brain.DebugIntent = "GRENADE";
                 brain.Navigation.Progress.Reset();
                 mob.State = PlayerStateFlags.Shooting;
                 mob.LastIntent = Vector3.Zero;
@@ -495,6 +497,10 @@ namespace Demiurge.GameServer
                 : !combatOwnsTick ? new ActorIntent.PursueObjective()
                 : mustEntrench ? new ActorIntent.Entrench()
                 : new ActorIntent.SeekCover(MayAdvance: true);
+
+            // Every path below this point is downstream of the one decision, so labelling it here
+            // covers all of them and cannot drift from what the actor actually did.
+            brain.DebugIntent = decision.DebugLabel;
 
             if (decision is not ActorIntent.PursueObjective)
             {
@@ -947,7 +953,13 @@ namespace Demiurge.GameServer
                     : RandomSurfacePoint(mob.Position));
         }
 
-        public void Dispose() => navigation.Dispose();
+        public void Dispose()
+        {
+            // A snapshot must not outlive the server that made it: actor ids repeat across sessions,
+            // so a stale one would label the next session's NPCs with the last one's decisions.
+            MobDebugFeed.Clear();
+            navigation.Dispose();
+        }
 
         public bool TryDequeueStuckMob(out ushort mobId)
             => stuckMobs.TryDequeue(out mobId);
@@ -1948,6 +1960,23 @@ namespace Demiurge.GameServer
             timingCoverRevalidationsKept = 0;
             timingNavigationQueueUs.Clear();
             timingNavigationSearchUs.Clear();
+        }
+
+        /// <summary>
+        /// Hands the last tick's decisions to the overlay. At the top of the tick rather than the
+        /// bottom because <see cref="Step"/> is driven per actor by <see cref="GameWorld"/> and there
+        /// is no "all mobs have stepped" moment in here to publish from — a tick of lag on a label a
+        /// human is reading costs nothing, and one publish site cannot disagree with itself.
+        /// </summary>
+        private void PublishDebugStates(ICollection<ServerPlayer> actors)
+        {
+            if (!MobDebugFeed.Enabled) return;
+
+            var states = new Dictionary<ushort, string>(actors.Count);
+            foreach (var actor in actors)
+                if (actor.IsMob && brains.TryGetValue(actor.Id, out var brain))
+                    states[actor.Id] = brain.DebugIntent;
+            MobDebugFeed.Publish(states);
         }
 
         public string Stats() => latestStats;

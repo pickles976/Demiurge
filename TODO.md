@@ -7,30 +7,35 @@ For weapons, need to model sights and add anchors for camera to figure out where
 2. Finish PVP MVP
 3. Switch to Stride 4.5
 4. Make the environment richer
-5. Multiplayer test
+5. Refactor commands
+6. Multiplayer test
 
 # PVP Mechanics
 
 ## Event Queue
-We also want to start building a theater-style replay system like Halo has. The first step is likely going to be an event queue. Take a look at Quake 3's event queue implementation.
-  `https://github.com/id-Software/Quake-III-Arena`. We want to support replays, debugging using logs of the event queue, and using the event queue for testing. Come back to me with a plan
-  like you did for the datapack system.
+Event queue implementation
 
 ## AI Improvements
 
-Take a look at ./docs/TODO.md and ./docs/BARITONE.md
-
 Overall the changes we made have caused the pace of the game to increase. NPC battles are much more exciting.
 
-It sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a     
-  single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
+However, it sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
 
-- NPCs will always have infinite ammo, take that into account
-- units still standing idle at flag -- if they are defending, we need visual feedback indicating so. Add a command to show NPC state above their head in white text.
+- NPCs need to run from grenades.
 - Assault units are useless at long range, and extremely deadly at close range. They need to take this into account. The PPSH and grenades can absolutely massacre defenders.
 - Strategic AI usually just fights over 1-2 flags, seems like a self-reinforcing loop of "needs mass", never opportunistically sends a squad out to go capture a totally defenseless flag
 - If I shoot at enemies going to capture a flag from way outside of their engagement range, they will drop everything and run all the way to attack me. Even if I pose no real threat to them due to the distance.
 - NPCs still moving in a line, not in formation
+
+## New Stuff
+-  NPCs should be able to go prone
+- Commander set crew-weapon objectives
+- allow NPCs to use the mortar
+- Allow NPCs to pick up the heavy MG
+
+
+Stop Using Claude
+- Codex clean up all comments
 
 Bugs:
 
@@ -40,31 +45,15 @@ If Digging still sucks
 - Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
 
 New Features
--  NPCs should be able to go prone
 - Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
 
 - Try to add digging back in to combat
 
-## PVP changes
 
-      - [ ] allow NPCs to use the mortar
-      - [ ] grenades are too bouncy
-      - [ ] dead soldiers drop their weapon and you can pick it up
-      - [ ] limit ammo for players
+- [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbaga
+- [ ] dig dirt to place sandbags
 
-      - [ ] flag 3D model     
-      - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbaga
-      - [ ] dig dirt to place sandbags
-
-      - [ ] Commander set crew-weapon objectives
-            - [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
-
-            - [ ] remove glock, AWP, and AK
-            - [ ] fix audio cutting off
-            - [ ] long range report sounds
-            - [ ] mortar whistle sound
-
-            - [ ] add 4 more NPCs to each team
+- [ ] mortar whistle sound
 
 ## Richer Environment 
 
@@ -74,6 +63,11 @@ New Features
 - [ ] structure editor
 
 - [ ] DP-27 Pixel Art
+
+- [ ] flag 3D model     
+- [ ] fix audio cutting off
+
+- [ ] add 4 more NPCs to each team
 
 - [ ] add grass
 - [ ] add trees
@@ -130,8 +124,9 @@ Bugs found during design, each explaining part of the observed behaviour:
 
 # PVP Demo
 
+- [ ] add UI to show players and NPCs
+- [ ] add command to set player team
 - [ ] add screen where you enter a server IP and port
-- [ ] extend AI battle demo with human players
 - [ ] Host a server and run external multiplayer playtests
   - [ ] Provision a DigitalOcean host
   - [ ] Configure the scrungy.com domain

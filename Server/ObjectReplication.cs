@@ -36,9 +36,13 @@ namespace Demiurge.GameServer
 
         public void Despawn(uint networkId)
         {
-            if (!objects.Remove(networkId)) return;
+            if (!objects.Remove(networkId, out var obj)) return;
             Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.ObjectDespawn);
-            message.AddSerializable(new ObjectDespawnData {NetworkId = networkId});
+            message.AddSerializable(new ObjectDespawnData
+            {
+                NetworkId = networkId,
+                Position = obj.Transform.Position,
+            });
             server.SendToAll(message);
         }
 

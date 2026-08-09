@@ -88,6 +88,7 @@ public class RemotePlayer : Player
         public required NetObject Object { get; init; }
         public required WeaponStats Stats { get; init; }
         public int Ammo;
+        public int Reserve;
         public float CooldownTicks;
         public int ReloadTicksLeft;
         public WeaponSpreadState Spread;
@@ -114,6 +115,7 @@ public class RemotePlayer : Player
     public bool IsArmed => Weapon != null;
 
     public int Ammo => ActiveWeapon?.Ammo ?? 0;
+    public int Reserve => ActiveWeapon?.Reserve ?? 0;
     public bool IsReloading => ActiveWeapon?.ReloadTicksLeft > 0;
     public float CurrentSpreadMoa => IsArmed
         ? ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade)
@@ -185,6 +187,7 @@ public class RemotePlayer : Player
             Object = weapon,
             Stats = WeaponConfig.Require(weapon.Item.Type),
             Ammo = weapon.Weapon.CurrentAmmo,
+            Reserve = weapon.Weapon.ReserveAmmo,
         };
         hotbarItems[slot] = weapon;
     }
@@ -297,7 +300,8 @@ public class RemotePlayer : Player
         if (!IsArmed
             || ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade)
             || IsReloading
-            || Ammo == Stats.MagazineCapacity)
+            || Ammo == Stats.MagazineCapacity
+            || Reserve <= 0)   // dry: no reload animation for a reload that cannot happen
             return;
         ActiveWeapon!.ReloadTicksLeft = Stats.ReloadTicks;
         network.SendReload();
@@ -342,7 +346,16 @@ public class RemotePlayer : Player
                 if (predicted.ReloadTicksLeft > 0
                     && --predicted.ReloadTicksLeft == 0
                     && !ItemCatalog.HasBehavior(predicted.Object.Item.Type, ItemBehavior.Grenade))
-                    predicted.Ammo = predicted.Stats.MagazineCapacity;
+                {
+                    // The same arithmetic the server runs in WeaponSystem.ApplyReload: top the
+                    // magazine up from the pouches rather than filling it, or the HUD would promise
+                    // rounds the server is about to say do not exist.
+                    int loaded = Math.Min(
+                        predicted.Stats.MagazineCapacity - predicted.Ammo,
+                        predicted.Reserve);
+                    predicted.Ammo += loaded;
+                    predicted.Reserve -= loaded;
+                }
             }
             if (IsArmed && !ItemCatalog.HasBehavior(Weapon!.Item.Type, ItemBehavior.Grenade))
                 ActiveWeapon!.Spread.Advance(
@@ -400,6 +413,10 @@ public class RemotePlayer : Player
         foreach (var predicted in hotbarWeapons.Values)
         {
             predicted.Ammo = predicted.Stats.MagazineCapacity;
+            // The magazine is assumed full because the respawn refill may not have landed yet; the
+            // reserve has no equally obvious answer (a grenade stack carries none), so it is taken
+            // from the replicated state rather than guessed.
+            predicted.Reserve = predicted.Object.Weapon.ReserveAmmo;
             predicted.CooldownTicks = 0;
             predicted.ReloadTicksLeft = 0;
             predicted.Spread = default;

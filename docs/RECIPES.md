@@ -49,7 +49,8 @@ class, component, or ObjectType.
 
 Behavior comes from the component mask — the mask IS the trait system:
 
-- `ItemState + Transform` → a pickup sitting in the world (bobs, E-interactable)
+- `ItemState + Transform` → a pickup resting on the ground where it was put or dropped
+  (E-interactable; `NetTransformScript` applies the replicated position and yaw)
 - `ItemState + Owner + Attachment` → equipped; `Attachment.Slot` says where
 - `+ WeaponState` → it shoots (fire/reload validation applies)
 - `+ ArmorState` → it's armor (replicated now, consumed by nothing yet)
@@ -69,7 +70,7 @@ If the item just gets worn somewhere, data rows are the whole job:
    WHERE it sits comes from its slot's socket row, not the item.
 5. Spawn it somewhere: `items.SpawnPickup(ItemType.TopHat, pos)`.
 
-Pickup bob, E-to-equip, swap-drop, attach, despawn-on-disconnect, late-join
+E-to-equip, swap-drop, drop-on-death, attach, despawn-on-disconnect, late-join
 catch-up: all free. They key off `ItemState` and the config, not the item.
 
 ### Add a weapon (e.g. a shotgun)
@@ -119,8 +120,7 @@ Item mask by `ItemSystem.SpawnSupplyCrate`, and `ObjectViewFactory` lets a build
 beat the item model so it draws as a crate rather than as the weapon inside it. That stays
 honest because the type only describes the world presentation and only survives as long as
 it: picking up and dropping both respawn the object as `ObjectType.Item`, so a crated
-weapon is a crate on the ground and a weapon in every other state. A builder entry also
-suppresses `PickupBobScript`, which is what makes a crate sit still.
+weapon is a crate on the ground and a weapon in every other state.
 
 ### Add a client→server message (e.g. UseAction)
 
@@ -152,8 +152,8 @@ unsure.
 Rules that make it work:
 
 - **No Transform in the mask.** The bone link owns the entity's transform; a
-  NetTransformScript would fight it (same conflict the pickup path suppresses
-  for PickupBobScript). Equipped items spawn with `ItemState | Owner |
+  NetTransformScript would fight it, which is why the two are mutually exclusive
+  in ObjectViewFactory. Equipped items spawn with `ItemState | Owner |
   Attachment` (+ live state), never Transform — which also keeps them
   unhittable by the raycast.
 - **Keep the entity at the scene root.** ModelNodeLinkComponent drives the world

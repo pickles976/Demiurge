@@ -4,31 +4,6 @@ using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 
-// Hover-and-spin presenter for weapon pickups. Client-side animation over the
-// replicated base position — this script OWNS the entity transform, so the
-// factory must not also attach a NetTransformScript (they would fight).
-public class PickupBobScript : SyncScript
-{
-    public required NetObject Object { get; init; }
-
-    private const float FloatHeight = 0.4f;    // resting height above the base position
-    private const float BobHeight = 0.15f;
-    private const float BobHz = 0.5f;
-    private const float SpinDegPerSec = 90f;
-
-    private float age;
-
-    public override void Update()
-    {
-        age += (float)Game.UpdateTime.Elapsed.TotalSeconds;
-
-        float bob = BobHeight * MathF.Sin(2f * MathF.PI * BobHz * age);
-        Entity.Transform.Position = Object.Transform.Position.ToStride()
-            + Vector3.UnitY * (FloatHeight + bob);
-        Entity.Transform.Rotation = Quaternion.RotationY(MathUtil.DegreesToRadians(SpinDegPerSec) * age);
-    }
-}
-
 // Attaches a worn item's view to its owner's body — driven by the replicated
 // Owner and Attachment components. The wire says WHOSE body and WHICH slot;
 // the slot keys the client's socket table (ItemCosmetics): a bone name links

@@ -9,6 +9,16 @@ namespace Demiurge.GameServer
         // Fields, not properties: mutable structs accessed through a property getter
         // return a copy, so `obj.Transform.Position = x` would edit the copy, not the object
 
+        /// <summary>
+        /// Tick this object is swept away, or 0 for "never" — battlefield litter, and nothing else.
+        ///
+        /// Server-only and deliberately not replicated: a client has nothing to do with the number,
+        /// since the object simply despawns like any other when it expires. It is also NOT carried by
+        /// <see cref="CopyComponents"/>, which is what makes picking a dropped rifle up and throwing
+        /// it down again restart its clock rather than inherit a nearly-expired one.
+        /// </summary>
+        public uint DespawnAtTick;
+
         public NetComponents Dirty;
         public TransformState Transform;
         public HealthState Health;

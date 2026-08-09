@@ -52,8 +52,12 @@ public static class GrenadeConfig
 
     // The normal component loses most of its energy while the tangent retains enough momentum for
     // a short, predictable skip. Floors are deliberately duller than walls.
-    public const float GroundRestitution = 0.32f;
-    public const float WallRestitution = 0.45f;
+    //
+    // Both were cut by 30% (0.32 and 0.45 before), which is a change to the BOUNCE only:
+    // TangentialRetention is left alone because it governs the skid along a surface, not the
+    // rebound off it, and scaling it too would have made grenades stop dead rather than bounce less.
+    public const float GroundRestitution = 0.224f;
+    public const float WallRestitution = 0.315f;
     public const float TangentialRetention = 0.76f;
     public const float GroundNormalThreshold = 0.55f;
     public const float RestSpeed = 0.85f;

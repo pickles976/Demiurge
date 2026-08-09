@@ -5,12 +5,18 @@ using Stride.Engine;
 namespace Demiurge;
 
 /// <summary>
-/// Temporary line-rendered grenade burst. It is intentionally isolated behind Spawn/Update so a
-/// particle implementation can replace it without touching grenade gameplay or replication.
+/// Temporary line-rendered blast. It is intentionally isolated behind Spawn/Update so a particle
+/// implementation can replace it without touching gameplay or replication.
+///
+/// Sized by the blast rather than fixed: a mortar bomb's burst is half again a grenade's, and an
+/// effect that drew both the same would tell the player the wrong thing about the radius he is
+/// standing in.
 /// </summary>
 public static class ExplosionManager
 {
     private const float Lifetime = 0.55f;
+
+    /// <summary>Shell radius for a GRENADE-sized blast; anything else scales off its damage radius.</summary>
     private const float MaxRadius = 2.1f;
     private const int RingSegments = 20;
     private const int RayCount = 18;
@@ -18,6 +24,7 @@ public static class ExplosionManager
     private struct Explosion
     {
         public Vector3 Centre;
+        public float Radius;
         public float Age;
         public int Seed;
     }
@@ -25,8 +32,15 @@ public static class ExplosionManager
     private static readonly List<Explosion> explosions = [];
     private static int nextSeed;
 
-    public static void Spawn(Vector3 centre)
-        => explosions.Add(new Explosion { Centre = centre, Seed = nextSeed++ });
+    /// <summary>A blast of the given profile. The visual scales with the profile's damage radius,
+    /// so the effect and the thing that hurt you stay the same size as each other.</summary>
+    public static void Spawn(Vector3 centre, in BlastProfile blast)
+        => explosions.Add(new Explosion
+        {
+            Centre = centre,
+            Radius = MaxRadius * (blast.DamageRadius / GrenadeConfig.DamageRadius),
+            Seed = nextSeed++,
+        });
 
     public static void Clear() => explosions.Clear();
 
@@ -50,7 +64,7 @@ public static class ExplosionManager
     private static void Draw(in Explosion explosion)
     {
         float t = explosion.Age / Lifetime;
-        float radius = MaxRadius * (1f - MathF.Pow(1f - t, 3f));
+        float radius = explosion.Radius * (1f - MathF.Pow(1f - t, 3f));
         byte alpha = (byte)(MathUtil.Clamp(1f - t, 0f, 1f) * 235f);
         var shell = new Color(255, 150, 35, alpha);
         var core = new Color(255, 230, 125, (byte)(alpha * 0.85f));
@@ -115,8 +129,15 @@ public static class ExplosionManager
     }
 }
 
-/// <summary>Turns the replicated grenade despawn into a client-only line burst.</summary>
-public sealed class GrenadeExplosionScript : SyncScript
+/// <summary>
+/// Turns the replicated despawn of anything that goes off into a client-only burst, shake and report.
+///
+/// Despawn is the signal because it is one the server already sends and the client already believes:
+/// a grenade and a mortar bomb both stop existing at the moment they detonate, so nothing had to be
+/// added to the wire to know where and when. The blast PROFILE is looked up from the object type
+/// rather than replicated, for the same reason weapon damage is not on the wire.
+/// </summary>
+public sealed class BlastEffectScript : SyncScript
 {
     public required ObjectRegistry Objects { get; init; }
     public required PlayerRegistry Players { get; init; }
@@ -139,11 +160,22 @@ public sealed class GrenadeExplosionScript : SyncScript
     private const float MaximumTrauma = 2f;
 
     /// <summary>
-    /// How far out a blast is still felt. Much wider than GrenadeConfig.DamageRadius on purpose —
-    /// one that lands well outside its damage radius should still rattle you, and a shake that stops
-    /// where the damage stops tells the player precisely how safe they were.
+    /// How far out a blast is still felt, as a multiple of its own damage radius. Much wider than the
+    /// damage on purpose — one that lands well outside its damage radius should still rattle you, and
+    /// a shake that stops where the damage stops tells the player precisely how safe they were.
     /// </summary>
-    private const float ShakeRadius = GrenadeConfig.DamageRadius * 3.2f;
+    private const float ShakeRadiusScale = 3.2f;
+
+    /// <summary>
+    /// What each thing that despawns is worth as a bang, or null for everything that simply stopped
+    /// existing. One table rather than a branch per weapon: a new explosive is a row here.
+    /// </summary>
+    private static BlastProfile? BlastFor(ObjectType type) => type switch
+    {
+        ObjectType.Grenade => GrenadeConfig.Blast,
+        ObjectType.MortarRound => MortarConfig.Blast,
+        _ => null,
+    };
 
     private SoundManager sound = null!;
 
@@ -163,10 +195,10 @@ public sealed class GrenadeExplosionScript : SyncScript
 
     private void OnObjectDespawned(NetObject obj)
     {
-        if (obj.Type != ObjectType.Grenade) return;
+        if (BlastFor(obj.Type) is not { } blast) return;
 
         var position = obj.Transform.Position;
-        ExplosionManager.Spawn(position.ToStride());
+        ExplosionManager.Spawn(position.ToStride(), blast);
 
         if (Players.LocalPlayer is not { IsDead: false } local)
         {
@@ -196,7 +228,7 @@ public sealed class GrenadeExplosionScript : SyncScript
         // so squaring the proximity here as well cubes the falloff: a blast twelve metres away came
         // out at two hundredths of a degree, which is nothing. Distance is to the eye rather than
         // the feet, because that is where the camera being shaken actually is.
-        float closeness = 1f - MathUtil.Clamp(range / ShakeRadius, 0f, 1f);
+        float closeness = 1f - MathUtil.Clamp(range / (blast.DamageRadius * ShakeRadiusScale), 0f, 1f);
         CameraTrauma.Add(MaximumTrauma * closeness);
     }
 }

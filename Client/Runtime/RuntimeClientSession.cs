@@ -216,7 +216,7 @@ public sealed class RuntimeClientSession : IClientSession
         Add(new Entity("TracerSystem")
         {
             new TracerSystem(),
-            new GrenadeExplosionScript { Objects = objectRegistry, Players = registry },
+            new BlastEffectScript { Objects = objectRegistry, Players = registry },
             new NpcTrackerScript { Registry = registry },
             new DamageFeedbackScript { Registry = registry },
             new ActionSoundsScript

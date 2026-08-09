@@ -597,6 +597,7 @@ namespace Demiurge.GameServer
             }
 
             long afterFlags = Stopwatch.GetTimestamp();
+            items.Tick(_Tick);
             weapons.Tick(dt, _Tick, players.Values);
             long afterWeapons = Stopwatch.GetTimestamp();
             grenades.Tick(dt, _Tick, players.Values);
@@ -611,6 +612,9 @@ namespace Demiurge.GameServer
 
                 if (player.RespawnTick == 0)
                 {
+                    // The moment of death, which runs once: RespawnTick is non-zero from here until
+                    // he is back on his feet, so the kit cannot be dropped twice.
+                    items.DropOnDeath(player);
                     player.RespawnTick = RespawnConfig.NextWaveTick(_Tick);
                     player.PendingMoves.Clear();
                     player.LastIntent = Vector3.Zero;

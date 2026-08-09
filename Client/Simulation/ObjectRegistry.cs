@@ -62,6 +62,11 @@ public class ObjectRegistry : IDisposable
     {
         pendingUpdates.Remove(data.NetworkId);
         if (!objects.Remove(data.NetworkId, out var obj)) return;
+
+        // Where it ENDED, which for anything that detonates is not where it was last seen — see
+        // ObjectDespawnData.Position. Written before the event so a subscriber reading the object's
+        // transform gets the final answer rather than the newest broadcast one.
+        obj.Transform.Position = data.Position;
         ObjectDespawned?.Invoke(obj);
     }
 

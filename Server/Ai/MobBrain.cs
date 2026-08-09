@@ -31,6 +31,14 @@ internal sealed class MobBrain
     public uint MovingSinceTick { get; set; }
 
     /// <summary>
+    /// What this actor chose to do on its last step, as a label for the debug overlay. Written where
+    /// the decision is made and read nowhere else, so it can never become an input: an intent that
+    /// something downstream could branch on would be a second copy of a decision <see
+    /// cref="ActorIntent"/> exists to keep singular. See <see cref="MobDebugFeed"/>.
+    /// </summary>
+    public string DebugIntent { get; set; } = "SPAWN";
+
+    /// <summary>
     /// Bearing around the threat this actor has committed to for its current bound.
     ///
     /// A Commitment rather than a bare float because the 2 Hz replan would otherwise re-deal it every

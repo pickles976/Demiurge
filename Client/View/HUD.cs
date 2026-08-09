@@ -123,6 +123,21 @@ namespace Demiurge
                 Margin = new Thickness(6, 0, 0, 0),
             };
 
+            // The pouches, as their own number. Deliberately not folded into the "loaded/capacity"
+            // pair beside it: that pair answers "how many can I fire before I reload", this answers
+            // "how many times can I reload", and a reader who has to work out which of two slashed
+            // numbers is which is being asked to do arithmetic mid-fight. Dimmer and smaller because
+            // it is the one you check between contacts rather than during one.
+            var reserveText = new TextBlock
+            {
+                Text = "-",
+                TextColor = new Color(210, 210, 215, 200),
+                Font = font,
+                TextSize = 18,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 0, 0),
+            };
+
             var healthText = new TextBlock
             {
                 Text = "HP —",
@@ -138,6 +153,7 @@ namespace Demiurge
             ammoPanel.Children.Add(healthText);
             ammoPanel.Children.Add(bulletImage);
             ammoPanel.Children.Add(ammoText);
+            ammoPanel.Children.Add(reserveText);
 
             var statusCanvas = new Canvas
             {
@@ -350,6 +366,7 @@ namespace Demiurge
                 new HudScript {
                     Root = root,
                     AmmoText = ammoText,
+                    ReserveText = reserveText,
                     HealthText = healthText,
                     HotbarBorders = hotbarBorders,
                     HotbarImages = hotbarImages,
@@ -566,6 +583,7 @@ namespace Demiurge
         public class HudScript : SyncScript
         {
             public TextBlock AmmoText { get; set; } = null!;
+            public TextBlock ReserveText { get; set; } = null!;
             public TextBlock HealthText { get; set; } = null!;
             public UIElement Root { get; set; } = null!;
             public Border[] HotbarBorders { get; set; } = [];
@@ -601,6 +619,7 @@ namespace Demiurge
                 8L * System.Diagnostics.Stopwatch.Frequency;
 
             private int _lastAmmo = int.MinValue;
+            private int _lastReserve = int.MinValue;
             private bool _lastReloading;
             private int _lastHealth = int.MinValue;
             private bool _lastVisible;
@@ -667,13 +686,18 @@ namespace Demiurge
                 RefreshRespawn(local);
 
                 int ammo = local.IsArmed ? local.Ammo : -1;
-                if (ammo != _lastAmmo || local.IsReloading != _lastReloading)
+                int reserve = local.IsArmed ? local.Reserve : -1;
+                // Reserve joins the change gate: picking a weapon up can change the pouches without
+                // changing what is loaded, and that must not go unredrawn until the next shot.
+                if (ammo != _lastAmmo || reserve != _lastReserve || local.IsReloading != _lastReloading)
                 {
                     _lastAmmo = ammo;
+                    _lastReserve = reserve;
                     _lastReloading = local.IsReloading;
                     AmmoText.Text = !local.IsArmed ? "--"
                         : local.IsReloading ? "RELOADING"
                         : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
+                    ReserveText.Text = local.IsArmed ? $"+{local.Reserve}" : string.Empty;
                 }
 
                 RefreshDeploying();

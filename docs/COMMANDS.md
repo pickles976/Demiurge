@@ -28,7 +28,7 @@ spawn mob [x z]
 spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
 ai stats
-ai track [off|on|beacons|facing|clustering]
+ai track [off|on|beacons|facing|clustering|colliders|ids|states]
 net <seed|log>
 ```
 
@@ -81,10 +81,26 @@ than by a replicated flag, so nothing was added to the wire for it.
 | `beacons` | A vertical beam per NPC in team colour, without depth testing, so it reads through terrain |
 | `facing` | A ground ring and heading spoke, depth tested, for reading stance and bearing up close |
 | `clustering` | A line between every pair of NPCs within 4 m — roughly what one burst or grenade covers, which is what bunching costs them |
+| `colliders` | The volumes a shot is tested against, for **every** actor including yourself: the hit capsule (`GunConfig.HitRadius` 0.6 m over `PlayerMovement.Body.Height` 1.8 m), the head sphere that doubles damage (`HeadCenterHeight` ± `HeadRadius`, dropping when crouched), and — dimmer — the *movement* capsule, whose 0.4 m radius is a different volume from the hit capsule's 0.6 m |
+| `ids` | Each NPC's actor id over its head — the bare number, which `equip` and friends take as `@<id>` |
+| `states` | Each NPC's current decision over its head: `OBJECTIVE`, `COVER`, `BOUND`, `ENTRENCH`, `HOLD` or `GRENADE` |
 
 `on` and `all` enable every layer. The overlay is drawn by `NpcTrackerScript` from the replicated
 player registry and touches no simulation or network state; the toggle is process-wide, so it
 survives session transitions and can be set before a session exists.
+
+`states` is the one layer that needs something from the server, and it is deliberately **not on the
+wire**: an NPC's intent is a server-side decision no client needs to draw the world, and replicating
+it would cost every player bandwidth forever for a developer's occasional look — the same reasoning
+that keeps `SquadRole` off the wire. `MobSystem` hands the labels to `MobDebugFeed`, a process-local
+snapshot, so `states` shows something only when this session runs the server (singleplayer,
+`session host`, or a playtest) and the command says so when it does not. The server builds the
+snapshot only while the layer is on.
+
+Labels are drawn by `LineText` as camera-facing line glyphs rather than as UI text. Stride's
+`FastTextRenderer` crashes on this platform, and a UI label anchored to a moving NPC would have to be
+projected through a view-projection matrix that is one frame stale; a billboard needs the camera's
+orientation only.
 
 Runtime commands mutate the current server session only. They do not modify `source.json`, so
 `map save` does not preserve a runtime-spawned mob or a weapon assigned with runtime `equip`.
