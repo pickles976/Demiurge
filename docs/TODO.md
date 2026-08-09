@@ -4,6 +4,10 @@ Measured 2026-08-02, after the raycast fix took perception and cover off the cri
 server reached 30 TPS. Navigation is now the binding constraint, and it is failing in a specific way
 worth stating before anyone optimises around it.
 
+> **The four paragraphs below are the original diagnosis and are kept in their measured tense. Half
+> of it has since been acted on — read the status under "Two ways out" before believing any present
+> tense in them.**
+
 **`NavSearch` declares a 25 ms useful-prefix budget and a 100 ms failure budget. Live searches run
 153 ms at p50 and 342 ms at p95** — three to six times over, consistently, not occasionally. The
 budget is wall-clock and checked every 64 expansions, which cannot hold when eight workers contend
@@ -30,21 +34,40 @@ map. They are compatible, and the first is a prerequisite for measuring the seco
 
 This is a system, not a patch. It wants the same treatment the time-costed A* got.
 
-**Already done from this diagnosis:** `NavSearchOptions.Deterministic()` budgets by expansion count
-instead of wall clock. Tests using it are reproducible —
-`WideTrenchWithABridgeIsCrossedByRepeatedRequests` went from failing two runs in three to passing
-eight of eight. Production still uses the clock; switching it changes NPC behaviour and belongs to the
-design decision above, not to a test fix.
+**The first way out is DONE, and production takes it.** `NavSearchOptions.Default` now sets
+`PrimaryExpansionBudget = 64` and `FailureExpansionBudget = 256`; the `TimeSpan`s are retained,
+ignored, and documented as a record of what the budget was originally meant to buy. The counts are
+calibrated rather than picked — conquest measures ~0.8 ms of CPU per expansion, at which price the
+old 25 ms and 100 ms budgets bought about 32 and 127 expansions, so 64/256 reproduce the same
+ceilings without descheduling overshoot. Both are multiples of the 64-expansion check interval on
+purpose. This does not make navigation cheaper; it makes the cost predictable and stops route quality
+depending on how busy the machine was.
 
-**Open, and characterised:** `NpcExcavatesAcrossAnUnwalkableSoilSlopeInsteadOfJumpingAtIt` fails
-identically on every run — not flaky, and not fixed by the deterministic budget. The NPC reaches
-`X = 7.69` against a goal at `X = 7.5`, so it arrives horizontally, but ends at `Y = 16.25` where the
-plateau needs `17.14` — **0.89 m short vertically after 167 terrain edits**. It is digging forward into
-the hill rather than cutting a staircase up it. BARITONE.md's execution record claims exactly this
-scenario ("a steep soil frontier is excavated without endless recovery jumping", and the follower's
-uphill recovery jump restored so NPCs could mount the one-metre treads staircase excavation produces),
-so this is a regression against behaviour that was once verified. Fixing it means the staircase
-generator or the follower's rise handling, which is the same subsystem as the item above.
+Also since this was written: the heuristic had been quietly deflated 1.5x (it divided distance by
+sprint speed while every edge is priced at walk speed), so the search has only just started behaving
+like real A*. `NavSearchOptions.HeuristicWeight` exists for weighted A* and is deliberately left at 1
+until that lands, rather than bundling two changes into one measurement.
+
+**Still open: the second way out.** Long-range routing has no structure — no hierarchy, no corridor
+caching — so a search to a distant flag still terminates because a budget stopped it rather than
+because it finished. That is the thing that actually makes NPCs route across the map, and it is
+untouched.
+
+**Regression, characterised, as of 2026-08-09:** `NpcExcavatesOutOfADeepWidePit` fails with
+`successTick == 0` — the NPC never leaves a 6 m pit in 240 simulated seconds. BARITONE.md's execution
+record claims this scenario "reaches the rim in 120 terrain edits instead of 300", so this is a loss
+against behaviour that was verified.
+
+The earlier entry here blamed `NpcExcavatesAcrossAnUnwalkableSoilSlopeInsteadOfJumpingAtIt` and
+described it in detail (0.89 m short vertically after 167 edits, digging forward instead of cutting a
+staircase). **That test passes now.** The failure moved from the slope to the pit, so do not use that
+characterisation to guide the fix — measure the pit.
+
+**Not a navigation failure at all:** `EachConquestTeamCapturesBothCentralFlagsWithoutStuckRelocation`
+fails for both teams in about 150 ms, before any simulation runs, on `Assert.Equal(4, flags.Length)`
+— the conquest map has five flag placements now. The real-map acceptance scenario BARITONE.md records
+has therefore not actually run since the map gained its fifth flag. Fixing the assertion is the
+cheapest way to find out whether that result still holds.
 
 # Art Rules
 use 32x32 textures in Blockbench
@@ -62,6 +85,11 @@ AI
 - PPSH units dont do shit rn
   - PPSH units sprint
 - SKS units dig in and engage
+
+  These three were symptoms of weapon-identity branching, and that branching is gone (see the AI
+  section below). They are now TUNING questions against a scored model rather than missing features:
+  if the PPSH man still does not close, the thing to look at is `WeaponEffectiveness`'s range curve
+  and the `aggression` scalar, not a rule about SMGs.
 
 - [ ] PVP
     - [ ] add mosin-nagant
@@ -89,21 +117,33 @@ AI
 
 # AI
 
-The weapon-behavior items above (PPSH sprinting, SKS entrenching, more mobile tactics) are symptoms of
-one missing system, not three features. Per-unit arbitration branches on weapon identity, so each
-behavior has to be written and no two candidate actions can be ranked against each other. Prefer
-pricing every available action in one currency and letting weapon behavior fall out of parameters —
-the way route choice fell out of movement seconds. The currency itself is the unsolved part; see the
-design-method section in `../CLAUDE.md` and the AI-layers note in `ARCHITECTURE.md` before adding
-another per-weapon branch.
+**The currency is no longer the unsolved part.** It is net health points per second —
+`Common/Ai/CombatValue.cs`. Weapon identity is gone from the AI, fire discipline is a rate choice,
+squad role allocation is a joint score, and perception is budgeted against a sound upper bound. What
+is built and what is not is written up under "The combat currency" in `ARCHITECTURE.md`; read that
+before adding anything here.
 
-- [ ] Connected foxhole/trench construction
-- [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches. Needs a
-  `PathFollowState.Digging` case in the bound follower first; a digging man gives up his aim
-- [ ] Raise the global cover-query budget once measured; at 1/tick a squad is slow to go set
+- [x] Find the combat currency (`CombatValue`, net HP/s) and price weapon reach in it
+      (`WeaponEffectiveness`, rate-as-a-choice, `SightingMoa` replacing the flat AI aim constant)
+- [x] Delete `MaxEngagementRangeFor`, `PrefersToHoldFire`, `ShouldAdvance` and the hand-set bursts
+- [x] Joint squad allocation with the suppression externality (`SquadTactics` scores hold vs assault)
+- [x] Raise the global cover-query budget — now 8/tick, was 1
+- [x] `PathFollowState.Digging` exists in the follower
+- [ ] **Convert `MobSystem`'s per-unit arbitration to the same score.** The last stage-1 item, and
+  now wiring rather than design: the ordered `ActorIntent` ternary still selects behaviour by
+  priority, and `ActorIntent.HoldAndFire` is declared and never constructed. See ARCHITECTURE.md's
+  "What is still an ordered chain"
+- [ ] Connected foxhole/trench construction (only single-position `FoxholePlan.NextBite` exists)
+- [ ] when the enemy is entrenched, the AI should dig towards the enemy's trenches. The
+  `PathFollowState.Digging` prerequisite is met; a digging man gives up his aim
+- [ ] Excavation commit model: dig leases, lazy local validation, 0.5 brush radius for cuts
 - [ ] Commander fortification and crew-weapon objectives
   grenade reservations
-- [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics
+- [ ] Weapon-role assignment, mortar crews, and heavy-MG logistics. `Server/Ai` contains no
+  reference to mortars or MGs at all, so NPCs cannot work either one
+- [ ] Grenade doctrine as considerations feeding one score rather than alternative rules
+  (`GrenadeBehavior` exists and contains no scoring)
+- [ ] Strategy layer: force ratio, stalemate concentration, combat zones
 
 # AI Battle
 

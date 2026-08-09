@@ -62,6 +62,21 @@ internal abstract record ActorIntent
         internal override string DebugLabel => "COVER";
     }
 
+    /// <summary>
+    /// Working a fighting position: digging one, or cycling between its protected centre and its
+    /// peek station once it is dug.
+    ///
+    /// A case rather than a branch below the decision, which is what it used to be. `Entrenching`
+    /// and `Entrenched` were tested AFTER an ActorIntent had already been chosen, so an actor could
+    /// be told to pursue its objective and then spend the tick in its hole — the decision was not
+    /// the decision, which is the exact failure this union exists to prevent. It also made
+    /// <see cref="MobDebugFeed"/> lie: `ai track states` drew OBJECTIVE over a man in a foxhole.
+    /// </summary>
+    internal sealed record HoldFightingPosition : ActorIntent
+    {
+        internal override string DebugLabel => "DUGIN";
+    }
+
     /// <summary>No believed threat: go where the commander wants this squad to be.</summary>
     internal sealed record PursueObjective : ActorIntent
     {

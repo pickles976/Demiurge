@@ -308,6 +308,34 @@ namespace Demiurge.GameServer
             uint tick,
             ICollection<ServerPlayer> actors)
         {
+            var action = Decide(mob, dt, tick, actors);
+            Apply(mob, action, dt);
+
+            // After the move, because it measures whether the move achieved anything.
+            if (brains.TryGetValue(mob.Id, out var brain)
+                && brain.Navigation.Progress.Update(
+                    mob.Position,
+                    tick,
+                    expectedToTravel: !action.HoldingObjective,
+                    action.TerrainProgress))
+                stuckMobs.Enqueue(mob.Id);
+        }
+
+        /// <summary>
+        /// What this actor does this tick, as a value. Reads the brain and the blackboard; writes
+        /// NEITHER the actor's State/Yaw/Pitch/LastIntent NOR its position. <see cref="Apply"/> does
+        /// that, once, which is the whole point — a decider with no write access cannot overwrite
+        /// another decider's answer.
+        ///
+        /// It still mutates the BRAIN — navigation destinations, cover claims, contact memory — and
+        /// that is correct: the brain is the blackboard, and deciding is what updates it.
+        /// </summary>
+        private MobAction Decide(
+            ServerPlayer mob,
+            float dt,
+            uint tick,
+            ICollection<ServerPlayer> actors)
+        {
             if (!brains.TryGetValue(mob.Id, out var brain))
                 brains[mob.Id] = brain = CreateBrain(mob.Team, mob.Position);
             var squad = BoardFor(mob, brain);
@@ -363,16 +391,14 @@ namespace Demiurge.GameServer
             {
                 brain.DebugIntent = "GRENADE";
                 brain.Navigation.Progress.Reset();
-                mob.State = PlayerStateFlags.Shooting;
-                mob.LastIntent = Vector3.Zero;
-                StepSolver(mob, Vector3.Zero, dt);
-                return;
+                return new MobAction { Shooting = true };
             }
             mob.Hotbar = HotbarSlot.Primary;
-            // Shooting means actuating the CURRENT item. Do not carry a shovel swing through the
-            // hotbar transition and make it look like the newly equipped primary fired before
-            // CombatBehavior authorized a shot this tick.
-            mob.State &= ~PlayerStateFlags.Shooting;
+            // The clear that used to be here is gone: Shooting means actuating the CURRENT item, and
+            // a shovel swing must not carry through the hotbar transition and look like the newly
+            // equipped primary firing. Apply now composes mob.State from the action alone, so no flag
+            // survives a tick unless this tick's decision asked for it — the guarantee that clear was
+            // approximating.
 
             bool hasOrder = squad.TryGetOrder(mob.Id, out var order);
             bool bounding = hasOrder && order.Role == SquadRole.Bound;
@@ -462,13 +488,14 @@ namespace Demiurge.GameServer
                 brain.IsUnderFire(tick)
                 || mob.Spread.SuppressionMoa > 1f;
             long combatStarted = Stopwatch.GetTimestamp();
-            bool combatOwnsTick = combat.Tick(
+            var combatOutcome = combat.Tick(
                 mob,
                 brain,
                 tick,
                 dt,
                 mayFire && !underFire,
                 suppressing && mayFire);
+            bool combatOwnsTick = combatOutcome.OwnsTick;
             timingCombatStopwatchTicks += Stopwatch.GetTimestamp() - combatStarted;
 
             // A bound is executed whether or not COMBAT owns the tick.
@@ -489,24 +516,39 @@ namespace Demiurge.GameServer
             //   Bound first, because a squad manoeuvre outranks this actor's own combat state — a
             //     flanker cannot see the man he is flanking, so requiring his personal agreement was
             //     what stopped half the bounds executing.
-            //   PursueObjective next, because with no combat there is nothing to entrench against.
-            //     Getting this below Entrench made every NPC dig at spawn instead of advancing.
-            //   Entrench and SeekCover last, both inside combat.
+            //   Entrench and SeekCover next, both inside combat: with combat live, digging in and
+            //     relocating are the two things worth doing and mustEntrench chooses between them.
+            //   HoldFightingPosition and PursueObjective last, both outside combat. A man in or
+            //     building a hole works it; only a man with neither goes back to his objective.
+            //     Getting entrenchment ABOVE PursueObjective is what stopped every NPC digging at
+            //     spawn instead of advancing, so the two must stay below the combat arms.
+            //
+            // HoldFightingPosition used to not exist: the two branches below this decision tested
+            // brain.Entrenching/Entrenched directly and moved an actor that had already been told to
+            // pursue its objective. That is what made the claim above ("nothing recomputes whether
+            // this man may move") false, and made the states overlay draw OBJECTIVE over a man in a
+            // foxhole.
             ActorIntent decision =
                 bounding && !mustEntrench ? new ActorIntent.Bound(order.Destination, order.Bearing)
-                : !combatOwnsTick ? new ActorIntent.PursueObjective()
-                : mustEntrench ? new ActorIntent.Entrench()
-                : new ActorIntent.SeekCover(MayAdvance: true);
+                : combatOwnsTick && mustEntrench ? new ActorIntent.Entrench()
+                : combatOwnsTick ? new ActorIntent.SeekCover(MayAdvance: true)
+                : brain.Entrenching || brain.Entrenched ? new ActorIntent.HoldFightingPosition()
+                : new ActorIntent.PursueObjective();
 
             // Every path below this point is downstream of the one decision, so labelling it here
             // covers all of them and cannot drift from what the actor actually did.
             brain.DebugIntent = decision.DebugLabel;
 
-            if (decision is not ActorIntent.PursueObjective)
+            // Named positively. It used to read `is not PursueObjective`, which quietly meant "every
+            // intent that exists except one" — so adding HoldFightingPosition put a man in a foxhole
+            // down the combat movement path. A closed union earns nothing if its consumers match on
+            // the complement of one case.
+            if (decision is ActorIntent.Bound or ActorIntent.Entrench or ActorIntent.SeekCover)
             {
                 brain.Navigation.Progress.Reset();
                 Vector3 combatIntent;
                 bool combatJump;
+                bool combatDigging;
                 if (decision is ActorIntent.Entrench) DiagMustEntrench++;
                 if (decision is ActorIntent.Bound)
                 {
@@ -519,7 +561,8 @@ namespace Demiurge.GameServer
                         assault,
                         tick,
                         out combatIntent,
-                        out combatJump);
+                        out combatJump,
+                        out combatDigging);
                 }
                 else
                 {
@@ -543,11 +586,14 @@ namespace Demiurge.GameServer
                         assault,
                         tick,
                         out combatIntent,
-                        out combatJump);
+                        out combatJump,
+                        out combatDigging);
                 }
+                // From the OUTCOME, not from mob.State. Reading the actor here would be reading
+                // last tick's answer, because nothing has applied this tick's yet.
                 bool crouching = brain.AtCover
                     && !bounding
-                    && (mob.State.HasFlag(PlayerStateFlags.Reloading)
+                    && (combatOutcome.Flags.HasFlag(PlayerStateFlags.Reloading)
                         || ShouldCrouchAtCover(brain, tick));
 
                 // Run when the movement IS the job and shooting is not: bounding across open ground,
@@ -566,17 +612,28 @@ namespace Demiurge.GameServer
                 bool sprinting = combatIntent != Vector3.Zero
                     && !crouching
                     && (decision is ActorIntent.Bound
-                        || !mob.State.HasFlag(PlayerStateFlags.Shooting)
+                        || !combatOutcome.Flags.HasFlag(PlayerStateFlags.Shooting)
                             && (!brain.AtCover || !mayFire));
 
-                mob.State = mob.State
-                    .With(PlayerStateFlags.Moving, combatIntent != Vector3.Zero)
-                    .With(PlayerStateFlags.Jumping, combatJump)
-                    .With(PlayerStateFlags.Sprinting, sprinting)
-                    .With(PlayerStateFlags.Crouching, crouching);
-                mob.LastIntent = combatIntent;
-                StepSolver(mob, combatIntent, dt);
-                return;
+                // Combat's own flags carried explicitly rather than by merging onto whatever
+                // mob.State happened to hold, which is how a stale flag used to survive a tick.
+                return new MobAction
+                {
+                    Intent = combatIntent,
+                    Jump = combatJump,
+                    Sprint = sprinting,
+                    Crouch = crouching,
+                    // Either kind of actuation: a trigger pull or a shovel bite taken on the way.
+                    Shooting = combatOutcome.Flags.HasFlag(PlayerStateFlags.Shooting) || combatDigging,
+                    Aiming = combatOutcome.Flags.HasFlag(PlayerStateFlags.Aiming),
+                    Reloading = combatOutcome.Flags.HasFlag(PlayerStateFlags.Reloading),
+                    // A man swinging a shovel looks where he is digging, not where he was aiming.
+                    // The dig helper set that facing during Decide and it used to win by running
+                    // last; ordering is not a mechanism any more, so the preference is stated.
+                    Yaw = combatDigging ? mob.Yaw : combatOutcome.Yaw,
+                    Pitch = combatDigging ? mob.Pitch : combatOutcome.Pitch,
+                    TurnTo = combatOwnsTick || combatDigging,
+                };
             }
 
             // Digging a fighting position outlasts direct sight: once the actor drops below grade,
@@ -584,7 +641,7 @@ namespace Demiurge.GameServer
             // made a half-dug hole and sent the NPC roaming. Finish the fixed plan, then cycle from
             // its protected centre to the peek station so perception can reacquire naturally.
             long entrenchStarted = Stopwatch.GetTimestamp();
-            if (brain.Entrenching)
+            if (decision is ActorIntent.HoldFightingPosition && brain.Entrenching)
             {
                 var rememberedThreat = new AiContact(
                     brain.CoverThreatId,
@@ -598,19 +655,23 @@ namespace Demiurge.GameServer
                     rememberedThreat,
                     tick,
                     out var entrenchIntent,
-                    out bool entrenchJump);
+                    out bool entrenchJump,
+                    out bool entrenchDigging);
                 bool entrenchCrouch = brain.Entrenched
                     && ShouldCrouchAtCover(brain, tick);
-                mob.State = mob.State
-                    .With(PlayerStateFlags.Moving, entrenchIntent != Vector3.Zero)
-                    .With(PlayerStateFlags.Jumping, entrenchJump)
-                    .With(PlayerStateFlags.Sprinting, false)
-                    .With(PlayerStateFlags.Crouching, entrenchCrouch);
-                mob.LastIntent = entrenchIntent;
-                StepSolver(mob, entrenchIntent, dt);
-                return;
+                // Accumulated here as well as at the end of the block: the early return used to skip
+                // it, so every tick actually spent entrenching was missing from `ai stats`.
+                timingEntrenchStopwatchTicks += Stopwatch.GetTimestamp() - entrenchStarted;
+                return new MobAction
+                {
+                    Intent = entrenchIntent,
+                    Jump = entrenchJump,
+                    Crouch = entrenchCrouch,
+                    Shooting = entrenchDigging,
+                    TerrainProgress = true,
+                };
             }
-            if (brain.Entrenched)
+            if (decision is ActorIntent.HoldFightingPosition && brain.Entrenched)
             {
                 bool tucked = ShouldCrouchAtCover(brain, tick);
                 Vector3 desired = tucked
@@ -636,13 +697,13 @@ namespace Demiurge.GameServer
                         brain.CoverThreatId,
                         brain.CoverThreatPosition,
                         tick);
-                mob.State = PlayerStateFlags.None
-                    .With(PlayerStateFlags.Moving, coverIntent != Vector3.Zero)
-                    .With(PlayerStateFlags.Jumping, coverJump)
-                    .With(PlayerStateFlags.Crouching, tucked);
-                mob.LastIntent = coverIntent;
-                StepSolver(mob, coverIntent, dt);
-                return;
+                timingEntrenchStopwatchTicks += Stopwatch.GetTimestamp() - entrenchStarted;
+                return new MobAction
+                {
+                    Intent = coverIntent,
+                    Jump = coverJump,
+                    Crouch = tucked,
+                };
             }
             timingEntrenchStopwatchTicks += Stopwatch.GetTimestamp() - entrenchStarted;
 
@@ -805,36 +866,37 @@ namespace Demiurge.GameServer
                     priority: NavigationPriority.Prefetch);
             }
 
-            mob.State = PlayerStateFlags.None
-                .With(PlayerStateFlags.Moving, intent != Vector3.Zero)
-                .With(PlayerStateFlags.Jumping, jump)
-                // NOT here. Sprinting belongs to the combat path, where there is something to run
-                // from or toward; a squad that runs everywhere reads as panicked rather than urgent,
-                // and arrives with PostSprintMoa still spoiling its first three seconds of fire.
-                // Shooting reads as "actuating the held item", which is what the client's view of a
-                // shovel swings on. Digging is the tool's version of pulling the trigger.
-                .With(PlayerStateFlags.Shooting, digging);
+            // The follower turns toward where it is going, a digging man keeps the heading and pitch
+            // his shovel needs, and an idle man on his objective scans. Three `mob.Yaw = ...` writes
+            // at this point, now one answer.
+            float followYaw = mob.Yaw;
+            float followPitch = digging ? mob.Pitch : 0f;
             if (intent != Vector3.Zero)
-                mob.Yaw = RotateYawTowards(
+                followYaw = RotateYawTowards(
                     mob.Yaw,
                     MathF.Atan2(intent.X, intent.Z),
                     TurnRadiansPerSecond * dt);
             else if (!digging && heardGunshot)
-                FaceHorizontalTarget(mob, brain.HeardPosition, dt);
+                followYaw = YawTowardHorizontal(mob, brain.HeardPosition, dt);
             else if (!digging && holdingObjective)
-                mob.Yaw = NormalizeRadians(
-                    mob.Yaw + IdleScanRadiansPerSecond * dt);
-            if (!digging)
-                mob.Pitch = 0f;
-            mob.LastIntent = intent;
+                followYaw = NormalizeRadians(mob.Yaw + IdleScanRadiansPerSecond * dt);
 
-            StepSolver(mob, intent, dt);
-            if (brain.Navigation.Progress.Update(
-                    mob.Position,
-                    tick,
-                    expectedToTravel: !holdingObjective,
-                    terrainProgress))
-                stuckMobs.Enqueue(mob.Id);
+            return new MobAction
+            {
+                Intent = intent,
+                Jump = jump,
+                // Sprinting is NOT here. It belongs to the combat path, where there is something to
+                // run from or toward; a squad that runs everywhere reads as panicked rather than
+                // urgent, and arrives with PostSprintMoa still spoiling its first three seconds of
+                // fire. Shooting reads as "actuating the held item", which is what the client's view
+                // of a shovel swings on — digging is the tool's version of pulling the trigger.
+                Shooting = digging,
+                Yaw = followYaw,
+                Pitch = followPitch,
+                TurnTo = true,
+                HoldingObjective = holdingObjective,
+                TerrainProgress = terrainProgress,
+            };
         }
 
         private bool TryClearNavigationHeadroom(
@@ -1165,6 +1227,9 @@ namespace Demiurge.GameServer
         /// A bound reuses the cover-destination lane deliberately: claims, path priority, and arrival
         /// detection are all the same problem as moving to a fighting position.
         /// </summary>
+        /// <param name="digging">Whether this tick swung the shovel. Reported rather than written onto
+        /// mob.State: Apply composes the actor's flags from the action alone, so a `|=` inside a
+        /// helper would be silently discarded.</param>
         private void UpdateBoundMovement(
             ServerPlayer mob,
             MobBrain brain,
@@ -1173,8 +1238,10 @@ namespace Demiurge.GameServer
             bool assault,
             uint tick,
             out Vector3 intent,
-            out bool jump)
+            out bool jump,
+            out bool digging)
         {
+            digging = false;
             intent = Vector3.Zero;
             jump = false;
 
@@ -1246,6 +1313,7 @@ namespace Demiurge.GameServer
             {
                 intent = Vector3.Zero;
                 jump = false;
+                digging = true;
                 PerformNavigationDig(mob, brain, digTarget, tick);
             }
             else if (followState == PathFollowState.Complete)
@@ -1296,6 +1364,7 @@ namespace Demiurge.GameServer
             brain.NextCoverQueryTick = tick;
         }
 
+        /// <inheritdoc cref="UpdateBoundMovement" path="/param[@name='digging']"/>
         private void UpdateCoverMovement(
             ServerPlayer mob,
             MobBrain brain,
@@ -1307,8 +1376,10 @@ namespace Demiurge.GameServer
             bool assault,
             uint tick,
             out Vector3 intent,
-            out bool jump)
+            out bool jump,
+            out bool digging)
         {
+            digging = false;
             intent = Vector3.Zero;
             jump = false;
 
@@ -1329,7 +1400,8 @@ namespace Demiurge.GameServer
                     primaryThreat,
                     tick,
                     out intent,
-                    out jump))
+                    out jump,
+                    out digging))
                 return;
 
             bool invalidated = false;
@@ -1517,7 +1589,10 @@ namespace Demiurge.GameServer
                     // the spot as a fighting position the query above accepts it and digging stops, which
                     // is exactly "deep enough to peek over, low enough to crouch behind".
                     if (underFire || baseOfFire)
-                        _ = DigEmergencyCover(mob, primaryThreat.Position, tick);
+                    {
+                        _ = DigEmergencyCover(mob, primaryThreat.Position, tick, out bool dugCover);
+                        digging |= dugCover;
+                    }
                 }
             }
 
@@ -1567,6 +1642,7 @@ namespace Demiurge.GameServer
             {
                 intent = Vector3.Zero;
                 jump = false;
+                digging = true;
                 PerformNavigationDig(mob, brain, digTarget, tick);
             }
             else if (followState == PathFollowState.Complete)
@@ -1603,6 +1679,7 @@ namespace Demiurge.GameServer
             }
         }
 
+        /// <inheritdoc cref="UpdateBoundMovement" path="/param[@name='digging']"/>
         private bool UpdateEntrenchment(
             ServerPlayer mob,
             MobBrain brain,
@@ -1610,10 +1687,12 @@ namespace Demiurge.GameServer
             AiContact threat,
             uint tick,
             out Vector3 intent,
-            out bool jump)
+            out bool jump,
+            out bool digging)
         {
             intent = Vector3.Zero;
             jump = false;
+            digging = false;
             if (!brain.Entrenching)
             {
                 Vector3 toward = threat.Position - mob.Position;
@@ -1643,6 +1722,7 @@ namespace Demiurge.GameServer
                     brain.EntrenchToward,
                     brain.EntrenchGrade) is { } target)
             {
+                digging = true;
                 PerformNavigationDig(mob, brain, target, tick);
                 return true;
             }
@@ -1785,7 +1865,8 @@ namespace Demiurge.GameServer
             uint tick)
         {
             mob.Hotbar = HotbarSlot.Shovel;
-            mob.State |= PlayerStateFlags.Shooting;
+            // Aim only. Callers report the swing through their `digging` out-parameter, which the
+            // action carries; a `|= Shooting` here would be composed away by Apply.
             FaceDigTarget(mob, target, NetworkConfig.FixedDt);
             long versionBeforeDig = terrain.EditVersion;
             terrainEdits.ApplyDig(
@@ -1808,11 +1889,16 @@ namespace Demiurge.GameServer
             return elapsed % cycle < CoverCrouchTicks;
         }
 
+        /// <param name="swung">Whether a shovel bite was actually taken. Distinct from the return
+        /// value, which means "this actor is digging emergency cover" and is true on cooldown ticks
+        /// where nothing moved.</param>
         private bool DigEmergencyCover(
             ServerPlayer mob,
             Vector3 threatPosition,
-            uint tick)
+            uint tick,
+            out bool swung)
         {
+            swung = false;
             Vector3 toward = threatPosition - mob.Position;
             toward.Y = 0f;
             if (toward.LengthSquared() > 1e-6f)
@@ -1833,8 +1919,10 @@ namespace Demiurge.GameServer
                 return false;
             if (tick < mob.NextDigTick) return true;
 
+            swung = true;
             mob.Hotbar = HotbarSlot.Shovel;
-            mob.State |= PlayerStateFlags.Shooting;   // swings the shovel on every client's view
+            // Aim, not output: the shovel-swing flag is reported through the action instead, because
+            // Apply composes mob.State from the action alone and would discard a `|=` written here.
             mob.Yaw = MathF.Atan2(toward.X, toward.Z);
             mob.Pitch = -MathF.PI * 0.35f;
             terrainEdits.ApplyDig(
@@ -1875,6 +1963,41 @@ namespace Demiurge.GameServer
                 out terrainProgress);
             timingHeadroomStopwatchTicks += Stopwatch.GetTimestamp() - started;
             return recovered;
+        }
+
+        /// <summary>
+        /// The action's flags, and ONLY the action's flags.
+        ///
+        /// Composed from None rather than merged onto mob.State deliberately. Three of the five old
+        /// exits merged (`mob.State.With(...)`) and two replaced (`PlayerStateFlags.None.With(...)`),
+        /// so whether a flag survived a tick depended on which branch produced it. If a decider wants
+        /// a flag it says so.
+        /// </summary>
+        internal static void ComposeState(in MobAction action, out PlayerStateFlags state)
+            => state = PlayerStateFlags.None
+                .With(PlayerStateFlags.Moving, action.Intent != Vector3.Zero)
+                .With(PlayerStateFlags.Jumping, action.Jump)
+                .With(PlayerStateFlags.Sprinting, action.Sprint)
+                .With(PlayerStateFlags.Crouching, action.Crouch)
+                .With(PlayerStateFlags.Shooting, action.Shooting)
+                .With(PlayerStateFlags.Aiming, action.Aiming)
+                .With(PlayerStateFlags.Reloading, action.Reloading);
+
+        /// <summary>
+        /// The one place an NPC's tick output reaches the actor. Every decider returns a MobAction;
+        /// this is what makes it real.
+        /// </summary>
+        private void Apply(ServerPlayer mob, in MobAction action, float dt)
+        {
+            ComposeState(action, out var state);
+            mob.State = state;
+            if (action.TurnTo)
+            {
+                mob.Yaw = action.Yaw;
+                mob.Pitch = action.Pitch;
+            }
+            mob.LastIntent = action.Intent;
+            StepSolver(mob, action.Intent, dt);
         }
 
         private void StepSolver(ServerPlayer mob, Vector3 intent, float dt)
@@ -2334,15 +2457,23 @@ namespace Demiurge.GameServer
             }
         }
 
-        private static void FaceHorizontalTarget(
+        /// <summary>
+        /// The yaw that turns this actor toward <paramref name="target"/>, or its current one when
+        /// there is nothing to turn toward.
+        ///
+        /// Returns rather than writes. It was FaceHorizontalTarget and set mob.Yaw itself, which made
+        /// it a sixth writer of the actor's output — the thing this split exists to have exactly one
+        /// of.
+        /// </summary>
+        private static float YawTowardHorizontal(
             ServerPlayer mob,
             Vector3 target,
             float dt)
         {
             Vector3 delta = target - mob.Position;
             delta.Y = 0f;
-            if (delta.LengthSquared() <= 1e-6f) return;
-            mob.Yaw = RotateYawTowards(
+            if (delta.LengthSquared() <= 1e-6f) return mob.Yaw;
+            return RotateYawTowards(
                 mob.Yaw,
                 MathF.Atan2(delta.X, delta.Z),
                 TurnRadiansPerSecond * dt);

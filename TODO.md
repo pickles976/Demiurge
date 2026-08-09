@@ -3,6 +3,8 @@ use 32x32 textures in Blockbench
 use 16x16 textures for the ground
 For weapons, need to model sights and add anchors for camera to figure out where to position weapon for ADS
 
+Use Codex for actual engineering work, Claude for just adding tiny features.
+
 1. Finish up AI
 2. Finish PVP MVP
 3. Switch to Stride 4.5
@@ -17,15 +19,12 @@ Event queue implementation
 
 ## AI Improvements
 
-Overall the changes we made have caused the pace of the game to increase. NPC battles are much more exciting.
-
-However, it sounds like we have a bunch of tasks running in threads that overwrite the NPCs state and make it do something. What if we just have threaded functions update the blackboard, but a single function decides what to do based on the contents of the blackboard? Even the squad-level and strategic AI can just propagate down to the individual NPCs blackboard.
-
 - NPCs need to run from grenades.
 - Assault units are useless at long range, and extremely deadly at close range. They need to take this into account. The PPSH and grenades can absolutely massacre defenders.
 - Strategic AI usually just fights over 1-2 flags, seems like a self-reinforcing loop of "needs mass", never opportunistically sends a squad out to go capture a totally defenseless flag
+- NPCs will oscillate back and forth like they are being assigned to a different flag over and over
 - If I shoot at enemies going to capture a flag from way outside of their engagement range, they will drop everything and run all the way to attack me. Even if I pose no real threat to them due to the distance.
-- NPCs still moving in a line, not in formation
+- NPCs still moving in a line while walking over long stretches of terrain, not in formation
 
 ## New Stuff
 -  NPCs should be able to go prone
@@ -33,9 +32,9 @@ However, it sounds like we have a bunch of tasks running in threads that overwri
 - allow NPCs to use the mortar
 - Allow NPCs to pick up the heavy MG
 
-
 Stop Using Claude
 - Codex clean up all comments
+- Codex refactor certain parts of the code
 
 Bugs:
 
@@ -49,13 +48,12 @@ New Features
 
 - Try to add digging back in to combat
 
-
 - [ ] digging sends dirt to your inventory, 2 dirt - 1 sandbaga
 - [ ] dig dirt to place sandbags
 
 - [ ] mortar whistle sound
 
-## Richer Environment 
+## Richer Environment
 
 - [ ] add wood texture
 - [ ] add wood block type

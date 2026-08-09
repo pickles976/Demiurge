@@ -90,6 +90,13 @@ CommanderAi (team, 1 Hz)
   -> Perception / CombatBehavior / CoverBehavior / GrenadeBehavior
   -> NavigationAgent
   -> shared authoritative gameplay systems
+
+Common/Ai (pure, headlessly testable) -- the currency the layers above decide in:
+  CombatValue        -- net health points per second: dealt minus taken/aggression
+  WeaponEffectiveness-- what a weapon is worth at a range, rate chosen rather than fixed
+  ThreatRanking      -- sound upper bound per enemy, so a skipped ray is provably cheap
+  Exposure           -- SelfExposure vs TargetExposure as distinct types
+  CoverScore, WedgeFormation, StrategicObjectivePlanner, ContactMemory
 ```
 
 - `SquadFormation` re-groups each team's living NPCs by proximity once per second. Membership is not
@@ -112,18 +119,57 @@ CommanderAi (team, 1 Hz)
   creates a two-second incoming-fire stimulus at the firing position, prompting cover selection or
   emergency dirt digging without continuously tracking the live shooter.
 
-Per-unit arbitration is the least general layer in this stack, and knowingly so. A weapon's tactical
-character is currently expressed as branches on its identity — `CombatBehavior.MaxEngagementRangeFor`
-and `PrefersToHoldFire` test `ItemType.Sks` and `ItemType.Ppsh` directly, and `MobSystem` does the
-same for sprint and engagement decisions — so each weapon's behavior has to be written rather than
-derived, and no two candidate actions can be ranked against each other. The generalized form prices
-every available action (advance, suppress, entrench, bound, grenade, relocate) in one currency, so
-"the PPSH man closes and the SKS man digs in" falls out of weapon parameters the way route choice
-falls out of movement seconds. See the design-method section in [../CLAUDE.md](../CLAUDE.md).
+### The combat currency
 
-Deliberately not built yet, because the currency is the open question: seconds worked for movement
-because execution time is a movement's honest cost, and combat has no equally obvious equivalent.
-Picking that unit is the design work, not the arbitration code around it.
+This section used to end by naming the currency as the open question — seconds worked for movement
+because execution time is a movement's honest cost, and combat had no equally obvious equivalent.
+**It has one: net health points per second**, in `Common/Ai/CombatValue.cs`. Holding, closing,
+flanking, entrenching and suppressing all produce or prevent damage over time, so they can be
+compared without anybody deciding in advance which a rifleman should prefer. It also bridges to
+navigation, which already prices routes in estimated seconds: a manoeuvre costing eight seconds
+costs eight seconds of forgone `dealt`, plus whatever is `taken` in transit.
+
+`aggression` is the single global tuning scalar, dividing the taken term. Raise it and the whole
+force closes and flanks; lower it and it holds and digs.
+
+What the currency has already replaced:
+
+- **Weapon identity is gone from the AI.** `MaxEngagementRangeFor`, `PrefersToHoldFire` and
+  `ShouldAdvance` are deleted; no file under `Server/Ai` or `MobSystem` names `ItemType.Sks` or
+  `ItemType.Ppsh`. `CombatBehavior` asks `WeaponEffectiveness.Best(...).DamagePerSecond <= 0f`, so a
+  man whose weapon cannot pay at this range sets `ShouldCloseDistance` — the SMG closing and the
+  rifle holding is now arithmetic rather than two written behaviours.
+- **Fire discipline is a rate choice, not a burst timer.** `WeaponEffectiveness` scores several
+  fractions of cyclic rate and takes the fastest whose expected damage per round clears
+  `MinimumExpectedDamagePerRound`. Spraying up close and firing deliberately at distance fall out of
+  the same expression.
+- **Squad allocation is joint.** `SquadTactics` scores each member holding versus assaulting — the
+  latter averaged over destination and transit, with the threat suppressed because the base of fire
+  will be shooting — and picks the assignment maximising the squad total. Covering fire paying for
+  the bound it enables is what stops every man independently concluding that moving is dangerous.
+- **Perception is budgeted soundly.** `ThreatRanking` bounds each believed enemy's contribution with
+  exposure pinned at 1, so an enemy left unexamined provably could not have changed the decision.
+
+### What is still an ordered chain
+
+Per-unit action selection in `MobSystem` has NOT been converted. It is a priority ternary over
+`ActorIntent`:
+
+```csharp
+bounding && !mustEntrench ? Bound : !combatOwnsTick ? PursueObjective
+                                  : mustEntrench    ? Entrench
+                                  :                   SeekCover
+```
+
+`mustEntrench` is priced in `CombatValue.Taken`, but against a fixed threshold rather than against
+the alternatives, so nothing here compares candidates. The tell is that **`ActorIntent.HoldAndFire`
+is declared and never constructed anywhere** — it is one of the three actions the scored form wants
+(`HoldAndFire`, `RepositionTo(p)`, `Entrench`) and there is nothing to construct it from.
+
+This is now a wiring job rather than a design one: the currency exists, is pure, is tested headlessly,
+and is already used a layer up in `SquadTactics`. See the design-method section in
+[../CLAUDE.md](../CLAUDE.md) and the staging list in
+`superpowers/specs/2026-08-04-ai-overhaul-design.md`.
 
 ## Navigation boundary
 

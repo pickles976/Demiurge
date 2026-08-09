@@ -195,9 +195,15 @@ in particular is a special case bolted to the side of the search. That is the ex
 method moves the residue from "more branches" to "annealing a cost model" — but filing it as a clean
 sweep would set up the next adoption to be a surprise.
 
-Unclaimed today: per-unit AI arbitration still selects behavior from role and weapon type rather than
-pricing every available action in one currency. See the closing note under AI layers in
-`docs/ARCHITECTURE.md`.
+Claimed since: the combat currency is **net health points per second** (`Common/Ai/CombatValue.cs`),
+which is the second worked example of this method — and note that the design work was again finding
+the unit, not the algorithm that compares in it. Weapon identity is gone from the AI, fire discipline
+is a rate choice, and squad roles are a joint score.
+
+Unclaimed today: `MobSystem`'s per-unit arbitration is still an ordered `ActorIntent` ternary rather
+than a comparison of scored actions — `ActorIntent.HoldAndFire` is declared and never constructed.
+The currency it needs already exists, so this is wiring. See "The combat currency" and "What is still
+an ordered chain" under AI layers in `docs/ARCHITECTURE.md`.
 
 ## Architecture
 

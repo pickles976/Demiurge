@@ -22,9 +22,15 @@ edits terrain.
 1. **No map clone per node or request.** The conquest scenario starts 32 NPCs and the reference
    machine has a 16.6 ms singleplayer frame budget. Speculative `ChunkMap.DeepClone()` is forbidden
    in navigation search.
-2. **One bounded search.** A request keeps the existing 25 ms useful-prefix budget, 100 ms failure
-   budget, 100,000-node ceiling, and cancellation check every 64 expansions. Digging must not cause
-   an unconditional second traversal of the same graph.
+2. **One bounded search.** A request keeps one budget, the 100,000-node ceiling, and a cancellation
+   check every 64 expansions. Digging must not cause an unconditional second traversal of the same
+   graph.
+
+   *Superseded since:* the budget is no longer wall clock. Production counts EXPANSIONS — 64 primary,
+   256 failure — because eight workers on six cores meant a descheduled thread blew through 25 ms and
+   only noticed at its next check, so the same request returned a complete route on an idle box and a
+   partial one under load. The counts were calibrated to reproduce what the old millisecond budgets
+   actually bought. See the top of TODO.md.
 3. **Dig probes are local and cached.** A probe may inspect the blocked cardinal edge and nearby SDF
    samples. Its result is cached by start cell, direction, and terrain generation alongside walk and
    jump traversal answers.
@@ -184,10 +190,26 @@ Final conquest and excavation corrections:
 - the real-map acceptance integration runs one complete 16-NPC team at a time, disables stuck
   relocation, and requires both central flag objects to be fully captured. Team 1 captured both in
   6,845 ticks with 0 terrain edits; team 2 captured both in 4,399 ticks with 3 edits. Neither team
-  emitted a stuck event, and the test rejects more than 64 terrain edits;
+  emitted a stuck event, and the test rejects more than 64 terrain edits.
+  **This result is currently unverified:** the conquest map has since gained a fifth flag and the
+  test asserts `flags.Length == 4`, so it now fails in ~150 ms without simulating anything. Nobody
+  has re-run the acceptance since;
 - after making partial routes actor-local, the 32-NPC benchmark completed in 469 ms wall time with
   queue p50/p95 of 177.8/382.2 ms, 192,941 traversal-cache hits, and 6,528 expanded nodes. The p95
   remains below the 500 ms ceiling.
+
+## Status, 2026-08-09
+
+Every implementation stage is in and the escape heuristics stage 3 called for are gone. Two things
+have changed under this document since the execution record above:
+
+- the budget mechanism was replaced (see constraint 2), which is the first of the two ways out named
+  at the top of TODO.md. The second — hierarchy or corridor caching, so a long route terminates
+  because it finished rather than because a budget stopped it — is untouched and is what actually
+  makes NPCs route across the map;
+- `NpcExcavatesOutOfADeepWidePit` regressed: the NPC never leaves a 6 m pit in 240 simulated seconds,
+  against the 120-edit result recorded above. The steep-slope scenario that TODO.md used to blame
+  passes; the failure moved.
 
 ## Retrospective: what actually generalized
 

@@ -1,5 +1,6 @@
 using System.Numerics;
 using Demiurge.GameServer;
+using Demiurge.Net;
 
 namespace Demiurge.ServerTests;
 
@@ -86,5 +87,46 @@ public class CombatBehaviorTests
         };
 
         Assert.Equal(expected, MobSystem.CanRecognizeEnemyReload(observer, enemy));
+    }
+    /// <summary>
+    /// A decider does not get to be an actor. CombatBehavior used to write mob.State, Yaw, Pitch and
+    /// LastIntent directly, and it runs BEFORE MobSystem's own movement writes — so whether an NPC
+    /// ended the tick Aiming or Moving depended on which module happened to run last. It now REPORTS
+    /// them and MobSystem applies them once.
+    /// </summary>
+    [Fact]
+    public void CombatReportsTheActorsStateWithoutWritingIt()
+    {
+        var server = new NullNetServer();
+        var objects = new ObjectReplication(server);
+        var weapons = new WeaponSystem(server, objects, new ChunkMap());
+        var items = new ItemSystem(objects);
+        var combat = new CombatBehavior(weapons, new ChunkMap());
+
+        var mob = new ServerPlayer
+        {
+            Id = 60_000,
+            IsMob = true,
+            Move = new MoveState { Position = Vector3.Zero },
+            Yaw = 1.25f,
+            Pitch = 0.5f,
+            State = PlayerStateFlags.Moving,
+            LastIntent = Vector3.UnitX,
+        };
+        items.SpawnInfantryLoadout(mob);
+
+        var brain = new MobBrain();
+        brain.Contacts.Observe(60_001, new Vector3(0f, 0f, 20f), tick: 10);
+
+        var outcome = combat.Tick(mob, brain, tick: 10, dt: 1f / NetworkConfig.TickRate);
+
+        Assert.True(outcome.OwnsTick);
+        Assert.True(outcome.Flags.HasFlag(PlayerStateFlags.Aiming));
+
+        // The actor is exactly as it was handed over.
+        Assert.Equal(1.25f, mob.Yaw);
+        Assert.Equal(0.5f, mob.Pitch);
+        Assert.Equal(PlayerStateFlags.Moving, mob.State);
+        Assert.Equal(Vector3.UnitX, mob.LastIntent);
     }
 }

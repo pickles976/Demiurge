@@ -2,6 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS, 2026-08-09 — this plan was executed without being ticked. Every checkbox below is still
+> `- [ ]` and most of the work is in the codebase, so THIS FILE IS NOT A STATUS SOURCE.** Read the
+> code and "The combat currency" in `docs/ARCHITECTURE.md` instead.
+>
+> Landed: `Common/Ai/{CombatValue,WeaponEffectiveness,ThreatRanking,Exposure}.cs`; `SightingMoa`
+> replacing the flat `AiAimMoa`; rate-as-a-choice; `MaxEngagementRangeFor`, `PrefersToHoldFire` and
+> `ShouldAdvance` deleted; `SquadTactics` joint allocation with the suppression externality; the
+> cover budget opened from 1/tick to 8.
+>
+> **Not landed — the goal sentence immediately below, and the reason this file is kept:**
+> `MobSystem`'s per-unit arbitration is still an ordered `ActorIntent` ternary, and
+> `ActorIntent.HoldAndFire` is declared and never constructed. That is the remaining stage-1 work.
+
 **Goal:** Replace `MobSystem`'s per-unit arbitration and `SquadTactics`' doctrine with one currency — net HP/second — so that role, range discipline, fire discipline and the decision to dig all fall out of a single score instead of `ItemType` branches.
 
 **Architecture:** All scoring maths is pure and lives in `Common/Ai/`, so it tests headlessly without booting Stride or a server. The server layer supplies observations and consumes scores. Hit probability is *not* invented: `Common/Ballistics/HitEstimate.Probability` already implements the standard Rayleigh dispersion model, and this plan makes it visible to the AI by replacing a flat `AiAimMoa = 720` constant (which arithmetically annihilated per-weapon dispersion) with a per-profile `SightingMoa`.

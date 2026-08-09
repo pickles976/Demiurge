@@ -61,8 +61,9 @@ internal sealed class CombatBehavior
         this.terrain = terrain;
     }
 
-    /// <returns>True while combat owns movement and actor state for this tick.</returns>
-    public bool Tick(
+    /// <returns>What the actor should look like, and whether combat owns its movement this tick.
+    /// It does NOT write any of that to <paramref name="mob"/> — see <see cref="CombatOutcome"/>.</returns>
+    public CombatOutcome Tick(
         ServerPlayer mob,
         MobBrain brain,
         uint tick,
@@ -77,9 +78,11 @@ internal sealed class CombatBehavior
             || tick - contact.LastSeenTick > holdTicks)
         {
             brain.ClearCombatTarget();
-            return false;
+            return CombatOutcome.None;
         }
 
+        // Left as a write: selecting the primary is an inventory action, not a description of the
+        // actor, and MobSystem sets the same thing a few lines later.
         mob.Hotbar = HotbarSlot.Primary;
         // No engagement-range table. A weapon whose expected return per round falls below
         // WeaponEffectiveness.MinimumExpectedDamagePerRound yields a zero firing solution, and that
@@ -94,8 +97,10 @@ internal sealed class CombatBehavior
                 brain.SkillFactor).DamagePerSecond <= 0f)
         {
             brain.ClearCombatTarget();
-            return false;
+            return CombatOutcome.None;
         }
+
+        var flags = PlayerStateFlags.None;
 
         if (brain.CombatTargetId != contact.ActorId)
         {
@@ -120,7 +125,7 @@ internal sealed class CombatBehavior
         Vector3 uncompensated = target - origin;
         float range = uncompensated.Length();
         if (range <= 1e-5f)
-            return false;
+            return CombatOutcome.None;
         // Whether this shot is worth its round, asked of the weapon rather than of its identity.
         // PrefersToHoldFire tested `weapon == ItemType.Ppsh && range > 75`, so only the SMG ever
         // decided to close — a rifleman past its own useful range went mute and stood there, because
@@ -147,21 +152,20 @@ internal sealed class CombatBehavior
             desired,
             AimTurnDegreesPerSecond * MathF.PI / 180f * dt);
 
-        mob.Yaw = MathF.Atan2(brain.AimDirection.X, brain.AimDirection.Z);
-        mob.Pitch = MathF.Asin(Math.Clamp(brain.AimDirection.Y, -1f, 1f));
-        mob.LastIntent = Vector3.Zero;
-        mob.State = PlayerStateFlags.Aiming;
+        float yaw = MathF.Atan2(brain.AimDirection.X, brain.AimDirection.Z);
+        float pitch = MathF.Asin(Math.Clamp(brain.AimDirection.Y, -1f, 1f));
+        flags = PlayerStateFlags.Aiming;
 
         if (tick < mob.ReloadDoneTick)
         {
-            mob.State = PlayerStateFlags.Reloading;
-            return true;
+            flags = PlayerStateFlags.Reloading;
+            return new CombatOutcome(true, yaw, pitch, flags);
         }
         if (weapon.Weapon.CurrentAmmo <= 0)
         {
             weapons.ApplyReload(mob, tick);
-            mob.State = PlayerStateFlags.Reloading;
-            return true;
+            flags = PlayerStateFlags.Reloading;
+            return new CombatOutcome(true, yaw, pitch, flags);
         }
 
         bool visibleNow = contact.LastSeenTick == tick;
@@ -175,11 +179,11 @@ internal sealed class CombatBehavior
             : AimToleranceCos;
         bool aimSettled = Vector3.Dot(brain.AimDirection, desired) >= aimToleranceCos;
         if (!visibleNow || !reacted || !aimSettled)
-            return true;
+            return new CombatOutcome(true, yaw, pitch, flags);
         if (!mayFire || holdingForEffectiveRange)
         {
             brain.BurstShotsRemaining = 0;
-            return true;
+            return new CombatOutcome(true, yaw, pitch, flags);
         }
 
         // The shooter's aim error is now a property of the weapon he is holding
@@ -199,7 +203,7 @@ internal sealed class CombatBehavior
         if (suppressing)
         {
             brain.BurstShotsRemaining = 0;
-            if (tick < brain.NextSuppressionShotTick) return true;
+            if (tick < brain.NextSuppressionShotTick) return new CombatOutcome(true, yaw, pitch, flags);
             brain.NextSuppressionShotTick = tick + SuppressionShotIntervalTicks;
             requestShot = true;
         }
@@ -207,7 +211,7 @@ internal sealed class CombatBehavior
         {
             brain.BurstShotsRemaining = 0;
             if (tick < brain.NextPrecisionShotTick)
-                return true;
+                return new CombatOutcome(true, yaw, pitch, flags);
             requestShot = true;
         }
         else if (probability >= AimedFireThreshold)
@@ -219,7 +223,7 @@ internal sealed class CombatBehavior
         {
             if (brain.BurstShotsRemaining == 0)
             {
-                if (tick < brain.NextBurstTick) return true;
+                if (tick < brain.NextBurstTick) return new CombatOutcome(true, yaw, pitch, flags);
                 brain.BurstShotsRemaining = SuppressionBurstShots;
             }
             requestShot = true;
@@ -232,7 +236,7 @@ internal sealed class CombatBehavior
             brain.AimDirection,
             shotDistance);
         if (obstruction is { } wall && wall.Distance < shotDistance - 0.1f)
-            return true;
+            return new CombatOutcome(true, yaw, pitch, flags);
 
         if (requestShot
             && weapons.TryFireAi(
@@ -243,14 +247,14 @@ internal sealed class CombatBehavior
                 ++brain.ShotSequence,
                 aiAimMoa))
         {
-            mob.State |= PlayerStateFlags.Shooting;
+            flags |= PlayerStateFlags.Shooting;
             if (precisionShot)
                 brain.NextPrecisionShotTick = tick + PrecisionShotIntervalTicks;
             else if (brain.BurstShotsRemaining > 0
                 && --brain.BurstShotsRemaining == 0)
                 brain.NextBurstTick = tick + BurstPauseTicks;
         }
-        return true;
+        return new CombatOutcome(true, yaw, pitch, flags);
     }
 
 
