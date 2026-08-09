@@ -31,18 +31,20 @@ public sealed class MortarSystem
 
     /// <summary>Server-side only, and deliberately not seeded from anything a client sends: where a
     /// bomb lands must not be predictable from the request that fired it.</summary>
-    private readonly Random dispersion = new();
+    private readonly Random dispersion;
 
     public MortarSystem(
         ObjectReplication objects,
         ChunkMap terrain,
         TerrainSystem terrainEdits,
-        ActivityFeedSystem? activityFeed = null)
+        ActivityFeedSystem? activityFeed = null,
+        int? dispersionSeed = null)
     {
         this.objects = objects;
         this.terrain = terrain;
         this.terrainEdits = terrainEdits;
         this.activityFeed = activityFeed;
+        dispersion = dispersionSeed is { } seed ? new Random(seed) : new Random();
     }
 
     internal int InFlight => inFlight.Count;
@@ -64,7 +66,21 @@ public sealed class MortarSystem
         // Aimed, then scattered. The gunner picks a point; the bomb goes somewhere near it, and the
         // solution is computed for where it is ACTUALLY going so the arc and the impact agree.
         var aimed = MortarBallistics.ClampTarget(mortar.Transform.Position, mortar.Transform.Yaw, target);
-        var landing = MortarBallistics.Disperse(aimed, dispersion);
+        var scattered = MortarBallistics.Disperse(aimed, dispersion);
+
+        // The GROUND at the scattered point, from the server's own terrain.
+        //
+        // The request's height is not the ground's and never was: the gunner's view maps his cursor
+        // onto a flat plane at the tube's own elevation, so a point picked downhill arrives carrying
+        // the TUBE's Y. Everything downstream honoured it — SolveVelocity aims the arc at that
+        // height, and Tick's descent test detonates the moment the bomb falls past it — so a round
+        // fired from the hilltop flag into the valley burst twenty-odd metres up, dug no crater, and
+        // hurt nobody. The conquest map spans 23 m between its flags, which is the size of the error.
+        //
+        // Resolved after dispersion so a scattered round gets the height of where it ACTUALLY lands,
+        // and before the solver so the arc is computed to reach it. The client's Y is now used for
+        // nothing, which is the right amount of trust to place in it.
+        var landing = SurfaceQuery.SurfacePosition(terrain, scattered.X, scattered.Z);
         var muzzle = mortar.Transform.Position + Vector3.UnitY * MortarBallistics.MuzzleHeight;
         if (MortarBallistics.SolveVelocity(muzzle, landing, ProjectileMotion.Gravity) is not { } velocity)
             return false;

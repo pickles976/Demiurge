@@ -41,6 +41,29 @@ public sealed class GrenadeSystem
         this.activityFeed = activityFeed;
     }
 
+    /// <summary>
+    /// Every grenade still in the air or on the ground, as the AI needs to see them.
+    ///
+    /// Server-side only and deliberately not replicated: a client already sees the grenade object,
+    /// and what an NPC knows about it is a server decision. Rebuilt per call rather than cached
+    /// because there are rarely more than a handful, and a stale list would have NPCs diving away
+    /// from a grenade that already went off.
+    ///
+    /// Mortar bombs deliberately do not appear here. A shell gives no warning a man could act on
+    /// until there is a whistle to hear, and inventing one would let NPCs dodge something players
+    /// cannot.
+    /// </summary>
+    public List<LiveBlast> LiveBlasts(uint tick)
+    {
+        var live = new List<LiveBlast>(active.Count);
+        foreach (var grenade in active)
+            live.Add(new LiveBlast(
+                grenade.Position,
+                (grenade.DetonateTick - (float)tick) / NetworkConfig.TickRate,
+                GrenadeConfig.Blast));
+        return live;
+    }
+
     public bool IsGrenadeEquipped(ServerPlayer player)
         => TryGetGrenade(player, out _, out _);
 

@@ -69,6 +69,22 @@ namespace Demiurge.GameServer
         private const float GoldenAngle = 2.39996323f;
 
         /// <summary>Far enough behind the digger to sample untouched ground rather than its own hole.</summary>
+        /// <summary>
+        /// A weapon whose own damage curve wants to be fought inside this range is one whose carrier
+        /// closes rather than holds. A threshold on a DERIVED quantity, not on an item id: it is the
+        /// one place the difference between an assaulter and a rifleman is still expressed, and it
+        /// moves correctly when a weapon is retuned or a new one is added.
+        /// </summary>
+        private const float ClosesToFightRange = 25f;
+
+        /// <summary>
+        /// How much of a man's health a blast has to threaten before he abandons what he was doing.
+        ///
+        /// A tenth: enough that a grenade landing at the edge of its damage radius does not scatter a
+        /// squad that was winning, and low enough that anything genuinely dangerous moves everybody.
+        /// </summary>
+        private const float GrenadeEvadeThreshold = 0.1f;
+
         private const float FoxholeGradeProbeDistance = 2.5f;
         private const uint ClearanceRecoveryTicks = 3 * NetworkConfig.TickRate;
 
@@ -95,6 +111,14 @@ namespace Demiurge.GameServer
         private readonly CommanderAi commander;
         private readonly NavigationSystem navigation;
         private readonly Perception perception;
+        private readonly GrenadeSystem grenades;
+
+        /// <summary>
+        /// Live grenades, rebuilt once in BeginTick and read by every actor's Decide. Per actor it
+        /// would be 32 allocations a tick for one answer that is the same for all of them.
+        /// </summary>
+        private List<LiveBlast> liveBlasts = [];
+
         private readonly CombatBehavior combat;
         private readonly GrenadeBehavior grenadeCombat;
         private readonly CoverBehavior cover;
@@ -193,6 +217,7 @@ namespace Demiurge.GameServer
             commander = new CommanderAi(flags);
             navigation = new NavigationSystem(terrain);
             perception = new Perception(terrain);
+            this.grenades = grenades;
             combat = new CombatBehavior(weapons, terrain);
             grenadeCombat = new GrenadeBehavior(terrain, grenades);
             cover = new CoverBehavior(terrain);
@@ -222,6 +247,7 @@ namespace Demiurge.GameServer
         public void BeginTick(uint tick, ICollection<ServerPlayer> actors)
         {
             PublishDebugStates(actors);
+            liveBlasts = grenades.LiveBlasts(tick);
             coverQueriesRemaining = CoverQueriesPerTick;
             // Squads must exist before the commander assigns them anything, and the tactical plan reads
             // the roster the re-formation produced, so this ordering is load-bearing.
@@ -339,6 +365,24 @@ namespace Demiurge.GameServer
             if (!brains.TryGetValue(mob.Id, out var brain))
                 brains[mob.Id] = brain = CreateBrain(mob.Team, mob.Position);
             var squad = BoardFor(mob, brain);
+
+            // Before everything, including the squad's manoeuvre. Nothing this man was doing is worth
+            // standing in a blast for, and the squad would rather have him than the ground.
+            if (liveBlasts.Count > 0
+                && GrenadeDanger.Evaluate(mob.Position, liveBlasts, out var away)
+                    >= GrenadeEvadeThreshold)
+            {
+                brain.DebugIntent = new ActorIntent.EvadeBlast(away).DebugLabel;
+                brain.Navigation.Progress.Reset();
+                return new MobAction
+                {
+                    Intent = away,
+                    Sprint = true,
+                    Yaw = MathF.Atan2(away.X, away.Z),
+                    TurnTo = true,
+                };
+            }
+
             bool hasObjective = squad.TryGetObjective(out var objective);
             if (brain.ObjectiveRevision != squad.ObjectiveRevision)
             {
@@ -359,7 +403,14 @@ namespace Demiurge.GameServer
                         : RandomSurfacePoint(HomeOf(mob)));
             Vector3 destination = brain.Navigation.Destination;
 
-            bool heardGunshot = brain.HasRecentGunshot(tick);
+            // Hearing is free and turning to look is correct; WALKING to the sound is the part that
+            // has to be worth it. Same gate as incoming fire, for the same reason — a firefight two
+            // hundred metres away is information, not an order to abandon an objective.
+            bool heardGunshot = brain.HasRecentGunshot(tick)
+                && ThreatResponse.IsWorthAnswering(
+                    SelfCombatant(mob, brain),
+                    IncomingFrom(mob, brain, brain.HeardPosition),
+                    StrategicValue.TicketsPerSecondPerFlag);
             if (heardGunshot
                 && brain.AppliedHeardRevision != brain.HeardRevision)
             {
@@ -406,8 +457,15 @@ namespace Demiurge.GameServer
             else if (order.Role == SquadRole.None) DiagRoleNone++;
             else if (order.Role == SquadRole.Bound) DiagRoleBound++;
             else DiagRoleBaseOfFire++;
-            bool assault = weapons.TryGetActiveWeapon(mob, out var activePrimary)
-                && activePrimary.Item.Type == NpcSquadLoadout.AssaultWeapon;
+            // What his weapon wants, not what his weapon IS. This was
+            // `activePrimary.Item.Type == NpcSquadLoadout.AssaultWeapon` — the last weapon-identity
+            // branch in the AI, one indirection deeper than the ItemType.Ppsh tests that were
+            // removed, and the reason a submachine gunner was treated as a special case rather than
+            // as a man with a short weapon. Derived from the damage curve, a new close-range weapon
+            // inherits the behaviour without anybody naming it here.
+            bool closesToFight = weapons.TryGetActiveWeapon(mob, out var activePrimary)
+                && WeaponEffectiveness.PreferredRange(activePrimary.Item.Type, brain.SkillFactor)
+                    <= ClosesToFightRange;
             // A base of fire holds and shoots at where the target is, not only at a target it can
             // currently see. That is what buys the bounding man his move.
             // Being ordered to the base of fire IS being the base of fire. It used to also require
@@ -558,7 +616,7 @@ namespace Demiurge.GameServer
                         brain,
                         squad,
                         order,
-                        assault,
+                        closesToFight,
                         tick,
                         out combatIntent,
                         out combatJump,
@@ -567,13 +625,17 @@ namespace Demiurge.GameServer
                 else
                 {
                     bool wantsAdvance = brain.ShouldCloseDistance || !mayFire || underFire;
-                    bool assaultWaitingInPosition = assault
-                        && hasOrder
-                        && order.Role == SquadRole.BaseOfFire;
                     // No advance permit either. Whether this man moves is the allocation's call,
                     // and it already made it — Bound moves, BaseOfFire holds. A second rotating
                     // lease could only disagree with it.
-                    bool mayAdvance = !assaultWaitingInPosition && (underFire || wantsAdvance);
+                    // No weapon-keyed veto. This used to be `!assaultWaitingInPosition && ...`,
+                    // which forbade a submachine gunner assigned to the base of fire from advancing
+                    // — parking him at a range where his weapon does nothing, which is the reported
+                    // "assault units are useless at long range". Whether a man moves is the
+                    // allocation's call and SquadTactics already makes it by score; a second veto
+                    // keyed on weapon type is the two-authorities mistake ActorIntent exists to
+                    // prevent.
+                    bool mayAdvance = underFire || wantsAdvance;
                     DiagCoverMoveCalls++;
                     UpdateCoverMovement(
                         mob,
@@ -583,7 +645,7 @@ namespace Demiurge.GameServer
                         brain.ShouldCloseDistance,
                         underFire,
                         hasOrder && order.Role == SquadRole.BaseOfFire,
-                        assault,
+                        closesToFight,
                         tick,
                         out combatIntent,
                         out combatJump,
@@ -754,6 +816,10 @@ namespace Demiurge.GameServer
                         mob.Position,
                         mob.Move.Grounded,
                         terrain.EditVersion,
+                        // The same wedge the destination uses, applied as a lane during the march
+                        // rather than only as a place to end up — which is why a squad crossing open
+                        // ground used to arrive in formation having been a single file the whole way.
+                        WedgeLateralOffset(mob, brain, squad),
                         out intent,
                         out jump,
                         out var digTarget,
@@ -1235,7 +1301,7 @@ namespace Demiurge.GameServer
             MobBrain brain,
             SquadBlackboard squad,
             SquadTacticalOrder order,
-            bool assault,
+            bool closesToFight,
             uint tick,
             out Vector3 intent,
             out bool jump,
@@ -1296,7 +1362,7 @@ namespace Demiurge.GameServer
             {
                 // Ground gained. Going set here is what hands the next bound to his partner: he becomes
                 // the nearer man, so the plan picks the other one as furthest from the threat.
-                CompleteBound(mob, brain, squad, assault, tick);
+                CompleteBound(mob, brain, squad, closesToFight, tick);
                 return;
             }
 
@@ -1304,6 +1370,9 @@ namespace Demiurge.GameServer
                 mob.Position,
                 mob.Move.Grounded,
                 terrain.EditVersion,
+                // No lane. These follow a route to a cover or entrenchment point chosen for this man
+                // specifically; a formation offset would push him off the spot he was sent to.
+                Vector3.Zero,
                 out intent,
                 out jump,
                 out var digTarget,
@@ -1321,7 +1390,7 @@ namespace Demiurge.GameServer
                 intent = Vector3.Zero;
                 jump = false;
                 brain.Navigation.Path.Clear();
-                CompleteBound(mob, brain, squad, assault, tick);
+                CompleteBound(mob, brain, squad, closesToFight, tick);
             }
             else if (followState == PathFollowState.NeedsPath)
             {
@@ -1345,10 +1414,10 @@ namespace Demiurge.GameServer
             ServerPlayer mob,
             MobBrain brain,
             SquadBlackboard squad,
-            bool assault,
+            bool closesToFight,
             uint tick)
         {
-            if (assault)
+            if (closesToFight)
             {
                 // The reload bought a dash, not permanent safety. Drop the transit claim and dig a
                 // new position here before waiting for the next opening.
@@ -1373,7 +1442,7 @@ namespace Demiurge.GameServer
             bool closingDistance,
             bool underFire,
             bool baseOfFire,
-            bool assault,
+            bool closesToFight,
             uint tick,
             out Vector3 intent,
             out bool jump,
@@ -1389,7 +1458,7 @@ namespace Demiurge.GameServer
             // Assault base-of-fire units finish one position and physically occupy it before they
             // engage. The origin and grade are fixed when digging begins; deriving either from the
             // falling actor made the excavation migrate downward with him.
-            if (((assault
+            if (((closesToFight
                         && !brain.HasCompletedInitialEntrenchment
                         && !brain.Entrenched)
                     || brain.Entrenching)
@@ -1507,7 +1576,7 @@ namespace Demiurge.GameServer
                     squad,
                     out var choice,
                     requireAdvance: closingDistance
-                        && !(assault && baseOfFire && !brain.AtCover));
+                        && !(closesToFight && baseOfFire && !brain.AtCover));
                 timingCoverStopwatchTicks += Stopwatch.GetTimestamp() - coverStarted;
                 timingCoverQueries++;
                 if (foundCover)
@@ -1633,6 +1702,9 @@ namespace Demiurge.GameServer
                 mob.Position,
                 mob.Move.Grounded,
                 terrain.EditVersion,
+                // No lane. These follow a route to a cover or entrenchment point chosen for this man
+                // specifically; a formation offset would push him off the spot he was sent to.
+                Vector3.Zero,
                 out intent,
                 out jump,
                 out var digTarget,
@@ -2291,6 +2363,37 @@ namespace Demiurge.GameServer
         /// travelled as a clump, which is one grenade for the squad. The wedge is oriented on the
         /// approach, so it spreads them for the journey as well as the arrival.
         /// </summary>
+        /// <summary>
+        /// This man's lane, relative to the squad's line of march, as a world-space offset.
+        ///
+        /// Perpendicular to the direction of travel rather than a fixed compass offset, so the wedge
+        /// turns with the squad. Zero for the point man and for anyone not on a roster — a lone man
+        /// has no formation to keep, and somebody has to be on the route itself.
+        /// </summary>
+        private static Vector3 WedgeLateralOffset(
+            ServerPlayer mob,
+            MobBrain brain,
+            SquadBlackboard squad)
+        {
+            int slot = -1;
+            for (int i = 0; i < squad.Roster.Count; i++)
+                if (squad.Roster[i] == mob.Id) { slot = i; break; }
+            if (slot <= 0) return Vector3.Zero;
+
+            var toObjective = brain.Navigation.Destination - mob.Position;
+            toObjective.Y = 0f;
+            if (toObjective.LengthSquared() < 1e-4f) return Vector3.Zero;
+
+            var forward = Vector3.Normalize(toObjective);
+            var right = new Vector3(forward.Z, 0f, -forward.X);
+
+            // Alternating sides, widening with rank: 1 right, 2 left, 3 further right — the same
+            // arrangement WedgeFormation makes at the destination, expressed as a lane.
+            int rank = (slot + 1) / 2;
+            float side = slot % 2 == 1 ? 1f : -1f;
+            return right * (side * rank * WedgeFormation.SpacingFor(squad.Roster.Count));
+        }
+
         private Vector3 ObjectiveDestination(ushort mobId, Vector3 centre, SquadBlackboard squad)
         {
             int slot = -1;
@@ -2426,6 +2529,29 @@ namespace Demiurge.GameServer
                 }
         }
 
+        /// <summary>This actor as the scoring model sees him: what he is holding and how well.</summary>
+        private Combatant SelfCombatant(ServerPlayer actor, MobBrain brain)
+            => new(
+                weapons.TryGetPrimaryWeapon(actor, out var weapon)
+                    ? weapon.Item.Type
+                    : ItemConfig.UnidentifiedThreatWeapon,
+                0f,
+                brain.SkillFactor);
+
+        /// <summary>
+        /// An unseen shooter, as an engagement. His weapon is unknown by construction — he was heard
+        /// or felt, not identified — so the model assumes the standard threat rather than the worst
+        /// case, which would make every distant crack worth answering.
+        /// </summary>
+        private static Engagement IncomingFrom(ServerPlayer actor, MobBrain brain, Vector3 from)
+            => new(
+                HorizontalDistance(actor.Position, from),
+                ItemConfig.UnidentifiedThreatWeapon,
+                0f,
+                TargetExposure.Full,
+                brain.SelfExposure,
+                1f);
+
         private void ProcessIncomingFire(
             uint tick,
             ICollection<ServerPlayer> actors)
@@ -2441,8 +2567,21 @@ namespace Demiurge.GameServer
                     || !brains.TryGetValue(listener.Id, out var brain))
                     continue;
 
+                // Being shot at is always true and always worth cover, whoever is doing it.
                 brain.MarkUnderFire(tick);
                 brain.NextCoverQueryTick = tick;
+
+                // Being shot at by somebody worth WALKING TO is not. This used to publish a
+                // squad-wide contact at any range, and a weapon that cannot reach yields a zero
+                // firing solution, which is the decision to close — so being outranged was what made
+                // a squad abandon its objective and cross the map at a sniper. A harasser it cannot
+                // answer is now a reason to get down, not a reason to leave.
+                if (!ThreatResponse.IsWorthAnswering(
+                        SelfCombatant(listener, brain),
+                        IncomingFrom(listener, brain, suppression.ThreatPosition),
+                        StrategicValue.TicketsPerSecondPerFlag))
+                    continue;
+
                 brain.Contacts.Observe(
                     suppression.ShooterId,
                     suppression.ThreatPosition,

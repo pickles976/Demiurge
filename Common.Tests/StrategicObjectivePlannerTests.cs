@@ -69,13 +69,29 @@ public class StrategicObjectivePlannerTests
 
         var assignments = StrategicObjectivePlanner.Plan(1, squads, flags);
 
-        Assert.Equal(2, assignments.Count(value => value.FlagId == 10));
+        Assert.True(
+            assignments.Any(value => value.FlagId == 10),
+            "the attack under way must keep a squad");
+        Assert.True(
+            assignments.Any(value => value.FlagId == 20),
+            "and the free flag next door must not be ignored while two squads share one fight");
         Assert.Single(assignments, value => value.FlagId == 20);
         Assert.DoesNotContain(assignments, value => value.FlagId == 30);
     }
 
     [Fact]
-    public void ActiveAttackOutranksUntouchedNeutralObjective()
+    /// <summary>
+    /// Rewritten 2026-08-09. This used to assert that BOTH squads went to the contested flag while a
+    /// free neutral one sat a metre away — which is the reported "the AI only ever fights over one
+    /// or two flags and never takes free ground" behaviour, written down as a requirement. It was a
+    /// trace through the old priority ladder, whose second slot at a contested flag (800) outranked
+    /// the first slot at an empty one (600).
+    ///
+    /// What survives is the part that is a property rather than a ladder: an attack already under
+    /// way is not abandoned. Whether the SECOND squad reinforces it or takes free ground is a
+    /// question about marginal value, and StrategicValueTests pins the answer.
+    /// </summary>
+    public void ActiveAttackKeepsASquadRatherThanBeingAbandoned()
     {
         var squads = new[]
         {
@@ -97,7 +113,12 @@ public class StrategicObjectivePlannerTests
 
         var assignments = StrategicObjectivePlanner.Plan(1, squads, flags);
 
-        Assert.Equal(2, assignments.Count(value => value.FlagId == 10));
+        Assert.True(
+            assignments.Any(value => value.FlagId == 10),
+            "the attack under way must keep a squad");
+        Assert.True(
+            assignments.Any(value => value.FlagId == 20),
+            "and the free flag next door must not be ignored while two squads share one fight");
     }
 
     [Fact]

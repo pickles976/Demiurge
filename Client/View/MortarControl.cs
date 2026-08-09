@@ -59,6 +59,28 @@ public sealed class MortarControlScript : SyncScript
     private static readonly Color InvalidAimColor = new(245, 60, 55, 180);
     private static readonly Color ReloadColor = new(245, 200, 80, 235);
 
+    /// <summary>
+    /// Contact markers. Coloured by RELATIONSHIP rather than by team number: from the tube the only
+    /// question is what to drop a bomb on, and a gunner reading his own team's colour off a chart
+    /// mid-mission is a gunner who shells his own men. Shape carries the same information again, so
+    /// it survives being colour-blind and survives a red-on-brown background.
+    /// </summary>
+    private static readonly Color EnemyMarkerColor = new(255, 70, 60, 240);
+    private static readonly Color FriendlyMarkerColor = new(90, 170, 255, 225);
+
+    /// <summary>
+    /// How big a marker is on the ground, in metres.
+    ///
+    /// Derived from the framing rather than picked, because the camera height follows
+    /// <see cref="MortarConfig.MaximumRange"/> — at 200 m of reach the gunner is 190 m up, where a
+    /// man is about two pixels tall and simply cannot be seen. Two percent of the visible half-depth
+    /// is a few metres of ground and reads as a clear symbol; retuning the mortar's range rescales it
+    /// instead of quietly shrinking it back to nothing.
+    /// </summary>
+    private static readonly float MarkerRadius = HalfDepth * 0.02f;
+
+    private const int FriendlyMarkerSegments = 12;
+
     private bool wasFiring;
 
     /// <summary>
@@ -86,6 +108,7 @@ public sealed class MortarControlScript : SyncScript
 
         PoseCamera(position, facing, dt);
         DrawSector(position, facing);
+        DrawContacts(local);
 
         if (GroundUnderCursor(position, facing) is not { } aim) return;
         bool isInFireSector = MortarBallistics.IsTargetInFireSector(position, facing, aim);
@@ -113,6 +136,65 @@ public sealed class MortarControlScript : SyncScript
             local.Position,
             Objects.Objects,
             obj => new PickupTargeting.Candidate(obj.Has, obj.Item.Type, obj.Transform.Position));
+
+    /// <summary>
+    /// Everyone on the ground, as symbols big enough to aim at.
+    ///
+    /// Drawn in WORLD space rather than projected to the screen. The camera is posed a few lines
+    /// above, so its view-projection matrix this frame is still last frame's — anything projected
+    /// through it would lag the view by a frame and slide about while the gunner traverses. A line in
+    /// world space is transformed at render time, after the pose has landed, and is simply correct.
+    ///
+    /// Depth-tested so a man behind a ridge is occluded by it. The gunner is looking at ground he
+    /// cannot see from where he stands, and a marker that shone through terrain would be telling him
+    /// something his eyes could not.
+    /// </summary>
+    private void DrawContacts(LocalPlayer local)
+    {
+        foreach (var actor in Registry.Players)
+        {
+            if (actor.IsDead) continue;
+
+            bool friendly = actor.Team == local.Team;
+            var centre = actor.Position.ToStride() + Vector3.UnitY * MarkerHeight;
+            if (friendly) DrawFriendlyMarker(centre);
+            else DrawEnemyMarker(centre);
+        }
+    }
+
+    /// <summary>Lifted clear of the ground so the symbol is not swallowed by the surface it stands
+    /// on, and by less than a man is tall so it still reads as being AT him.</summary>
+    private const float MarkerHeight = 1f;
+
+    /// <summary>A diamond, laid flat on the ground: hostile.</summary>
+    private static void DrawEnemyMarker(Vector3 centre)
+    {
+        var north = centre + Vector3.UnitZ * MarkerRadius;
+        var east = centre + Vector3.UnitX * MarkerRadius;
+        var south = centre - Vector3.UnitZ * MarkerRadius;
+        var west = centre - Vector3.UnitX * MarkerRadius;
+
+        LineRenderer.DrawDepthTestedLine(north, east, EnemyMarkerColor);
+        LineRenderer.DrawDepthTestedLine(east, south, EnemyMarkerColor);
+        LineRenderer.DrawDepthTestedLine(south, west, EnemyMarkerColor);
+        LineRenderer.DrawDepthTestedLine(west, north, EnemyMarkerColor);
+    }
+
+    /// <summary>A circle, laid flat on the ground: friendly. Do not drop a bomb on it.</summary>
+    private static void DrawFriendlyMarker(Vector3 centre)
+    {
+        Vector3 previous = default;
+        for (int i = 0; i <= FriendlyMarkerSegments; i++)
+        {
+            float angle = MathF.Tau * i / FriendlyMarkerSegments;
+            var point = centre + new Vector3(
+                MathF.Cos(angle) * MarkerRadius,
+                0f,
+                MathF.Sin(angle) * MarkerRadius);
+            if (i > 0) LineRenderer.DrawDepthTestedLine(previous, point, FriendlyMarkerColor);
+            previous = point;
+        }
+    }
 
     /// <summary>
     /// Straight down over the middle of the band, turned so the emplaced heading points UP the

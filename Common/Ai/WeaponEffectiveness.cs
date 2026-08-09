@@ -51,6 +51,78 @@ public static class WeaponEffectiveness
         float HitProbability,
         float DamagePerSecond);
 
+    private const float PreferredRangeStepMetres = 2f;
+    private const float PreferredRangeMaximumMetres = 400f;
+
+    /// <summary>
+    /// The range at which this weapon is worth the most, in metres.
+    ///
+    /// Sampled off the same curve everything else uses rather than written down per weapon, which is
+    /// the point: "the SMG man closes and the rifleman holds" stops being doctrine anybody
+    /// implements and becomes where two numbers peak. Damage per second is rate times hit
+    /// probability, rate is flat in range and hit probability falls — so the maximum would sit at the
+    /// sampling floor for everything, were it not for the rate CHOICE inside <see cref="Best"/>:
+    /// <see cref="MinimumExpectedDamagePerRound"/> forces a slower, tighter rate as range grows, and
+    /// how gracefully a weapon makes that trade is exactly what separates a submachine gun from a
+    /// bolt gun. Hence the fraction-of-peak form below rather than the peak itself.
+    ///
+    /// Sampled rather than solved because that rate choice is discrete, so the curve is piecewise
+    /// and has no closed form worth deriving. Called per squad plan at 2 Hz, not per actor per tick.
+    /// </summary>
+    public static float PreferredRange(ItemType weapon, float skillFactor)
+    {
+        // Memoized because the sampling is 400 calls into Best() and the callers are hot: MobSystem
+        // asks per actor per tick, which at 32 NPCs and 30 Hz would be hundreds of thousands of
+        // firing solutions a second for an answer that only changes when the weapon table does.
+        // Measured before caching: the server test project went from 0.5 s to 5 s.
+        //
+        // Skill is quantized into tenths because it scales the sighting term smoothly — two men a
+        // hundredth apart do not want to fight at different ranges, and an unquantized key would
+        // make the cache a memory leak with one entry per actor.
+        var key = (weapon, (int)MathF.Round(Math.Clamp(skillFactor, 0.01f, 10f) * 10f));
+        if (preferredRanges.TryGetValue(key, out float cached)) return cached;
+
+        float computed = ComputePreferredRange(weapon, key.Item2 * 0.1f);
+        preferredRanges[key] = computed;
+        return computed;
+    }
+
+    /// <summary>Pure and deterministic, so a stale entry is impossible and no invalidation is needed:
+    /// the weapon table is fixed once the datapack registry resolves.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(ItemType, int), float>
+        preferredRanges = new();
+
+    private static float ComputePreferredRange(ItemType weapon, float skillFactor)
+    {
+        float peak = 0f;
+        for (float range = PreferredRangeStepMetres;
+             range <= PreferredRangeMaximumMetres;
+             range += PreferredRangeStepMetres)
+            peak = MathF.Max(
+                peak,
+                Best(weapon, range, TargetExposure.Full, extraMoa: 0f, skillFactor).DamagePerSecond);
+
+        if (peak <= 0f) return PreferredRangeStepMetres;
+
+        // The furthest range still worth most of what the weapon can do. Taking the peak itself
+        // would answer "two metres" for every weapon in the game, since closer is always better for
+        // hit probability; what distinguishes them is how far out they STAY good.
+        float best = PreferredRangeStepMetres;
+        for (float range = PreferredRangeStepMetres;
+             range <= PreferredRangeMaximumMetres;
+             range += PreferredRangeStepMetres)
+            if (Best(weapon, range, TargetExposure.Full, extraMoa: 0f, skillFactor).DamagePerSecond
+                >= PreferredRangeFractionOfPeak * peak)
+                best = range;
+
+        return best;
+    }
+
+    /// <summary>How much of its best a weapon must still deliver for a range to count as one it
+    /// wants to fight at. Half: comfortably inside the useful band without reaching the tail where
+    /// the shot stops paying for itself at all.</summary>
+    public const float PreferredRangeFractionOfPeak = 0.5f;
+
     /// <summary>Cyclic rate: the fastest the action will run, ignoring reloads.</summary>
     public static float CyclicShotsPerSecond(in WeaponStats weapon)
         => weapon.TicksPerShot <= 0f

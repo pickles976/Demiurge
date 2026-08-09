@@ -435,9 +435,16 @@ namespace Demiurge.GameServer
 
         public void ApplyInteract(ushort clientId)
         {
-            if (players.TryGetValue(clientId, out var player)
-                && player.Status is { Health.Current: > 0 })
-                items.ApplyInteract(player);
+            if (!players.TryGetValue(clientId, out var player)
+                || player.Status is not { Health.Current: > 0 })
+                return;
+
+            // A gunner's hands are on the tube. E used to pick up the very mortar he was working,
+            // which left him operating an object that no longer existed where he stood — F is how he
+            // steps away, and the HUD only ever offers that while he is on it.
+            if (player.IsOperating) return;
+
+            items.ApplyInteract(player, players.Values);
         }
 
         /// <summary>
@@ -461,7 +468,7 @@ namespace Demiurge.GameServer
             }
 
             if (player.IsCarrying) return;   // hands full: put it down before working anything
-            if (items.EmplacedInReach(player) is not { } emplacement) return;
+            if (items.EmplacedInReach(player, players.Values) is not { } emplacement) return;
             player.OperatingObjectId = emplacement.NetworkId;
         }
 

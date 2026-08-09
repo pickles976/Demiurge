@@ -14,6 +14,21 @@ internal enum PathFollowState
 internal sealed class PathFollower
 {
     private const float ArrivalRadius = 0.55f;
+
+    /// <summary>Lane offset that produces the full steering weight. Roughly the width of a wedge, so
+    /// an outer man leans out hard and an inner one barely at all.</summary>
+    private const float LaneReferenceOffset = 8f;
+
+    /// <summary>
+    /// Hard ceiling on how far the lane can turn a follower off its route. At 0.6 against a unit
+    /// forward component that is about 31 degrees — visibly a formation, never a detour, and never
+    /// enough to walk a man off a bridge the search chose for him.
+    /// </summary>
+    private const float MaximumLaneWeight = 0.6f;
+
+    /// <summary>Within this distance of the next waypoint the lane closes to nothing, so the
+    /// follower converges on the point instead of sliding past it.</summary>
+    private const float LaneCloseDistance = 6f;
     private const float JumpTakeoffArrivalRadius = 0.15f;
     private const float ProgressEpsilon = 0.025f;
     private const float UphillRecoveryRise = 0.2f;
@@ -144,10 +159,17 @@ internal sealed class PathFollower
         hasLastPosition = false;
     }
 
+    /// <param name="lateral">
+    /// This follower's lane, as a world-space offset from the route. Zero for anyone with no
+    /// formation to keep. It is blended into the steering rather than added to the waypoint: moving
+    /// the TARGET sideways would mean the arrival test never fires and the man orbits a point he was
+    /// supposed to walk through.
+    /// </param>
     public PathFollowState Update(
         Vector3 position,
         bool grounded,
         long currentTerrainVersion,
+        Vector3 lateral,
         out Vector3 intent,
         out bool jump,
         out Vector3 digTarget,
@@ -274,6 +296,28 @@ internal sealed class PathFollower
         }
 
         intent = delta / distance;
+
+        // A lane, not a detour: bounded well below the forward component so the man still goes where
+        // the route goes, and closed on approach so he arrives at the waypoint rather than crabbing
+        // past it. Only on ordinary walk legs — a jump takeoff is aimed, and nudging it sideways is
+        // how a capsule misses a bridge.
+        if (lateral != Vector3.Zero
+            && path.Waypoints[waypoint].Action == NavAction.Walk)
+        {
+            float lane = MathF.Min(lateral.Length() / LaneReferenceOffset, MaximumLaneWeight);
+            float fade = Math.Clamp(
+                (distance - LaneCloseDistance) / LaneCloseDistance,
+                0f,
+                1f);
+            if (lane > 0f && fade > 0f)
+            {
+                var sideways = Vector3.Normalize(lateral) * (lane * fade);
+                var steered = intent + sideways;
+                if (steered.LengthSquared() > 1e-6f)
+                    intent = Vector3.Normalize(steered);
+            }
+        }
+
         if (path.Waypoints[waypoint].Action == NavAction.Jump
             && grounded
             && !jumpIssued)

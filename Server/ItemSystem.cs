@@ -248,10 +248,19 @@ namespace Demiurge.GameServer
             return equipped;
         }
 
-        /// <summary>E pressed: equip the nearest pickup in radius, swapping out
-        /// whatever occupies its slot. Server-authoritative — the client sends
-        /// no target, so there is nothing to validate beyond proximity.</summary>
-        public void ApplyInteract(ServerPlayer player)
+        /// <summary>
+        /// E pressed: equip the nearest pickup in radius, swapping out whatever occupies its slot.
+        /// Server-authoritative — the client sends no target, so there is nothing to validate beyond
+        /// proximity and who is using what.
+        /// </summary>
+        /// <param name="actors">
+        /// Everyone, so a thing somebody is WORKING can be excluded. A mortar with a gunner on it is
+        /// not a pickup: taking it out from under him would leave him operating an object that no
+        /// longer exists where he is standing. Passed in rather than tracked here because who is
+        /// operating what lives on <see cref="ServerPlayer.OperatingObjectId"/>, and a second copy of
+        /// that here could disagree with it.
+        /// </param>
+        public void ApplyInteract(ServerPlayer player, IEnumerable<ServerPlayer> actors)
         {
             // Hands full: E puts the thing down instead of looking for another one. One key, and it
             // reads the same way round every time — E is "change what is in my hands".
@@ -266,7 +275,10 @@ namespace Demiurge.GameServer
             //
             // The choice itself is PickupTargeting's, in Common, because the client runs the same
             // one to decide what its "Press E" prompt should name — see that file.
-            var pickup = PickupTargeting.Nearest(player.Position, objects.All, Describe);
+            var pickup = PickupTargeting.Nearest(
+                player.Position,
+                objects.All.Where(candidate => !IsBeingWorked(candidate.NetworkId, actors)),
+                Describe);
             if (pickup == null) return;
 
             // Something hauled goes into the hands, not into the kit: it must not take the rifle's
@@ -394,14 +406,32 @@ namespace Demiurge.GameServer
              : HeldItem(player, hotbar) is { } type ? ItemConfig.MoveSpeedScale(type)
              : 1f;
 
+        /// <summary>Whether anybody currently has this object as their emplacement.</summary>
+        internal static bool IsBeingWorked(uint networkId, IEnumerable<ServerPlayer> actors)
+        {
+            foreach (var actor in actors)
+                if (actor.OperatingObjectId == networkId)
+                    return true;
+            return false;
+        }
+
         /// <summary>
         /// The emplaced carryable within reach of this player, or null — what F operates. Uses the
         /// same PickupTargeting rule E does, filtered to things that are set down rather than
         /// merely lying about, so the two keys always agree on which object is meant.
+        ///
+        /// A tube somebody else is already on is excluded for the same reason E excludes it: one
+        /// gunner per weapon, and two men laying the same mortar on different bearings is not a
+        /// state the firing code has any answer for.
         /// </summary>
-        public ServerObject? EmplacedInReach(ServerPlayer player)
+        public ServerObject? EmplacedInReach(ServerPlayer player, IEnumerable<ServerPlayer> actors)
         {
-            var nearest = PickupTargeting.Nearest(player.Position, objects.All, Describe);
+            var nearest = PickupTargeting.Nearest(
+                player.Position,
+                objects.All.Where(candidate =>
+                    candidate.NetworkId == player.OperatingObjectId
+                    || !IsBeingWorked(candidate.NetworkId, actors)),
+                Describe);
             return nearest is not null && ItemConfig.IsCarryable(nearest.Item.Type) ? nearest : null;
         }
 

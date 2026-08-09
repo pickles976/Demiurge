@@ -75,7 +75,16 @@ internal static class SquadTactics
     /// <summary>Standoff for the first bound, and how much closer each one gets.</summary>
     public const float OpeningStandoff = 45f;
     public const float BoundLength = 12f;
-    public const float MinimumStandoff = 12f;
+    /// <summary>
+    /// Closest a plan will deliberately place a man, whatever his weapon prefers. Below this the
+    /// movement solver and the cover query fight over the same metre of ground.
+    ///
+    /// It used to be the standoff itself — one number for every weapon — which priced a bolt gun's
+    /// assault at a range it does not want and a submachine gun's at one it has already won at.
+    /// Where a man actually wants to be now comes from his own damage curve, via
+    /// <see cref="WeaponEffectiveness.PreferredRange"/>; this is only the floor under it.
+    /// </summary>
+    public const float ClosestPlannedStandoff = 4f;
 
     /// <summary>
     /// Bearings a mover may approach on, in radians either side of the threat axis. Wide enough that
@@ -183,9 +192,16 @@ internal static class SquadTactics
             // which is the opposite of the range doctrine.
             var self = new Combatant(member.Weapon, 0f, member.SkillFactor);
 
+            // Where THIS man's weapon is worth the most, not one number for the squad. The assault
+            // being priced at a fixed 12 m is why a submachine gun would not commit: it correctly
+            // computed that 12 m was no better than where it stood, when what it wanted was closer.
+            float standoff = MathF.Max(
+                ClosestPlannedStandoff,
+                WeaponEffectiveness.PreferredRange(member.Weapon, member.SkillFactor));
+
             float atDestination = CombatValue.Score(
                 self,
-                [Against(input, MinimumStandoff, SelfExposure.Full, members.Count,
+                [Against(input, standoff, SelfExposure.Full, members.Count,
                     BallisticsConfig.SuppressedMoa)],
                 input.Aggression);
 
@@ -193,7 +209,7 @@ internal static class SquadTactics
             float inTransit = CombatValue.Score(
                 self,
                 [new Engagement(
-                    (range + MinimumStandoff) * 0.5f,
+                    (range + standoff) * 0.5f,
                     input.ThreatWeapon,
                     BallisticsConfig.SuppressedMoa,
                     TargetExposure.Full,
@@ -292,7 +308,8 @@ internal static class SquadTactics
                     axis,
                     bearing,
                     member.BoundIndex,
-                    Horizontal(member.Position, input.Threat)),
+                    Horizontal(member.Position, input.Threat),
+                    WeaponEffectiveness.PreferredRange(member.Weapon, member.SkillFactor)),
                 bearing,
                 member.BoundIndex));
         }
@@ -317,16 +334,18 @@ internal static class SquadTactics
         Vector3 axis,
         float bearing,
         int boundIndex,
-        float currentRange)
+        float currentRange,
+        float preferredStandoff)
     {
-        // Never further out than the mover already is. The MinimumStandoff floor is a floor on how
-        // close the squad will deliberately CLOSE, not a distance it will back off to: a man already
-        // inside it was being pushed back out — 11 m to 12 m — which is the orbiting bug again at
-        // knife range. Found by fuzzing, not by any hand-written scenario.
+        // Never further out than the mover already is. The standoff is a floor on how close the
+        // squad will deliberately CLOSE, not a distance it will back off to: a man already inside it
+        // was being pushed back out — 11 m to 12 m — which is the orbiting bug again at knife range.
+        // Found by fuzzing, not by any hand-written scenario.
+        float floor = MathF.Max(ClosestPlannedStandoff, preferredStandoff);
         float standoff = MathF.Min(
             currentRange,
             MathF.Max(
-                MinimumStandoff,
+                floor,
                 MathF.Min(
                     currentRange - BoundLength,
                     OpeningStandoff - MathF.Max(0, boundIndex) * BoundLength)));

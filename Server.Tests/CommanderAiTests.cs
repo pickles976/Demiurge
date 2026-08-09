@@ -7,7 +7,17 @@ namespace Demiurge.ServerTests;
 public class CommanderAiTests
 {
     [Fact]
-    public void CommanderDistributesThenReinforcesAThreatenedFriendlyFlag()
+    /// <summary>
+    /// Rewritten 2026-08-09. The second half used to assert that the east squad ABANDONED its own
+    /// uncontested objective to double up on the threatened western flag. That is the mass-
+    /// concentration loop that was reported — with no enemy actually present, a second squad adds
+    /// nothing to the defence, while the flag it walked away from was free.
+    ///
+    /// The property that survives is the one that is about doctrine rather than about the old
+    /// ladder: a threatened flag is defended by the squad that owns it, and the commander spreads
+    /// rather than stacking. See StrategicValueTests for the marginal-value rule underneath.
+    /// </summary>
+    public void CommanderDistributesAndKeepsAThreatenedFlagDefended()
     {
         var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
@@ -38,9 +48,9 @@ public class CommanderAiTests
             actors: []);
 
         Assert.True(westSquad.TryGetObjective(out var westDefence));
-        Assert.True(eastSquad.TryGetObjective(out var eastReinforcement));
+        Assert.True(eastSquad.TryGetObjective(out var eastObjective));
         Assert.Equal(west.NetworkId, westDefence.FlagId);
-        Assert.Equal(west.NetworkId, eastReinforcement.FlagId);
+        Assert.NotEqual(westDefence.FlagId, eastObjective.FlagId);
     }
 
     private static SquadBlackboard BoardAt(Vector3 centre)

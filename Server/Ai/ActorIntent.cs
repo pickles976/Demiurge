@@ -34,6 +34,15 @@ internal abstract record ActorIntent
     /// </summary>
     internal abstract string DebugLabel { get; }
 
+    /// <summary>
+    /// Get out of a blast radius. Outranks everything, including a squad manoeuvre: a bound that
+    /// walks into a grenade is not a bound anybody wanted, and the squad would rather have the man.
+    /// </summary>
+    internal sealed record EvadeBlast(Vector3 Away) : ActorIntent
+    {
+        internal override string DebugLabel => "EVADE";
+    }
+
     /// <summary>Stay put and shoot. The base of fire, and the safe default: it is what an actor does
     /// when nothing better prices out, and it is never a deadlock.</summary>
     internal sealed record HoldAndFire : ActorIntent

@@ -34,4 +34,21 @@ public class WeaponDispersionTests
     [Fact]
     public void ThrowableHasNoSightingError()
         => Assert.Equal(0f, BallisticsConfig.Get("demiurge:throwable").SightingMoa);
+
+    /// <summary>
+    /// Where each weapon wants to be fought, derived from its own damage curve rather than written
+    /// down per weapon. The ordering IS the doctrine — an SMG closes, a bolt gun holds — and nothing
+    /// in the AI has to know which is which.
+    /// </summary>
+    [Fact]
+    public void PreferredRangeOrdersWeaponsFromSubmachineGunToBoltAction()
+    {
+        float smg = WeaponEffectiveness.PreferredRange(ItemType.Ppsh, 1f);
+        float carbine = WeaponEffectiveness.PreferredRange(ItemType.Sks, 1f);
+        float rifle = WeaponEffectiveness.PreferredRange(ItemType.Mosin, 1f);
+
+        Assert.True(smg > 0f);
+        Assert.True(smg < carbine, $"smg {smg} should want to be closer than carbine {carbine}");
+        Assert.True(carbine < rifle, $"carbine {carbine} should want to be closer than rifle {rifle}");
+    }
 }

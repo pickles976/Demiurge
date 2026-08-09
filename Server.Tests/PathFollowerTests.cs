@@ -29,6 +29,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 7,
+                Vector3.Zero,
                 out var takeoff,
                 out bool jump,
                 out _,
@@ -42,6 +43,7 @@ public class PathFollowerTests
                 new Vector3(1.2f, 0.8f, 0f),
                 grounded: false,
                 currentTerrainVersion: 7,
+                Vector3.Zero,
                 out var airborne,
                 out jump,
                 out _,
@@ -55,6 +57,7 @@ public class PathFollowerTests
                 new Vector3(1.3f, 0f, 0f),
                 grounded: true,
                 currentTerrainVersion: 7,
+                Vector3.Zero,
                 out _,
                 out _,
                 out _,
@@ -88,6 +91,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 4,
+                Vector3.Zero,
                 out var intent,
                 out bool jump,
                 out var digTarget,
@@ -119,6 +123,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 5,
+                Vector3.Zero,
                 out _,
                 out _,
                 out var digTarget,
@@ -131,6 +136,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 5,
+                Vector3.Zero,
                 out _,
                 out _,
                 out _,
@@ -160,6 +166,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out _,
                 out _,
                 out _,
@@ -189,6 +196,7 @@ public class PathFollowerTests
             Vector3.Zero,
             grounded: true,
             currentTerrainVersion: 2,
+            Vector3.Zero,
             out _,
             out _,
             out _,
@@ -197,6 +205,7 @@ public class PathFollowerTests
             new Vector3(0.4f, 0.8f, 0f),
             grounded: false,
             currentTerrainVersion: 2,
+            Vector3.Zero,
             out _,
             out _,
             out _,
@@ -208,6 +217,7 @@ public class PathFollowerTests
                 new Vector3(0.4f, 0f, 0f),
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out _,
                 out _,
                 out _,
@@ -238,6 +248,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out _,
                 out _,
                 out _,
@@ -272,6 +283,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out var intent,
                 out jumped,
                 out _,
@@ -306,6 +318,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out _,
                 out jumped,
                 out _,
@@ -339,6 +352,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out _,
                 out bool jump,
                 out _,
@@ -376,6 +390,7 @@ public class PathFollowerTests
                 Vector3.Zero,
                 grounded: true,
                 currentTerrainVersion: 2,
+                Vector3.Zero,
                 out _,
                 out bool jump,
                 out _,
@@ -412,6 +427,7 @@ public class PathFollowerTests
                 new Vector3(5.2f, 12f, 0f),
                 grounded: true,
                 currentTerrainVersion: 3,
+                Vector3.Zero,
                 out var intent,
                 out _,
                 out _,
@@ -443,6 +459,7 @@ public class PathFollowerTests
                 new Vector3(-0.6f, 12f, 0f),
                 grounded: true,
                 currentTerrainVersion: 3,
+                Vector3.Zero,
                 out var intent,
                 out _,
                 out _,
@@ -477,6 +494,7 @@ public class PathFollowerTests
                 new Vector3(0f, 12f, 0.8f),
                 grounded: true,
                 currentTerrainVersion: 3,
+                Vector3.Zero,
                 out var intent,
                 out _,
                 out _,
@@ -508,6 +526,7 @@ public class PathFollowerTests
                 new Vector3(0.85f, 12f, 0.5f),
                 grounded: true,
                 currentTerrainVersion: 3,
+                Vector3.Zero,
                 out var intent,
                 out bool jump,
                 out _,
@@ -538,6 +557,7 @@ public class PathFollowerTests
             new Vector3(0.5f, 12f, 0.5f),
             grounded: true,
             currentTerrainVersion: 3,
+            Vector3.Zero,
             out _,
             out bool jump,
             out _,
@@ -546,5 +566,72 @@ public class PathFollowerTests
         Assert.True(jump);
         Assert.False(follower.CanReplacePath);
         Assert.False(follower.ShouldRefreshPath);
+    }
+
+    /// <summary>
+    /// Formation is a property of the march, not of the destination. Two men following one route
+    /// with opposite lanes must be steered apart WHILE they walk — the wedge used to exist only at
+    /// the objective, so a squad crossing open ground filed along one line the whole way and only
+    /// spread out on arrival.
+    /// </summary>
+    [Fact]
+    public void OppositeLanesSteerFollowersApartAlongTheSameRoute()
+    {
+        var left = LongRouteFollower();
+        var right = LongRouteFollower();
+
+        left.Update(
+            Vector3.Zero, grounded: true, currentTerrainVersion: 7,
+            lateral: new Vector3(-1f, 0f, 0f),
+            out var leftIntent, out _, out _, out _);
+        right.Update(
+            Vector3.Zero, grounded: true, currentTerrainVersion: 7,
+            lateral: new Vector3(1f, 0f, 0f),
+            out var rightIntent, out _, out _, out _);
+
+        Assert.True(leftIntent.X < 0f, $"left man should be steered left, got {leftIntent}");
+        Assert.True(rightIntent.X > 0f, $"right man should be steered right, got {rightIntent}");
+
+        // And still going where the route goes: a lane, not a detour.
+        Assert.True(leftIntent.Z > 0.5f, $"forward progress dominates, got {leftIntent}");
+        Assert.True(rightIntent.Z > 0.5f, $"forward progress dominates, got {rightIntent}");
+    }
+
+    /// <summary>
+    /// The lane closes as the waypoint nears, or a man crabs straight past the point he was supposed
+    /// to arrive at and the follower never advances.
+    /// </summary>
+    [Fact]
+    public void TheLaneClosesOnApproachSoTheWaypointIsStillReached()
+    {
+        var follower = LongRouteFollower();
+        var lane = new Vector3(1f, 0f, 0f);
+
+        follower.Update(
+            Vector3.Zero, grounded: true, currentTerrainVersion: 7, lane,
+            out var far, out _, out _, out _);
+        follower.Update(
+            new Vector3(0f, 0f, 39f), grounded: true, currentTerrainVersion: 7, lane,
+            out var near, out _, out _, out _);
+
+        Assert.True(
+            MathF.Abs(near.X) < MathF.Abs(far.X),
+            $"lane {near.X} at the waypoint should be tighter than {far.X} out on the leg");
+    }
+
+    private static PathFollower LongRouteFollower()
+    {
+        var follower = new PathFollower();
+        follower.SetPath(
+            new NavPath(
+                [
+                    new NavWaypoint(new NavCell(0, 0, 0), Vector3.Zero),
+                    new NavWaypoint(new NavCell(0, 0, 40), new Vector3(0f, 0f, 40f)),
+                ],
+                ReachedGoal: true,
+                Cost: 40f,
+                ExpandedNodes: 2),
+            version: 7);
+        return follower;
     }
 }

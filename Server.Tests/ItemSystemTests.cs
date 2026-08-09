@@ -38,7 +38,7 @@ public class ItemSystemTests
         uint rifleId = actor.Equipped[EquipSlot.HotbarPrimary];
 
         var mortar = items.SpawnPickup(ItemType.Mortar, actor.Position);
-        items.ApplyInteract(actor);
+        items.ApplyInteract(actor, [actor]);
 
         Assert.True(actor.IsCarrying);
         Assert.Equal(EquipSlot.Carried, objects.All
@@ -69,11 +69,11 @@ public class ItemSystemTests
         var actor = new ServerPlayer { Id = 1, Yaw = 1.25f };
         actor.Move.Position = new Vector3(10f, 4f, -7f);
         items.SpawnPickup(ItemType.Mortar, actor.Position);
-        items.ApplyInteract(actor);
+        items.ApplyInteract(actor, [actor]);
         Assert.True(actor.IsCarrying);
 
         actor.Yaw = -2.5f;                       // turned around before setting it down
-        items.ApplyInteract(actor);              // E again: put it down
+        items.ApplyInteract(actor, [actor]);              // E again: put it down
 
         Assert.False(actor.IsCarrying);
         var emplaced = objects.All.Single(o => o.Item.Type == ItemType.Mortar);
@@ -96,7 +96,7 @@ public class ItemSystemTests
         Assert.Equal(HotbarSlot.Shovel, actor.Hotbar);
 
         items.SpawnPickup(ItemType.Mortar, actor.Position);
-        items.ApplyInteract(actor);
+        items.ApplyInteract(actor, [actor]);
 
         items.SelectHotbar(actor, HotbarSlot.Primary);
         Assert.Equal(HotbarSlot.Shovel, actor.Hotbar);
@@ -347,5 +347,66 @@ public class ItemSystemTests
 
         Assert.True(objects.TryGet(actor.Equipped[EquipSlot.HotbarGrenade], out var grenades));
         Assert.Equal(0, grenades.Weapon.ReserveAmmo);
+    }
+
+    /// <summary>
+    /// A mortar with a gunner on it is not lying about — it is being worked. Taking it out from
+    /// under him would leave him operating an object that is no longer where he is standing, which
+    /// is the state the firing path has no answer for.
+    /// </summary>
+    [Fact]
+    public void AnEmplacementBeingWorkedCannotBePickedUp()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var gunner = new ServerPlayer { Id = 1 };
+        var passerby = new ServerPlayer { Id = 2 };
+
+        var mortar = items.SpawnPickup(ItemType.Mortar, gunner.Position);
+        gunner.OperatingObjectId = mortar.NetworkId;
+
+        items.ApplyInteract(passerby, [gunner, passerby]);
+
+        Assert.False(passerby.IsCarrying);
+        Assert.True(objects.TryGet(mortar.NetworkId, out var stillThere));
+        Assert.True(stillThere.Has.HasFlag(NetComponents.Transform), "still emplaced, not carried");
+    }
+
+    /// <summary>And it becomes an ordinary pickup again the moment he steps off it.</summary>
+    [Fact]
+    public void AnEmplacementNobodyIsWorkingIsAnOrdinaryPickup()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var gunner = new ServerPlayer { Id = 1 };
+        var passerby = new ServerPlayer { Id = 2 };
+
+        items.SpawnPickup(ItemType.Mortar, gunner.Position);
+        gunner.OperatingObjectId = 0;
+
+        items.ApplyInteract(passerby, [gunner, passerby]);
+
+        Assert.True(passerby.IsCarrying);
+    }
+
+    /// <summary>
+    /// Two gunners on one tube laying it on different bearings is not a state anything downstream
+    /// can resolve, so F refuses an occupied mortar the same way E does.
+    /// </summary>
+    [Fact]
+    public void AnOccupiedEmplacementIsNotOfferedToASecondGunner()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var gunner = new ServerPlayer { Id = 1 };
+        var second = new ServerPlayer { Id = 2 };
+
+        var mortar = items.SpawnPickup(ItemType.Mortar, gunner.Position);
+        gunner.OperatingObjectId = mortar.NetworkId;
+
+        Assert.Null(items.EmplacedInReach(second, [gunner, second]));
+
+        // The man already on it still finds it, or F could never get him off again.
+        Assert.NotNull(items.EmplacedInReach(gunner, [gunner, second]));
     }
 }
