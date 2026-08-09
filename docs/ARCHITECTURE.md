@@ -102,7 +102,12 @@ Common/Ai (pure, headlessly testable) -- the currency the layers above decide in
 - `SquadFormation` re-groups each team's living NPCs by proximity once per second. Membership is not
   fixed at spawn: a separated unit joins the squad it is actually fighting beside, over-strength squads
   shed outliers, and under-strength squads merge.
-- `CommanderAi` assigns squads to flags. Squads execute capture, defense, and reinforcement locally.
+- `CommanderAi` assigns squads to flags and may reserve one separate resource objective per squad.
+  Resource assignments name one operator rather than redirecting the whole squad: useful firearm
+  pickups are priced by `EquipmentValue`, while mortars require a live contact inside the authored
+  fire sector and no friendly inside the blast-plus-dispersion safety radius.
+  Squads execute capture, defense, and reinforcement locally while the selected operator acquires or
+  works the resource.
   It costs travel from `SquadBlackboard.Centre`, which is recomputed from live member positions.
 - `SquadBlackboard` delays shared contacts, leases cover locations, rotates engagement/advance
   permits, reserves grenade throws, and carries the squad objective, roster, centre, and tactical
@@ -118,6 +123,9 @@ Common/Ai (pure, headlessly testable) -- the currency the layers above decide in
 - Accepted enemy gunshots within 60 m create investigation goals. A projectile passing within 2 m
   creates a two-second incoming-fire stimulus at the firing position, prompting cover selection or
   emergency dirt digging without continuously tracking the live shooter.
+- A pinned NPC that cannot move, is not already protected, and is not digging goes prone. Prone is a
+  real stance in shared geometry: perception/fire origins move down, hit detection uses a horizontal
+  capsule along the actor's yaw, and head/blast/suppression probes follow the lowered body.
 
 ### The combat currency
 

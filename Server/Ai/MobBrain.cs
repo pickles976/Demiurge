@@ -98,6 +98,7 @@ internal sealed class MobBrain
     /// </summary>
     public HeardShots Heard { get; } = new();
     public uint ObjectiveRevision { get; set; }
+    public uint ResourceRevision { get; set; }
     /// <summary>True only after this actor's own path reaches its formation slot. Proximity to the
     /// shared flag is insufficient: a relocated flank member can respawn inside the capture radius
     /// while still being many metres from its assigned slot.</summary>

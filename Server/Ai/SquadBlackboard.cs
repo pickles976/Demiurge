@@ -6,6 +6,20 @@ internal readonly record struct SquadObjective(
     uint FlagId,
     Vector3 Position);
 
+internal enum SquadResourceKind : byte
+{
+    AcquireWeapon,
+    OperateMortar,
+}
+
+internal readonly record struct SquadResourceObjective(
+    SquadResourceKind Kind,
+    ushort OperatorId,
+    uint ObjectId,
+    ItemType Item,
+    Vector3 Position,
+    Vector3 Target);
+
 /// <summary>
 /// Shared, server-only state for one small infantry squad. Reports are delayed before entering the
 /// shared contact memory, cover claims are short leases, and engagement tokens rotate so the same
@@ -54,6 +68,7 @@ internal sealed class SquadBlackboard
     private readonly List<ushort> roster = new(MaximumMembers);
     private readonly Dictionary<ushort, SquadTacticalOrder> orders = new(MaximumMembers);
     private SquadObjective? objective;
+    private SquadResourceObjective? resourceObjective;
     private uint nextGrenadeTick;
 
     /// <summary>
@@ -66,6 +81,7 @@ internal sealed class SquadBlackboard
     public int MemberCount => roster.Count;
     public IReadOnlyList<ushort> Roster => roster;
     public uint ObjectiveRevision { get; private set; }
+    public uint ResourceRevision { get; private set; }
 
     /// <summary>Replaces the roster and recomputes the centre from where the members actually are.</summary>
     public void SetRoster(List<ushort> actorIds, Vector3 centre)
@@ -119,6 +135,25 @@ internal sealed class SquadBlackboard
     public bool TryGetObjective(out SquadObjective value)
     {
         if (objective is { } selected)
+        {
+            value = selected;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    public void SetResourceObjective(SquadResourceObjective? value)
+    {
+        if (resourceObjective == value) return;
+        resourceObjective = value;
+        ResourceRevision++;
+    }
+
+    public bool TryGetResourceObjective(ushort actorId, out SquadResourceObjective value)
+    {
+        if (resourceObjective is { } selected && selected.OperatorId == actorId)
         {
             value = selected;
             return true;

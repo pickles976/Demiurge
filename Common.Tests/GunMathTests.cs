@@ -44,6 +44,22 @@ public class GunMathTests
     }
 
     [Fact]
+    public void EveryProneAiAimPointLiesInsideTheProneBody()
+    {
+        foreach (float height in GunConfig.AimHeightsFor(PlayerStateFlags.Prone))
+        {
+            var origin = new Vector3(-20f, Feet.Y + height, 0f);
+            Assert.NotNull(GunMath.PlayerHitDistance(
+                origin,
+                Vector3.UnitX,
+                Feet,
+                40f,
+                PlayerStateFlags.Prone,
+                MathF.PI / 2f));
+        }
+    }
+
+    [Fact]
     public void LateralMissBeyondHitRadiusIsRejected()
     {
         Assert.NotNull(ShotAtHeight(0.9f, GunConfig.HitRadius - 0.05f));
@@ -135,6 +151,31 @@ public class GunMathTests
         Assert.True(HitAtHeight(1.26f - GunConfig.CrouchHeadDrop, crouching: true)?.Head);
         Assert.False(HitAtHeight(1.26f, crouching: true)?.Head);
         Assert.False(HitAtHeight(1.26f - GunConfig.CrouchHeadDrop, crouching: false)?.Head);
+    }
+
+    [Fact]
+    public void ProneBodyIsLowAndRunsAlongTheActorsFacing()
+    {
+        var state = PlayerStateFlags.Prone;
+        float yaw = MathF.PI / 2f; // body axis along +X
+
+        var lowOrigin = new Vector3(-20f, Feet.Y + GunConfig.ProneBodyCenterHeight, 0f);
+        Assert.NotNull(GunMath.PlayerHitDistance(
+            lowOrigin, Vector3.UnitX, Feet, 40f, state, yaw));
+
+        var standingChest = new Vector3(-20f, Feet.Y + 1.2f, 0f);
+        Assert.Null(GunMath.PlayerHitDistance(
+            standingChest, Vector3.UnitX, Feet, 40f, state, yaw));
+    }
+
+    [Fact]
+    public void ProneHeadMovesToTheFrontOfTheBody()
+    {
+        float yaw = MathF.PI / 2f;
+        var head = GunConfig.HeadCenter(Feet, PlayerStateFlags.Prone, yaw);
+
+        Assert.Equal(Feet.X + GunConfig.ProneHeadForward, head.X, 4);
+        Assert.Equal(Feet.Y + GunConfig.ProneHeadCenterHeight, head.Y, 4);
     }
 
     [Fact]

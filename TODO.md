@@ -19,10 +19,8 @@ Event queue implementation
 
 ## Misc
 
-Stop Using Claude
-- Codex clean up all comments
-- Codex refactor certain parts of the code
-
+Bugs: 
+- NPCs dont aim well with the mortar. They need to have perfect awareness of enemmies when using the mortar, do counter-battery fire against other mortars, and target clusters of units and dug-in units.
 
 Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
 
@@ -47,6 +45,10 @@ New Features
 - Try to add digging back in to combat
 
 - [ ] mortar whistle sound
+
+Stop Using Claude
+- Codex clean up all comments
+- Codex refactor certain parts of the code
 
 ## Richer Environment
 

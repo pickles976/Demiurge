@@ -360,7 +360,8 @@ public sealed class GrenadeSystem
             {
                 // Out from the blast through the body's middle, not its feet: an explosion on the
                 // ground beside a man should tip him over, and origin-to-centre says that by itself.
-                var centre = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                var centre = player.Position
+                    + Vector3.UnitY * GunConfig.TargetCenterHeight(player.State);
                 status.Impulse.Velocity = RagdollImpulse.FromBlast(origin, centre, blowDamage);
                 status.Dirty |= NetComponents.Impulse;
 
@@ -405,9 +406,8 @@ public sealed class GrenadeSystem
     internal static bool HasLineOfSight(ChunkMap terrain, Vector3 origin, ServerPlayer player)
     {
         var feet = player.Position;
-        bool crouching = player.State.HasFlag(PlayerStateFlags.Crouching);
-        var centre = feet + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
-        var head = GunConfig.HeadCenter(feet, crouching);
+        var centre = feet + Vector3.UnitY * GunConfig.TargetCenterHeight(player.State);
+        var head = GunConfig.HeadCenter(feet, player.State, player.Yaw);
         var burst = origin + new Vector3(0f, BurstRise, 0f);
 
         // Raised origin first and centre mass first within each, which is the order they are most

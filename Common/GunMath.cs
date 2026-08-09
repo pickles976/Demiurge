@@ -62,6 +62,15 @@ namespace Demiurge
             float segmentLength)
             => PlayerHitAt(origin, direction, feet, segmentLength, crouching: false)?.Distance;
 
+        public static float? PlayerHitDistance(
+            Vector3 origin,
+            Vector3 direction,
+            Vector3 feet,
+            float segmentLength,
+            PlayerStateFlags state,
+            float yaw)
+            => PlayerHitAt(origin, direction, feet, segmentLength, state, yaw)?.Distance;
+
         /// <summary>
         /// The same test, reporting whether the shot found the head as well as where it landed.
         ///
@@ -80,13 +89,43 @@ namespace Demiurge
             Vector3 feet,
             float segmentLength,
             bool crouching)
+            => PlayerHitAt(
+                origin,
+                direction,
+                feet,
+                segmentLength,
+                crouching ? PlayerStateFlags.Crouching : PlayerStateFlags.None,
+                yaw: 0f);
+
+        public static PlayerHit? PlayerHitAt(
+            Vector3 origin,
+            Vector3 direction,
+            Vector3 feet,
+            float segmentLength,
+            PlayerStateFlags state,
+            float yaw)
         {
-            float radius = GunConfig.HitRadius;
-            float height = PlayerMovement.Body.Height;
-            // Cap centres, so the swept volume spans exactly [feet.Y, feet.Y + height].
-            float capOffset = MathF.Min(radius, height * 0.5f);
-            Vector3 axisStart = feet + Vector3.UnitY * capOffset;
-            Vector3 axisEnd = feet + Vector3.UnitY * (height - capOffset);
+            float radius;
+            Vector3 axisStart;
+            Vector3 axisEnd;
+            if (state.HasFlag(PlayerStateFlags.Prone))
+            {
+                radius = GunConfig.ProneBodyRadius;
+                var forward = new Vector3(MathF.Sin(yaw), 0f, MathF.Cos(yaw));
+                float halfAxis = MathF.Max(0f, GunConfig.ProneBodyLength * 0.5f - radius);
+                var centre = feet + Vector3.UnitY * GunConfig.ProneBodyCenterHeight;
+                axisStart = centre - forward * halfAxis;
+                axisEnd = centre + forward * halfAxis;
+            }
+            else
+            {
+                radius = GunConfig.HitRadius;
+                float height = PlayerMovement.Body.Height;
+                // Cap centres, so the swept volume spans exactly [feet.Y, feet.Y + height].
+                float capOffset = MathF.Min(radius, height * 0.5f);
+                axisStart = feet + Vector3.UnitY * capOffset;
+                axisEnd = feet + Vector3.UnitY * (height - capOffset);
+            }
 
             float t = ClosestApproachOnRay(
                 origin,
@@ -101,7 +140,7 @@ namespace Demiurge
             bool head = SphereDistance(
                 origin,
                 direction,
-                GunConfig.HeadCenter(feet, crouching),
+                GunConfig.HeadCenter(feet, state, yaw),
                 GunConfig.HeadRadius,
                 segmentLength) is not null;
             return new PlayerHit(t, head);

@@ -11,6 +11,7 @@ namespace Demiurge.GameServer
     public class ItemSystem
     {
         private readonly ObjectReplication objects;
+        internal ObjectReplication Objects => objects;
 
         /// <summary>How a replicated object looks to <see cref="PickupTargeting"/>.</summary>
         private static PickupTargeting.Candidate Describe(ServerObject obj)
@@ -281,6 +282,22 @@ namespace Demiurge.GameServer
                 Describe);
             if (pickup == null) return;
 
+            TryTake(player, pickup, actors);
+        }
+
+        /// <summary>AI-targetable form of interact: same validation and transition, exact object.</summary>
+        internal bool TryTake(
+            ServerPlayer player,
+            ServerObject pickup,
+            IEnumerable<ServerPlayer> actors)
+        {
+            if (player.IsCarrying
+                || IsBeingWorked(pickup.NetworkId, actors)
+                || !PickupTargeting.IsAvailable(Describe(pickup))
+                || Vector3.DistanceSquared(player.Position, pickup.Transform.Position)
+                    > PickupTargeting.RadiusSquared)
+                return false;
+
             // Something hauled goes into the hands, not into the kit: it must not take the rifle's
             // slot, because picking it up is not a swap. Whatever was already being carried IS
             // swapped out — you have one pair of hands.
@@ -290,6 +307,7 @@ namespace Demiurge.GameServer
                     ? HotbarConfig.StorageSlot(HotbarConfig.SlotFor(pickup.Item.Type))
                     : ItemConfig.Get(pickup.Item.Type).Slot;
             Equip(player, pickup, slot);
+            return true;
         }
 
         /// <summary>

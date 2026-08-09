@@ -83,14 +83,13 @@ internal sealed class Perception
                 || target.Status is { Health.Current: 0 })
                 continue;
 
-            float eyeHeight = observer.State.HasFlag(PlayerStateFlags.Crouching)
-                ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
-                : Digging.EyeHeight;
+            float eyeHeight = observer.State.EyeHeight();
             Vector3 origin = observer.Position + Vector3.UnitY * eyeHeight;
             // Range and field of view are judged against centre mass. Only the line of sight probe
             // varies by body point, because which PART of a target is exposed is a cover question
             // rather than a sensing one.
-            Vector3 centre = target.Position + Vector3.UnitY * GunConfig.PlayerCenterHeight;
+            Vector3 centre = target.Position
+                + Vector3.UnitY * GunConfig.TargetCenterHeight(target.State);
             Vector3 toCentre = centre - origin;
             float distance = toCentre.Length();
             if (distance <= 1e-5f || distance > MaximumSightDistance)
@@ -110,9 +109,10 @@ internal sealed class Perception
             // the cover and the NPC never acquired a contact, so it never returned fire. The second
             // ray is only paid when centre mass is genuinely blocked, which is the uncommon case.
             // Whichever point answered is remembered so CombatBehavior aims where perception saw.
-            for (int heightIndex = 0; heightIndex < GunConfig.AimHeights.Length; heightIndex++)
+            var aimHeights = GunConfig.AimHeightsFor(target.State);
+            for (int heightIndex = 0; heightIndex < aimHeights.Length; heightIndex++)
             {
-                float height = GunConfig.AimHeights[heightIndex];
+                float height = aimHeights[heightIndex];
                 Vector3 aim = target.Position + Vector3.UnitY * height;
                 Vector3 delta = aim - origin;
                 float aimDistance = delta.Length();

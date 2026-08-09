@@ -172,7 +172,8 @@ namespace Demiurge.GameServer
                     || player.Status is not { Health.Current: > 0 })
                     continue;
 
-                var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                var center = player.Position
+                    + Vector3.UnitY * GunConfig.TargetCenterHeight(player.State);
                 if (Vector3.DistanceSquared(impact, center)
                     > GunConfig.ImpactSuppressionRadius * GunConfig.ImpactSuppressionRadius)
                     continue;
@@ -322,7 +323,8 @@ namespace Demiurge.GameServer
             foreach (var player in players)
             {
                 if (player == shooter || player.Status == null) continue;
-                var center = player.Position + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
+                var center = player.Position
+                    + Vector3.UnitY * GunConfig.TargetCenterHeight(player.State);
                 float along = Math.Clamp(Vector3.Dot(center - start, direction), 0f, length);
                 if (along < nearestT
                     && Vector3.DistanceSquared(start + direction * along, center)
@@ -343,7 +345,8 @@ namespace Demiurge.GameServer
                         direction,
                         player.Position,
                         length,
-                        player.State.HasFlag(PlayerStateFlags.Crouching))
+                        player.State,
+                        player.Yaw)
                     is not { } actorHit) continue;
                 if (actorHit.Distance >= nearestT) continue;
 

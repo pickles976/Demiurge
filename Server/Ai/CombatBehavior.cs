@@ -110,9 +110,7 @@ internal sealed class CombatBehavior
             brain.AimDirection = Facing(mob.Yaw);
         }
 
-        float eyeHeight = mob.State.HasFlag(PlayerStateFlags.Crouching)
-            ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
-            : Digging.EyeHeight;
+        float eyeHeight = mob.State.EyeHeight();
         Vector3 origin = mob.Position + Vector3.UnitY * eyeHeight;
         // Aim at whatever part of him perception actually had a line to. Centre mass is the fallback
         // for a remembered contact: nothing was seen this tick, and the obstruction check below

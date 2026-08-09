@@ -66,6 +66,13 @@ namespace Demiurge
         /// </summary>
         public const float CrouchHeadDrop = 0.22f;
 
+        /// <summary>Prone actors lie along their facing rather than retaining a standing capsule.</summary>
+        public const float ProneBodyRadius = 0.30f;
+        public const float ProneBodyLength = 1.65f;
+        public const float ProneBodyCenterHeight = 0.32f;
+        public const float ProneHeadForward = 0.62f;
+        public const float ProneHeadCenterHeight = 0.32f;
+
         /// <summary>
         /// What a head hit is worth. A multiplier rather than a table so it stays one number for
         /// every weapon: a hit that finds the head is worth more because of where it landed, not
@@ -78,11 +85,25 @@ namespace Demiurge
             => feet + new System.Numerics.Vector3(
                 0f, crouching ? HeadCenterHeight - CrouchHeadDrop : HeadCenterHeight, 0f);
 
+        public static System.Numerics.Vector3 HeadCenter(
+            System.Numerics.Vector3 feet,
+            PlayerStateFlags state,
+            float yaw)
+        {
+            if (!state.HasFlag(PlayerStateFlags.Prone))
+                return HeadCenter(feet, state.HasFlag(PlayerStateFlags.Crouching));
+
+            var forward = new System.Numerics.Vector3(MathF.Sin(yaw), 0f, MathF.Cos(yaw));
+            return feet + forward * ProneHeadForward
+                + System.Numerics.Vector3.UnitY * ProneHeadCenterHeight;
+        }
+
         /// <summary>Damage after the head multiplier, saturating rather than wrapping.</summary>
         public static ushort Headshot(ushort damage)
             => (ushort)MathF.Min(ushort.MaxValue, damage * HeadshotMultiplier);
 
         private static readonly float[] aimHeights = [PlayerCenterHeight, PlayerPeekHeight];
+        private static readonly float[] proneAimHeights = [ProneBodyCenterHeight];
 
         /// <summary>
         /// Body points an AI tries to see and shoot, in preference order: centre mass first because it
@@ -93,6 +114,14 @@ namespace Demiurge
         /// AI would settle on a point it can see and provably cannot damage. GunMathTests asserts it.
         /// </summary>
         public static ReadOnlySpan<float> AimHeights => aimHeights;
+
+        public static ReadOnlySpan<float> AimHeightsFor(PlayerStateFlags state)
+            => state.HasFlag(PlayerStateFlags.Prone) ? proneAimHeights : aimHeights;
+
+        public static float TargetCenterHeight(PlayerStateFlags state)
+            => state.HasFlag(PlayerStateFlags.Prone)
+                ? ProneBodyCenterHeight
+                : PlayerCenterHeight;
 
         /// <summary>
         /// How far a shot's claimed origin may sit from the server's position for that player before

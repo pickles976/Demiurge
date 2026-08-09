@@ -56,9 +56,7 @@ internal sealed class GrenadeBehavior
             return false;
         }
 
-        float eyeHeight = mob.State.HasFlag(PlayerStateFlags.Crouching)
-            ? Digging.EyeHeight - PlayerMovement.CrouchEyeDrop
-            : Digging.EyeHeight;
+        float eyeHeight = mob.State.EyeHeight();
         Vector3 origin = mob.Position + Vector3.UnitY * eyeHeight;
         Vector3 away = contact.Position - mob.Position;
         away.Y = 0f;

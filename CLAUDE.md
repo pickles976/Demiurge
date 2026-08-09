@@ -305,6 +305,11 @@ agree and mostly do not:
 | Head sphere, the 2x volume | 1.06 – 1.46 | `HeadCenterHeight` 1.26 ± `HeadRadius` 0.20 |
 | AI aim points: centre mass, then peek | 0.50, 1.45 | `GunConfig.AimHeights` |
 
+Prone is stance-aware rather than the standing values above: eye/muzzle height is 0.55 m, the
+hittable body is a horizontal capsule along actor yaw, and AI aim/blast/suppression probes use its
+0.32 m centre. Keep new shot geometry on the `GunMath.PlayerHitAt(..., state, yaw)` path; the older
+overload is the standing-only compatibility helper used by pure tests.
+
 Two consequences that have already caused a "the AI is cheating" report, both still live as of
 2026-08-08:
 

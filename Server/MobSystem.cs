@@ -112,6 +112,7 @@ namespace Demiurge.GameServer
         private readonly NavigationSystem navigation;
         private readonly Perception perception;
         private readonly GrenadeSystem grenades;
+        private readonly MortarSystem? mortars;
 
         /// <summary>
         /// Live grenades, rebuilt once in BeginTick and read by every actor's Decide. Per actor it
@@ -208,16 +209,18 @@ namespace Demiurge.GameServer
             ItemSystem items,
             FlagSystem flags,
             GrenadeSystem grenades,
-            int seed = 0x51A7)
+            int seed = 0x51A7,
+            MortarSystem? mortars = null)
         {
             this.terrain = terrain;
             this.terrainEdits = terrainEdits;
             this.weapons = weapons;
             this.items = items;
-            commander = new CommanderAi(flags);
+            commander = new CommanderAi(flags, items.Objects);
             navigation = new NavigationSystem(terrain);
             perception = new Perception(terrain);
             this.grenades = grenades;
+            this.mortars = mortars;
             combat = new CombatBehavior(weapons, terrain);
             grenadeCombat = new GrenadeBehavior(terrain, grenades);
             cover = new CoverBehavior(terrain);
@@ -383,8 +386,74 @@ namespace Demiurge.GameServer
                 };
             }
 
-            bool hasObjective = squad.TryGetObjective(out var objective);
-            if (brain.ObjectiveRevision != squad.ObjectiveRevision)
+            bool hasResource = squad.TryGetResourceObjective(mob.Id, out var resource);
+            ServerObject? resourceObject = null;
+            if (hasResource && !items.Objects.TryGet(resource.ObjectId, out resourceObject))
+            {
+                squad.SetResourceObjective(null);
+                hasResource = false;
+            }
+
+            if (hasResource
+                && HorizontalDistanceSquared(mob.Position, resource.Position)
+                    <= PickupTargeting.RadiusSquared)
+            {
+                if (resource.Kind == SquadResourceKind.AcquireWeapon)
+                {
+                    if (items.TryTake(mob, resourceObject!, actors))
+                    {
+                        squad.SetResourceObjective(null);
+                        brain.DebugIntent = "EQUIP";
+                        brain.Navigation.Clear();
+                        return new MobAction { HoldingObjective = true };
+                    }
+                }
+                else if (resource.Kind == SquadResourceKind.OperateMortar
+                         && mortars is not null
+                         && resourceObject!.Has.HasFlag(NetComponents.Item | NetComponents.Transform)
+                         && ItemCatalog.HasBehavior(resourceObject.Item.Type, ItemBehavior.Mortar)
+                         && CommanderAi.MortarTargetIsSafe(mob.Team, resource.Target, actors)
+                         && (mob.OperatingObjectId == resourceObject.NetworkId
+                             || !ItemSystem.IsBeingWorked(resourceObject.NetworkId, actors)))
+                {
+                    mob.OperatingObjectId = resourceObject.NetworkId;
+                    _ = mortars.TryFire(mob, resourceObject, resource.Target, tick);
+                    brain.DebugIntent = "MORTAR";
+                    brain.Navigation.Progress.Reset();
+                    return new MobAction
+                    {
+                        Yaw = MathF.Atan2(
+                            resource.Target.X - mob.Position.X,
+                            resource.Target.Z - mob.Position.Z),
+                        TurnTo = true,
+                        HoldingObjective = true,
+                    };
+                }
+            }
+
+            if (!hasResource && mob.IsOperating)
+                mob.OperatingObjectId = 0;
+
+            bool hasFlagObjective = squad.TryGetObjective(out var flagObjective);
+            bool hasObjective = hasResource || hasFlagObjective;
+            var objective = hasResource
+                ? new SquadObjective(resource.ObjectId, resource.Position)
+                : flagObjective;
+            Vector3 AssignedObjectiveDestination()
+                => hasResource
+                    ? objective.Position
+                    : ObjectiveDestination(mob.Id, objective.Position, squad);
+
+            if (hasResource && brain.ResourceRevision != squad.ResourceRevision)
+            {
+                brain.ResourceRevision = squad.ResourceRevision;
+                brain.ObjectiveReached = false;
+                brain.Navigation.Path.Clear();
+                brain.Navigation.ResetBlocked();
+                CancelPending(mob.Id, brain.Navigation, forCover: false);
+                brain.Navigation.SetDestination(objective.Position);
+            }
+            else if (!hasResource && brain.ObjectiveRevision != squad.ObjectiveRevision)
             {
                 brain.ObjectiveRevision = squad.ObjectiveRevision;
                 brain.ObjectiveReached = false;
@@ -393,13 +462,13 @@ namespace Demiurge.GameServer
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
                     hasObjective
-                        ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                        ? AssignedObjectiveDestination()
                         : RandomSurfacePoint(HomeOf(mob)));
             }
             if (!brain.Navigation.HasDestination)
                 brain.Navigation.SetDestination(
                     hasObjective
-                        ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                        ? AssignedObjectiveDestination()
                         : RandomSurfacePoint(HomeOf(mob)));
             Vector3 destination = brain.Navigation.Destination;
 
@@ -433,7 +502,7 @@ namespace Demiurge.GameServer
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
                     hasObjective
-                        ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                        ? AssignedObjectiveDestination()
                         : RandomSurfacePoint(HomeOf(mob)));
                 destination = brain.Navigation.Destination;
             }
@@ -676,6 +745,11 @@ namespace Demiurge.GameServer
                     && (decision is ActorIntent.Bound
                         || !combatOutcome.Flags.HasFlag(PlayerStateFlags.Shooting)
                             && (!brain.AtCover || !mayFire));
+                bool prone = ShouldGoProne(
+                    combatIntent,
+                    underFire,
+                    brain.AtCover,
+                    combatDigging);
 
                 // Combat's own flags carried explicitly rather than by merging onto whatever
                 // mob.State happened to hold, which is how a stale flag used to survive a tick.
@@ -684,7 +758,8 @@ namespace Demiurge.GameServer
                     Intent = combatIntent,
                     Jump = combatJump,
                     Sprint = sprinting,
-                    Crouch = crouching,
+                    Crouch = crouching && !prone,
+                    Prone = prone,
                     // Either kind of actuation: a trigger pull or a shovel bite taken on the way.
                     Shooting = combatOutcome.Flags.HasFlag(PlayerStateFlags.Shooting) || combatDigging,
                     Aiming = combatOutcome.Flags.HasFlag(PlayerStateFlags.Aiming),
@@ -862,7 +937,7 @@ namespace Demiurge.GameServer
                             heardGunshot = false;
                             brain.Navigation.SetDestination(
                                 hasObjective
-                                    ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                                    ? AssignedObjectiveDestination()
                                     : RandomSurfacePoint(HomeOf(mob)));
                             destination = brain.Navigation.Destination;
                             followState = PathFollowState.NeedsPath;
@@ -909,7 +984,7 @@ namespace Demiurge.GameServer
                     heardGunshot = false;
                     brain.Navigation.SetDestination(
                         hasObjective
-                            ? ObjectiveDestination(mob.Id, objective.Position, squad)
+                            ? AssignedObjectiveDestination()
                             : RandomSurfacePoint(HomeOf(mob)));
                 }
                 else if (!requested && !hasObjective)
@@ -1056,6 +1131,9 @@ namespace Demiurge.GameServer
             if (!brains.TryGetValue(mob.Id, out var brain)) return;
 
             var squad = BoardFor(mob, brain);
+            if (squad.TryGetResourceObjective(mob.Id, out _))
+                squad.SetResourceObjective(null);
+            mob.OperatingObjectId = 0;
             ClearCover(mob.Id, brain, squad);
             brain.ClearCombatTarget();
             brain.ClearGunshot();
@@ -2050,10 +2128,18 @@ namespace Demiurge.GameServer
                 .With(PlayerStateFlags.Moving, action.Intent != Vector3.Zero)
                 .With(PlayerStateFlags.Jumping, action.Jump)
                 .With(PlayerStateFlags.Sprinting, action.Sprint)
-                .With(PlayerStateFlags.Crouching, action.Crouch)
+                .With(PlayerStateFlags.Crouching, action.Crouch && !action.Prone)
+                .With(PlayerStateFlags.Prone, action.Prone)
                 .With(PlayerStateFlags.Shooting, action.Shooting)
                 .With(PlayerStateFlags.Aiming, action.Aiming)
                 .With(PlayerStateFlags.Reloading, action.Reloading);
+
+        internal static bool ShouldGoProne(
+            Vector3 intent,
+            bool underFire,
+            bool atCover,
+            bool digging)
+            => intent == Vector3.Zero && underFire && !atCover && !digging;
 
         /// <summary>
         /// The one place an NPC's tick output reaches the actor. Every decider returns a MobAction;

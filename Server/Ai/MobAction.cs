@@ -23,6 +23,7 @@ internal readonly record struct MobAction
     public bool Jump { get; init; }
     public bool Sprint { get; init; }
     public bool Crouch { get; init; }
+    public bool Prone { get; init; }
 
     /// <summary>Actuating the held item — a trigger pull or a shovel swing. Both look the same to
     /// the client's view, which is why digging sets it too.</summary>

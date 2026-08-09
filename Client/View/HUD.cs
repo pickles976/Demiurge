@@ -23,6 +23,8 @@ namespace Demiurge
         public static readonly Color Team2Color = new(198, 203, 209, 255);
         public const float TicketBarWidth = 190f;
         public const float TicketBarHeight = 7f;
+        private const float PickupPromptTopMargin = 200f;
+        private const float OperatingPromptTopMargin = 400f;
         /// <summary>Text that belongs to nobody — connecting words, coordinates, reasons.</summary>
         public static readonly Color NeutralColor = new(235, 238, 242, 245);
 
@@ -325,7 +327,7 @@ namespace Demiurge
                 BackgroundColor = new Color(5, 5, 7, 150),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 200, 0, 0),
+                Margin = new Thickness(0, PickupPromptTopMargin, 0, 0),
                 Content = pickupText,
                 Visibility = Visibility.Collapsed,
             };
@@ -783,7 +785,7 @@ namespace Demiurge
                 // Working one: the only thing left to offer is how to stop.
                 if (local.IsOperating)
                 {
-                    ShowPrompt(uint.MaxValue, "Press F to step away");
+                    ShowPrompt(uint.MaxValue, "Press F to step away", lower: true);
                     return;
                 }
 
@@ -810,11 +812,16 @@ namespace Demiurge
 
             /// <summary>Shows one prompt, keyed by the object it names so identical neighbours still
             /// refresh. Null text hides the panel.</summary>
-            private void ShowPrompt(uint networkId, string? text)
+            private void ShowPrompt(uint networkId, string? text, bool lower = false)
             {
                 if (networkId == _promptedPickup) return;
                 _promptedPickup = networkId;
 
+                PickupPanel.Margin = new Thickness(
+                    0,
+                    lower ? OperatingPromptTopMargin : PickupPromptTopMargin,
+                    0,
+                    0);
                 PickupPanel.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
                 if (text is not null) PickupText.Text = text;
             }

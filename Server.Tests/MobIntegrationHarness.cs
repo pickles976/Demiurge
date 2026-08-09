@@ -17,7 +17,9 @@ internal sealed class MobIntegrationHarness : IDisposable
         Weapons = new WeaponSystem(Server, Objects, terrain);
         Flags = new FlagSystem(Objects);
         Grenades = new GrenadeSystem(Objects, Items, TerrainEdits, terrain);
-        Mobs = new MobSystem(terrain, TerrainEdits, Weapons, Items, Flags, Grenades, seed);
+        Mortars = new MortarSystem(Objects, terrain, TerrainEdits, dispersionSeed: seed);
+        Mobs = new MobSystem(
+            terrain, TerrainEdits, Weapons, Items, Flags, Grenades, seed, Mortars);
     }
 
     public ChunkMap Terrain { get; }
@@ -28,6 +30,7 @@ internal sealed class MobIntegrationHarness : IDisposable
     public WeaponSystem Weapons { get; }
     public FlagSystem Flags { get; }
     public GrenadeSystem Grenades { get; }
+    public MortarSystem Mortars { get; }
     public MobSystem Mobs { get; }
     public List<ServerPlayer> Actors { get; } = [];
 
@@ -63,6 +66,7 @@ internal sealed class MobIntegrationHarness : IDisposable
         foreach (var actor in Actors)
             if (actor.IsMob && actor.Status is { Health.Current: > 0 })
                 Mobs.Step(actor, NetworkConfig.FixedDt, tick, Actors);
+        Mortars.Tick(NetworkConfig.FixedDt, tick, Actors);
         if (wallClockDelayMs > 0)
             Thread.Sleep(wallClockDelayMs);
     }

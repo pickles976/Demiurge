@@ -174,7 +174,8 @@ namespace Demiurge.GameServer
                 terrainEdits,
                 terrain,
                 activityFeed);
-            mobs = new MobSystem(terrain, terrainEdits, weapons, items, flags, grenades);
+            mobs = new MobSystem(
+                terrain, terrainEdits, weapons, items, flags, grenades, mortars: mortars);
 
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
@@ -625,6 +626,7 @@ namespace Demiurge.GameServer
                     player.RespawnTick = RespawnConfig.NextWaveTick(_Tick);
                     player.PendingMoves.Clear();
                     player.LastIntent = Vector3.Zero;
+                    player.OperatingObjectId = 0;
                     player.State = 0;
                     continue;
                 }

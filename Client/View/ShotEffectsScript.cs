@@ -345,7 +345,8 @@ public class ShotEffectsScript : SyncScript
         foreach (var player in Registry.Players)
         {
             if (player.Id == shooterId) continue;
-            if (GunMath.PlayerHitDistance(start, direction, player.Position, length) is not { } t
+            if (GunMath.PlayerHitDistance(
+                    start, direction, player.Position, length, player.State, player.Yaw) is not { } t
                 || t >= nearest)
                 continue;
 

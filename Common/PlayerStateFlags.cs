@@ -54,5 +54,13 @@ namespace Demiurge
             => flags.HasFlag(PlayerStateFlags.Sprinting)
                 ? flags & ~PlayerStateFlags.Prone
                 : flags;
+
+        /// <summary>The authoritative eye/muzzle height for this stance.</summary>
+        public static float EyeHeight(this PlayerStateFlags flags)
+            => Digging.EyeHeight - (flags.HasFlag(PlayerStateFlags.Prone)
+                ? PlayerMovement.ProneEyeDrop
+                : flags.HasFlag(PlayerStateFlags.Crouching)
+                    ? PlayerMovement.CrouchEyeDrop
+                    : 0f);
     }
 }

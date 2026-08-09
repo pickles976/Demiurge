@@ -48,6 +48,34 @@ public class MobDecideActTests
         Assert.Equal(PlayerStateFlags.None, state);
     }
 
+    [Fact]
+    public void ProneActionProducesOneStanceOnly()
+    {
+        MobSystem.ComposeState(new MobAction { Crouch = true, Prone = true }, out var state);
+
+        Assert.True(state.HasFlag(PlayerStateFlags.Prone));
+        Assert.False(state.HasFlag(PlayerStateFlags.Crouching));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    public void ProneIsOnlyForPinnedStationaryActorsInTheOpen(
+        bool underFire,
+        bool atCover,
+        bool digging,
+        bool expected)
+        => Assert.Equal(
+            expected,
+            MobSystem.ShouldGoProne(Vector3.Zero, underFire, atCover, digging));
+
+    [Fact]
+    public void MovingActorNeverGoesProne()
+        => Assert.False(MobSystem.ShouldGoProne(
+            Vector3.UnitX, underFire: true, atCover: false, digging: false));
+
     /// <summary>
     /// The label an NPC carries must be what it actually did. `ai track states` reads DebugIntent,
     /// and an entrenched man with no live contact used to report OBJECTIVE while cycling between his
