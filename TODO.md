@@ -12,7 +12,16 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 5. Refactor commands
 6. Multiplayer test
 
-# PVP Mechanics
+merge into main.
+
+- [ ] add trees
+      - [ ] tree 3D model
+      - [ ] low LOD tree
+      - [ ] trees have health and take damage and change models to a broken version
+      - [ ] trees delete if the terrain beneath them goes away
+      - [ ] tree brush in map editor
+      - [ ] add trees to map
+
 
 ## Misc
 
@@ -29,14 +38,6 @@ Here are some more features. We want to allow users to place sandbags, but to ke
 - Codex clean up all comments
 - Codex refactor certain parts of the code
 - Codex event queue implementation
-
-## Richer Environment
-
-- [ ] add trees
-- [ ] tree destruction
-      - [ ] low LOD tree
-      - [ ] trees have health and take damage and change models to a broken version
-      - [ ] trees delete if the terrain beneath them goes away
 
 ## Stride Upgrade
 
@@ -82,8 +83,6 @@ Bugs found during design, each explaining part of the observed behaviour:
 
 - [ ] NPCs sometimes digging down to cross a big trench rather than just jumping in
 - [ ] Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
-
-# MERGE INTO MAIN
 
 # PVP Demo
 

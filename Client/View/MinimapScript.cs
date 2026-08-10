@@ -4,6 +4,7 @@ using Stride.Engine;
 using Stride.UI;
 using Stride.UI.Controls;
 using Stride.UI.Panels;
+using Stride.Rendering.Sprites;
 
 namespace Demiurge;
 
@@ -33,6 +34,7 @@ public sealed class MinimapScript : SyncScript
     public required PlayerRegistry Registry { get; init; }
     public required ObjectRegistry Objects { get; init; }
     public required TeamIntel Intel { get; init; }
+    public required TerrainState Terrain { get; init; }
     public required ClientInputState InputState { get; init; }
 
     /// <summary>The camera, for the fly-camera check. Held rather than reached for through
@@ -46,11 +48,17 @@ public sealed class MinimapScript : SyncScript
     /// <see cref="Colour"/> resolves a team to.</summary>
     public required ISpriteProvider[] FlagIcons { get; init; }
 
-    /// <summary>Radius of the dial in pixels, and the metres of world it covers. The world radius is
-    /// a little over the distance a gunshot carries (GunshotHearing.MaximumDistance, 60 m), so a
-    /// contact the map can be told about is a contact the map has room for.</summary>
+    /// <summary>
+    /// Radius of the dial in pixels, and the metres of world it covers.
+    ///
+    /// 200 m covers the fighting without covering the map: far enough to show the flag you are
+    /// heading for and the squad on your flank, short enough that a marker still means somewhere you
+    /// could be in under a minute. It makes this a STRATEGIC map rather than a proximity one, which
+    /// is why the markers are not scaled with it — a contact is a symbol you have to be able to see,
+    /// not a thing with a size, and at 2.2 m per pixel a to-scale man would be invisible.
+    /// </summary>
     private const float ScreenRadius = 92f;
-    private const float WorldRadius = 70f;
+    private const float WorldRadius = 200f;
 
     /// <summary>Inset from the bottom-left corner of the screen.</summary>
     private const float ScreenMargin = 20f;
@@ -73,9 +81,27 @@ public sealed class MinimapScript : SyncScript
     private static readonly Color EnemyColor = new(255, 105, 95, 235);
 
     private readonly List<ImageElement> icons = [];
+    private readonly HashSet<ushort> visibleEnemyIds = [];
+    private MinimapTerrain? ground;
+    private ImageElement groundImage = null!;
 
     public override void Start()
     {
+        // The ground goes in FIRST, so every marker draws over it. A Canvas paints its children in
+        // the order they were added.
+        ground = new MinimapTerrain(Game, Entity.Scene, WorldRadius);
+        groundImage = new ImageElement
+        {
+            Source = new SpriteFromTexture { Texture = ground.Texture },
+            Width = ScreenRadius * 2f,
+            Height = ScreenRadius * 2f,
+            Opacity = 0.70f,
+            Visibility = Visibility.Hidden,
+        };
+        groundImage.DependencyProperties.Set(Canvas.PinOriginPropertyKey, new Vector3(0.5f, 0.5f, 0f));
+        groundImage.DependencyProperties.Set(Canvas.UseAbsolutePositionPropertyKey, true);
+        IconCanvas.Children.Add(groundImage);
+
         for (int i = 0; i < MaxFlagIcons; i++)
         {
             var icon = new ImageElement
@@ -100,7 +126,18 @@ public sealed class MinimapScript : SyncScript
         Ui.Resolution = new Vector3(bounds.Width, bounds.Height, 1000f);
 
         int drawn = 0;
-        if (IsFirstPerson(out var local)) drawn = Draw(local, bounds);
+        bool visible = IsFirstPerson(out var local);
+        if (visible)
+        {
+            ground?.Update(local.Position, local.Yaw, visible: true);
+            drawn = Draw(local, bounds);
+        }
+        else
+        {
+            ground?.Update(default, 0f, visible: false);
+        }
+
+        groundImage.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
 
         // Everything the pool did not use this frame. Hidden rather than removed: a flag that goes
         // out of range and comes back should not cost an allocation.
@@ -128,13 +165,23 @@ public sealed class MinimapScript : SyncScript
         var centre = new Vector2(
             -bounds.Width * 0.5f + ScreenRadius + ScreenMargin,
             -bounds.Height * 0.5f + ScreenRadius + ScreenMargin);
+
+        // Ground first: it is the backdrop the rest is read against.
+        groundImage.DependencyProperties.Set(
+            Canvas.AbsolutePositionPropertyKey,
+            ToCanvas(centre, bounds));
+
         LineRenderer.Circle2D(centre, ScreenRadius, BorderColor, segments: 48);
 
         // Facing up. Yaw here is atan2(x, z) — the convention the whole codebase uses — so the
-        // player's forward is (sin yaw, cos yaw) in world X/Z and his right is (cos yaw, -sin yaw).
-        // The map is those two dotted against the offset, which is a rotation by +yaw and NOT by
-        // -yaw: the inverse puts anything you are facing at ninety degrees behind you, and reads as
-        // correct at yaw 0 because that is the one bearing where the two agree.
+        // player's forward is (sin yaw, cos yaw) in world X/Z.
+        //
+        // His RIGHT is forward x up, and getting that cross product backwards is what mirrored the
+        // map: with +Y up in a right-handed basis, facing +Z puts your right hand at -X, not +X. So
+        // right is (-cos yaw, sin yaw) and the screen-X term below carries the negation. A mirror
+        // survives every check a rotation error fails — bearings stay the right distance apart and
+        // straight ahead stays straight ahead — which is why it reads as looking at the dial from
+        // behind the screen rather than as anything being crooked.
         float sin = MathF.Sin(local.Yaw);
         float cos = MathF.Cos(local.Yaw);
 
@@ -161,10 +208,30 @@ public sealed class MinimapScript : SyncScript
                 LineRenderer.Circle2D(point, MarkerRadius, FriendlyColor, CircleSegments);
         }
 
+        // Live sight is local knowledge and needs no server round trip. Requiring both the body to
+        // be in the actual camera frustum and a clear terrain ray prevents the replicated actor list
+        // from becoming a wallhack. Any exposed aim point is enough, matching gameplay perception.
+        visibleEnemyIds.Clear();
+        var viewCamera = CameraEntity.Get<CameraComponent>();
+        if (viewCamera is not null)
+        {
+            foreach (var actor in Registry.Players)
+            {
+                if (actor.IsDead || actor.Team == local.Team || actor.Team <= 0) continue;
+                if (!TryPlot(actor.Position, local.Position, sin, cos, centre, out var point))
+                    continue;
+                if (!CanSee(viewCamera, actor)) continue;
+
+                visibleEnemyIds.Add(actor.Id);
+                DrawDiamond(point, EnemyColor);
+            }
+        }
+
         // Believed, not seen. These come from what the team's NPCs can see and what anybody heard —
         // see TeamIntelSystem — which is why they are not the actors above filtered by team.
         foreach (var contact in Intel.Contacts)
         {
+            if (visibleEnemyIds.Contains(contact.ActorId)) continue;
             var colour = EnemyColor;
             colour.A = (byte)(EnemyColor.A * contact.Confidence / 255);
             if (TryPlot(contact.Position, local.Position, sin, cos, centre, out var point))
@@ -173,6 +240,48 @@ public sealed class MinimapScript : SyncScript
 
         DrawSelf(centre);
         return used;
+    }
+
+    public override void Cancel()
+    {
+        ground?.Dispose();
+        ground = null;
+    }
+
+    private bool CanSee(CameraComponent camera, Player target)
+    {
+        var origin = CameraEntity.Transform.Position.ToNumerics();
+        foreach (float height in GunConfig.AimHeightsFor(target.State))
+        {
+            var point = target.Position + System.Numerics.Vector3.UnitY * height;
+            if (!InsideCamera(camera, point)) continue;
+
+            var segment = point - origin;
+            float distance = segment.Length();
+            if (distance <= 0.05f) return true;
+
+            var direction = segment / distance;
+            const float originClearance = 0.05f;
+            var obstruction = TerrainRaycast.Cast(
+                Terrain.Map,
+                origin + direction * originClearance,
+                direction,
+                distance - originClearance);
+            if (obstruction is null || obstruction.Value.Distance >= distance - 0.1f)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool InsideCamera(CameraComponent camera, System.Numerics.Vector3 point)
+    {
+        var clip = Vector4.Transform(new Vector4(point.ToStride(), 1f), camera.ViewProjectionMatrix);
+        if (clip.W <= 1e-4f) return false;
+
+        return clip.X >= -clip.W && clip.X <= clip.W
+            && clip.Y >= -clip.W && clip.Y <= clip.W
+            && clip.Z >= 0f && clip.Z <= clip.W;
     }
 
     /// <summary>Neutral, friendly, enemy — viewer-relative, exactly as the flag on its pole is
@@ -209,8 +318,10 @@ public sealed class MinimapScript : SyncScript
         }
 
         float scale = ScreenRadius / WorldRadius;
+        // Screen X is the offset along the player's right, screen Y along his forward. See the
+        // handedness note above for where that leading minus comes from.
         point = centre + new Vector2(
-            (dx * cos - dz * sin) * scale,
+            -(dx * cos - dz * sin) * scale,
             (dx * sin + dz * cos) * scale);
         return true;
     }

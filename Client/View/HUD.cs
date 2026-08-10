@@ -24,6 +24,10 @@ namespace Demiurge
         public const float TicketBarWidth = 190f;
         public const float TicketBarHeight = 7f;
         private const float PickupPromptTopMargin = 200f;
+
+        /// <summary>Breathing room between the minimap and the status readout beside it, and under
+        /// both. Page units, not pixels.</summary>
+        private const float StatusGap = 12f;
         private const float OperatingPromptTopMargin = 400f;
         /// <summary>Text that belongs to nobody — connecting words, coordinates, reasons.</summary>
         public static readonly Color NeutralColor = new(235, 238, 242, 245);
@@ -109,6 +113,7 @@ namespace Demiurge
             PlayerRegistry registry,
             ObjectRegistry objects,
             TeamIntel intel,
+            TerrainState terrain,
             ClientInputState inputState,
             Entity cameraEntity)
         {
@@ -135,6 +140,7 @@ namespace Demiurge
                     Registry = registry,
                     Objects = objects,
                     Intel = intel,
+                    Terrain = terrain,
                     InputState = inputState,
                     CameraEntity = cameraEntity,
                     Ui = ui,
@@ -159,8 +165,8 @@ namespace Demiurge
             var bulletImage = new ImageElement
             {
                 Source = new SpriteFromTexture { Texture = bulletTexture },
-                Width = 24,
-                Height = 24,
+                Width = 15,
+                Height = 15,
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
@@ -170,9 +176,9 @@ namespace Demiurge
                 Text = "-/-",
                 TextColor = Color.White,
                 Font = font,
-                TextSize = 24,
+                TextSize = 17,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
+                Margin = new Thickness(5, 0, 0, 0),
             };
 
             // The pouches, as their own number. Deliberately not folded into the "loaded/capacity"
@@ -183,11 +189,11 @@ namespace Demiurge
             var reserveText = new TextBlock
             {
                 Text = "-",
-                TextColor = new Color(210, 210, 215, 200),
+                TextColor = new Color(210, 210, 215, 185),
                 Font = font,
-                TextSize = 18,
+                TextSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(10, 0, 0, 0),
+                Margin = new Thickness(7, 0, 0, 0),
             };
 
             var healthText = new TextBlock
@@ -195,34 +201,38 @@ namespace Demiurge
                 Text = "HP —",
                 TextColor = Color.White,
                 Font = font,
-                TextSize = 24,
+                TextSize = 17,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 12, 0),
+                Margin = new Thickness(0, 0, 10, 0),
             };
 
             // Health left of the bullet icon, icon + ammo text side by side.
-            var ammoPanel = new StackPanel { Orientation = Orientation.Horizontal };
-            ammoPanel.Children.Add(healthText);
-            ammoPanel.Children.Add(bulletImage);
-            ammoPanel.Children.Add(ammoText);
-            ammoPanel.Children.Add(reserveText);
-
-            // Lifted off the bottom-left corner, which the minimap now owns. The margin is in this
-            // page's 1280x720 units while the minimap's footprint is in back-buffer pixels, so it is
-            // converted rather than copied — the two spaces are only equal by accident of aspect.
-            float minimapClearance =
-                MinimapScript.CornerFootprint
-                * (UIComponent.DefaultHeight / (float)game.GraphicsDevice.Presenter.BackBuffer.Height);
-            var statusCanvas = new Canvas
+            //
+            // No background panel and no fixed box around it. The readout is four short runs of
+            // text; a plate behind them was drawing a rectangle to say where the text was, which the
+            // text already says. The StackPanel sizes to its content, so "beside the minimap" is one
+            // margin rather than a box whose dimensions have to be kept in step with the font.
+            //
+            // The margin is in this page's 1280x720 units while the minimap's footprint is in
+            // back-buffer pixels, so it is converted rather than copied — the two spaces are only
+            // equal by accident of aspect, and would stop being so on a non-16:9 window.
+            float toPageUnits =
+                UIComponent.DefaultHeight / (float)game.GraphicsDevice.Presenter.BackBuffer.Height;
+            var statusPanel = new StackPanel
             {
-                Width = 100,
-                Height = 100,
-                BackgroundColor = new Color(0, 0, 0, 100),
+                Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
-                Margin = new Thickness(0, 0, 0, minimapClearance),
+                Margin = new Thickness(
+                    MinimapScript.CornerFootprint * toPageUnits + StatusGap,
+                    0,
+                    0,
+                    StatusGap),
             };
-            statusCanvas.Children.Add(ammoPanel);
+            statusPanel.Children.Add(healthText);
+            statusPanel.Children.Add(bulletImage);
+            statusPanel.Children.Add(ammoText);
+            statusPanel.Children.Add(reserveText);
 
             var missingThumbnail = new SpriteFromTexture
             {
@@ -285,7 +295,7 @@ namespace Demiurge
             }
 
             var root = new Grid();
-            root.Children.Add(statusCanvas);
+            root.Children.Add(statusPanel);
             root.Children.Add(hotbarPanel);
 
             // Conquest tickets, top centre: the two sides face each other across the middle, the
@@ -453,7 +463,7 @@ namespace Demiurge
                     RespawnPanel = respawnPanel,
                     RespawnText = respawnText,
                     Readiness = game.Services.GetService<SpawnReadiness>(),
-                    WeaponPanels = [statusCanvas, hotbarPanel],
+                    WeaponPanels = [statusPanel, hotbarPanel],
                     PickupPanel = pickupPanel,
                     PickupText = pickupText,
                     Objects = objects,

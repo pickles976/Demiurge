@@ -274,7 +274,7 @@ public sealed class RuntimeClientSession : IClientSession
             Priority = 12,
         });
         camera.Add(new ReticleScript { Registry = registry, InputState = inputState, Priority = 30 });
-        Add(HUD.CreateMinimap(game, registry, objectRegistry, teamIntel, inputState, camera));
+        Add(HUD.CreateMinimap(game, registry, objectRegistry, teamIntel, terrainState, inputState, camera));
 
         camera.Add(new DigScript
         {

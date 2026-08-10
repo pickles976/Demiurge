@@ -1,0 +1,25 @@
+// Drawn after the minimap's top-down terrain pass. Pixels inside the unit circle are discarded,
+// leaving the camera image untouched; pixels in the square's corners are overwritten with clear.
+shader MinimapCircleMaskShader : ShaderBase
+{
+    // Bound from C# even though it is normally 1. Keeping this as a parameter also satisfies the
+    // Vulkan backend's requirement that a runtime-compiled shader have a resource binding.
+    stage float Radius;
+
+    stage stream float3 Position : POSITION;
+    stage stream float2 TextureCoordinate : TEXCOORD0;
+
+    stage override void VSMain()
+    {
+        streams.ShadingPosition = float4(streams.Position, 1.0);
+    }
+
+    stage override void PSMain()
+    {
+        float2 fromCentre = streams.TextureCoordinate * 2.0 - 1.0;
+        if (dot(fromCentre, fromCentre) <= Radius * Radius)
+            discard;
+
+        streams.ColorTarget = float4(0.0, 0.0, 0.0, 0.0);
+    }
+};
