@@ -20,6 +20,7 @@ namespace Demiurge.GameServer
         private readonly TerrainSystem terrainEdits;
         private readonly ActivityFeedSystem activityFeed;
         private readonly MatchScoreSystem score;
+        private readonly TeamIntelSystem intel;
         private readonly ChunkTcpServer chunks;
 
         private readonly INetServer server;
@@ -176,8 +177,10 @@ namespace Demiurge.GameServer
                 terrainEdits,
                 terrain,
                 activityFeed);
+            intel = new TeamIntelSystem(server);
             mobs = new MobSystem(
-                terrain, terrainEdits, weapons, items, flags, grenades, mortars: mortars);
+                terrain, terrainEdits, weapons, items, flags, grenades,
+                mortars: mortars, intel: intel);
 
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
@@ -649,6 +652,11 @@ namespace Demiurge.GameServer
             objects.BroadcastDirtyStatess(_Tick);
             BroadcastPositions();
             score.BroadcastIfChanged(players.Values);
+
+            // After the actors have stepped, so the picture is built from what they saw THIS tick
+            // rather than last. Gunshots have already gone in through MobSystem.ProcessGunshots.
+            intel.Update(_Tick, players.Values, mobs.BeliefOf);
+            intel.Broadcast(_Tick, players.Values);
 
             if (_Tick % (NetworkConfig.TickRate * 2) == 0) mobs.LogStats();
 

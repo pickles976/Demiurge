@@ -123,7 +123,8 @@ namespace Demiurge
         CommandResult,
         ActivityFeed,
         MatchTickets,
-        Scoreboard
+        Scoreboard,
+        TeamIntel
     }
 
     public enum ClientToServerId : ushort

@@ -39,6 +39,7 @@ public sealed class RuntimeClientSession : IClientSession
     private readonly WeaponMount weaponMount;
     private readonly LocalWeaponView localWeaponView = new();
     private readonly SpawnReadiness spawnReadiness = new();
+    private readonly TeamIntel teamIntel;
     private FrameBreakdown frame;
 
     /// <summary>
@@ -172,6 +173,7 @@ public sealed class RuntimeClientSession : IClientSession
             network = new NetworkManager(this.host);
         }
 
+        teamIntel = new TeamIntel(network);
         modelLocators = ModelLocators.Load();
         weaponMount = new WeaponMount(modelLocators, ItemCosmetics.Model);
         registry = new PlayerRegistry(network, terrainState, weaponMount);
@@ -272,6 +274,8 @@ public sealed class RuntimeClientSession : IClientSession
             Priority = 12,
         });
         camera.Add(new ReticleScript { Registry = registry, InputState = inputState, Priority = 30 });
+        Add(HUD.CreateMinimap(game, registry, objectRegistry, teamIntel, inputState, camera));
+
         camera.Add(new DigScript
         {
             Registry = registry,
@@ -338,6 +342,7 @@ public sealed class RuntimeClientSession : IClientSession
         ragdolls?.Dispose();
         playerViews?.Dispose();
         if (embedding is null) terrainView?.Dispose();
+        teamIntel.Dispose();
         objectRegistry.Dispose();
         registry.Dispose();
         network.Dispose();

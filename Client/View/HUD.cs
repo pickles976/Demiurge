@@ -98,6 +98,56 @@ namespace Demiurge
             };
         }
 
+        /// <summary>
+        /// The bottom-left minimap. Its own entity and its own UIComponent, because it is the one
+        /// piece of HUD that has to share a coordinate system with LineRenderer — see MinimapScript,
+        /// which pins this component's resolution to the back buffer so its icons land where its
+        /// lines do. Folding it into CreateUI's page would impose that on everything else.
+        /// </summary>
+        public static Entity CreateMinimap(
+            Game game,
+            PlayerRegistry registry,
+            ObjectRegistry objects,
+            TeamIntel intel,
+            ClientInputState inputState,
+            Entity cameraEntity)
+        {
+            var canvas = new Canvas();
+            var ui = new UIComponent
+            {
+                Page = new UIPage { RootElement = canvas },
+                RenderGroup = RenderGroup.Group31,   // rendered by AddCleanUIStage()
+            };
+
+            // Neutral, friendly, enemy — the order MinimapScript.Colour resolves a team to.
+            ISpriteProvider[] flagIcons =
+            [
+                Icon(game, "assets/images/flag_white.png"),
+                Icon(game, "assets/images/flag_blue.png"),
+                Icon(game, "assets/images/flag_red.png"),
+            ];
+
+            return new Entity("Minimap")
+            {
+                ui,
+                new MinimapScript
+                {
+                    Registry = registry,
+                    Objects = objects,
+                    Intel = intel,
+                    InputState = inputState,
+                    CameraEntity = cameraEntity,
+                    Ui = ui,
+                    IconCanvas = canvas,
+                    FlagIcons = flagIcons,
+                    Priority = 31,
+                },
+            };
+        }
+
+        private static SpriteFromTexture Icon(Game game, string path)
+            => new() { Texture = LoadTexture(game, path) };
+
         public static Entity CreateUI(Game game, ObjectRegistry objects, ClientInputState inputState)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
@@ -157,6 +207,12 @@ namespace Demiurge
             ammoPanel.Children.Add(ammoText);
             ammoPanel.Children.Add(reserveText);
 
+            // Lifted off the bottom-left corner, which the minimap now owns. The margin is in this
+            // page's 1280x720 units while the minimap's footprint is in back-buffer pixels, so it is
+            // converted rather than copied — the two spaces are only equal by accident of aspect.
+            float minimapClearance =
+                MinimapScript.CornerFootprint
+                * (UIComponent.DefaultHeight / (float)game.GraphicsDevice.Presenter.BackBuffer.Height);
             var statusCanvas = new Canvas
             {
                 Width = 100,
@@ -164,6 +220,7 @@ namespace Demiurge
                 BackgroundColor = new Color(0, 0, 0, 100),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, minimapClearance),
             };
             statusCanvas.Children.Add(ammoPanel);
 

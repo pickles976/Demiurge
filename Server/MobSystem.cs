@@ -113,6 +113,7 @@ namespace Demiurge.GameServer
         private readonly Perception perception;
         private readonly GrenadeSystem grenades;
         private readonly MortarSystem? mortars;
+        private readonly TeamIntelSystem? intel;
 
         /// <summary>
         /// Live grenades, rebuilt once in BeginTick and read by every actor's Decide. Per actor it
@@ -149,6 +150,15 @@ namespace Demiurge.GameServer
         /// churn questions ("did this man change squad", "did his squad change flag") cannot be
         /// answered from actor positions, so they cannot be answered from outside the AI at all.
         /// </summary>
+        /// <summary>
+        /// What this NPC personally believes, or null if it has no brain. The one way out of here for
+        /// perception: <see cref="TeamIntelSystem"/> folds these into a team picture, and nothing
+        /// else may read them, because a second consumer of an actor's beliefs is a second opinion
+        /// about what it can see.
+        /// </summary>
+        internal ContactMemory? BeliefOf(ushort actorId)
+            => brains.TryGetValue(actorId, out var brain) ? brain.Contacts : null;
+
         /// <summary>
         /// Path searches asked for since the server started. Diagnostic, and a sharper instrument
         /// than it looks: an actor that has arrived and cannot tell should be asking for nothing, so
@@ -240,7 +250,8 @@ namespace Demiurge.GameServer
             FlagSystem flags,
             GrenadeSystem grenades,
             int seed = 0x51A7,
-            MortarSystem? mortars = null)
+            MortarSystem? mortars = null,
+            TeamIntelSystem? intel = null)
         {
             this.terrain = terrain;
             this.terrainEdits = terrainEdits;
@@ -251,6 +262,7 @@ namespace Demiurge.GameServer
             perception = new Perception(terrain);
             this.grenades = grenades;
             this.mortars = mortars;
+            this.intel = intel;
             combat = new CombatBehavior(weapons, terrain);
             grenadeCombat = new GrenadeBehavior(terrain, grenades);
             cover = new CoverBehavior(terrain);
@@ -2654,14 +2666,34 @@ namespace Demiurge.GameServer
             while (weapons.TryDequeueGunshot(out var shot))
                 foreach (var listener in actors)
                 {
-                    if (!listener.IsMob
-                        || listener.Id == shot.ShooterId
+                    if (listener.Id == shot.ShooterId
                         || listener.Status is not { Health.Current: > 0 }
                         || !GunshotHearing.CanHear(
                             listener.Team,
                             listener.Position,
                             shot.ShooterTeam,
-                            shot.Position)
+                            shot.Position))
+                        continue;
+
+                    // The TEAM learns where the shot came from, whoever heard it — a human's ears
+                    // count here even though they drive none of the behaviour below, because he is
+                    // reading a minimap rather than being told to go and look.
+                    //
+                    // Located rather than pinpointed: PerceivedPosition's error grows with range, so
+                    // a rifle across the field is a bearing and one behind you is a man. The NPC
+                    // branch below deliberately keeps the EXACT position, because what it does with
+                    // it is walk there, and a wrong destination is a different kind of wrong from a
+                    // wrong marker.
+                    intel?.Heard(
+                        listener.Team,
+                        shot.ShooterId,
+                        GunshotHearing.PerceivedPosition(
+                            listener.Position,
+                            shot.Position,
+                            unchecked((uint)(shot.ShooterId * 2654435761u + shot.Tick))),
+                        shot.Tick);
+
+                    if (!listener.IsMob
                         || !brains.TryGetValue(listener.Id, out var brain)
                         || shot.Tick < brain.HeardTick)
                         continue;

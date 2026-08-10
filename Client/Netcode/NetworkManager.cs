@@ -44,6 +44,7 @@ namespace Demiurge.GameClient
         public event Action<ActivityFeedData>? ActivityFeedReceived;
         public event Action<MatchTicketsData>? MatchTicketsReceived;
         public event Action<ScoreboardData>? ScoreboardReceived;
+        public event Action<TeamIntelData>? TeamIntelReceived;
 
         private uint nextCommandRequestId;
 
@@ -234,6 +235,10 @@ namespace Demiurge.GameClient
                 case ServerToClientId.Scoreboard:
                     var scoreboard = e.Message.GetSerializable<ScoreboardData>();
                     Dispatch(() => ScoreboardReceived?.Invoke(scoreboard));
+                    break;
+                case ServerToClientId.TeamIntel:
+                    var teamIntel = e.Message.GetSerializable<TeamIntelData>();
+                    Dispatch(() => TeamIntelReceived?.Invoke(teamIntel));
                     break;
             }
         }

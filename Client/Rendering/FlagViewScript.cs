@@ -48,12 +48,7 @@ public sealed class FlagViewScript : SyncScript
 
     public override void Update()
     {
-        // Whose flag is on the pole. The owner if there is one, and the team taking it otherwise —
-        // which is exactly the two phases: a flag being drained still flies its owner's colours all
-        // the way down, and only once it is nobody's does the attacker's go up.
-        int flying = Object.Team.Value != FlagConfig.NeutralTeam
-            ? Object.Team.Value
-            : Object.Team.CapturingTeam;
+        int flying = FlagConfig.FlyingTeam(Object.Team.Value, Object.Team.CapturingTeam);
 
         RaiseTo(MathUtil.Clamp(Object.Team.Progress, 0f, 1f));
         Recolor(flying);
