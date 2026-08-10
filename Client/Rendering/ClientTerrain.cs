@@ -44,6 +44,14 @@ namespace Demiurge
 
         /// <summary>Set while an edit is being marked, so the sink knows which lane to use.</summary>
         bool markingUrgent;
+
+        /// <summary>
+        /// When each edit-dirtied section entered the urgent lane, and when it was handed to a
+        /// worker. Kept only for sections an EDIT touched, so it holds a handful of entries rather
+        /// than the streaming backlog — this measures the one latency a player actually feels,
+        /// between swinging at the ground and seeing the hole.
+        /// </summary>
+        readonly Dictionary<LodSection, (long Marked, long Dispatched)> editTiming = new();
         readonly HashSet<LodSection> dirtySet = new();
 
         /// <summary>
@@ -190,6 +198,31 @@ namespace Demiurge
         /// sit anywhere; if it drove level selection, flying out would coarsen the terrain under
         /// inspection and flying in would refine it, so it could never show what the player actually sees.
         /// </summary>
+        /// <summary>
+        /// Whether the ground around a position has actually been meshed yet — not merely streamed.
+        ///
+        /// `resolved` rather than `entities` is the right question: most boxes mesh to nothing (open
+        /// air above the surface), so waiting for geometry to APPEAR would wait forever wherever the
+        /// answer was legitimately "there is nothing here".
+        /// </summary>
+        public bool IsMeshedAround(Vector3 position, float radius)
+        {
+            int minX = (int)MathF.Floor(position.X - radius);
+            int maxX = (int)MathF.Floor(position.X + radius);
+            int minZ = (int)MathF.Floor(position.Z - radius);
+            int maxZ = (int)MathF.Floor(position.Z + radius);
+
+            foreach (var box in desired)
+            {
+                if (box.OriginX + box.Size <= minX || box.OriginX > maxX) continue;
+                if (box.OriginZ + box.Size <= minZ || box.OriginZ > maxZ) continue;
+                if (!resolved.Contains(box)) return false;
+            }
+
+            // Nothing desired here at all means the LOD set has not been built yet.
+            return desired.Count > 0;
+        }
+
         public int RebuildDirty(Vector3 lodFocus)
         {
             RefreshLod(lodFocus);
@@ -207,13 +240,37 @@ namespace Demiurge
             var anchor = ChunkTransforms.ChunkAt(playerPosition);
             if (lodAnchor is { } previous && previous.Equals(anchor)) return;
 
+            long refreshStart = Stopwatch.GetTimestamp();
+
             lodAnchor = anchor;
             TerrainLod.CollectDesired(playerPosition, desired);
 
-            // Ask for anything newly wanted. Already-live boxes are skipped, so crossing a boundary only
-            // costs the ring that actually changed level.
+            // Forget boxes the player has walked away from. Two things depend on this, and the second
+            // is the reason it happens HERE rather than opportunistically:
+            //
+            //  - it bounds the set, which otherwise accumulates every box ever meshed and so grows with
+            //    distance walked rather than with view distance;
+            //  - it makes "resolved" mean "meshed while continuously wanted", which is exactly the
+            //    condition under which an edit is guaranteed to have been marked dirty. EnqueueDirty
+            //    drops marks for boxes that are not currently desired, so a box that left the set and
+            //    came back may have missed one — dropping it on the way out forces a re-mesh on the way
+            //    back in, instead of trusting a mesh that predates the dig.
+            resolved.IntersectWith(desired);
+
+            // Ask for anything newly wanted. Already-settled boxes are skipped, so crossing a boundary
+            // only costs the ring that actually changed level.
+            //
+            // The test is RESOLVED, not `entities`, and the difference is the whole cost of walking.
+            // Most desired boxes are open air and mesh to nothing, so they never produce an entity —
+            // measured at roughly 3,000 of 4,000. Asking "do I have geometry for this?" therefore
+            // answers "no" for all of them at every single chunk boundary, and re-queues the empty
+            // three quarters of the world every 16 metres walked: 2,800 sections re-meshed per
+            // crossing, eight workers pinned, thousands of empty results drained on the main thread,
+            // and the urgent dig lane starved behind all of it. `resolved` is the set that already
+            // records "this box has been meshed, whatever the answer was" — see its own comment, which
+            // makes precisely this point about the retirement path.
             foreach (var wanted in desired)
-                if (!entities.ContainsKey(wanted) && !inFlight.Contains(wanted)) EnqueueDirty(wanted);
+                if (!resolved.Contains(wanted) && !inFlight.Contains(wanted)) EnqueueDirty(wanted);
 
             // Mark what is now at the wrong level, but do NOT detach it yet — record which desired boxes
             // have to arrive first. Retiring immediately is what opened a hole at every LOD transition.
@@ -228,6 +285,8 @@ namespace Demiurge
 
                 superseded.Add((live, replacements));
             }
+
+            stats.LodRefresh(Stopwatch.GetTimestamp() - refreshStart);
         }
 
         void Dispatch()
@@ -256,21 +315,54 @@ namespace Demiurge
         {
             // No longer wanted at this level — the player moved and it was replaced by a coarser or
             // finer box, so meshing it would be work nobody will look at.
-            if (!desired.Contains(section)) { dirtySet.Remove(section); return true; }
+            // A dropped section never reaches ReportEditLatency, so its timing entry has to go here
+            // or editTiming grows for the life of the session.
+            if (!desired.Contains(section))
+            {
+                dirtySet.Remove(section);
+                editTiming.Remove(section);
+                return true;
+            }
 
             // Already being meshed: leave it queued so the newer request is honoured after the
             // in-flight result lands, rather than racing two jobs for one section.
-            // Not complete yet: a worker would read voxels the main thread is still decoding.
-            if (inFlight.Contains(section) || !terrain.FootprintComplete(section))
+            if (inFlight.Contains(section))
             {
                 requeue.Enqueue(section);
                 return false;
             }
 
+            // Not complete yet: a worker would read voxels the main thread is still decoding.
+            //
+            // For a STREAMING section that means "not yet", and requeueing is how it waits. For an
+            // EDIT it can mean never: an NPC digging in a chunk this client has not loaded produces
+            // a dirty section whose footprint may never arrive, and the urgent lane — which is
+            // rescanned in full every frame, by design, because it is meant to be tiny — accumulated
+            // one entry per such edit and was still carrying a hundred of them minutes later.
+            // Dropping it loses nothing: ChunkCompleted re-dirties the whole chunk if it ever
+            // arrives, edit included.
+            if (!terrain.FootprintComplete(section))
+            {
+                if (ReferenceEquals(requeue, urgentQueue))
+                {
+                    dirtySet.Remove(section);
+                    editTiming.Remove(section);
+                    return true;
+                }
+                requeue.Enqueue(section);
+                return false;
+            }
+
+            // An edit-dirtied section is urgent all the way through, not just to the front of the
+            // submit queue: its result is taken before the streaming backlog too.
+            bool urgent = editTiming.TryGetValue(section, out var timing);
+            if (urgent && timing.Dispatched == 0L)
+                editTiming[section] = (timing.Marked, Stopwatch.GetTimestamp());
+
             dirtySet.Remove(section);
             inFlight.Add(section);
             resolved.Remove(section);      // being re-meshed: not settled until it comes back
-            meshers.Submit(section);
+            meshers.Submit(section, urgent);
             return true;
         }
 
@@ -291,7 +383,12 @@ namespace Demiurge
 
             RetireCovered();
 
-            stats.EndFrame(dirtyQueue.Count, inFlight.Count);
+            stats.EndFrame(
+                dirtyQueue.Count,
+                inFlight.Count,
+                urgentQueue.Count,
+                urgentQueue.Count > 0 && inFlight.Count >= MaxInFlight,
+                new Residency(entities.Count, desired.Count, superseded.Count, resolved.Count));
             return applied;
         }
 
@@ -341,6 +438,7 @@ namespace Demiurge
 
                 if (!result.Ready)
                 {
+                    stats.NotReady();
                     EnqueueDirty(result.Section);   // apron chunk vanished between the gate and the fill
                     continue;
                 }
@@ -349,6 +447,7 @@ namespace Demiurge
                 {
                     Detach(result.Section);         // meshed to nothing: drop whatever was there
                     resolved.Add(result.Section);
+                    ReportEditLatency(result.Section);
                     stats.Record(hasGeometry: false, 0, 0);
                     applied++;
                     continue;
@@ -370,10 +469,24 @@ namespace Demiurge
             {
                 Attach(batch[i].Section, built[i], buffers);
                 resolved.Add(batch[i].Section);
+                ReportEditLatency(batch[i].Section);
             }
 
             stats.Record(hasGeometry: true, cost, factory.LastGpuTicks, batch.Count);
             return applied + batch.Count;
+        }
+
+        /// <summary>
+        /// Splits an edit's visible delay into the two things that can be slow about it: waiting for
+        /// a worker slot, and everything after — meshing, then queueing behind other finished
+        /// meshes for a share of the frame's upload budget.
+        /// </summary>
+        void ReportEditLatency(LodSection section)
+        {
+            if (!editTiming.Remove(section, out var timing)) return;
+            long now = Stopwatch.GetTimestamp();
+            long dispatched = timing.Dispatched == 0L ? now : timing.Dispatched;
+            stats.EditVisible(dispatched - timing.Marked, now - dispatched);
         }
 
         /// <summary>Removes a section's geometry and releases its claim on the shared buffers.</summary>
@@ -400,6 +513,15 @@ namespace Demiurge
         Diagnostics stats;
 
         /// <summary>
+        /// What the LOD bookkeeping is currently holding. Reported because the counts that matter are
+        /// the ones that should be BOUNDED by how far you can see, not by how far you have walked: live
+        /// entities, boxes waiting to be retired, and the resolved set. A number here that only ever
+        /// climbs is a leak, and a leak here costs a scene entity, a draw, and a share of a GPU buffer
+        /// that cannot be freed until the last section using it is detached.
+        /// </summary>
+        readonly record struct Residency(int Entities, int Desired, int Superseded, int Resolved);
+
+        /// <summary>
         /// Where terrain load time actually goes. Kept in the build rather than bolted on when needed:
         /// this pipeline has had its bottleneck mis-identified three times by reasoning about it, and
         /// every one of those would have been settled in a minute by these six numbers.
@@ -419,6 +541,8 @@ namespace Demiurge
             long gpuTicks;       // just the two Buffer.New calls inside it
             long emptyTicks;
             int budgetHits;      // frames where the upload budget cut collection short
+            int urgentBlocked;   // frames where an edit had sections waiting and the pool was full
+            int notReady;        // meshes that came back unusable and went straight back on the queue
 
             int batches;
 
@@ -430,9 +554,41 @@ namespace Demiurge
 
             public void BudgetHit() => budgetHits++;
 
-            public void EndFrame(int dirtyDepth, int inFlightCount)
+            public void NotReady() => notReady++;
+
+            // Edit-to-visible, split at the moment a worker picked the section up.
+            int editSections;
+            long editWaitTicks;     // marked -> dispatched
+            long editWorkTicks;     // dispatched -> on screen
+            long editWorstTicks;    // worst total for one section this window
+
+            public void EditVisible(long waitTicks, long workTicks)
+            {
+                editSections++;
+                editWaitTicks += waitTicks;
+                editWorkTicks += workTicks;
+                editWorstTicks = Math.Max(editWorstTicks, waitTicks + workTicks);
+            }
+
+            // Chunk-boundary LOD reconciliation, which is the one part of this pipeline whose cost is
+            // superlinear in what it is holding: it walks live entities against the superseded list and
+            // the desired set. A hitch that grows as you walk shows up here first.
+            int lodRefreshes;
+            long lodRefreshTicks;
+            long lodRefreshWorstTicks;
+
+            public void LodRefresh(long ticks)
+            {
+                lodRefreshes++;
+                lodRefreshTicks += ticks;
+                lodRefreshWorstTicks = Math.Max(lodRefreshWorstTicks, ticks);
+            }
+
+            public void EndFrame(
+                int dirtyDepth, int inFlightCount, int urgentDepth, bool urgentStarved, Residency residency)
             {
                 frames++;
+                if (urgentStarved) urgentBlocked++;
 
                 long now = Stopwatch.GetTimestamp();
                 if (windowStart == 0) windowStart = now;
@@ -440,22 +596,45 @@ namespace Demiurge
                 double elapsed = (now - windowStart) / (double)Stopwatch.Frequency;
                 if (elapsed < 1.0) return;
 
+                double Ms(long t) => t * 1000.0 / Stopwatch.Frequency;
+
+                // Residency is reported even when the pipeline is idle, because the failure it exists to
+                // catch — counts that grow with distance walked rather than with view distance — is
+                // invisible in a quiet window by definition.
+                if (residency.Superseded > 0 || lodRefreshes > 0 || dirtyDepth > 0 || inFlightCount > 0)
+                    Log.Info(
+                        $"terrain lod: live {residency.Entities} | desired {residency.Desired} "
+                      + $"| awaiting retire {residency.Superseded} | resolved {residency.Resolved} "
+                      + $"| refresh {lodRefreshes}x avg {Ms(lodRefreshTicks) / Math.Max(lodRefreshes, 1):F2} ms "
+                      + $"worst {Ms(lodRefreshWorstTicks):F2} ms");
+
                 // Nothing outstanding: stay quiet rather than logging zeroes forever.
                 if (uploads + empties > 0 || dirtyDepth > 0 || inFlightCount > 0)
                 {
-                    double Ms(long t) => t * 1000.0 / Stopwatch.Frequency;
-
                     Log.Info(
                         $"terrain: {frames} frames | {uploads} sections in {batches} batches "
                       + $"@ {Ms(uploadTicks) / Math.Max(batches, 1):F2} ms/batch "
                       + $"(gpu {Ms(gpuTicks) / Math.Max(batches, 1):F2}) = {uploads / elapsed:F0} sections/s "
                       + $"| empty {empties} | budget cut {budgetHits}/{frames} "
-                      + $"| dirty {dirtyDepth} | inFlight {inFlightCount}");
+                      + $"| dirty {dirtyDepth} | inFlight {inFlightCount} "
+                      + $"| urgent {urgentDepth} blocked {urgentBlocked}/{frames} | notReady {notReady}");
+
+                    if (editSections > 0)
+                        Log.Info(
+                            $"terrain edits: {editSections} sections visible | "
+                          + $"wait {Ms(editWaitTicks) / editSections:F1} ms + "
+                          + $"mesh/upload {Ms(editWorkTicks) / editSections:F1} ms = "
+                          + $"{Ms(editWaitTicks + editWorkTicks) / editSections:F1} ms avg, "
+                          + $"worst {Ms(editWorstTicks):F1} ms");
                 }
 
                 windowStart = now;
-                frames = uploads = empties = budgetHits = batches = 0;
+                frames = uploads = empties = budgetHits = batches = urgentBlocked = notReady = 0;
+                editSections = 0;
+                editWaitTicks = editWorkTicks = editWorstTicks = 0;
                 uploadTicks = emptyTicks = gpuTicks = 0;
+                lodRefreshes = 0;
+                lodRefreshTicks = lodRefreshWorstTicks = 0;
             }
         }
 
@@ -468,6 +647,13 @@ namespace Demiurge
             // An already-queued section that an edit now touches is PROMOTED: it is in dirtySet, so
             // the ordinary path would drop this call and leave the dig waiting in the slow lane.
             if (!dirtySet.Add(section) && !markingUrgent) return;
+
+            // Re-stamped on EVERY edit, not just the first. A player digs the same hole repeatedly,
+            // so keeping the original timestamp measured from a dig two digs ago and reported a
+            // latency nobody experienced — it made a responsive pipeline look half a second slow.
+            // What is being measured is "how long until I see the edit I just made".
+            if (markingUrgent)
+                editTiming[section] = (Stopwatch.GetTimestamp(), 0L);
 
             (markingUrgent ? urgentQueue : dirtyQueue).Enqueue(section);
         }

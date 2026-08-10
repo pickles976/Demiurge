@@ -1,5 +1,5 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 using Stride.Core.Diagnostics;
 
 namespace Demiurge.GameClient
@@ -13,7 +13,7 @@ namespace Demiurge.GameClient
 
 
         private static readonly Logger Log = GlobalLogger.GetLogger("Network");
-        private readonly Client client = new();
+        private readonly INetClient client;
         private readonly string host;
 
         /// The id of this client that was assigned by the server during this session
@@ -41,12 +41,21 @@ namespace Demiurge.GameClient
         public event Action<TerrainEditData>? TerrainEdited;
         public event Action<HitConfirmData>? HitConfirmed;   // cosmetic: your shot landed
         public event Action<CommandResultData>? CommandResultReceived;
+        public event Action<ActivityFeedData>? ActivityFeedReceived;
+        public event Action<MatchTicketsData>? MatchTicketsReceived;
+        public event Action<ScoreboardData>? ScoreboardReceived;
+        public event Action<TeamIntelData>? TeamIntelReceived;
 
         private uint nextCommandRequestId;
 
-        public NetworkManager(string? host = null)
+        /// <param name="transport">
+        /// Null means real UDP via Riptide. Singleplayer passes the client end of an
+        /// <see cref="InProcessNetwork"/> pair, whose server end goes to <c>ServerOptions.Transport</c>.
+        /// </param>
+        public NetworkManager(string? host = null, INetClient? transport = null)
         {
             this.host = host ?? NetworkConfig.ServerHost;
+            client = transport ?? new RiptideNetClient();
         }
 
         private void Dispatch(Action deliver)
@@ -64,7 +73,7 @@ namespace Demiurge.GameClient
         {
             client.MessageReceived += OnMessageReceived;
             client.Connected += (_, _) => Log.Info("Connected to server");
-            client.Connect($"{host}:{NetworkConfig.Port}", useMessageHandlers: false);
+            client.Connect($"{host}:{NetworkConfig.Port}");
         }
 
         public void Dispose()
@@ -107,6 +116,18 @@ namespace Demiurge.GameClient
             client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerInteract));
         }
 
+        public void SendUse()
+        {
+            client.Send(Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerUse));
+        }
+
+        public void SendMortarFire(MortarFireData request)
+        {
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.MortarFire);
+            message.AddSerializable(request);
+            client.Send(message);
+        }
+
         public void SendDig(PlayerDigData dig)
         {
             Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerDig);
@@ -130,9 +151,9 @@ namespace Demiurge.GameClient
         }
 
 
-        private void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
+        private void OnMessageReceived(object? sender, NetMessageReceivedEventArgs e)
         {
-            // Decode NOW (Riptide reuses the Message after this returns), deliver
+            // Decode NOW (the transport reuses the Message after this returns), deliver
             // through Dispatch — immediately, or late when fake latency is on.
             switch ((ServerToClientId)e.MessageId)
             {
@@ -140,6 +161,25 @@ namespace Demiurge.GameClient
                     var welcome = e.Message.GetSerializable<WelcomeData>();
                     Dispatch(() =>
                     {
+                        if (welcome.ProtocolVersion != NetworkConfig.ProtocolVersion)
+                        {
+                            Log.Error(
+                                $"Server protocol {welcome.ProtocolVersion} does not match client protocol {NetworkConfig.ProtocolVersion}");
+                            client.Disconnect();
+                            return;
+                        }
+
+                        if (!string.Equals(
+                                welcome.GameplayHash,
+                                ItemCatalog.Registry.GameplayHash,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            Log.Error(
+                                $"Server datapacks ({welcome.GameplayHash}) do not match client datapacks ({ItemCatalog.Registry.GameplayHash})");
+                            client.Disconnect();
+                            return;
+                        }
+
                         ClientId = welcome.ClientId;
                         Welcomed?.Invoke(welcome);
                     });
@@ -183,6 +223,22 @@ namespace Demiurge.GameClient
                 case ServerToClientId.CommandResult:
                     var commandResult = e.Message.GetSerializable<CommandResultData>();
                     Dispatch(() => CommandResultReceived?.Invoke(commandResult));
+                    break;
+                case ServerToClientId.ActivityFeed:
+                    var activity = e.Message.GetSerializable<ActivityFeedData>();
+                    Dispatch(() => ActivityFeedReceived?.Invoke(activity));
+                    break;
+                case ServerToClientId.MatchTickets:
+                    var matchTickets = e.Message.GetSerializable<MatchTicketsData>();
+                    Dispatch(() => MatchTicketsReceived?.Invoke(matchTickets));
+                    break;
+                case ServerToClientId.Scoreboard:
+                    var scoreboard = e.Message.GetSerializable<ScoreboardData>();
+                    Dispatch(() => ScoreboardReceived?.Invoke(scoreboard));
+                    break;
+                case ServerToClientId.TeamIntel:
+                    var teamIntel = e.Message.GetSerializable<TeamIntelData>();
+                    Dispatch(() => TeamIntelReceived?.Invoke(teamIntel));
                     break;
             }
         }

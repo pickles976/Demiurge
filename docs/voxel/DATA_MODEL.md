@@ -22,7 +22,7 @@ the whole point of this layout is that the data layer doesn't know a renderer ex
 types, where density comes from, how material derives from it. Those apply from the first line of
 code you write. Everything from "Chunk dimensions" onward is *system* material: a plausible
 destination, recorded so the reasoning exists when you get there. **It is not a checklist and not
-the next step.** `TODO.md` scopes the next step, and says what it deliberately leaves out.
+the next step.** [TODO.md](../TODO.md) scopes the next step, and says what it deliberately leaves out.
 
 ## Why not just block types
 

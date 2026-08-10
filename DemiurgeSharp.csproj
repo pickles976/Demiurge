@@ -9,6 +9,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- CI's downloadable build launches directly into singleplayer while ordinary developer and
+       multiplayer builds keep their existing command-line behavior. -->
+  <PropertyGroup Condition="'$(SingleplayerBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);SINGLEPLAYER_BUILD</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="NoiseDotNet" Version="1.0.2" />
     <PackageReference Include="RiptideNetworking.Riptide" Version="2.2.1" />
@@ -46,6 +52,9 @@
          ModelLocators. Deployed the same way .wav files are, and for the same reason:
          it's read straight off disk, not through Stride's content pipeline. -->
     <Content Include="assets/locators.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="datapacks/**/*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

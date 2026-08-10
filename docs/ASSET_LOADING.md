@@ -31,14 +31,14 @@ Textures and materials do **not** need to be in `RootAssets`; they are compiled 
 
 ## Generated Files
 
-For a source file `assets/models/ak47.gltf` the tool generates:
+For a source file `assets/models/grenade.gltf` the tool generates:
 
 | File | Type | Purpose |
 |------|------|---------|
-| `ak47_tex0.png` | Raw image | Extracted diffuse/color texture |
-| `ak47_tex0.sdtex` | `TextureAsset` | Tells Stride how to import the image |
-| `ak47_mat0.sdmat` | `MaterialAsset` | Diffuse material, referencing the texture |
-| `ak47.sdm3d` | `ModelAsset` | References the GLTF source and its materials |
+| `grenade_tex0.png` | Raw image | Extracted diffuse/color texture |
+| `grenade_tex0.sdtex` | `TextureAsset` | Tells Stride how to import the image |
+| `grenade_mat0.sdmat` | `MaterialAsset` | Diffuse material, referencing the texture |
+| `grenade.sdm3d` | `ModelAsset` | References the GLTF source and its materials |
 
 Multiple images/materials produce numbered variants: `_tex0`, `_tex1`, `_mat0`, `_mat1`, etc.
 
@@ -61,7 +61,7 @@ These are the formats the tool emits for Stride 4.3.x. If you upgrade Stride and
 Id: {tex-guid}
 SerializedVersion: {Stride: 2.0.0}
 Tags: []
-Source: !file ak47_tex0.png
+Source: !file grenade_tex0.png
 IsCompressed: false
 Type: !ColorTextureType
     UseSRgbSampling: true
@@ -82,7 +82,7 @@ Attributes:
     Diffuse: !MaterialDiffuseMapFeature
         DiffuseMap: !ComputeTextureColor
             Key: Material.DiffuseMap
-            Texture: {tex-guid}:models/ak47_tex0
+            Texture: {tex-guid}:models/grenade_tex0
             Filtering: Point
     DiffuseModel: !MaterialDiffuseLambertModelFeature {}
 ```
@@ -101,7 +101,7 @@ Materials:
             Material: {mat-guid}:models/basil_mat0
 ```
 
-The `Skeleton:` line is omitted for sources without animation or a skin (e.g. `ak47.gltf`).
+The `Skeleton:` line is omitted for sources without animation or a skin (e.g. `grenade.gltf`).
 
 `.sdskel`:
 ```yaml
@@ -138,9 +138,9 @@ A GUID is the MD5 hash of the asset's **content path** (relative to `assets/`, n
 
 Examples:
 
-- Model `assets/models/ak47.gltf` → content path `models/ak47` → model GUID.
-- Texture `assets/models/ak47_tex0.png` → content path `models/ak47_tex0` → texture GUID.
-- Material `assets/models/ak47_mat0.sdmat` → content path `models/ak47_mat0` → material GUID.
+- Model `assets/models/grenade.gltf` → content path `models/grenade` → model GUID.
+- Texture `assets/models/grenade_tex0.png` → content path `models/grenade_tex0` → texture GUID.
+- Material `assets/models/grenade_mat0.sdmat` → content path `models/grenade_mat0` → material GUID.
 
 Because GUIDs are stable, the `.sdpkg` manifest and asset references remain consistent even if the tool regenerates files.
 
@@ -177,7 +177,7 @@ Model LoadModel(string gltfPath)
 Example usage:
 
 ```csharp
-var ak = new Entity("AK47") { new ModelComponent(LoadModel("assets/models/ak47.gltf")) };
+var ak = new Entity("Grenade") { new ModelComponent(LoadModel("assets/models/grenade.gltf")) };
 ```
 
 All textures and materials are already baked into the compiled model; no runtime SharpGLTF or image decoding is required.

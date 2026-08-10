@@ -74,25 +74,15 @@ namespace Demiurge
 			var lookaheadOffset = new Vector2(Game.Window.ClientBounds.Width * mousePos.X, Game.Window.ClientBounds.Height * mousePos.Y);
 			var distance = lookaheadOffset.Length();
 
-			// Aiming vs non-aiming lookahead
-			var (aimingShiftNear, aimingShiftFar) = (AppConstants.ShiftNear, AppConstants.ShiftFar);
-			if (local.Weapon != null)
-			{
-				aimingShiftNear = local.Stats.shiftNear;
-				aimingShiftFar = local.Stats.shiftFar;
-			}
-
-			var scale = local.State.HasFlag(PlayerStateFlags.Aiming) switch
-			{
-				false => 
-					MathExtensions.Step(
-						MathExtensions.Remap(distance, AppConstants.LookAheadRadiusNear, AppConstants.LookAheadRadiusFar, AppConstants.ShiftNear, AppConstants.ShiftFar), 
-						AppConstants.ShiftNear, AppConstants.ShiftFar),
-				true => 
-					MathExtensions.Step(
-						MathExtensions.Remap(distance, AppConstants.LookAheadRadiusNear, AppConstants.LookAheadRadiusFar, aimingShiftNear, aimingShiftFar), 
-						aimingShiftNear, aimingShiftFar)
-			};
+			var scale = MathExtensions.Step(
+				MathExtensions.Remap(
+					distance,
+					AppConstants.LookAheadRadiusNear,
+					AppConstants.LookAheadRadiusFar,
+					AppConstants.ShiftNear,
+					AppConstants.ShiftFar),
+				AppConstants.ShiftNear,
+				AppConstants.ShiftFar);
 
 			lookaheadOffset.Normalize();
 			var norm = lookaheadOffset * scale;

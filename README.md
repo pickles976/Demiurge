@@ -10,12 +10,18 @@ map editor. The project currently targets Linux and Vulkan; there is no Stride G
 - A Vulkan-capable GPU and driver
 - Linux is the actively tested platform
 
-Build and run the non-benchmark tests:
+Build and run the ordinary fast test suite:
 
 ```bash
 dotnet restore
 dotnet build DemiurgeSharp.slnx
-dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark"
+dotnet test DemiurgeSharp.slnx --filter "Category!=Benchmark&Category!=Integration"
+```
+
+Run the full-system pathfinding scenarios only when working on that feature:
+
+```bash
+dotnet test Server.Tests/DemiurgeServer.Tests.csproj --filter "Category=Integration"
 ```
 
 When dependency state needs a clean rebuild:
@@ -31,7 +37,10 @@ dotnet build DemiurgeSharp.slnx --no-incremental
 ### Single Player
 
 Single player starts a real authoritative server inside the client process and connects through the
-normal network paths. This is the fastest way to test gameplay and server changes:
+normal network paths. It currently loads the authored `conquest` source map, puts the player on team
+1 with the datapack's default Mosin, and creates 16 PPSh/SKS/Mosin NPCs per team around the authored
+team spawns.
+This is the fastest integrated AI, gameplay, and server test:
 
 ```bash
 dotnet run --launch-profile singleplayer
@@ -156,7 +165,7 @@ Successful mob spawns print an actor ID such as `@60000`; pass that value to `eq
 spawns print a network object ID such as `#1`. Runtime spawns and equipment changes are temporary
 session state and are not written by `map save`. Editor placements instead use stable eight-character
 IDs: `editor object list` prints them, and `editor object equip <placement-id> <weapon>` persists a
-mob weapon in the source and runtime bake. Existing mobs default to an AK-47.
+mob weapon in the source and runtime bake. Existing mobs use the active datapack's NPC default.
 
 Session commands:
 
@@ -177,7 +186,10 @@ dedicated-server console.
 
 ```text
 Common/             shared protocol, voxel math, movement, commands, runtime map format
+Common/Navigation/  deterministic traversal, A*, goals, paths, and terrain corridor stamps
+Common/Ai/          testable contact, cover, hearing, and strategic planning logic
 Server/             authoritative simulation, replication, terrain streaming, server console
+Server/Ai/          commander, squads, tactical behaviors, navigation workers and followers
 Client/             Stride composition, networking, simulation mirrors, rendering, input
 Editor.Core/        engine-independent source documents, undo/redo, validation, baking
 Common.Tests/       shared logic and voxel tests
@@ -200,13 +212,18 @@ logic remains headless and testable.
 
 ## Further Reading
 
+- [docs/README.md](docs/README.md): complete documentation index
 - [CLAUDE.md](CLAUDE.md): architecture invariants and implementation guidance
-- [RECIPES.md](RECIPES.md): checklists for adding replicated gameplay features
-- [EDITOR.md](EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): current process, authority, AI, and data-flow boundaries
+- [docs/NAVIGATION.md](docs/NAVIGATION.md): navigation model, workers, recovery, diagnostics, and tests
+- [docs/BARITONE.md](docs/BARITONE.md): time-costed pathfinding plan and performance constraints
+- [docs/RECIPES.md](docs/RECIPES.md): checklists for adding replicated gameplay features
+- [docs/EDITOR.md](docs/EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
 - [docs/COMMANDS.md](docs/COMMANDS.md): terminal command reference
+- [docs/DATAPACKS.md](docs/DATAPACKS.md): JSON item, weapon, ballistics, and compatibility format
 - [docs/voxel/](docs/voxel/): voxel data, generation, meshing, and collision
 - [docs/networking/](docs/networking/): replication and gameplay message flows
-- [stride_docs/](stride_docs/): Stride-specific runtime and rendering findings
+- [docs/stride/](docs/stride/): Stride-specific runtime and rendering findings
 
 The code-only Stride setup follows the
 [Stride Community Toolkit guide](https://stride3d.github.io/stride-community-toolkit/manual/code-only/create-project.html#example-code).

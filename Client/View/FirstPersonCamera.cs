@@ -23,7 +23,10 @@ namespace Demiurge
 		public float EyeHeight { get; set; } = Digging.EyeHeight;
 
 		/// <summary>How much the view drops while crouching.</summary>
-		public float CrouchEyeDrop { get; set; } = 0.45f;
+		public float CrouchEyeDrop { get; set; } = PlayerMovement.CrouchEyeDrop;
+
+		/// <summary>How much the view drops while prone.</summary>
+		public float ProneEyeDrop { get; set; } = PlayerMovement.ProneEyeDrop;
 
 		/// <summary>
 		/// The camera follows predicted movement with this sharpness. Rotation stays unsmoothed; this
@@ -72,6 +75,11 @@ namespace Demiurge
 
 		public override void Update()
 		{
+			// Every path below can bail out before the camera is posed; trauma has to keep bleeding
+			// regardless, or a grenade that went off while the terminal was open is still waiting at
+			// full strength when it closes.
+			CameraTrauma.Decay((float)Game.UpdateTime.Elapsed.TotalSeconds);
+
 			if (InputState.TerminalOpen)
 			{
 				if (mouseLocked) Input.UnlockMousePosition();
@@ -87,6 +95,23 @@ namespace Demiurge
 			}
 
 			if (Registry.LocalPlayer is not { } local) return;
+			if (local.IsDead)
+			{
+				following = false;
+				return;
+			}
+
+			// On an emplacement, MortarControlScript owns the view. Hand back the pointer with it:
+			// that camera is aimed with the cursor, so a locked mouse would leave the gunner unable
+			// to lay the weapon he is standing at.
+			if (local.IsOperating)
+			{
+				if (mouseLocked) Input.UnlockMousePosition();
+				Game.IsMouseVisible = true;
+				mouseLocked = false;
+				following = false;
+				return;
+			}
 
 			if (!seededRotation)
 			{
@@ -102,14 +127,20 @@ namespace Demiurge
 				mouseLocked = true;
 			}
 
-			bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
+			// Not while the shovel is out: there are no sights on a spade to bring up. Same
+			// exclusion LocalPlayerController applies to the replicated Aiming flag.
+			bool aiming = Input.IsMouseButtonDown(MouseButton.Right) && local.Hotbar != HotbarSlot.Shovel;
 			float sensitivity = LookSensitivity * (aiming ? AimSensitivityMultiplier : 1f);
 
 			var look = Input.AbsoluteMouseDelta;
 			orbit -= look.X * sensitivity;
 			pitch = MathUtil.Clamp(pitch - look.Y * sensitivity, -PitchLimit, PitchLimit);
 
-			var rotation = Quaternion.RotationX(pitch) * Quaternion.RotationY(orbit);
+			// Shake is applied to the RENDERED rotation only. Yaw/Pitch below are read back by the
+			// controller as where the player is aiming, and a shot that landed where the shake threw
+			// the camera rather than where the player pointed it would feel like the game cheating.
+			var aim = Quaternion.RotationX(pitch) * Quaternion.RotationY(orbit);
+			var rotation = CameraTrauma.Update((float)Game.UpdateTime.Elapsed.TotalSeconds) * aim;
 
 			var feet = local.Position.ToStride();
 			float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
@@ -124,23 +155,46 @@ namespace Demiurge
 				followed = Vector3.Lerp(followed, feet, SharpStep(FollowSharpness, dt));
 			}
 
-			float targetEye = EyeHeight - (local.State.HasFlag(PlayerStateFlags.Crouching) ? CrouchEyeDrop : 0f);
+			float targetEye = EyeHeight - (local.State.HasFlag(PlayerStateFlags.Prone)
+				? ProneEyeDrop
+				: local.State.HasFlag(PlayerStateFlags.Crouching) ? CrouchEyeDrop : 0f);
 			eyeHeight = MathUtil.Lerp(eyeHeight, targetEye, SharpStep(StateSharpness, dt));
 
 			Entity.Transform.Position = followed + Vector3.UnitY * eyeHeight;
 			Entity.Transform.Rotation = rotation;
 
-			var forward = Vector3.Transform(-Vector3.UnitZ, rotation);
+			var forward = Vector3.Transform(-Vector3.UnitZ, aim);
 			Yaw = MathF.Atan2(forward.X, forward.Z);
 
 			if (camera != null)
 			{
 				float targetFov =
-					aiming ? AimFieldOfView :
+					aiming ? AimFieldOfViewFor(local.Weapon?.Item.Type) :
 					local.State.HasFlag(PlayerStateFlags.Sprinting) ? SprintFieldOfView :
 					HipFieldOfView;
-				camera.VerticalFieldOfView = MathUtil.Lerp(camera.VerticalFieldOfView, targetFov, SharpStep(StateSharpness, dt));
+				// Paced by the held weapon, unlike the crouch blend above: coming up to the sights is
+				// a property of what is in your hands, and this rate has to match the view model's in
+				// ItemAttachScript or the gun arrives at the sights before the view does.
+				float aimSharpness = StateSharpness
+					* (local.Weapon?.Item.Type is { } held ? ItemCosmetics.AimSpeedScale(held) : 1f);
+				camera.VerticalFieldOfView = MathUtil.Lerp(camera.VerticalFieldOfView, targetFov, SharpStep(aimSharpness, dt));
 			}
+		}
+
+		/// <summary>
+		/// The ADS field of view for the weapon in hand, narrowed by whatever optic it carries.
+		///
+		/// Magnification divides the TANGENT, not the angle: halving 56 degrees would be 2x only for
+		/// a narrow view, and the error grows with the field. Doing it properly is what makes "2x"
+		/// mean a target subtends twice the screen height, which is the thing a player can check.
+		/// </summary>
+		float AimFieldOfViewFor(ItemType? held)
+		{
+			float magnification = held is { } type ? ItemCosmetics.AimMagnification(type) : 1f;
+			if (magnification <= 1f) return AimFieldOfView;
+
+			float halfTangent = MathF.Tan(MathUtil.DegreesToRadians(AimFieldOfView) * 0.5f);
+			return MathUtil.RadiansToDegrees(2f * MathF.Atan(halfTangent / magnification));
 		}
 
 		static float SharpStep(float sharpness, float dt)

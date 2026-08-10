@@ -56,7 +56,9 @@ c. Deltas are applied
 
 # Remote Players
 
-Because we use rollback for our hitscan detection, we don't use dead-reckoning prediction for remote player visualization. The reason is that dead reckoning is an ILLUSION. It does NOT accurately reflect the state of players on the server. Instead we opt for interpolation with a 3-tick delay. Players are always seeing remote players as they were on the server in the past. This way when a player shoots, the server can see what the player was shooting at at some time in the past.
+Remote actors use interpolation with a three-tick delay rather than dead reckoning. Interpolation
+keeps presentation smooth and bounded by authoritative snapshots; projectile collision itself runs
+forward on the server and does not rewind remote actors to the shooter's render tick.
 
 Steps 1 and 2 are the exact same.
 

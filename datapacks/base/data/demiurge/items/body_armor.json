@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:body_armor",
+  "networkId": 4,
+  "displayName": "Body Armor",
+  "aliases": ["body_armor", "body-armor", "bodyarmor"],
+  "category": "equippable",
+  "slot": "chest",
+  "behavior": "none",
+  "armor": { "max": 50 },
+  "presentation": {
+    "model": "assets/models/body_armor.gltf",
+    "cameraTrauma": 0,
+    "visualRecoil": { "back": 0, "lift": 0, "pitchDegrees": 0 }
+  }
+}

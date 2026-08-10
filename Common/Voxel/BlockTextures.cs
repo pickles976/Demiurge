@@ -41,6 +41,9 @@ namespace Demiurge
             [BlockType.BlockType_Grass] = Entry.Numbered("grass", variants: 4, tileSize: 1f),
             [BlockType.BlockType_Dirt] = Entry.Numbered("dirt", variants: 4, tileSize: 1f),
             [BlockType.BlockType_Stone] = Entry.Numbered("stone", variants: 4, tileSize: 1f),
+            [BlockType.BlockType_Sandbags] = Entry.Numbered("sandbags", variants: 4, tileSize: 1f),
+            [BlockType.BlockType_StoneBricks] = Entry.Numbered("stone_bricks", variants: 4, tileSize: 1f),
+            [BlockType.BlockType_Wood] = Entry.Numbered("wood", variants: 4, tileSize: 1f),
         };
 
         /// <summary>

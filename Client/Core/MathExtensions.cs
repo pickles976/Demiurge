@@ -76,6 +76,7 @@ namespace Demiurge
         // same rotation. Stride only differs in the order it MULTIPLIES quaternions, so
         // composing a rotation stays the caller's problem — see WeaponMount.HandRotation.
         public static Stride.Core.Mathematics.Quaternion ToStride(this System.Numerics.Quaternion q) => new(q.X, q.Y, q.Z, q.W);
+        public static System.Numerics.Quaternion ToNumerics(this Stride.Core.Mathematics.Quaternion q) => new(q.X, q.Y, q.Z, q.W);
 
     }
 

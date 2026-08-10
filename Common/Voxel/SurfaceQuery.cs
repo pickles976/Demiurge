@@ -32,11 +32,17 @@ namespace Demiurge
         /// </summary>
         public static SurfaceHit? HighestSurface(ChunkMap map, int worldX, int worldZ)
         {
-            if (!map.TryGetVoxel(worldX, ChunkConstants.WorldMaxY - 1, worldZ, out var above)) return null;
+            // One cursor for the whole column. Every read is the same chunk by construction — only Y
+            // changes — so going through ChunkMap directly paid a ChunkAt plus a ConcurrentDictionary
+            // lookup for each of up to 128 steps, and on ordinary terrain the first ~68 of those are
+            // pure air above the surface.
+            var cursor = new VoxelCursor(map);
+
+            if (!cursor.TryGet(worldX, ChunkConstants.WorldMaxY - 1, worldZ, out var above)) return null;
 
             for (int y = ChunkConstants.WorldMaxY - 2; y >= ChunkConstants.WorldMinY; y--)
             {
-                if (!map.TryGetVoxel(worldX, y, worldZ, out var below)) return null;
+                if (!cursor.TryGet(worldX, y, worldZ, out var below)) return null;
 
                 // Solid below, air above: the surface is on this edge. Same convention as the mesher
                 // — negative is solid, >= 0 is air.
@@ -78,12 +84,17 @@ namespace Demiurge
 
             float? nearest = null;
             float nearestDistance = float.MaxValue;
+
+            // As above: one memo down the column, rather than the ChunkMap overload building a fresh
+            // cursor for each of the two samples at every step.
+            var cursor = new VoxelCursor(map);
+
             for (int y = firstY; y <= lastY; y++)
             {
                 if (!TerrainCollision.TrySampleRaw(
-                        map, new Vector3(worldX, y, worldZ), out float below)
+                        ref cursor, new Vector3(worldX, y, worldZ), out float below)
                     || !TerrainCollision.TrySampleRaw(
-                        map, new Vector3(worldX, y + 1f, worldZ), out float above))
+                        ref cursor, new Vector3(worldX, y + 1f, worldZ), out float above))
                     continue;
 
                 if (below >= 0f || above < 0f) continue;

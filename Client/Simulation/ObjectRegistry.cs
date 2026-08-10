@@ -13,6 +13,12 @@ public class ObjectRegistry : IDisposable
 
     public event Action<NetObject>? ObjectSpawned;   // sim -> view boundary
     public event Action<NetObject>? ObjectDespawned;
+    /// <summary>
+    /// Raised at the exact state-update boundary when a living object's health reaches zero.
+    /// Consumers cannot reliably poll for this: the server follows death with a respawn health
+    /// update, and both may be drained between rendered frames.
+    /// </summary>
+    public event Action<NetObject>? HealthDepleted;
 
     /// <summary>Read-only view of the live objects, for view-layer queries
     /// (tracer hit tests). Netcode writes, view reads — same contract as ever.</summary>
@@ -42,7 +48,7 @@ public class ObjectRegistry : IDisposable
         if (objects.ContainsKey(data.NetworkId)) return;
 
         var obj = new NetObject { NetworkId = data.NetworkId, Type = data.Type, Has = data.State.Mask };
-        CopyComponents(obj, data.State, tick: 0);   // tick 0: spawn state predates any update
+        CopyComponents(obj, data.State, tick: 0, notifyHealthDepleted: false);
         objects[data.NetworkId] = obj;
 
         if (pendingUpdates.Remove(data.NetworkId, out var queued))
@@ -56,6 +62,11 @@ public class ObjectRegistry : IDisposable
     {
         pendingUpdates.Remove(data.NetworkId);
         if (!objects.Remove(data.NetworkId, out var obj)) return;
+
+        // Where it ENDED, which for anything that detonates is not where it was last seen — see
+        // ObjectDespawnData.Position. Written before the event so a subscriber reading the object's
+        // transform gets the final answer rather than the newest broadcast one.
+        obj.Transform.Position = data.Position;
         ObjectDespawned?.Invoke(obj);
     }
 
@@ -74,24 +85,40 @@ public class ObjectRegistry : IDisposable
         queue.Enqueue(data);
     }
 
-    private static void Apply(NetObject obj, ObjectStateData data)
-        => CopyComponents(obj, data.State, data.Tick);
+    private void Apply(NetObject obj, ObjectStateData data)
+        => CopyComponents(obj, data.State, data.Tick, notifyHealthDepleted: true);
 
 
     // THE one place bundle components land on a NetObject — spawn and update both.
     // New component = one new line here.
-    private static void CopyComponents(NetObject obj, in ComponentBundle state, uint tick)
+    private void CopyComponents(
+        NetObject obj,
+        in ComponentBundle state,
+        uint tick,
+        bool notifyHealthDepleted)
     {
         if (state.Mask.HasFlag(NetComponents.Transform))
         {
             obj.Transform = state.Transform;
             obj.Snapshots.Store(tick, state.Transform.Position);
         }
-        if (state.Mask.HasFlag(NetComponents.Health)) obj.Health = state.Health;
+        // Before Health, and that ordering is load-bearing: HealthDepleted fires from inside the
+        // branch below, and what it wakes up — the ragdoll — reads the impulse off this object. The
+        // WIRE order is still append-only over in ComponentBundle; by the time we are here the whole
+        // bundle is already decoded, so the order these land in is ours to choose.
+        if (state.Mask.HasFlag(NetComponents.Impulse)) obj.Impulse = state.Impulse;
+        if (state.Mask.HasFlag(NetComponents.Health))
+        {
+            var previous = obj.Health;
+            obj.Health = state.Health;
+            if (notifyHealthDepleted && previous.Current > 0 && state.Health.Current == 0)
+                HealthDepleted?.Invoke(obj);
+        }
         if (state.Mask.HasFlag(NetComponents.Weapon)) obj.Weapon = state.Weapon;
         if (state.Mask.HasFlag(NetComponents.Owner)) obj.Owner = state.Owner;
         if (state.Mask.HasFlag(NetComponents.Armor)) obj.Armor = state.Armor;
         if (state.Mask.HasFlag(NetComponents.Item)) obj.Item = state.Item;
         if (state.Mask.HasFlag(NetComponents.Attachment)) obj.Attachment = state.Attachment;
+        if (state.Mask.HasFlag(NetComponents.Team)) obj.Team = state.Team;
     }
 }

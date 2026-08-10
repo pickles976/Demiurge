@@ -23,13 +23,16 @@ public class PlayerViewFactory : IDisposable
     private void CreatePlayerView(Player player)
     {
         var animations = new AnimationComponent();
-            animations.Animations.Add("Walk", game.Content.Load<AnimationClip>("models/cat_orange_anim_Walk"));
-            animations.Animations.Add("Idle", game.Content.Load<AnimationClip>("models/cat_orange_anim_Idle"));
-            animations.Animations.Add("Aiming", game.Content.Load<AnimationClip>("models/cat_orange_anim_Aiming"));
-            animations.Animations.Add("Crouch", game.Content.Load<AnimationClip>("models/cat_orange_anim_Crouch"));
-            animations.Animations.Add("CrouchWalk", game.Content.Load<AnimationClip>("models/cat_orange_anim_CrouchWalk"));
+        foreach (string clip in PlayerCosmetics.Clips)
+            animations.Animations.Add(
+                clip,
+                game.Content.Load<AnimationClip>(PlayerCosmetics.AnimationPath(clip)));
 
-        var model = new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/cat_orange.gltf"));
+        // Everyone wears the same rig; team decides only the coat, as a per-slot material override
+        // on this instance. Team arrives on the spawn packet, so it is already set when PlayerJoined
+        // fires; a team CHANGE would need the material reassigned, which nothing does today.
+        var model = new ModelComponent(GLTFLoader.LoadModel(game, PlayerCosmetics.Model));
+        model.Materials[0] = PlayerCosmetics.Coat(game, player.Team);
         if (player is LocalPlayer)
         {
             // First-person keeps the local player entity and skeleton alive for prediction,
@@ -37,13 +40,25 @@ public class PlayerViewFactory : IDisposable
             model.Enabled = false;
         }
 
+        // Worn rather than modelled into the body, so one helmet serves every team and can be tuned
+        // without touching a rig. The link makes the bone the parent, so its transform below is an
+        // offset in BONE space; being a child of the body as well is what makes it go away with the
+        // body when the view is destroyed.
+        var helmetModel = new ModelComponent(GLTFLoader.LoadModel(game, PlayerCosmetics.HelmetModel));
+        var helmet = new Entity($"Helmet_{player.Id}") { helmetModel };
+        helmet.Add(new ModelNodeLinkComponent { Target = model, NodeName = PlayerCosmetics.HelmetBone });
+        helmet.Transform.Position = PlayerCosmetics.HelmetSeat.ToStride();
+        helmet.Transform.Rotation = PlayerCosmetics.HelmetRotation.ToStride();
+        helmet.Transform.Scale = new Vector3(PlayerCosmetics.HelmetScale);
+
         var entity = new Entity($"Player_{player.Id}")
         {
             model,
-            new PlayerViewScript {Player = player, Registry = registry},
+            new PlayerViewScript { Player = player, Registry = registry, Helmet = helmetModel },
             animations,
         };
         entity.Transform.Position = player.Position.ToStride();
+        entity.Transform.Children.Add(helmet.Transform);
         entity.Scene = scene;
     }
 

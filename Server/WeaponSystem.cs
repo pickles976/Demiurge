@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 using System.Numerics;
 
 namespace Demiurge.GameServer
@@ -9,37 +9,57 @@ namespace Demiurge.GameServer
     /// GameWorld resolves clientId -> ServerPlayer and delegates.</summary>
     public class WeaponSystem
     {
-        private readonly Server server;
+        internal readonly record struct AcceptedGunshot(
+            ushort ShooterId,
+            int ShooterTeam,
+            Vector3 Position,
+            uint Tick);
+
+        internal readonly record struct AcceptedSuppression(
+            ushort TargetId,
+            ushort ShooterId,
+            int ShooterTeam,
+            Vector3 ThreatPosition,
+            uint Tick);
+
+        private sealed class Projectile
+        {
+            public required ServerPlayer Shooter { get; init; }
+            public required Vector3 Origin { get; init; }
+            public required Vector3 Position { get; set; }
+            public required Vector3 Velocity { get; set; }
+            public required float RemainingDistance { get; set; }
+            public required ushort Damage { get; init; }
+            public HashSet<ushort> SuppressedActors { get; } = [];
+        }
+
+        private readonly INetServer server;
         private readonly ObjectReplication objects;
         private readonly ChunkMap terrain;
+        private readonly ActivityFeedSystem? activityFeed;
+        private readonly List<Projectile> projectiles = new();
+        private readonly Queue<AcceptedGunshot> gunshots = new();
+        private readonly Queue<AcceptedSuppression> suppressions = new();
 
-        public WeaponSystem(Server server, ObjectReplication objects, ChunkMap terrain)
+        public WeaponSystem(
+            INetServer server,
+            ObjectReplication objects,
+            ChunkMap terrain,
+            ActivityFeedSystem? activityFeed = null)
         {
             this.server = server;
             this.objects = objects;
             this.terrain = terrain;
+            this.activityFeed = activityFeed;
         }
 
-        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick, IEnumerable<ServerPlayer> players)
+        public void ApplyFire(ServerPlayer player, PlayerFireData fire, uint tick)
         {
             if (!IsFinite(fire.Origin) || !IsFinite(fire.Direction) || !float.IsFinite(fire.RenderTick)) return;
 
             // Reject views from the future or older than max history
             if (fire.RenderTick > tick || fire.RenderTick < (double)tick - NetworkConfig.MaxRewindTicks) return;
-            if (fire.Direction == Vector3.Zero) return;
-
-            // Unarmed players can't fire. The equipped Hand item is the source
-            // of truth for ammo — IF it's a gun (Weapon bit); a future non-gun
-            // hand item simply can't fire.
-            if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
-                || !objects.TryGet(weaponId, out var weapon)
-                || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
-            var stats = WeaponConfig.Require(weapon.Item.Type);
-
-            // Enforce the same ItemConfig numbers the client predicted with.
-            if (tick < player.NextFireTick) return;    // faster than the gun can cycle
-            if (tick < player.ReloadDoneTick) return;  // mid-reload
-            if (weapon.Weapon.CurrentAmmo <= 0) return;
+            if (fire.Direction.LengthSquared() < 1e-8f) return;
 
             // The client supplies the aim, but the shot must leave from roughly where
             // the server has the player. See GunConfig.MaxFireOriginDistance for what the
@@ -47,27 +67,76 @@ namespace Demiurge.GameServer
             if (Vector3.DistanceSquared(fire.Origin, player.Position)
                 > GunConfig.MaxFireOriginDistance * GunConfig.MaxFireOriginDistance) return;
 
-            player.NextFireTick = tick + (uint)stats.TicksPerShot;
+            TryFireCore(player, fire.Origin, fire.Direction, tick, fire.Sequence, additionalMoa: 0f);
+        }
+
+        internal bool TryFireAi(
+            ServerPlayer player,
+            Vector3 origin,
+            Vector3 direction,
+            uint tick,
+            uint sequence,
+            float additionalMoa)
+        {
+            if (!IsFinite(origin) || !IsFinite(direction) || direction.LengthSquared() < 1e-8f)
+                return false;
+            return TryFireCore(player, origin, direction, tick, sequence, additionalMoa);
+        }
+
+        private bool TryFireCore(
+            ServerPlayer player,
+            Vector3 origin,
+            Vector3 requestedDirection,
+            uint tick,
+            uint sequence,
+            float additionalMoa)
+        {
+            if (!TryGetActiveWeapon(player, out var weapon)) return false;
+
+            // Freight in the hands is not a weapon in them. A carryable is used once it is set
+            // down, so the ordinary fire path refuses it — otherwise a mortar somebody is hauling
+            // would work, and work WRONGLY, as a flat rifle shot out of a carried tube. Asked of the
+            // CATEGORY so the next heavy thing inherits the rule instead of being named here.
+            if (ItemConfig.IsCarryable(weapon.Item.Type)) return false;
+
+            var stats = WeaponConfig.Require(weapon.Item.Type);
+            if (tick < player.NextFireTick
+                || tick < player.ReloadDoneTick
+                || weapon.Weapon.CurrentAmmo <= 0)
+                return false;
+
+            // Retain a deadline that is at most one tick behind so fractional rates preserve their
+            // phase (1.5 ticks alternates 2/1), but an idle weapon cannot bank a magazine of shots.
+            player.NextFireTick = player.NextFireTick < tick - 1f
+                ? tick + stats.TicksPerShot
+                : player.NextFireTick + stats.TicksPerShot;
             weapon.Weapon.CurrentAmmo--;
             weapon.Dirty |= NetComponents.Weapon;       // ammo replicates like any component
 
-            var direction = Vector3.Normalize(fire.Direction);
+            var ballistics = BallisticsConfig.Require(weapon.Item.Type);
+            float moa = Spread.Combine(
+                player.Spread.TotalMoa(player.State, ballistics),
+                MathF.Max(0f, additionalMoa));
+            var direction = Spread.SampleDirection(
+                requestedDirection,
+                Spread.SigmaRadians(moa),
+                Spread.ShotSeed(player.Id, sequence));
 
-            // A healthless object (a pickup) still blocks the shot; it just takes no damage.
-            if (Raycast(fire.Origin, direction, stats.MaxRange, player, players, fire.RenderTick) is { } hit
-                && hit.Has.HasFlag(NetComponents.Health))
+            player.Spread.AddRecoil(ballistics, player.State);
+            gunshots.Enqueue(new AcceptedGunshot(
+                player.Id,
+                player.Team,
+                origin,
+                tick));
+            projectiles.Add(new Projectile
             {
-                hit.Health.Current = hit.Health.Current > stats.Damage
-                    ? (ushort)(hit.Health.Current - stats.Damage)
-                    : (ushort)0;
-                hit.Dirty |= NetComponents.Health;   // the object pipeline replicates the rest
-
-                // Tell the shooter it landed. Unreliable + shooter-only: cosmetic feedback,
-                // the victim's replicated Health remains the truth.
-                Message confirm = Message.Create(MessageSendMode.Unreliable, ServerToClientId.HitConfirm);
-                confirm.AddSerializable(new HitConfirmData { TargetNetworkId = hit.NetworkId, Damage = stats.Damage });
-                server.Send(confirm, player.Id);
-            }
+                Shooter = player,
+                Origin = origin,
+                Position = origin,
+                Velocity = direction * ballistics.ProjectileSpeed,
+                RemainingDistance = ProjectileMotion.SafetyDistance,
+                Damage = stats.Damage,
+            });
 
             // Cosmetic rebroadcast for remote tracers/audio. Unreliable: a lost
             // tracer is nothing. Only ACCEPTED shots get here, so rejected fire
@@ -77,73 +146,303 @@ namespace Demiurge.GameServer
             {
                 PlayerId = player.Id,
                 Weapon = weapon.Item.Type,
-                Origin = fire.Origin,
+                Origin = origin,
                 Direction = direction,
             });
             server.SendToAll(fired);
+            return true;
         }
+
+        /// <summary>
+        /// Rounds that strike near a man suppress him even though they never passed near him. The
+        /// fly-by test in TryHit measures distance from the projectile's PATH, so fire aimed at the
+        /// cover someone is behind — which is what suppressing fire IS — went entirely unnoticed by
+        /// the person being suppressed.
+        /// </summary>
+        private void SuppressNearImpact(
+            Projectile projectile,
+            Vector3 impact,
+            IEnumerable<ServerPlayer> actors,
+            uint tick)
+        {
+            foreach (var player in actors)
+            {
+                if (player == projectile.Shooter
+                    || player.Team == projectile.Shooter.Team
+                    || player.Status is not { Health.Current: > 0 })
+                    continue;
+
+                var center = player.Position
+                    + Vector3.UnitY * GunConfig.TargetCenterHeight(player.State);
+                if (Vector3.DistanceSquared(impact, center)
+                    > GunConfig.ImpactSuppressionRadius * GunConfig.ImpactSuppressionRadius)
+                    continue;
+
+                player.Spread.Suppress();
+                if (!projectile.SuppressedActors.Add(player.Id)) continue;
+                suppressions.Enqueue(new AcceptedSuppression(
+                    player.Id,
+                    projectile.Shooter.Id,
+                    projectile.Shooter.Team,
+                    projectile.Origin,
+                    tick));
+            }
+        }
+
+        /// <summary>How many projectiles are in flight, for the tick breakdown.</summary>
+        internal int LiveProjectiles => projectiles.Count;
+
+        internal bool TryDequeueGunshot(out AcceptedGunshot gunshot)
+            => gunshots.TryDequeue(out gunshot);
+
+        internal bool TryDequeueSuppression(out AcceptedSuppression suppression)
+            => suppressions.TryDequeue(out suppression);
+
+        /// <summary>
+        /// Advances shooter dispersion and every live projectile once. Collision is swept over
+        /// the whole tick segment, so a fast rifle bullet cannot tunnel through a target between
+        /// two 30 Hz updates.
+        /// </summary>
+        public void Tick(float dt, uint tick, IEnumerable<ServerPlayer> players)
+        {
+            var actors = players as ICollection<ServerPlayer> ?? players.ToArray();
+            foreach (var player in actors)
+            {
+                if (!TryGetActiveWeapon(player, out var weapon))
+                    continue;
+
+                player.Spread.Advance(
+                    player.State,
+                    BallisticsConfig.Require(weapon.Item.Type),
+                    dt);
+            }
+
+            for (int i = projectiles.Count - 1; i >= 0; i--)
+            {
+                var projectile = projectiles[i];
+                var step = ProjectileMotion.Advance(
+                    projectile.Position,
+                    projectile.Velocity,
+                    dt,
+                    projectile.RemainingDistance);
+
+                if (TryHit(step.Start, step.End, projectile, actors, tick, out var hit, out bool headshot))
+                {
+                    if (hit is { } target && target.Has.HasFlag(NetComponents.Health))
+                        ApplyDamage(
+                            projectile.Shooter,
+                            target,
+                            actors.FirstOrDefault(actor => actor.Status == target),
+                            headshot ? GunConfig.Headshot(projectile.Damage) : projectile.Damage,
+                            projectile.Origin,
+                            // Where the round was going when it landed, not where it was aimed:
+                            // drop has been bending it the whole way, so the two differ at range.
+                            projectile.Velocity,
+                            tick);
+                    SuppressNearImpact(projectile, step.End, actors, tick);
+                    projectiles.RemoveAt(i);
+                    continue;
+                }
+
+                projectile.Position = step.End;
+                projectile.Velocity = step.Velocity;
+                projectile.RemainingDistance -= step.Distance;
+                if (step.Exhausted)
+                    projectiles.RemoveAt(i);
+            }
+        }
+
+        /// <summary>
+        /// Who spends their reserve. Players do; NPCs never will — that is settled design, not a
+        /// gap waiting to be closed, so nothing downstream should be built to expect NPC resupply,
+        /// ammunition scarcity as a pressure on the AI, or a squad that can be starved out.
+        ///
+        /// Their rifles still CARRY a full reserve, and that number is not decoration: it is what a
+        /// player inherits when he takes one off a body. An NPC's weapon is therefore always worth
+        /// exactly a fresh load, because the man holding it never drew it down.
+        /// </summary>
+        private static bool AmmoLimited(ServerPlayer player) => !player.IsMob;
 
         public void ApplyReload(ServerPlayer player, uint tick)
         {
-            if (!player.Equipped.TryGetValue(EquipSlot.Hand, out uint weaponId)
-                || !objects.TryGet(weaponId, out var weapon)
-                || !weapon.Has.HasFlag(NetComponents.Weapon)) return;
+            if (!TryGetActiveWeapon(player, out var weapon)) return;
 
             var stats = WeaponConfig.Require(weapon.Item.Type);
             if (tick < player.ReloadDoneTick) return;   // already reloading
             if (weapon.Weapon.CurrentAmmo == stats.MagazineCapacity) return;
 
+            // What the pouches can actually put in the magazine. A partial magazine is topped up
+            // rather than replaced, so reloading with rounds still in the gun does not throw them
+            // away — this is a pool of loose ammunition, not a stack of discrete magazines.
+            int wanted = stats.MagazineCapacity - weapon.Weapon.CurrentAmmo;
+            int loaded = AmmoLimited(player) ? Math.Min(wanted, weapon.Weapon.ReserveAmmo) : wanted;
+            if (loaded <= 0) return;   // dry: nothing to load, and no reload window to sit through
+
             // Refill now, block firing until the window passes — observably identical
             // to refilling at the end, with no completion bookkeeping. (The client
             // refills at the end instead so its HUD reads 0 during the reload.)
-            weapon.Weapon.CurrentAmmo = stats.MagazineCapacity;
+            weapon.Weapon.CurrentAmmo += loaded;
+            if (AmmoLimited(player)) weapon.Weapon.ReserveAmmo -= loaded;
             weapon.Dirty |= NetComponents.Weapon;
             player.ReloadDoneTick = tick + (uint)stats.ReloadTicks;
         }
 
-        private ServerObject? Raycast(Vector3 origin, Vector3 direction, float maxRange, ServerPlayer shooter, IEnumerable<ServerPlayer> players, double renderTick)
+        private bool TryHit(
+            Vector3 start,
+            Vector3 end,
+            Projectile projectile,
+            IEnumerable<ServerPlayer> players,
+            uint tick,
+            out ServerObject? hit,
+            out bool headshot)
         {
-            ServerObject? nearest = null;
+            hit = null;
+            headshot = false;
+            var shooter = projectile.Shooter;
+            var segment = end - start;
+            float length = segment.Length();
+            if (length < 1e-6f) return false;
+            var direction = segment / length;
 
-            // Terrain first, as a ceiling on how far anything else can be hit from. Cover has to be
-            // decided HERE and not just drawn on the client: the client already stops its tracer at
-            // the ground, so without this a shot into a hillside still takes the health off whoever
-            // is behind it, and the disagreement surfaces as phantom damage rather than as a bug in
-            // this function.
-            float nearestT = TerrainRaycast.Cast(terrain, origin, direction, maxRange) is { } ground
+            // Terrain is a distance ceiling. A healthless object still blocks the projectile;
+            // it simply produces no damage when selected as the nearest collision.
+            float nearestT = TerrainRaycast.Cast(terrain, start, direction, length) is { } ground
                 ? ground.Distance
                 : float.MaxValue;
 
             foreach (var obj in objects.All)
             {
-                // No Transform component = not in the world (equipped weapons keep a
-                // stale spawn position) — never hittable.
                 if (!obj.Has.HasFlag(NetComponents.Transform)) continue;
-                if (GunMath.HitDistance(origin, direction, obj.Transform.Position, maxRange) is not { } t) continue;
+                if (GunMath.HitDistance(start, direction, obj.Transform.Position, length) is not { } t) continue;
                 if (t >= nearestT) continue;
-                nearest = obj;
+                hit = obj;
+                headshot = false;   // an object has an origin, not a body
                 nearestT = t;
             }
 
             foreach (var player in players)
             {
                 if (player == shooter || player.Status == null) continue;
+                var center = player.Position
+                    + Vector3.UnitY * GunConfig.TargetCenterHeight(player.State);
+                float along = Math.Clamp(Vector3.Dot(center - start, direction), 0f, length);
+                if (along < nearestT
+                    && Vector3.DistanceSquared(start + direction * along, center)
+                        <= GunConfig.NearMissRadius * GunConfig.NearMissRadius)
+                {
+                    player.Spread.Suppress();
+                    if (player.Team != shooter.Team
+                        && projectile.SuppressedActors.Add(player.Id))
+                        suppressions.Enqueue(new AcceptedSuppression(
+                            player.Id,
+                            shooter.Id,
+                            shooter.Team,
+                            projectile.Origin,
+                            tick));
+                }
+                if (GunMath.PlayerHitAt(
+                        start,
+                        direction,
+                        player.Position,
+                        length,
+                        player.State,
+                        player.Yaw)
+                    is not { } actorHit) continue;
+                if (actorHit.Distance >= nearestT) continue;
 
-                // It's rewind time
-                var seen = player.History.GetInterpolated(renderTick, player.Position);
-                var center = seen + new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
-
-                if (GunMath.HitDistance(origin, direction, center, maxRange) is not {} t) continue;
-                if (t >= nearestT) continue;
-
-                nearest = player.Status;
-                nearestT = t;
+                hit = player.Status;
+                headshot = actorHit.Head;
+                nearestT = actorHit.Distance;
             }
 
-            return nearest;
+            return nearestT < float.MaxValue;
+        }
+
+        private void ApplyDamage(
+            ServerPlayer shooter,
+            ServerObject hit,
+            ServerPlayer? victim,
+            ushort damage,
+            Vector3 shotOrigin,
+            Vector3 shotVelocity,
+            uint tick)
+        {
+            // Being SHOT is the least ambiguous way to learn you are under fire, and it used to be
+            // the one way that told the victim nothing: only near misses raised a suppression, so an
+            // NPC hit squarely from four hundred metres took the damage and carried on walking. A
+            // hit is a suppression that connected, so it goes down the same path — same
+            // MarkUnderFire, same contact, same broadcast to the squad — rather than growing a
+            // parallel one. Range never enters into it: the test is the projectile, not a radius.
+            if (victim is not null && victim.Team != shooter.Team)
+                suppressions.Enqueue(new AcceptedSuppression(
+                    victim.Id,
+                    shooter.Id,
+                    shooter.Team,
+                    shotOrigin,
+                    tick));
+
+            if (victim is not null) victim.LastDamagedTick = tick;
+
+            bool wasAlive = hit.Health.Current > 0;
+            hit.Health.Current = hit.Health.Current > damage
+                ? (ushort)(hit.Health.Current - damage)
+                : (ushort)0;
+            hit.Dirty |= NetComponents.Health;
+
+            Message confirm = Message.Create(MessageSendMode.Unreliable, ServerToClientId.HitConfirm);
+            confirm.AddSerializable(new HitConfirmData
+            {
+                TargetNetworkId = hit.NetworkId,
+                Damage = damage,
+            });
+            if (!shooter.IsMob)
+                server.Send(confirm, shooter.Id);
+            if (wasAlive && hit.Health.Current == 0)
+            {
+                // Rides the same dirty bundle as the health that just hit zero, so the client sees
+                // the death and what caused it together. Set on the lethal blow only — a corpse is
+                // the only thing that reads it.
+                hit.Impulse.Velocity = RagdollImpulse.FromBullet(shotVelocity, damage);
+                hit.Dirty |= NetComponents.Impulse;
+
+                if (victim is not null) activityFeed?.ReportKill(shooter, victim);
+            }
         }
 
         private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+        internal bool TryGetActiveWeapon(ServerPlayer player, out ServerObject weapon)
+        {
+            weapon = null!;
+            if (player.Hotbar == HotbarSlot.Shovel)
+                return false;
+
+            var slot = HotbarConfig.StorageSlot(player.Hotbar);
+            // Administrative equips predate the hotbar and remain usable as slot 1.
+            if (player.Hotbar == HotbarSlot.Primary && !player.Equipped.ContainsKey(slot))
+                slot = EquipSlot.Hand;
+
+            return player.Equipped.TryGetValue(slot, out uint weaponId)
+                && objects.TryGet(weaponId, out weapon!)
+                && weapon.Has.HasFlag(NetComponents.Weapon)
+                && !ItemCatalog.HasBehavior(weapon.Item.Type, ItemBehavior.Grenade);
+        }
+
+        /// <summary>
+        /// The stored primary regardless of what is currently in the actor's hands. AI planning runs
+        /// before each mob selects its slot for the tick, so an assaulter who ended the previous tick
+        /// digging must still be recognized as a PPSH carrier while the shovel is selected.
+        /// </summary>
+        internal bool TryGetPrimaryWeapon(ServerPlayer player, out ServerObject weapon)
+        {
+            weapon = null!;
+            EquipSlot slot = EquipSlot.HotbarPrimary;
+            if (!player.Equipped.ContainsKey(slot)) slot = EquipSlot.Hand;
+            return player.Equipped.TryGetValue(slot, out uint weaponId)
+                && objects.TryGet(weaponId, out weapon!)
+                && weapon.Has.HasFlag(NetComponents.Weapon)
+                && !ItemCatalog.HasBehavior(weapon.Item.Type, ItemBehavior.Grenade);
+        }
 
     }
 }

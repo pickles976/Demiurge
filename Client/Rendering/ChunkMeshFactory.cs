@@ -139,7 +139,12 @@ namespace Demiurge
 
             // Mesh positions are in the box's own CELL units, so the transform carries both where the
             // box starts and how big its cells are. Uniform scale, so the normals stay correct.
-            var entity = new Entity("ChunkSection") { new ModelComponent(model) };
+            // Terrain keeps its own group so the minimap's second camera can render ground without
+            // also revealing players, objectives, or other world entities through the texture.
+            var entity = new Entity("ChunkSection")
+            {
+                new ModelComponent(model) { RenderGroup = MinimapTerrain.TerrainGroup },
+            };
 
             entity.Transform.Position = new Vector3(section.OriginX, section.OriginY, section.OriginZ);
             entity.Transform.Scale = new Vector3(section.Stride);

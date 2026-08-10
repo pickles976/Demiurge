@@ -76,6 +76,13 @@ namespace Demiurge
 
 			if (Active)
 			{
+				// ADS and sprint both alter the gameplay FOV. Freecam is an inspection view, so it
+				// always starts from the configured hip lens rather than inheriting whichever zoom
+				// happened to be active on the frame F3 was pressed.
+				if (Entity.Get<CameraComponent>() is { } camera
+					&& Entity.Get<FirstPersonCameraScript>() is { } firstPerson)
+					camera.VerticalFieldOfView = firstPerson.HipFieldOfView;
+
 				// Seed from wherever the follow cam left the camera, so detaching is invisible —
 				// the view just stops following. Taken from the forward vector because that
 				// inverts exactly the composition Look() applies below.

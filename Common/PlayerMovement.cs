@@ -22,10 +22,12 @@ namespace Demiurge
         public const float WalkSpeed = 4f;
         public const float SprintSpeed = 6f;
         public const float SlowSpeed = 2f;
+        public const float ProneSpeed = WalkSpeed * 0.30f;
+        public const float CrouchEyeDrop = 0.45f;
+        public const float ProneEyeDrop = 1.0f;
 
         public const PlayerStateFlags SlowingStates =
-            PlayerStateFlags.Crouching | PlayerStateFlags.Aiming |
-            PlayerStateFlags.Shooting  | PlayerStateFlags.Reloading;
+            PlayerStateFlags.Crouching | PlayerStateFlags.Prone | PlayerStateFlags.Aiming;
 
         // ---- Vertical motion ----
 
@@ -113,17 +115,31 @@ namespace Demiurge
         /// The authoritative movement step: the server runs it, the client predicts with it, and
         /// reconciliation replays it. Same code over the same streamed voxel bytes on both ends, so a
         /// replay reproduces the server exactly.
+        ///
+        /// <paramref name="speedScale"/> is what the actor is carrying, as a multiplier on whichever
+        /// speed the flags select — <see cref="ItemConfig.MoveSpeedScale"/>. It is a PARAMETER
+        /// rather than something this step looks up because Common owns no equipment: the server
+        /// reads the actor's hotbar and the client reads the same slot out of its predicted map, and
+        /// both then step the identical arithmetic. Anything that scales it must be visible to both
+        /// or the replay stops reproducing the server.
         /// </summary>
-        public static void Step(ChunkMap terrain, ref MoveState state, Vector3 intent, PlayerStateFlags flags, float dt)
+        public static void Step(
+            ChunkMap terrain,
+            ref MoveState state,
+            Vector3 intent,
+            PlayerStateFlags flags,
+            float dt,
+            float speedScale = 1f)
         {
             intent.Y = 0f;
 
             if (intent != Vector3.Zero)
                 intent = Vector3.Normalize(intent);
 
-            float speed = (flags & SlowingStates) != 0              ? SlowSpeed
+            float speed = (flags.HasFlag(PlayerStateFlags.Prone)    ? ProneSpeed
+                        : (flags & SlowingStates) != 0              ? SlowSpeed
                         : flags.HasFlag(PlayerStateFlags.Sprinting) ? SprintSpeed
-                        : WalkSpeed;
+                        : WalkSpeed) * speedScale;
 
             // Horizontal velocity is SET, not accelerated. No momentum model means a long replay
             // cannot drift from the server the way an integrated one would.

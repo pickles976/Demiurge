@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:sniper_rifle",
+  "projectileSpeed": 850,
+  "benchMoa": 2,
+  "recoilPerShotMoa": 70,
+  "recoilDecayMoaPerSecond": 70,
+  "recoilCapMoa": 70,
+  "sightingMoa": 60
+}

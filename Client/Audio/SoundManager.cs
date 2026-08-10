@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Silk.NET.OpenAL;
 using Stride.Engine;
@@ -24,7 +25,12 @@ namespace Demiurge
     /// All play methods take an optional volume (gain). For pitch/speed variants, use
     /// separate pre-rendered clips (OpenAL's only rate control couples pitch and speed).
     ///
-    /// Loads 16-bit PCM WAV; mono spatializes, stereo plays un-positioned (OpenAL rule).
+    /// Loads 8/16-bit PCM WAV. **OpenAL will not spatialize a stereo buffer** — it ignores the
+    /// source position and plays at full gain, which sounds exactly like working audio with broken
+    /// falloff (a rifle 90 m away as loud as your own). That is a hard API rule, not a bug we can
+    /// argue with, so a file played positionally is DOWNMIXED to mono here rather than trusted to
+    /// have been exported that way. The artist's file stays whatever it is; the same path played
+    /// 2D still uses the stereo buffer, and the two are cached separately.
     /// </summary>
     public sealed unsafe class SoundManager : IDisposable
     {
@@ -34,15 +40,25 @@ namespace Demiurge
         private readonly Context* _context;
         private readonly Entity? _listener;            // camera; drives the 3D listener pose
 
-        private readonly Dictionary<string, uint> _buffers = new();
+        private readonly Dictionary<(string Path, bool Mono), uint> _buffers = new();
         private readonly uint[] _oneShots;             // round-robin pool for fire-and-forget
         private int _next;
         private readonly HashSet<uint> _continuous = new(); // dedicated sources, freed on stop
 
-        /// <summary>World distance at which a spatial sound is at full volume; falloff scales from here.</summary>
-        public float SpatialReferenceDistance = 10f;
-        /// <summary>How quickly spatial sounds attenuate past the reference distance.</summary>
-        public float SpatialRolloffFactor = 1f;
+        /// <summary>Falloff for callers that do not name one. See <see cref="SoundFalloff"/> for why
+        /// a single global curve cannot serve both a rifle and a footstep.</summary>
+        public SoundFalloff DefaultFalloff = SoundFalloff.Default;
+
+        /// <summary>
+        /// Master gain on POSITIONED sound only, so the world can be pushed away without touching
+        /// sounds that belong to the player's own body.
+        ///
+        /// This is the honest substitute for a low-pass filter, and it is worth being clear that it
+        /// is not one: muffling is a frequency effect and OpenAL does it through EFX, which lives in
+        /// Silk.NET.OpenAL.Extensions.Creative — a package this project does not reference. Until it
+        /// does, the world gets quieter rather than duller.
+        /// </summary>
+        public float WorldGain = 1f;
 
         public SoundManager(Entity? listener = null, int voices = 32)
         {
@@ -66,15 +82,22 @@ namespace Demiurge
         public void PlayOneShot(string wavPath, float volume = 1f)
             => OneShot(wavPath, null, volume);
 
-        public void PlayOneShotSpatial(string wavPath, SVector3 position, float volume = 1f)
-            => OneShot(wavPath, position, volume);
+        public void PlayOneShotSpatial(
+            string wavPath,
+            SVector3 position,
+            float volume = 1f,
+            SoundFalloff? falloff = null)
+            => OneShot(wavPath, position, volume, falloff);
 
-        private void OneShot(string wavPath, SVector3? pos, float volume)
+        private void OneShot(string wavPath, SVector3? pos, float volume, SoundFalloff? falloff = null)
         {
+            var curve = falloff ?? DefaultFalloff;
+            if (pos is { } world && !IsAudible(world, curve.MaxDistance)) return;
+
             EnsureContext();
             uint source = _oneShots[_next];
             _next = (_next + 1) % _oneShots.Length;
-            Configure(source, GetBuffer(wavPath), pos, volume, looping: false);
+            Configure(source, GetBuffer(wavPath, mono: pos.HasValue), pos, volume, looping: false, curve);
             _al.SourcePlay(source);
         }
 
@@ -91,7 +114,7 @@ namespace Demiurge
             EnsureContext();
             uint source = _al.GenSource();
             _continuous.Add(source);
-            Configure(source, GetBuffer(wavPath), pos, volume, looping: true);
+            Configure(source, GetBuffer(wavPath, mono: pos.HasValue), pos, volume, looping: true, DefaultFalloff);
             _al.SourcePlay(source);
             return new SoundHandle(source);
         }
@@ -112,21 +135,41 @@ namespace Demiurge
             _al.SetSourceProperty(handle.Source, SourceVector3.Position, position.X, position.Y, position.Z);
         }
 
+        /// <summary>Whether a positioned sound is close enough to the listener to be worth a voice.</summary>
+        private bool IsAudible(SVector3 position, float maxDistance)
+        {
+            if (_listener is null) return true;
+
+            var transform = _listener.Transform;
+            transform.UpdateWorldMatrix();
+            return SVector3.DistanceSquared(transform.WorldMatrix.TranslationVector, position)
+                <= maxDistance * maxDistance;
+        }
+
         // ---- internals ----
 
-        private void Configure(uint source, uint buffer, SVector3? worldPos, float volume, bool looping)
+        private void Configure(
+            uint source,
+            uint buffer,
+            SVector3? worldPos,
+            float volume,
+            bool looping,
+            SoundFalloff falloff)
         {
             _al.SourceStop(source); // lets us (re)assign the buffer; restarts a recycled voice
             _al.SetSourceProperty(source, SourceInteger.Buffer, (int)buffer);
-            _al.SetSourceProperty(source, SourceFloat.Gain, volume);
+            _al.SetSourceProperty(
+                source,
+                SourceFloat.Gain,
+                worldPos is null ? volume : volume * Math.Clamp(WorldGain, 0f, 1f));
             _al.SetSourceProperty(source, SourceBoolean.Looping, looping);
 
             if (worldPos is { } p)
             {
                 UpdateListener();
                 _al.SetSourceProperty(source, SourceBoolean.SourceRelative, false);
-                _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, SpatialReferenceDistance);
-                _al.SetSourceProperty(source, SourceFloat.RolloffFactor, SpatialRolloffFactor);
+                _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, falloff.ReferenceDistance);
+                _al.SetSourceProperty(source, SourceFloat.RolloffFactor, falloff.RolloffFactor);
                 _al.SetSourceProperty(source, SourceVector3.Position, p.X, p.Y, p.Z);
             }
             else
@@ -162,22 +205,66 @@ namespace Demiurge
             _al.SetListenerProperty(ListenerFloatArray.Orientation, orient);
         }
 
-        private uint GetBuffer(string wavPath)
+        /// <summary><paramref name="mono"/> forces a stereo file down to one channel, which is what
+        /// makes it obey its source position at all — see the class doc.</summary>
+        private uint GetBuffer(string wavPath, bool mono)
         {
-            if (_buffers.TryGetValue(wavPath, out var existing))
+            if (_buffers.TryGetValue((wavPath, mono), out var existing))
                 return existing;
 
-            var (format, data, sampleRate) = LoadWav(wavPath);
+            var (channels, bits, data, sampleRate) = LoadWav(wavPath);
+            if (mono && channels == 2)
+            {
+                data = Downmix(data, bits);
+                channels = 1;
+            }
+
             uint buffer = _al.GenBuffer();
             fixed (byte* ptr = data)
-                _al.BufferData(buffer, format, ptr, data.Length, sampleRate);
+                _al.BufferData(buffer, FormatOf(channels, bits, wavPath), ptr, data.Length, sampleRate);
 
-            _buffers[wavPath] = buffer;
+            _buffers[(wavPath, mono)] = buffer;
             return buffer;
         }
 
+        /// <summary>
+        /// Averages the two channels into one. Averaging rather than dropping a channel because a
+        /// sample panned hard to one side would otherwise come back near-silent, and averaging is
+        /// also what preserves the level of a mono source that happens to be stored as two
+        /// identical channels — which is what most of these files are.
+        /// </summary>
+        private static byte[] Downmix(byte[] stereo, short bits)
+        {
+            if (bits == 8)
+            {
+                // 8-bit PCM WAV is UNSIGNED, centred on 128; averaging the raw bytes is correct.
+                var mono8 = new byte[stereo.Length / 2];
+                for (int i = 0; i < mono8.Length; i++)
+                    mono8[i] = (byte)((stereo[i * 2] + stereo[i * 2 + 1] + 1) / 2);
+                return mono8;
+            }
+
+            ReadOnlySpan<short> source = MemoryMarshal.Cast<byte, short>(stereo.AsSpan());
+            var mono = new byte[stereo.Length / 2];
+            Span<short> target = MemoryMarshal.Cast<byte, short>(mono.AsSpan());
+            for (int i = 0; i < target.Length; i++)
+                target[i] = (short)((source[i * 2] + source[i * 2 + 1]) / 2);
+            return mono;
+        }
+
+        private static BufferFormat FormatOf(short channels, short bits, string path)
+            => (channels, bits) switch
+            {
+                (1, 8) => BufferFormat.Mono8,
+                (1, 16) => BufferFormat.Mono16,
+                (2, 8) => BufferFormat.Stereo8,
+                (2, 16) => BufferFormat.Stereo16,
+                _ => throw new NotSupportedException(
+                    $"Unsupported WAV format ({channels}ch/{bits}bit): {path}. Use 16-bit PCM."),
+            };
+
         // Minimal RIFF/WAVE PCM parser: walks chunks, reads fmt + data.
-        private static (BufferFormat format, byte[] data, int sampleRate) LoadWav(string path)
+        private static (short channels, short bits, byte[] data, int sampleRate) LoadWav(string path)
         {
             var bytes = File.ReadAllBytes(path);
             if (bytes.Length < 12 ||
@@ -213,15 +300,10 @@ namespace Demiurge
             if (data == null)
                 throw new InvalidDataException($"WAV has no data chunk: {path}");
 
-            return ((channels, bits) switch
-            {
-                (1, 8) => BufferFormat.Mono8,
-                (1, 16) => BufferFormat.Mono16,
-                (2, 8) => BufferFormat.Stereo8,
-                (2, 16) => BufferFormat.Stereo16,
-                _ => throw new NotSupportedException(
-                    $"Unsupported WAV format ({channels}ch/{bits}bit): {path}. Use 16-bit PCM."),
-            }, data, sampleRate);
+            // Validated here as well as at buffer creation, so a malformed file fails at load with
+            // its own name attached rather than after a downmix has quietly mangled it.
+            FormatOf(channels, bits, path);
+            return (channels, bits, data, sampleRate);
         }
 
         public void Dispose()

@@ -1,5 +1,6 @@
 using Demiurge.Editor;
 using Demiurge.GameServer;
+using Demiurge.Net;
 using Stride.Engine;
 using Stride.Games;
 
@@ -63,11 +64,24 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     return ExecuteStructure(tokens, editor);
                 if (tokens.Length > 2
                     && tokens[1].Equals("object", StringComparison.OrdinalIgnoreCase)
-                    && tokens[2].ToLowerInvariant() is "list" or "select" or "equip")
+                    && (tokens[2].ToLowerInvariant() is "list" or "select" or "equip"
+                        || tokens[2].Equals("set-team", StringComparison.OrdinalIgnoreCase)))
                     return ExecuteEditorObject(tokens, editor);
                 var result = EditorCommandParser.Execute(normalized, editor.Settings, editor.Editor);
                 return TerminalOutputFor(result.Success, result.Output);
             }
+
+            // A view-only overlay toggle, so it is answered here rather than sent to the server. It is
+            // also accepted with no session attached: the flag simply applies to the next one.
+            if (tokens[0].Equals("ai", StringComparison.OrdinalIgnoreCase)
+                && tokens.Length > 1
+                && tokens[1].Equals("track", StringComparison.OrdinalIgnoreCase))
+                return ExecuteAiTrack(tokens);
+
+            // Transport diagnostics describe the client's own connection, so like `ai track` they are
+            // answered here rather than sent to the server.
+            if (tokens[0].Equals("net", StringComparison.OrdinalIgnoreCase))
+                return ExecuteNet(tokens);
 
             if (current is RuntimeClientSession runtime)
             {
@@ -107,6 +121,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 lines.Add("spawn mob [x z]");
                 lines.Add("spawn pickup <item> [x z]");
                 lines.Add("equip <@s|@actor-id> <item>");
+                lines.Add("ai stats");
+                lines.Add("ai track <off|on|beacons|facing|clustering|colliders|ids|states>");
+                lines.Add("net <seed|log>");
             }
             else
             {
@@ -118,6 +135,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             lines.Add("spawn mob [x z]");
             lines.Add("spawn pickup <item> [x z]");
             lines.Add("equip <@s|@actor-id> <item>");
+            lines.Add("ai stats");
+            lines.Add("ai track <off|on|beacons|facing|clustering|colliders|ids|states>");
+            lines.Add("net <seed|log>");
         }
         lines.Add("Type 'help <command>' for details. Press Tab to complete names and IDs.");
         return lines;
@@ -164,9 +184,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         if (tokenIndex == 0)
             return current is EditorClientSession activeEditor
                 ? activeEditor.IsPlaytesting
-                    ? ["spawn", "equip", "map", "session", "clear", "help"]
+                    ? ["spawn", "equip", "ai", "net", "map", "session", "clear", "help"]
                     : ["editor", "map", "session", "clear", "help"]
-                : ["spawn", "equip", "map", "session", "clear", "help"];
+                : ["spawn", "equip", "ai", "net", "map", "session", "clear", "help"];
 
         if (tokens.Length == 0) return [];
         string root = tokens[0].ToLowerInvariant();
@@ -182,7 +202,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     "terrain" => ["operation", "shape", "size", "strength", "material"],
                     "block" => BlockCatalog.All.Select(definition => definition.Id)
                         .Concat(["size"]),
-                    "object" => ["pickup", "mob", "spawn", "clear", "list", "select", "equip"],
+                    "object" => ["pickup", "crate", "mob", "spawn", "flag", "team", "clear", "list", "select", "equip", "set-team"],
                     _ => [],
                 };
             if (tokenIndex == 3 && tokens.Length > 2)
@@ -193,11 +213,16 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     "terrain operation" => ["add", "subtract"],
                     "terrain shape" => ["sphere", "box", "organic"],
                     "terrain material" => BlockCatalog.All.Select(definition => definition.Id),
-                    "object pickup" => ItemCatalog.All.Select(definition => definition.Id),
+                    "object pickup" or "object crate" =>
+                        ItemCatalog.All.Select(definition => definition.Id),
                     "object select" => editor.Editor.Document.Placements
                         .Select(placement => EditorPlacementIds.Display(placement.Id)),
                     "object equip" => editor.Editor.Document.Placements
                         .Where(placement => placement.Kind == EditorPlacementKind.Mob)
+                        .Select(placement => EditorPlacementIds.Display(placement.Id))
+                        .Prepend("selected"),
+                    "object set-team" => editor.Editor.Document.Placements
+                        .Where(placement => placement.Kind is EditorPlacementKind.Mob or EditorPlacementKind.PlayerSpawn)
                         .Select(placement => EditorPlacementIds.Display(placement.Id))
                         .Prepend("selected"),
                     _ => [],
@@ -220,12 +245,21 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
         if (root == "equip" && tokenIndex == 2)
             return ItemCatalog.All.Select(definition => definition.Id);
+        if (root == "ai")
+        {
+            if (tokenIndex == 1) return ["stats", "track"];
+            if (tokenIndex >= 2 && tokens.Length > 1
+                && tokens[1].Equals("track", StringComparison.OrdinalIgnoreCase))
+                return ["off", "on", "beacons", "facing", "clustering", "colliders", "ids", "states"];
+        }
         if (root == "session" && tokenIndex == 1)
             return ["status", "editor", "host", "join", "playtest", "playtest-networked"];
+        if (root == "net") return ["seed", "log"];
+
         if (root == "help")
         {
             if (tokenIndex == 1)
-                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip"];
+                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "ai", "net"];
             if (tokenIndex == 2 && tokens.Length > 1
                 && tokens[1].Equals("editor", StringComparison.OrdinalIgnoreCase))
                 return ["terrain", "block", "object"];
@@ -247,7 +281,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  editor mode <terrain|block|object>",
                 "  editor terrain <operation|shape|size|strength|material> ...",
                 "  editor block <block-id|size> ...",
-                "  editor object <pickup|mob|spawn|clear|list|select|equip> ...",
+                "  editor object <pickup|mob|spawn|flag|team|clear|list|select|equip|set-team> ...",
                 "  editor undo | editor redo",
                 "Use 'help terrain', 'help block', or 'help object' for details.",
             ],
@@ -273,14 +307,19 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             [
                 "Object placement:",
                 "  editor object pickup <item-id>",
+                "  editor object crate <item-id>",
                 "  editor object mob",
                 "  editor object spawn [spawn-id]",
+                "  editor object flag",
+                "  editor object team <positive-integer>",
                 "  editor object clear",
                 "  editor object list",
                 "  editor object select <placement-id>",
                 "  editor object equip <placement-id|selected> <weapon-id>",
+                "  editor object set-team <placement-id|selected> <positive-integer>",
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
-                "Examples: editor object pickup demiurge:ak47 | editor object mob",
+                "A crate is the same pickup drawn as a supply crate; it rests still on the ground.",
+                "Examples: editor object pickup demiurge:sks | editor object crate demiurge:dp27",
                 "Left click places the selected archetype and reports its stable placement ID.",
             ],
             "session" =>
@@ -315,9 +354,136 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
                 "Runtime equipment changes last for the current session only; map save does not record them.",
             ],
+            "net" =>
+            [
+                "Transport diagnostics (in-process transport only):",
+                "  net seed   the delivery seed for this session",
+                "  net log    the last delivery decisions, newest first",
+                "Singleplayer runs a deliberately hostile in-process transport: the unreliable",
+                "channel drops, reorders and duplicates, and the reliable channel reorders. That",
+                "is intentional - a localhost socket never misbehaves, so without it singleplayer",
+                "cannot catch an ordering or duplication assumption before a real playtest does.",
+                "The seed fixes the delivery policy but NOT the traffic, so quote both when",
+                "reporting a glitch.",
+            ],
+            "ai" =>
+            [
+                "AI diagnostics:",
+                "  ai stats",
+                "  ai track [off|on|beacons|facing|clustering|colliders|ids|states]",
+                "Shows the latest 1-second average for mob movement and off-thread path searches.",
+                "track draws a debug overlay over every NPC; layers combine, and no argument reports",
+                "the current state. beacons are vertical beams visible through terrain, facing adds a",
+                "ground ring and heading spoke, clustering links NPCs within 4 m of each other.",
+                "colliders draws the hit capsule, the head sphere and the movement capsule for every",
+                "actor including yourself - the volumes a shot is tested against, not the model.",
+                "ids labels each NPC with the actor id the terminal takes as @<id>.",
+                "states labels each NPC with what it decided to do: OBJECTIVE, COVER, BOUND, ENTRENCH,",
+                "HOLD or GRENADE. NPC intent is deliberately not on the wire, so states is blank",
+                "unless this session runs the server - singleplayer, session host, or a playtest.",
+                "Everything else is answered client-side and never reaches the server.",
+            ],
             _ => [$"No help topic named '{topics[0]}'. Type 'help' to list commands."],
         };
     }
+
+    /// <summary>
+    /// <c>net seed</c> and <c>net log</c> — the two things you need to act on a delivery glitch.
+    /// </summary>
+    /// <remarks>
+    /// Both are required rather than nice to have. The seed alone does NOT reproduce a session: it fixes
+    /// the delivery policy, not the traffic, because the message sequence depends on frame-to-frame input
+    /// timing. The log is what tells you what the policy actually did.
+    /// </remarks>
+    private TerminalOutput ExecuteNet(string[] tokens)
+    {
+        InProcessNetwork? transport = (current as RuntimeClientSession)?.InProcessTransport
+            ?? (current as EditorClientSession)?.PlaytestInProcessTransport;
+
+        if (transport is null)
+            return TerminalOutputFor(
+                false,
+                "No in-process transport. This session talks to a real server over Riptide, "
+                + "whose delivery decisions we do not make and cannot report.");
+
+        if (tokens.Length < 2)
+            return TerminalOutputFor(false, "net <seed|log>");
+
+        return tokens[1].ToLowerInvariant() switch
+        {
+            "seed" => TerminalOutputFor(true, $"Delivery seed {transport.Seed}"),
+            "log" => TerminalOutputFor(
+                true,
+                $"Delivery seed {transport.Seed}, last {TransportHostility.DeliveryLogCapacity} decisions "
+                + $"(newest first):{Environment.NewLine}{transport.Log.Dump()}"),
+            _ => TerminalOutputFor(false, "net <seed|log>"),
+        };
+    }
+
+    private TerminalOutput ExecuteAiTrack(string[] tokens)
+    {
+        if (tokens.Length == 2)
+            return TerminalOutputFor(
+                true,
+                $"NPC tracking: {DescribeTrackerLayers(NpcTracker.Layers)}");
+
+        var layers = NpcTrackerLayers.None;
+        for (int i = 2; i < tokens.Length; i++)
+            switch (tokens[i].ToLowerInvariant())
+            {
+                case "off" or "none":
+                    break;
+                case "on" or "all":
+                    layers |= NpcTrackerLayers.All;
+                    break;
+                case "beacons":
+                    layers |= NpcTrackerLayers.Beacons;
+                    break;
+                case "facing":
+                    layers |= NpcTrackerLayers.Facing;
+                    break;
+                case "clustering":
+                    layers |= NpcTrackerLayers.Clustering;
+                    break;
+                case "colliders":
+                    layers |= NpcTrackerLayers.Colliders;
+                    break;
+                case "ids":
+                    layers |= NpcTrackerLayers.Ids;
+                    break;
+                case "states" or "state":
+                    layers |= NpcTrackerLayers.States;
+                    break;
+                default:
+                    return TerminalOutputFor(
+                        false,
+                        $"Unknown tracking layer: {tokens[i]}. "
+                        + "Use off, on, beacons, facing, clustering, colliders, ids, or states");
+            }
+
+        NpcTracker.Layers = layers;
+
+        // The server only builds the per-tick snapshot while somebody is looking at it.
+        MobDebugFeed.Enabled = layers.HasFlag(NpcTrackerLayers.States);
+        if (!MobDebugFeed.Enabled) MobDebugFeed.Clear();
+
+        string note = layers.HasFlag(NpcTrackerLayers.States) && !HostsItsOwnServer
+            ? " (states stay blank: NPC intent is not on the wire, so it only shows when this "
+              + "session runs the server)"
+            : string.Empty;
+        return TerminalOutputFor(true, $"NPC tracking: {DescribeTrackerLayers(layers)}{note}");
+    }
+
+    /// <summary>
+    /// Whether this session's server is in this process, which is what decides if server-side debug
+    /// feeds can be read at all. Same test <c>net</c> uses, for the same reason.
+    /// </summary>
+    private bool HostsItsOwnServer
+        => (current as RuntimeClientSession)?.InProcessTransport is not null
+           || (current as EditorClientSession)?.PlaytestInProcessTransport is not null;
+
+    private static string DescribeTrackerLayers(NpcTrackerLayers layers)
+        => layers == NpcTrackerLayers.None ? "off" : layers.ToString().ToLowerInvariant();
 
     private TerminalOutput ExecuteSession(string[] tokens)
     {
@@ -677,6 +843,26 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     true,
                     $"Equipped mob placement {EditorPlacementIds.Display(mob.Id)} with {weaponId}");
 
+            case "set-team":
+                if (tokens.Length != 5
+                    || !int.TryParse(tokens[4], out int team)
+                    || team <= 0)
+                    return TerminalOutputFor(
+                        false,
+                        "Usage: editor object set-team <placement-id|selected> <positive-integer>");
+                var actor = ResolveEditorPlacement(editor, tokens[3]);
+                if (actor.Kind is not (EditorPlacementKind.Mob or EditorPlacementKind.PlayerSpawn))
+                    return TerminalOutputFor(
+                        false,
+                        $"Placement {EditorPlacementIds.Display(actor.Id)} cannot have a playable team");
+                editor.Editor.Execute(new UpdatePlacementCommand(
+                    $"Set team for {EditorPlacementIds.Display(actor.Id)}",
+                    actor,
+                    actor with { Team = team }));
+                return TerminalOutputFor(
+                    true,
+                    $"Set placement {EditorPlacementIds.Display(actor.Id)} to team {team}");
+
             default:
                 return TerminalOutputFor(false, $"Unknown editor object command: {tokens[2]}");
         }
@@ -699,7 +885,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         string details = placement.Kind switch
         {
             EditorPlacementKind.Mob =>
-                $" weapon={placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47)}",
+                $" weapon={placement.WeaponId ?? "squad-default"} team={placement.Team}",
+            EditorPlacementKind.PlayerSpawn => $" team={placement.Team}",
+            EditorPlacementKind.Flag => " neutral",
             _ => string.Empty,
         };
         return $"{EditorPlacementIds.Display(placement.Id)} " +
@@ -736,8 +924,11 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     new ServerOptions
                     {
                         AllowCheats = true,
-                        MapPath = request.RuntimeMapPath,
+                        MapPath = request.RuntimeMapPath
+                            ?? PrepareRuntimeFromSource(request.MapName!),
                         SpawnOverride = request.SpawnOverride,
+                        InitialPlayerTeam = request.InitialPlayerTeam,
+                        InitialNpcsPerTeam = request.InitialNpcsPerTeam,
                     }),
                 SessionRequestKind.GeneratedHost => new RuntimeClientSession(
                     game, inputState, NetworkConfig.ServerHost,
@@ -869,6 +1060,20 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         return runtime.ContentHash;
     }
 
+    private string PrepareRuntimeFromSource(string name)
+    {
+        if (!maps.HasSource(name))
+            throw new FileNotFoundException($"Map {name} has no saved source");
+
+        var source = maps.Load(name);
+        if (!maps.HasRuntime(name) || !maps.RuntimeIsCurrent(source))
+            SaveRuntime(source);
+
+        string path = maps.Paths.RuntimePath(name);
+        _ = RuntimeMapSerializer.Load(path);
+        return path;
+    }
+
     private void EnsureCurrentRuntimeBake(string name)
     {
         if (!maps.HasRuntime(name)) throw new FileNotFoundException($"Map {name} has no runtime bake");
@@ -918,7 +1123,9 @@ public sealed record SessionRequest(
     EditorSession? EditorSession = null,
     EditorToolSettings? EditorSettings = null,
     EditorStructureState? EditorStructures = null,
-    System.Numerics.Vector3? SpawnOverride = null)
+    System.Numerics.Vector3? SpawnOverride = null,
+    int? InitialPlayerTeam = null,
+    int InitialNpcsPerTeam = 0)
 {
     public static SessionRequest EditorMap(string name) => new(SessionRequestKind.Editor, MapName: name);
     public static SessionRequest EditorDocument(EditorDocument document) => new(SessionRequestKind.Editor, Document: document);
@@ -934,6 +1141,15 @@ public sealed record SessionRequest(
     public static SessionRequest HostMap(
         string name, string path, System.Numerics.Vector3? spawnOverride = null)
         => new(SessionRequestKind.Host, name, path, SpawnOverride: spawnOverride);
+    public static SessionRequest SourceHost(
+        string name,
+        int? initialPlayerTeam = null,
+        int initialNpcsPerTeam = 0)
+        => new(
+            SessionRequestKind.Host,
+            MapName: name,
+            InitialPlayerTeam: initialPlayerTeam,
+            InitialNpcsPerTeam: initialNpcsPerTeam);
     public static SessionRequest GeneratedHost() => new(SessionRequestKind.GeneratedHost);
     public static SessionRequest Join(string host) => new(SessionRequestKind.Join, Host: host);
 }

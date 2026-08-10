@@ -1,5 +1,5 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge
 {
@@ -26,6 +26,15 @@ namespace Demiurge
         /// remote player's head and gun aim with it. APPENDED — never inserted.</summary>
         public float Pitch;
 
+        /// <summary>Selected hotbar position, used to show the correct remote held item. APPENDED.</summary>
+        public HotbarSlot Hotbar;
+
+        /// <summary>
+        /// Zero while alive; otherwise the authoritative global wave tick assigned on death.
+        /// APPENDED — the client uses this for its respawn countdown.
+        /// </summary>
+        public uint RespawnTick;
+
         public void Serialize(Message message)
         {
             message.AddUShort(PlayerId);
@@ -37,6 +46,8 @@ namespace Demiurge
             message.AddVector3(Velocity);
             message.AddBool(Grounded);
             message.AddFloat(Pitch);
+            message.AddByte((byte)Hotbar);
+            message.AddUInt(RespawnTick);
         }
 
         public void Deserialize(Message message)
@@ -50,6 +61,8 @@ namespace Demiurge
             Velocity = message.GetVector3();
             Grounded = message.GetBool();
             Pitch = message.GetFloat();
+            Hotbar = (HotbarSlot)message.GetByte();
+            RespawnTick = message.GetUInt();
         }
 
         /// <summary>The movement half of this message, as the shared step wants it.</summary>

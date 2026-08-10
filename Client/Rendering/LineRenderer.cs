@@ -49,11 +49,20 @@ namespace Demiurge
 
         internal static readonly List<Segment2D> Segments2D = new();
         internal static readonly List<Segment3D> Segments3D = new();
+        internal static readonly List<Segment3D> DepthTestedSegments3D = new();
 
         // --- 3D (world space) ---
 
         public static void DrawLine(Vector3 a, Vector3 b, Color color)
             => Segments3D.Add(new Segment3D(a, b, color));
+
+        /// <summary>
+        /// A world-space line which reads the scene depth buffer. Use for physical effects such as
+        /// tracers which must disappear behind terrain; ordinary DrawLine remains an overlay/debug
+        /// primitive.
+        /// </summary>
+        public static void DrawDepthTestedLine(Vector3 a, Vector3 b, Color color)
+            => DepthTestedSegments3D.Add(new Segment3D(a, b, color));
 
         public static void DrawPolyline(IReadOnlyList<Vector3> points, Color color, bool closed = false)
         {
@@ -157,8 +166,9 @@ namespace Demiurge
         {
             var segments2D = LineRenderer.Segments2D;
             var segments3D = LineRenderer.Segments3D;
+            var depthSegments3D = LineRenderer.DepthTestedSegments3D;
             // Each segment becomes a quad: 2 triangles = 6 vertices.
-            int maxVertices = (segments2D.Count + segments3D.Count) * 6;
+            int maxVertices = (segments2D.Count + segments3D.Count + depthSegments3D.Count) * 6;
             if (maxVertices == 0)
                 return;
 
@@ -174,6 +184,18 @@ namespace Demiurge
             float feather = LineRenderer.Feather;
             int v = 0;
 
+            // Depth-tested world geometry is emitted first so overlay/debug lines can draw over it.
+            if (depthSegments3D.Count > 0 && LineRenderer.Camera != null)
+                EmitWorldSegments(
+                    depthSegments3D,
+                    LineRenderer.Camera.ViewProjectionMatrix,
+                    halfWidth,
+                    feather,
+                    vpW,
+                    vpH,
+                    ref v);
+            int depthVertices = v;
+
             // 2D: pixels (center origin, +Y up) -> clip space (w = 1).
             float scaleX = 2f / vpW;
             float scaleY = 2f / vpH;
@@ -186,24 +208,21 @@ namespace Demiurge
 
             // 3D: world -> clip via the camera ViewProjection (skipped if no camera).
             if (segments3D.Count > 0 && LineRenderer.Camera != null)
-            {
-                var viewProjection = LineRenderer.Camera.ViewProjectionMatrix;
-                foreach (var s in segments3D)
-                {
-                    var c0 = Vector4.Transform(new Vector4(s.A, 1f), viewProjection);
-                    var c1 = Vector4.Transform(new Vector4(s.B, 1f), viewProjection);
-                    // Skip segments touching/behind the camera plane (perspective divide blows up).
-                    if (c0.W <= 1e-4f || c1.W <= 1e-4f)
-                        continue;
-                    EmitSegment(c0, c1, s.Color, halfWidth, feather, vpW, vpH, ref v);
-                }
-            }
+                EmitWorldSegments(
+                    segments3D,
+                    LineRenderer.Camera.ViewProjectionMatrix,
+                    halfWidth,
+                    feather,
+                    vpW,
+                    vpH,
+                    ref v);
 
             int drawnVertices = v;
 
             // Immediate-mode: drop everything we are about to draw (or skipped).
             segments2D.Clear();
             segments3D.Clear();
+            depthSegments3D.Clear();
 
             if (drawnVertices == 0)
                 return;
@@ -221,6 +240,30 @@ namespace Demiurge
 
             _effect.UpdateEffect(GraphicsDevice);
 
+            commandList.SetVertexBuffer(0, _vertexBuffer, 0, LineVertex.Layout.VertexStride);
+            if (depthVertices > 0)
+                DrawBatch(
+                    commandList,
+                    drawContext,
+                    DepthStencilStates.DepthRead,
+                    depthVertices,
+                    startVertex: 0);
+            if (drawnVertices > depthVertices)
+                DrawBatch(
+                    commandList,
+                    drawContext,
+                    DepthStencilStates.None,
+                    drawnVertices - depthVertices,
+                    startVertex: depthVertices);
+        }
+
+        private void DrawBatch(
+            CommandList commandList,
+            RenderDrawContext drawContext,
+            DepthStencilStateDescription depth,
+            int vertexCount,
+            int startVertex)
+        {
             _pipelineState.State.SetDefaults();
             _pipelineState.State.RootSignature = _effect.RootSignature;
             _pipelineState.State.EffectBytecode = _effect.Effect.Bytecode;
@@ -228,14 +271,33 @@ namespace Demiurge
             _pipelineState.State.InputElements = LineVertex.Layout.CreateInputElements();
             _pipelineState.State.RasterizerState = RasterizerStates.CullNone;
             _pipelineState.State.BlendState = BlendStates.NonPremultiplied;
-            _pipelineState.State.DepthStencilState = DepthStencilStates.None;
+            _pipelineState.State.DepthStencilState = depth;
             _pipelineState.State.Output.CaptureState(commandList);
             _pipelineState.Update();
 
             commandList.SetPipelineState(_pipelineState.CurrentState);
             _effect.Apply(drawContext.GraphicsContext);
-            commandList.SetVertexBuffer(0, _vertexBuffer, 0, LineVertex.Layout.VertexStride);
-            commandList.Draw(drawnVertices);
+            commandList.Draw(vertexCount, startVertex);
+        }
+
+        private void EmitWorldSegments(
+            IReadOnlyList<LineRenderer.Segment3D> segments,
+            Matrix viewProjection,
+            float halfWidth,
+            float feather,
+            float vpW,
+            float vpH,
+            ref int v)
+        {
+            foreach (var s in segments)
+            {
+                var c0 = Vector4.Transform(new Vector4(s.A, 1f), viewProjection);
+                var c1 = Vector4.Transform(new Vector4(s.B, 1f), viewProjection);
+                // Skip segments touching/behind the camera plane (perspective divide blows up).
+                if (c0.W <= 1e-4f || c1.W <= 1e-4f)
+                    continue;
+                EmitSegment(c0, c1, s.Color, halfWidth, feather, vpW, vpH, ref v);
+            }
         }
 
         // Expands one clip-space segment into a screen-space-thick, feathered quad

@@ -9,10 +9,6 @@ namespace Demiurge
     /// armor". Same contract as WeaponConfig — a row here IS the trait.</summary>
     public static class ArmorConfig
     {
-        public static ArmorStats? Get(ItemType type) => type switch
-        {
-            ItemType.BodyArmor => new ArmorStats(Max: 50f),
-            _ => null,
-        };
+        public static ArmorStats? Get(ItemType type) => ItemCatalog.TryGet(type)?.Armor;
     }
 }

@@ -18,6 +18,31 @@ namespace Demiurge
 {
     public class HUD
     {
+        /// <summary>Conquest ticket bar colours and size, shared by the layout and the script.</summary>
+        public static readonly Color Team1Color = new(235, 145, 45, 255);
+        public static readonly Color Team2Color = new(198, 203, 209, 255);
+        public const float TicketBarWidth = 190f;
+        public const float TicketBarHeight = 7f;
+        private const float PickupPromptTopMargin = 200f;
+
+        /// <summary>Breathing room between the minimap and the status readout beside it, and under
+        /// both. Page units, not pixels.</summary>
+        private const float StatusGap = 12f;
+        private const float OperatingPromptTopMargin = 400f;
+        /// <summary>Text that belongs to nobody — connecting words, coordinates, reasons.</summary>
+        public static readonly Color NeutralColor = new(235, 238, 242, 245);
+
+        /// <summary>
+        /// The colour a team is drawn in anywhere on the HUD: the ticket bar, the activity feed.
+        /// Team 1 is orange and team 2 grey, matching the cat models the two sides wear.
+        /// </summary>
+        public static Color TeamColor(int team) => team switch
+        {
+            1 => Team1Color,
+            2 => Team2Color,
+            _ => NeutralColor,
+        };
+
         public static Entity CreateTerminal(
             Game game,
             ClientInputState inputState,
@@ -77,7 +102,59 @@ namespace Demiurge
             };
         }
 
-        public static Entity CreateUI(Game game)
+        /// <summary>
+        /// The bottom-left minimap. Its own entity and its own UIComponent, because it is the one
+        /// piece of HUD that has to share a coordinate system with LineRenderer — see MinimapScript,
+        /// which pins this component's resolution to the back buffer so its icons land where its
+        /// lines do. Folding it into CreateUI's page would impose that on everything else.
+        /// </summary>
+        public static Entity CreateMinimap(
+            Game game,
+            PlayerRegistry registry,
+            ObjectRegistry objects,
+            TeamIntel intel,
+            TerrainState terrain,
+            ClientInputState inputState,
+            Entity cameraEntity)
+        {
+            var canvas = new Canvas();
+            var ui = new UIComponent
+            {
+                Page = new UIPage { RootElement = canvas },
+                RenderGroup = RenderGroup.Group31,   // rendered by AddCleanUIStage()
+            };
+
+            // Neutral, friendly, enemy — the order MinimapScript.Colour resolves a team to.
+            ISpriteProvider[] flagIcons =
+            [
+                Icon(game, "assets/images/flag_white.png"),
+                Icon(game, "assets/images/flag_blue.png"),
+                Icon(game, "assets/images/flag_red.png"),
+            ];
+
+            return new Entity("Minimap")
+            {
+                ui,
+                new MinimapScript
+                {
+                    Registry = registry,
+                    Objects = objects,
+                    Intel = intel,
+                    Terrain = terrain,
+                    InputState = inputState,
+                    CameraEntity = cameraEntity,
+                    Ui = ui,
+                    IconCanvas = canvas,
+                    FlagIcons = flagIcons,
+                    Priority = 31,
+                },
+            };
+        }
+
+        private static SpriteFromTexture Icon(Game game, string path)
+            => new() { Texture = LoadTexture(game, path) };
+
+        public static Entity CreateUI(Game game, ObjectRegistry objects, ClientInputState inputState)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
@@ -88,8 +165,8 @@ namespace Demiurge
             var bulletImage = new ImageElement
             {
                 Source = new SpriteFromTexture { Texture = bulletTexture },
-                Width = 24,
-                Height = 24,
+                Width = 15,
+                Height = 15,
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
@@ -99,9 +176,24 @@ namespace Demiurge
                 Text = "-/-",
                 TextColor = Color.White,
                 Font = font,
-                TextSize = 24,
+                TextSize = 17,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
+                Margin = new Thickness(5, 0, 0, 0),
+            };
+
+            // The pouches, as their own number. Deliberately not folded into the "loaded/capacity"
+            // pair beside it: that pair answers "how many can I fire before I reload", this answers
+            // "how many times can I reload", and a reader who has to work out which of two slashed
+            // numbers is which is being asked to do arithmetic mid-fight. Dimmer and smaller because
+            // it is the one you check between contacts rather than during one.
+            var reserveText = new TextBlock
+            {
+                Text = "-",
+                TextColor = new Color(210, 210, 215, 185),
+                Font = font,
+                TextSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(7, 0, 0, 0),
             };
 
             var healthText = new TextBlock
@@ -109,26 +201,245 @@ namespace Demiurge
                 Text = "HP —",
                 TextColor = Color.White,
                 Font = font,
-                TextSize = 24,
+                TextSize = 17,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 12, 0),
+                Margin = new Thickness(0, 0, 10, 0),
             };
 
             // Health left of the bullet icon, icon + ammo text side by side.
-            var ammoPanel = new StackPanel { Orientation = Orientation.Horizontal };
-            ammoPanel.Children.Add(healthText);
-            ammoPanel.Children.Add(bulletImage);
-            ammoPanel.Children.Add(ammoText);
-
-            var canvas = new Canvas
+            //
+            // No background panel and no fixed box around it. The readout is four short runs of
+            // text; a plate behind them was drawing a rectangle to say where the text was, which the
+            // text already says. The StackPanel sizes to its content, so "beside the minimap" is one
+            // margin rather than a box whose dimensions have to be kept in step with the font.
+            //
+            // The margin is in this page's 1280x720 units while the minimap's footprint is in
+            // back-buffer pixels, so it is converted rather than copied — the two spaces are only
+            // equal by accident of aspect, and would stop being so on a non-16:9 window.
+            float toPageUnits =
+                UIComponent.DefaultHeight / (float)game.GraphicsDevice.Presenter.BackBuffer.Height;
+            var statusPanel = new StackPanel
             {
-                Width = 100,
-                Height = 100,
-                BackgroundColor = new Color(0, 0, 0, 100),
+                Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(
+                    MinimapScript.CornerFootprint * toPageUnits + StatusGap,
+                    0,
+                    0,
+                    StatusGap),
             };
-            canvas.Children.Add(ammoPanel);
+            statusPanel.Children.Add(healthText);
+            statusPanel.Children.Add(bulletImage);
+            statusPanel.Children.Add(ammoText);
+            statusPanel.Children.Add(reserveText);
+
+            var missingThumbnail = new SpriteFromTexture
+            {
+                Texture = CreateMissingThumbnail(game),
+            };
+            var thumbnails = ItemCatalog.All.ToDictionary(
+                definition => definition.Type,
+                definition => LoadThumbnail(game, definition.Id, missingThumbnail));
+
+            var hotbarBorders = new Border[HotbarConfig.SlotCount];
+            var hotbarImages = new ImageElement[HotbarConfig.SlotCount];
+            var hotbarLabels = new TextBlock[HotbarConfig.SlotCount];
+            var hotbarPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 18),
+            };
+            for (int i = 0; i < HotbarConfig.SlotCount; i++)
+            {
+                var image = new ImageElement
+                {
+                    Source = missingThumbnail,
+                    Width = 48,
+                    Height = 38,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                var label = new TextBlock
+                {
+                    Text = $"{i + 1}",
+                    TextColor = Color.White,
+                    Font = font,
+                    TextSize = 15,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                var content = new StackPanel
+                {
+                    Orientation = Orientation.Vertical,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                content.Children.Add(image);
+                content.Children.Add(label);
+
+                var border = new Border
+                {
+                    Width = 86,
+                    Height = 66,
+                    Margin = new Thickness(2, 2, 2, 2),
+                    BorderThickness = new Thickness(2, 2, 2, 2),
+                    BorderColor = new Color(125, 125, 125, 230),
+                    BackgroundColor = new Color(10, 10, 12, 190),
+                    Content = content,
+                };
+                hotbarBorders[i] = border;
+                hotbarImages[i] = image;
+                hotbarLabels[i] = label;
+                hotbarPanel.Children.Add(border);
+            }
+
+            var root = new Grid();
+            root.Children.Add(statusPanel);
+            root.Children.Add(hotbarPanel);
+
+            // Conquest tickets, top centre: the two sides face each other across the middle, the
+            // way Battlefield reads — team 1 orange on the left, team 2 grey on the right.
+            var ticketPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 14, 0, 0),
+            };
+            var ticketCounters = new TextBlock[2];
+            var ticketFills = new Border[2];
+            for (int i = 0; i < 2; i++)
+            {
+                var color = i == 0 ? Team1Color : Team2Color;
+                // Starts at the full count rather than blank: the server's first word on the subject
+                // may be up to one bleed interval away, and a starting score is what is true until
+                // then. The server re-sends every interval, so a wrong guess corrects itself.
+                var counter = new TextBlock
+                {
+                    Text = $"{ConquestConfig.StartingTickets}",
+                    TextColor = color,
+                    Font = font,
+                    TextSize = 26,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+
+                // Canvas rather than a Grid: the fill is sized in pixels every update, and a Canvas
+                // is the panel that leaves a child's Width alone.
+                var fill = new Border
+                {
+                    Width = TicketBarWidth,
+                    Height = TicketBarHeight,
+                    BackgroundColor = color,
+                };
+                var track = new Canvas
+                {
+                    Width = TicketBarWidth,
+                    Height = TicketBarHeight,
+                    BackgroundColor = new Color(12, 14, 16, 190),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                track.Children.Add(fill);
+
+                var column = new StackPanel
+                {
+                    Orientation = Orientation.Vertical,
+                    Width = TicketBarWidth,
+                    Margin = new Thickness(i == 0 ? 0 : 18, 0, i == 0 ? 18 : 0, 0),
+                };
+                column.Children.Add(counter);
+                column.Children.Add(track);
+
+                ticketCounters[i] = counter;
+                ticketFills[i] = fill;
+                ticketPanel.Children.Add(column);
+            }
+            root.Children.Add(ticketPanel);
+
+            // One row per event, each row a horizontal run of text blocks, because a line mixes
+            // colours: the actors are drawn in their team colour and the words between them are not.
+            var activityLines = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(12, 8, 12, 8),
+            };
+            var activityPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 125),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 18, 18, 0),
+                Content = activityLines,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(activityPanel);
+
+            // Below the reticle, where the thing being offered is: the prompt is about what you are
+            // standing on, so it reads with the world rather than with the status corner.
+            var pickupText = new TextBlock
+            {
+                Text = "",
+                TextColor = new Color(240, 243, 247, 250),
+                Font = font,
+                TextSize = 20,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                WrapText = false,
+                Margin = new Thickness(16, 8, 16, 8),
+            };
+            var pickupPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 150),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, PickupPromptTopMargin, 0, 0),
+                Content = pickupText,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(pickupPanel);
+
+            // Held-Tab board. One vertical run of rows, rebuilt when the server sends a new one
+            // rather than every frame — it changes on a kill, not on a tick.
+            var scoreboardRows = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(18, 12, 18, 12),
+            };
+            var scoreboardPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 205),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Content = scoreboardRows,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(scoreboardPanel);
+
+            var respawnText = new TextBlock
+            {
+                Text = "KILLCAM",
+                TextColor = Color.White,
+                Font = font,
+                TextSize = 30,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(20, 12, 20, 12),
+            };
+            var respawnPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 175),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                // Below the ticket bar, which now owns the top centre.
+                Margin = new Thickness(0, 92, 0, 0),
+                Content = respawnText,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(respawnPanel);
 
             // Put the driving script on the same entity as the UI and hand it the text
             // block to write into.
@@ -136,13 +447,35 @@ namespace Demiurge
             {
                 new UIComponent
                 {
-                    Page = new UIPage { RootElement = canvas },
+                    Page = new UIPage { RootElement = root },
                     RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
                 },
                 new HudScript {
-                    canvas = canvas,
+                    Root = root,
                     AmmoText = ammoText,
-                    HealthText = healthText },
+                    ReserveText = reserveText,
+                    HealthText = healthText,
+                    HotbarBorders = hotbarBorders,
+                    HotbarImages = hotbarImages,
+                    HotbarLabels = hotbarLabels,
+                    MissingThumbnail = missingThumbnail,
+                    Thumbnails = thumbnails,
+                    RespawnPanel = respawnPanel,
+                    RespawnText = respawnText,
+                    Readiness = game.Services.GetService<SpawnReadiness>(),
+                    WeaponPanels = [statusPanel, hotbarPanel],
+                    PickupPanel = pickupPanel,
+                    PickupText = pickupText,
+                    Objects = objects,
+                    ActivityPanel = activityPanel,
+                    ActivityLines = activityLines,
+                    ActivityFont = font,
+                    ScoreboardPanel = scoreboardPanel,
+                    ScoreboardRows = scoreboardRows,
+                    InputState = inputState,
+                    TicketCounters = ticketCounters,
+                    TicketFills = ticketFills,
+                },
             };
 
             return uiEntity;
@@ -249,6 +582,42 @@ namespace Demiurge
                 PixelFormat.R8G8B8A8_UNorm_SRgb, img.Data);
         }
 
+        private static SpriteFromTexture LoadThumbnail(
+            Game game,
+            string itemId,
+            SpriteFromTexture missing)
+        {
+            string name = itemId[(itemId.IndexOf(':') + 1)..];
+            string path = Path.Combine("assets", "images", "thumbnails", $"{name}.png");
+            return File.Exists(path)
+                ? new SpriteFromTexture { Texture = LoadTexture(game, path) }
+                : missing;
+        }
+
+        private static Texture CreateMissingThumbnail(Game game)
+        {
+            const int size = 32;
+            var pixels = new byte[size * size * 4];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    bool purple = ((x / 8) + (y / 8)) % 2 == 0;
+                    int offset = (y * size + x) * 4;
+                    pixels[offset] = purple ? (byte)210 : (byte)8;
+                    pixels[offset + 1] = purple ? (byte)20 : (byte)8;
+                    pixels[offset + 2] = purple ? (byte)230 : (byte)8;
+                    pixels[offset + 3] = 255;
+                }
+            }
+            return Texture.New2D(
+                game.GraphicsDevice,
+                size,
+                size,
+                PixelFormat.R8G8B8A8_UNorm_SRgb,
+                pixels);
+        }
+
         /// <summary>
         /// Rebuilds the stats string only when a value changes, so steady-state
         /// frames allocate nothing.
@@ -304,20 +673,100 @@ namespace Demiurge
         public class HudScript : SyncScript
         {
             public TextBlock AmmoText { get; set; } = null!;
+            public TextBlock ReserveText { get; set; } = null!;
             public TextBlock HealthText { get; set; } = null!;
-            public Canvas canvas {get; set; } = null!;
+            public UIElement Root { get; set; } = null!;
+            public Border[] HotbarBorders { get; set; } = [];
+            public ImageElement[] HotbarImages { get; set; } = [];
+            public TextBlock[] HotbarLabels { get; set; } = [];
+            public SpriteFromTexture MissingThumbnail { get; set; } = null!;
+            public IReadOnlyDictionary<ItemType, SpriteFromTexture> Thumbnails { get; set; }
+                = new Dictionary<ItemType, SpriteFromTexture>();
+            public UIElement RespawnPanel { get; set; } = null!;
+            public TextBlock RespawnText { get; set; } = null!;
+            /// <summary>Ammo, health and the hotbar — everything about the weapon in hand. Hidden
+            /// together whenever the hands are not available for one.</summary>
+            public UIElement[] WeaponPanels { get; set; } = [];
+            public UIElement PickupPanel { get; set; } = null!;
+            public TextBlock PickupText { get; set; } = null!;
+            /// <summary>Every replicated object, so the prompt can find the pickup underfoot.
+            /// Netcode writes, view reads — the usual direction.</summary>
+            public ObjectRegistry Objects { get; set; } = null!;
+            public UIElement ActivityPanel { get; set; } = null!;
+            public StackPanel ActivityLines { get; set; } = null!;
+            public SpriteFont ActivityFont { get; set; } = null!;
+            /// <summary>Read before polling Tab: the developer terminal completes command tokens
+            /// with it, and a board that popped up behind an open terminal would be answering a
+            /// keystroke that was never meant for the game.</summary>
+            public ClientInputState InputState { get; set; } = null!;
+            public UIElement ScoreboardPanel { get; set; } = null!;
+            public StackPanel ScoreboardRows { get; set; } = null!;
+            /// <summary>Index 0 is team 1, index 1 is team 2 — the two sides the bar draws.</summary>
+            public TextBlock[] TicketCounters { get; set; } = [];
+            public Border[] TicketFills { get; set; } = [];
 
             private PlayerRegistry _registry = null!;
+            private NetworkManager _network = null!;
+            private readonly Queue<(ActivityFeedSegment[] Segments, long Expires)> _activity = [];
+            private readonly Queue<ActivityFeedSegment[]> _receivedActivity = [];
+            private readonly object _activityGate = new();
+            private const int MaximumActivityLines = 6;
+            private static readonly long ActivityLifetimeTicks =
+                8L * System.Diagnostics.Stopwatch.Frequency;
 
             private int _lastAmmo = int.MinValue;
+            private int _lastReserve = int.MinValue;
             private bool _lastReloading;
             private int _lastHealth = int.MinValue;
             private bool _lastVisible;
+            private HotbarSlot _lastHotbar;
+            private bool _lastDeploying;
+
+            /// <summary>Null in configurations without a runtime session (the editor status HUD).</summary>
+            public SpawnReadiness? Readiness { get; set; }
+            private uint _lastPrimaryId = uint.MaxValue;
+            private uint _lastShovelId = uint.MaxValue;
+            private uint _lastGrenadeId = uint.MaxValue;
+            private int _lastGrenades = int.MinValue;
+            private bool _lastDead;
+            private int _lastRespawnSeconds = int.MinValue;
+            /// <summary>Network id the prompt currently names; 0 for none. Keyed by id rather than
+            /// by item type so walking between two identical rifles still refreshes.</summary>
+            private uint _promptedPickup;
+            private bool _weaponPanelsShown = true;
+
+            // Written on the network thread, read on the main thread — the whole message at once,
+            // since it is the complete score rather than a delta. Applied in Update.
+            private MatchTicketsData? _receivedTickets;
+            private readonly object _ticketGate = new();
+            private readonly int[] _shownTickets = [-1, -1];
+
+            // Same hand-off as the tickets above, and for the same reason: the board arrives whole,
+            // on the network thread, and is applied on the main one.
+            private ScoreboardData? _receivedScoreboard;
+            private readonly object _scoreboardGate = new();
+            private ScoreboardEntry[] _scoreboard = [];
+            private bool _scoreboardDirty;
+            private bool _scoreboardShown;
 
             public override void Start()
             {
                 _registry = Services.GetSafeServiceAs<PlayerRegistry>();
-                canvas.Visibility = Visibility.Collapsed;   // until spawn
+                _network = Services.GetSafeServiceAs<NetworkManager>();
+                _network.ActivityFeedReceived += OnActivityFeed;
+                _network.MatchTicketsReceived += OnMatchTickets;
+                _network.ScoreboardReceived += OnScoreboard;
+                Root.Visibility = Visibility.Collapsed;   // until spawn
+            }
+
+            public override void Cancel()
+            {
+                if (_network is not null)
+                {
+                    _network.ActivityFeedReceived -= OnActivityFeed;
+                    _network.MatchTicketsReceived -= OnMatchTickets;
+                    _network.ScoreboardReceived -= OnScoreboard;
+                }
             }
 
             public override void Update()
@@ -328,8 +777,12 @@ namespace Demiurge
                 if (visible != _lastVisible)
                 {
                     _lastVisible = visible;
-                    canvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                    Root.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
                 }
+                RefreshTickets();
+                // Before the local-player gate: the board is about the match, so a dead or
+                // not-yet-spawned player is exactly who wants to look at it.
+                RefreshScoreboard();
                 if (local == null) return;
 
                 int health = local.Status?.Health.Current ?? 0;
@@ -339,16 +792,394 @@ namespace Demiurge
                     HealthText.Text = $"HP {health}";
                 }
 
+                RefreshRespawn(local);
+
                 int ammo = local.IsArmed ? local.Ammo : -1;
-                if (ammo != _lastAmmo || local.IsReloading != _lastReloading)
+                int reserve = local.IsArmed ? local.Reserve : -1;
+                // Reserve joins the change gate: picking a weapon up can change the pouches without
+                // changing what is loaded, and that must not go unredrawn until the next shot.
+                if (ammo != _lastAmmo || reserve != _lastReserve || local.IsReloading != _lastReloading)
                 {
                     _lastAmmo = ammo;
+                    _lastReserve = reserve;
                     _lastReloading = local.IsReloading;
                     AmmoText.Text = !local.IsArmed ? "--"
                         : local.IsReloading ? "RELOADING"
                         : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
+                    ReserveText.Text = local.IsArmed ? $"+{local.Reserve}" : string.Empty;
+                }
+
+                RefreshDeploying();
+                RefreshWeaponPanels(local);
+                RefreshHotbar(local);
+                RefreshPickupPrompt(local);
+                RefreshActivityFeed();
+            }
+
+            private void OnActivityFeed(ActivityFeedData activity)
+            {
+                if (activity.Segments is not { Length: > 0 } segments) return;
+                lock (_activityGate)
+                    _receivedActivity.Enqueue(segments);
+            }
+
+            /// <summary>Network thread. Keeps only the newest score; an older one that overtakes it
+            /// carries no information the newer one lacks.</summary>
+            private void OnMatchTickets(MatchTicketsData tickets)
+            {
+                lock (_ticketGate)
+                    _receivedTickets = tickets;
+            }
+
+            private void RefreshTickets()
+            {
+                MatchTicketsData? received;
+                lock (_ticketGate)
+                {
+                    received = _receivedTickets;
+                    _receivedTickets = null;
+                }
+                if (received is not { Teams: { } teams }) return;
+
+                foreach (var entry in teams)
+                {
+                    int index = entry.Team - 1;   // team 1 draws left, team 2 right
+                    if (index < 0 || index >= TicketCounters.Length) continue;
+                    if (_shownTickets[index] == entry.Tickets) continue;
+
+                    _shownTickets[index] = entry.Tickets;
+                    TicketCounters[index].Text = entry.Tickets.ToString();
+                    TicketFills[index].Width = TicketBarWidth
+                        * Math.Clamp(entry.Tickets / (float)ConquestConfig.StartingTickets, 0f, 1f);
                 }
             }
+
+            /// <summary>
+            /// The weapon read-out belongs to a man who can use a weapon. Hauling something or
+            /// working an emplacement takes his hands, so the ammo, the health and the hotbar go
+            /// with them rather than reporting on a rifle he cannot reach.
+            /// </summary>
+            private void RefreshWeaponPanels(LocalPlayer local)
+            {
+                bool available = !local.IsCarrying && !local.IsOperating;
+                if (available == _weaponPanelsShown) return;
+                _weaponPanelsShown = available;
+
+                foreach (var panel in WeaponPanels)
+                    panel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            /// <summary>
+            /// Offers what E would actually take. The choice is PickupTargeting's, in Common, and
+            /// the server runs the identical call in ItemSystem.ApplyInteract — so the prompt cannot
+            /// name one weapon while the key equips another.
+            /// </summary>
+            private void RefreshPickupPrompt(LocalPlayer local)
+            {
+                // Hands full: the only thing E can do is put it down, so that is what to offer. It
+                // takes priority over anything underfoot for the same reason the server does — you
+                // cannot pick a second thing up while holding the first.
+                if (!local.IsDead && local.CarriedItem is { } hauled)
+                {
+                    ShowPrompt(
+                        hauled.NetworkId,
+                        $"Press E to put down {ItemCatalog.Name(hauled.Item.Type)}");
+                    return;
+                }
+
+                // A dozen or so world items, scanned once a frame. Cheap enough not to schedule,
+                // and it has to be live: the offer changes as you walk.
+                // Working one: the only thing left to offer is how to stop.
+                if (local.IsOperating)
+                {
+                    ShowPrompt(uint.MaxValue, "Press F to step away", lower: true);
+                    return;
+                }
+
+                var pickup = local.IsDead
+                    ? null
+                    : PickupTargeting.Nearest(local.Position, Objects.Objects, Describe);
+
+                if (pickup is null)
+                {
+                    ShowPrompt(0u, null);
+                    return;
+                }
+
+                // Something emplaced offers two things and both are worth saying, because one key
+                // takes it away and the other works it — a gunner who only knew about E would carry
+                // off the weapon he meant to fire.
+                string name = ItemCatalog.Name(pickup.Item.Type);
+                ShowPrompt(
+                    pickup.NetworkId,
+                    ItemConfig.IsCarryable(pickup.Item.Type)
+                        ? $"Press F to use {name}    Press E to pick up {name}"
+                        : $"Press E to pick up {name}");
+            }
+
+            /// <summary>Shows one prompt, keyed by the object it names so identical neighbours still
+            /// refresh. Null text hides the panel.</summary>
+            private void ShowPrompt(uint networkId, string? text, bool lower = false)
+            {
+                if (networkId == _promptedPickup) return;
+                _promptedPickup = networkId;
+
+                PickupPanel.Margin = new Thickness(
+                    0,
+                    lower ? OperatingPromptTopMargin : PickupPromptTopMargin,
+                    0,
+                    0);
+                PickupPanel.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
+                if (text is not null) PickupText.Text = text;
+            }
+
+            private static PickupTargeting.Candidate Describe(NetObject obj)
+                => new(obj.Has, obj.Item.Type, obj.Transform.Position);
+
+            private void RefreshActivityFeed()
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                bool changed = false;
+                lock (_activityGate)
+                {
+                    while (_receivedActivity.TryDequeue(out var segments))
+                    {
+                        _activity.Enqueue((segments, now + ActivityLifetimeTicks));
+                        changed = true;
+                        while (_activity.Count > MaximumActivityLines)
+                            _activity.Dequeue();
+                    }
+                }
+
+                while (_activity.TryPeek(out var line) && line.Expires <= now)
+                {
+                    _activity.Dequeue();
+                    changed = true;
+                }
+                if (!changed) return;
+
+                ActivityPanel.Visibility =
+                    _activity.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+                // Rebuilt whole rather than diffed: this runs only when a line arrived or expired,
+                // and the feed is six lines of a handful of words.
+                ActivityLines.Children.Clear();
+                foreach (var entry in _activity)
+                    ActivityLines.Children.Add(BuildActivityLine(entry.Segments));
+            }
+
+            /// <summary>Network thread. Keeps only the newest board; an older one that overtakes it
+            /// would be a stale roster, and every board is complete so nothing is lost by dropping
+            /// it.</summary>
+            private void OnScoreboard(ScoreboardData data)
+            {
+                lock (_scoreboardGate) _receivedScoreboard = data;
+            }
+
+            /// <summary>
+            /// Draws the board while Tab is held.
+            ///
+            /// IsKeyDown rather than IsKeyPressed: this is a hold, and Stride's pressed edge re-fires
+            /// on the OS key auto-repeat, which would make a held key look like a burst of taps.
+            ///
+            /// Rows are rebuilt when the SERVER's board changes, not per frame and not on the key —
+            /// showing it is a visibility flip over rows that are already correct.
+            /// </summary>
+            private void RefreshScoreboard()
+            {
+                ScoreboardData? received;
+                lock (_scoreboardGate)
+                {
+                    received = _receivedScoreboard;
+                    _receivedScoreboard = null;
+                }
+                if (received is { } board)
+                {
+                    _scoreboard = board.Entries ?? [];
+                    _scoreboardDirty = true;
+                }
+
+                bool show = InputState?.TerminalOpen != true
+                    && Input.IsKeyDown(Stride.Input.Keys.Tab);
+                if (show && _scoreboardDirty)
+                {
+                    _scoreboardDirty = false;
+                    ScoreboardRows.Children.Clear();
+                    ScoreboardRows.Children.Add(BuildScoreboardRow(
+                        "PLAYER", "K", "D", new Color(210, 214, 220, 235), header: true));
+                    foreach (var entry in _scoreboard)
+                        ScoreboardRows.Children.Add(BuildScoreboardRow(
+                            entry.IsMob ? $"NPC {entry.ActorId}" : $"Player {entry.ActorId}",
+                            entry.Kills.ToString(),
+                            entry.Deaths.ToString(),
+                            TeamColor(entry.Team),
+                            header: false));
+                }
+
+                if (show == _scoreboardShown) return;
+                _scoreboardShown = show;
+                ScoreboardPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            /// <summary>One line of the board. Fixed column widths rather than a Grid: three columns
+            /// whose sizes never change do not need a layout pass to agree about them.</summary>
+            private StackPanel BuildScoreboardRow(
+                string name,
+                string kills,
+                string deaths,
+                Color color,
+                bool header)
+            {
+                var row = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                row.Children.Add(ScoreboardCell(name, color, 190f, TextAlignment.Left, header));
+                row.Children.Add(ScoreboardCell(kills, color, 55f, TextAlignment.Right, header));
+                row.Children.Add(ScoreboardCell(deaths, color, 55f, TextAlignment.Right, header));
+                return row;
+            }
+
+            private TextBlock ScoreboardCell(
+                string text,
+                Color color,
+                float width,
+                TextAlignment alignment,
+                bool header)
+            {
+                var cell = new TextBlock
+                {
+                    Text = text,
+                    TextColor = header ? new Color(160, 165, 175, 220) : color,
+                    Font = ActivityFont,
+                    TextSize = header ? 15 : 18,
+                    TextAlignment = alignment,
+                    WrapText = false,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                cell.Width = width;
+                return cell;
+            }
+
+            private StackPanel BuildActivityLine(ActivityFeedSegment[] segments)
+            {
+                var line = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                };
+                foreach (var segment in segments)
+                {
+                    line.Children.Add(new TextBlock
+                    {
+                        Text = segment.Text ?? string.Empty,
+                        TextColor = TeamColor(segment.Team),
+                        Font = ActivityFont,
+                        TextSize = 18,
+                        WrapText = false,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    });
+                }
+                return line;
+            }
+
+            private void RefreshRespawn(LocalPlayer local)
+            {
+                bool dead = local.IsDead;
+                int seconds = local.RespawnTick == 0
+                    ? RespawnConfig.WaveSeconds
+                    : Math.Max(
+                        0,
+                        (int)Math.Ceiling(
+                            (local.RespawnTick - _registry.EstimatedServerTick)
+                            / NetworkConfig.TickRate));
+                if (dead == _lastDead && (!dead || seconds == _lastRespawnSeconds)) return;
+
+                _lastDead = dead;
+                _lastRespawnSeconds = seconds;
+                RespawnPanel.Visibility = dead ? Visibility.Visible : Visibility.Collapsed;
+                if (dead)
+                    RespawnText.Text = $"KILLCAM\nRESPAWN WAVE IN {seconds}";
+            }
+
+            /// <summary>
+            /// Says why the player cannot move yet. Without it, being frozen on spawn reads as the
+            /// game being broken rather than as the game waiting for the ground to arrive.
+            /// </summary>
+            private void RefreshDeploying()
+            {
+                bool deploying = Readiness is { Ready: false };
+                if (deploying == _lastDeploying) return;
+
+                _lastDeploying = deploying;
+                if (!deploying)
+                {
+                    if (!_lastDead) RespawnPanel.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                RespawnPanel.Visibility = Visibility.Visible;
+                RespawnText.Text = "DEPLOYING\nPREPARING TERRAIN";
+            }
+
+            private void RefreshHotbar(LocalPlayer local)
+            {
+                var primary = local.ItemIn(HotbarSlot.Primary);
+                var shovel = local.ItemIn(HotbarSlot.Shovel);
+                var grenade = local.ItemIn(HotbarSlot.Grenade);
+                int grenades = local.AmmoIn(HotbarSlot.Grenade);
+                uint primaryId = primary?.NetworkId ?? 0;
+                uint shovelId = shovel?.NetworkId ?? 0;
+                uint grenadeId = grenade?.NetworkId ?? 0;
+                if (local.Hotbar == _lastHotbar
+                    && primaryId == _lastPrimaryId
+                    && shovelId == _lastShovelId
+                    && grenadeId == _lastGrenadeId
+                    && grenades == _lastGrenades)
+                    return;
+
+                _lastHotbar = local.Hotbar;
+                _lastPrimaryId = primaryId;
+                _lastShovelId = shovelId;
+                _lastGrenadeId = grenadeId;
+                _lastGrenades = grenades;
+
+                for (int i = 0; i < HotbarBorders.Length; i++)
+                {
+                    bool selected = i == (int)local.Hotbar - 1;
+                    HotbarBorders[i].BorderColor = selected
+                        ? new Color(255, 225, 105, 255)
+                        : new Color(125, 125, 125, 230);
+                    HotbarBorders[i].BackgroundColor = selected
+                        ? new Color(55, 50, 28, 220)
+                        : new Color(10, 10, 12, 190);
+                }
+
+                SetSlot(0, primary, primary == null ? "1  EMPTY" : $"1  {DisplayName(primary.Item.Type)}");
+                // The shovel is a real replicated object like the other two, so it looks its
+                // thumbnail up the same way. This used to pass forceMissing, which pinned the slot to
+                // the purple placeholder and ignored the thumbnail table entirely — written before
+                // shovel.png existed, and left behind once it did.
+                SetSlot(1, shovel, "2  SHOVEL");
+                SetSlot(2, grenade, grenade == null ? "3  EMPTY" : $"3  x{grenades}");
+            }
+
+            private void SetSlot(
+                int index,
+                NetObject? item,
+                string label)
+            {
+                HotbarLabels[index].Text = label;
+                HotbarImages[index].Visibility =
+                    item == null ? Visibility.Collapsed : Visibility.Visible;
+                if (item != null)
+                    HotbarImages[index].Source =
+                        Thumbnails.GetValueOrDefault(item.Item.Type, MissingThumbnail);
+            }
+
+            private static string DisplayName(ItemType type)
+                => ItemCatalog.Id(type).Split(':')[1].Replace('_', ' ').ToUpperInvariant();
         }
 
         public sealed class EditorStatusScript : SyncScript
@@ -381,7 +1212,7 @@ namespace Demiurge
                         $"{Settings.BlockSize.X}x{Settings.BlockSize.Y}x{Settings.BlockSize.Z}",
                     EditorToolMode.Object => Controller.SelectedPlacementId is { } selected
                         ? $"Selected {EditorPlacementIds.Display(selected)}"
-                        : Settings.ObjectId ?? "No object selected",
+                        : $"{Settings.ObjectId ?? "No object selected"} team={Settings.ObjectTeam}",
                     _ => string.Empty,
                 };
                 string value =

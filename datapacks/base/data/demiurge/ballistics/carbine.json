@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:carbine",
+  "projectileSpeed": 715,
+  "benchMoa": 4,
+  "recoilPerShotMoa": 36,
+  "recoilDecayMoaPerSecond": 30,
+  "recoilCapMoa": 220,
+  "sightingMoa": 200
+}

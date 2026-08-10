@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:dp27",
+  "networkId": 10,
+  "displayName": "DP-27",
+  "aliases": ["dp27", "dp-27", "dp_27", "dp"],
+  "category": "equippable",
+  "slot": "hand",
+  "hotbar": "primary",
+  "movementSpeedScale": 0.7,
+  "behavior": "firearm",
+  "weapon": {
+    "magazineCapacity": 47,
+    "roundsPerMinute": 550,
+    "reloadSeconds": 4,
+    "damage": 50,
+    "ballistics": "demiurge:machine_gun",
+    "fireMode": "automatic"
+  },
+  "presentation": {
+    "model": "assets/models/dp_27.gltf",
+    "aimSpeedScale": 0.7,
+    "shotSounds": ["assets/sfx/dp_27_shot_1.wav", "assets/sfx/dp_27_shot_2.wav", "assets/sfx/dp_27_shot_3.wav", "assets/sfx/dp_27_shot_4.wav"],
+    "reloadSound": "assets/sfx/dp_27_reload.wav",
+    "distantReportSound": "assets/sfx/rifle_shot_far.wav",
+    "cameraTrauma": 0.2
+  }
+}

@@ -58,6 +58,14 @@ public sealed class EditorCoreTests
         Assert.Equal(new Int3(5, 2, 1), settings.BlockSize);
         Assert.False(EditorCommandParser.Execute(
             "editor block rotate 90", settings, session).Success);
+
+        Assert.True(EditorCommandParser.Execute(
+            "editor object team 3", settings, session).Success);
+        Assert.True(EditorCommandParser.Execute(
+            "editor object flag", settings, session).Success);
+        Assert.Equal(3, settings.ObjectTeam);
+        Assert.Equal(EditorObjectChoiceKind.Flag, settings.ObjectKind);
+        Assert.Equal("demiurge:flag", settings.ObjectId);
     }
 
     [Fact]
@@ -70,7 +78,8 @@ public sealed class EditorCoreTests
             Kind = EditorPlacementKind.Mob,
             ArchetypeId = "demiurge:mob",
             Cell = new Int3(2, 80, 2),
-            WeaponId = "demiurge:glock",
+            WeaponId = "demiurge:ppsh",
+            Team = 2,
         };
         document.Placements.Add(mob);
 
@@ -78,6 +87,49 @@ public sealed class EditorCoreTests
         Assert.Equal(mob.Id, EditorPlacementIds.Resolve(document, "a1b2c3d4").Id);
         Assert.Equal(mob.Id, EditorPlacementIds.Resolve(document, mob.Id.ToString()).Id);
     }
+
+    [Fact]
+    public void PickingTakesTheNearestPlacementInsideTheRayLimit()
+    {
+        // No terrain, so every placement resolves to its cell centre.
+        var terrain = new ChunkMap();
+        var near = MobAt(new Int3(0, 0, 4));
+        var far = MobAt(new Int3(0, 0, 20));
+        EditorPlacement[] placements = [far, near];
+        var origin = new Vector3(0.5f, 0.9f, 0.5f);
+
+        Assert.Equal(
+            near.Id,
+            EditorPlacementPicker.Pick(placements, terrain, origin, Vector3.UnitZ, 100f));
+
+        // The terrain hit distance clips picking, so an object behind a hill is not reachable.
+        Assert.Null(EditorPlacementPicker.Pick(placements, terrain, origin, Vector3.UnitZ, 2f));
+
+        // A ray that misses the bounds picks nothing, even pointed the right way.
+        Assert.Null(EditorPlacementPicker.Pick(
+            placements, terrain, origin + new Vector3(3f, 0f, 0f), Vector3.UnitZ, 100f));
+    }
+
+    [Fact]
+    public void PlacementBoundsSitOnTheSurfaceAndCoverTheView()
+    {
+        var (min, max) = EditorPlacementBounds.Local(EditorPlacementKind.Mob);
+        Assert.Equal(0f, min.Y);
+        Assert.Equal(PlayerMovement.Body.Height, max.Y);
+
+        var (flagMin, flagMax) = EditorPlacementBounds.Local(EditorPlacementKind.Flag);
+        Assert.Equal(0f, flagMin.Y);
+        Assert.True(flagMax.Y > max.Y, "the flag pole is taller than a man");
+    }
+
+    private static EditorPlacement MobAt(Int3 cell) => new()
+    {
+        Id = Guid.NewGuid(),
+        Kind = EditorPlacementKind.Mob,
+        ArchetypeId = "demiurge:mob",
+        Cell = cell,
+        Team = 1,
+    };
 
     [Fact]
     public void SourceRoundTripIsCanonical()
@@ -103,7 +155,8 @@ public sealed class EditorCoreTests
             Kind = EditorPlacementKind.Mob,
             ArchetypeId = "demiurge:mob",
             Cell = new Int3(2, 50, 2),
-            WeaponId = "demiurge:glock",
+            WeaponId = "demiurge:ppsh",
+            Team = 2,
         });
 
         string directory = Path.Combine(Path.GetTempPath(), "demiurge-editor-tests", Guid.NewGuid().ToString("N"));
@@ -115,9 +168,13 @@ public sealed class EditorCoreTests
             Assert.Equal(SourceMapSerializer.Hash(document), SourceMapSerializer.Hash(loaded));
             Assert.Equal([1L, 2L], loaded.Blocks.Select(block => block.Sequence));
             Assert.Equal(
-                "demiurge:glock",
+                "demiurge:ppsh",
                 Assert.Single(loaded.Placements, placement =>
                     placement.Kind == EditorPlacementKind.Mob).WeaponId);
+            Assert.Equal(
+                2,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == EditorPlacementKind.Mob).Team);
         }
         finally
         {
@@ -215,7 +272,16 @@ public sealed class EditorCoreTests
             Kind = EditorPlacementKind.Mob,
             ArchetypeId = "demiurge:mob",
             Cell = document.Placements[0].Cell with { X = 2 },
-            WeaponId = "demiurge:glock",
+            WeaponId = "demiurge:ppsh",
+            Team = 2,
+        });
+        document.Placements.Add(new EditorPlacement
+        {
+            Id = Guid.NewGuid(),
+            Kind = EditorPlacementKind.Flag,
+            ArchetypeId = "demiurge:flag",
+            Cell = document.Placements[0].Cell with { X = 4 },
+            Team = 0,
         });
         var runtime = EditorTerrainEvaluator.Bake(document);
         string directory = Path.Combine(
@@ -232,9 +298,17 @@ public sealed class EditorCoreTests
             Assert.Equal(runtime.ContentHash, loaded.ContentHash);
             Assert.Equal(runtime.Terrain.Count, loaded.Terrain.Count);
             Assert.Equal(
-                ItemType.Glock,
+                ItemType.Ppsh,
                 Assert.Single(loaded.Placements, placement =>
                     placement.Kind == RuntimePlacementKind.Mob).Item);
+            Assert.Equal(
+                2,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == RuntimePlacementKind.Mob).Team);
+            Assert.Equal(
+                0,
+                Assert.Single(loaded.Placements, placement =>
+                    placement.Kind == RuntimePlacementKind.Flag).Team);
 
             foreach (var expected in runtime.Terrain.Snapshot())
             {

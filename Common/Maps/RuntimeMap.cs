@@ -7,6 +7,14 @@ public enum RuntimePlacementKind : byte
     Pickup = 1,
     Mob = 2,
     PlayerSpawn = 3,
+    Flag = 4,
+
+    /// <summary>
+    /// A weapon pickup presented as a supply crate rather than as the weapon itself. Same item and
+    /// same pickup rules as <see cref="Pickup"/> — only the world presentation differs, which is why
+    /// it is a placement kind and not an item.
+    /// </summary>
+    SupplyCrate = 5,
 }
 
 public readonly record struct RuntimePlacement(
@@ -14,11 +22,12 @@ public readonly record struct RuntimePlacement(
     Vector3 Position,
     float Yaw = 0f,
     ItemType Item = default,
-    string SpawnId = "default");
+    string SpawnId = "default",
+    int Team = 1);
 
 public sealed class RuntimeMap
 {
-    public const int CurrentFormatVersion = 1;
+    public const int CurrentFormatVersion = 3;
 
     public required Guid MapId { get; init; }
     public required string Name { get; init; }

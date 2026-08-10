@@ -5,11 +5,12 @@ mouse; Escape or backtick closes it. Shift+tilde enters `~` for relative coordin
 session, `F3` toggles the free camera.
 
 Press `Tab` to complete command tokens. Block and item arguments complete to canonical IDs such as
-`demiurge:stone` and `demiurge:ak47`; when several candidates remain, press `Tab` again to list them.
+`demiurge:stone` and `demiurge:sks`; when several candidates remain, press `Tab` again to list them.
 
 Session and map commands are handled locally by the persistent client coordinator. Runtime `spawn`
 and `equip` commands are sent to the authoritative server. Editor commands mutate only the local
-source document and never travel over the network.
+source document and never travel over the network. `ai track` is a client-side view toggle and is
+also answered locally, so it never reaches the server.
 
 ## Runtime Commands
 
@@ -26,15 +27,23 @@ Commands accept an optional leading `/`.
 spawn mob [x z]
 spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
+team <@s|@actor-id> <team>
+ai stats
+ai track [off|on|beacons|facing|clustering|colliders|ids|states]
+net <seed|log>
 ```
 
 Examples:
 
 ```text
 spawn mob
-spawn pickup demiurge:glock ~3 ~
+spawn pickup demiurge:ppsh ~3 ~
 equip @s demiurge:body_armor
-equip @60002 demiurge:ak47
+equip @60002 demiurge:sks
+team @s 2
+team @60002 1
+ai track on
+ai track beacons clustering
 ```
 
 Without coordinates, spawn commands place the entity three metres in front of the issuer. Coordinate
@@ -43,22 +52,86 @@ terrain surface. Mob and player IDs share one actor-ID space; a successful mob s
 use with `equip`, for example `actor ID @60000`. A pickup spawn prints a distinct replicated object
 ID such as `object ID #1`; `equip` accepts actor IDs, not object IDs.
 
+`team` moves an actor — player or NPC — to another side, and puts him where that side starts:
+team decides who shoots at you and where you respawn, so a switched actor left standing in what is
+now the enemy line is a free kill. Which team numbers exist comes from the loaded map's player
+spawns, so the command refuses one the map does not have rather than the grammar rejecting it. An
+NPC is given a fresh brain on its new side, so it re-forms into a squad there instead of carrying
+its old squad's orders across.
+
+### `net` — in-process transport diagnostics
+
+Answered on the client like `ai track`, and only meaningful when this session hosts its own server
+(singleplayer, `session host`, or a playtest). Against a remote server the delivery decisions are
+Riptide's, not ours, and the command says so rather than inventing an answer.
+
+```text
+net seed    the delivery seed for this session
+net log     the last 256 delivery decisions, newest first
+```
+
+Singleplayer runs a deliberately hostile transport: the unreliable channel drops, reorders and
+duplicates; the reliable channel reorders but never drops. This is not a bug to be tuned out. A
+localhost socket essentially never misbehaves, so without it singleplayer cannot catch an ordering or
+duplication assumption at all — it would simply pass, and the failure would surface later against a
+real server. See `docs/superpowers/specs/2026-08-02-transport-parity-design.md`.
+
+Quote **both** values when reporting a glitch. The seed fixes the delivery *policy*, not the traffic:
+the message sequence depends on frame-to-frame input timing, so the seed alone will not replay a
+session.
+
+### `ai track` — NPC debug overlay
+
+Draws every AI actor the client knows about. Layers combine, `off` clears them, and no argument
+reports the current state. Actors are identified as NPCs by `ActorIds.IsMob` (id >= 60000) rather
+than by a replicated flag, so nothing was added to the wire for it.
+
+| Layer | Draws |
+| --- | --- |
+| `beacons` | A vertical beam per NPC in team colour, without depth testing, so it reads through terrain |
+| `facing` | A ground ring and heading spoke, depth tested, for reading stance and bearing up close |
+| `clustering` | A line between every pair of NPCs within 4 m — roughly what one burst or grenade covers, which is what bunching costs them |
+| `colliders` | The volumes a shot is tested against, for **every** actor including yourself: the hit capsule (`GunConfig.HitRadius` 0.6 m over `PlayerMovement.Body.Height` 1.8 m), the head sphere that doubles damage (`HeadCenterHeight` ± `HeadRadius`, dropping when crouched), and — dimmer — the *movement* capsule, whose 0.4 m radius is a different volume from the hit capsule's 0.6 m |
+| `ids` | Each NPC's actor id over its head — the bare number, which `equip` and friends take as `@<id>` |
+| `states` | Each NPC's current decision over its head: `OBJECTIVE`, `COVER`, `BOUND`, `ENTRENCH`, `HOLD` or `GRENADE` |
+
+`on` and `all` enable every layer. The overlay is drawn by `NpcTrackerScript` from the replicated
+player registry and touches no simulation or network state; the toggle is process-wide, so it
+survives session transitions and can be set before a session exists.
+
+`states` is the one layer that needs something from the server, and it is deliberately **not on the
+wire**: an NPC's intent is a server-side decision no client needs to draw the world, and replicating
+it would cost every player bandwidth forever for a developer's occasional look — the same reasoning
+that keeps `SquadRole` off the wire. `MobSystem` hands the labels to `MobDebugFeed`, a process-local
+snapshot, so `states` shows something only when this session runs the server (singleplayer,
+`session host`, or a playtest) and the command says so when it does not. The server builds the
+snapshot only while the layer is on.
+
+Labels are drawn by `LineText` as camera-facing line glyphs rather than as UI text. Stride's
+`FastTextRenderer` crashes on this platform, and a UI label anchored to a moving NPC would have to be
+projected through a view-projection matrix that is one frame stale; a billboard needs the camera's
+orientation only.
+
 Runtime commands mutate the current server session only. They do not modify `source.json`, so
 `map save` does not preserve a runtime-spawned mob or a weapon assigned with runtime `equip`.
 Editor mob placements have a separate persistent `WeaponId`; existing placements without one
-default to an AK-47.
+default to the active datapack's `npcPrimary` item.
 
 Canonical item IDs:
 
 ```text
-demiurge:ak47
-demiurge:awp
-demiurge:glock
+demiurge:sks
+demiurge:ppsh
+demiurge:mosin
+demiurge:dp27
+demiurge:shovel
 demiurge:body_armor
+demiurge:grenade
+demiurge:mortar
 ```
 
 Short aliases are accepted as input, but results always print canonical IDs. Add new canonical names
-and aliases in `Common/ItemCatalog.cs`; never use `ItemType.ToString()` as external identity.
+and aliases in a datapack item JSON file; never use `ItemType.ToString()` as external identity.
 
 ## Architecture
 
@@ -136,6 +209,7 @@ editor block size <size>
 editor block size <x> <y> <z>
 
 editor object pickup <item>
+editor object crate <item>
 editor object mob
 editor object spawn <spawn-id>
 editor object clear
@@ -157,6 +231,11 @@ Use `help <command>` for contextual terminal help. In particular, `help object` 
 selection commands and available item IDs. Placing an object reports its stable eight-character
 placement ID. `editor object list` prints every placement, and Tab completes IDs for `select` and
 `equip`. These are editor IDs, not runtime actor IDs prefixed with `@`.
+
+`editor object crate <item>` places the same pickup as `editor object pickup`, drawn as a supply
+crate instead of as the weapon and resting still on the ground rather than hovering and spinning.
+Taking one gives the item inside, and from that moment it looks like an ordinary weapon — carried or
+dropped.
 
 Canonical blocks are `demiurge:grass`, `demiurge:dirt`, and `demiurge:stone`.
 The default terrain fill is `demiurge:grass`, which enables automatic surface classification:
@@ -234,9 +313,9 @@ Examples:
 
 ```text
 spawn mob 10 -15
-spawn pickup ak47 0 0
+spawn pickup sks 0 0
 players
-equip @60000 glock
+equip @60000 ppsh
 map load trench-test
 ```
 

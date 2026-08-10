@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:semi_automatic_rifle",
+  "projectileSpeed": 800,
+  "benchMoa": 3,
+  "recoilPerShotMoa": 32,
+  "recoilDecayMoaPerSecond": 40,
+  "recoilCapMoa": 190,
+  "sightingMoa": 150
+}

@@ -1,5 +1,9 @@
 using Demiurge.Editor;
 using Demiurge.GameClient;
+using Stride.CommunityToolkit.Bepu;
+using Stride.CommunityToolkit.Engine;
+using Stride.CommunityToolkit.Games;
+using Stride.CommunityToolkit.Rendering.ProceduralModels;
 using Stride.Engine;
 
 namespace Demiurge;
@@ -50,17 +54,35 @@ public sealed class EditorPlacementViewFactory : IDisposable
                 entity.Scene = scene;
             }
             entity.Transform.Position = EditorPlacementPosition.Resolve(
-                session.Terrain, placement).ToStride();
+                session.Terrain, placement).ToStride()
+                + (placement.Kind == EditorPlacementKind.Flag
+                    ? Stride.Core.Mathematics.Vector3.UnitY * 1.2f
+                    : Stride.Core.Mathematics.Vector3.Zero);
             entity.Transform.Rotation = Stride.Core.Mathematics.Quaternion.RotationY(placement.Yaw);
         }
     }
 
     private Entity Create(EditorPlacement placement)
     {
+        if (placement.Kind == EditorPlacementKind.Flag)
+        {
+            var flag = game.Create3DPrimitive(
+                PrimitiveModelType.Cube,
+                new Primitive3DEntityOptions
+                {
+                    Size = new System.Numerics.Vector3(0.18f, 2.4f, 0.18f),
+                });
+            flag.Name = $"EditorPlacement_{placement.Id}";
+            flag.Transform.Position.Y = 1.2f;
+            return flag;
+        }
+
         string? modelPath = placement.Kind switch
         {
             EditorPlacementKind.Pickup when ItemCatalog.TryResolve(placement.ArchetypeId, out var item)
                 => ItemCosmetics.Model(item),
+            // A crate looks the same whatever is inside it; the archetype only decides what it gives.
+            EditorPlacementKind.SupplyCrate => ItemCosmetics.SupplyCrateModel,
             EditorPlacementKind.Mob => "assets/models/dummy.gltf",
             _ => null,
         };

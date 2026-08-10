@@ -69,21 +69,35 @@ public static class EditorValidation
             switch (placement.Kind)
             {
                 case EditorPlacementKind.Pickup:
+                case EditorPlacementKind.SupplyCrate:
                     if (!ItemCatalog.TryResolve(placement.ArchetypeId, out _))
                         errors.Add($"Placement {placement.Id} has unknown item {placement.ArchetypeId}");
                     break;
                 case EditorPlacementKind.Mob:
                     if (placement.ArchetypeId != "demiurge:mob")
                         errors.Add($"Placement {placement.Id} has unknown mob {placement.ArchetypeId}");
-                    string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47);
-                    if (!ItemCatalog.TryResolve(weaponId, out var weapon)
-                        || WeaponConfig.Get(weapon) is null)
+                    if (placement.WeaponId is { } weaponId
+                        && (!ItemCatalog.TryResolve(weaponId, out var weapon)
+                            || WeaponConfig.Get(weapon) is null))
                         errors.Add($"Placement {placement.Id} has unknown weapon {weaponId}");
+                    if (placement.Team <= 0)
+                        errors.Add($"Placement {placement.Id} must use a positive team");
                     break;
                 case EditorPlacementKind.PlayerSpawn:
                     spawns++;
                     if (!placement.ArchetypeId.StartsWith("demiurge:spawn/", StringComparison.Ordinal))
                         errors.Add($"Placement {placement.Id} has invalid spawn ID {placement.ArchetypeId}");
+                    if (placement.Team <= 0)
+                        errors.Add($"Placement {placement.Id} must use a positive team");
+                    break;
+                case EditorPlacementKind.Flag:
+                    if (placement.ArchetypeId != "demiurge:flag")
+                        errors.Add($"Placement {placement.Id} has unknown flag {placement.ArchetypeId}");
+                    if (placement.Team != 0)
+                        errors.Add($"Flag placement {placement.Id} must start neutral");
+                    break;
+                default:
+                    errors.Add($"Placement {placement.Id} has unknown kind {placement.Kind}");
                     break;
             }
         }
@@ -91,7 +105,8 @@ public static class EditorValidation
         if (spawns == 0) errors.Add("Source map requires at least one player spawn");
         if (document.TerrainStrokes.Count > 10_000)
             warnings.Add("Map has more than 10,000 terrain strokes; consider compaction");
-        if (!document.Placements.Any(p => p.Kind == EditorPlacementKind.Pickup))
+        if (!document.Placements.Any(p =>
+                p.Kind is EditorPlacementKind.Pickup or EditorPlacementKind.SupplyCrate))
             warnings.Add("Map has no pickups");
         if (!document.Placements.Any(p => p.Kind == EditorPlacementKind.Mob))
             warnings.Add("Map has no mobs");

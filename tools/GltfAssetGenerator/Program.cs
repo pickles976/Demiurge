@@ -134,7 +134,29 @@ foreach (var gltfPath in gltfFiles)
     // A skeleton is required for animation: Stride only emits per-node animation
     // curves when the AnimationAsset references a Skeleton, and skinned meshes need
     // it to deform at runtime. Generate one whenever the source has animations or a skin.
-    var needsSkeleton = gltf.LogicalAnimations.Count > 0 || gltf.LogicalSkins.Count > 0;
+    //
+    // ...and also whenever the model has an ARTICULATED GROUP: a mesh-less node with meshes
+    // under it. Without a skeleton Stride takes ImportModelCommand's merge branch, collapsing
+    // every node to index 0 and baking each mesh's transform into its vertex buffer — so a part
+    // the artist deliberately grouped (an SKS bolt) has no runtime existence to move. Grouping
+    // meshes is the only reason to do it in the first place, so the grouping IS the opt-in.
+    //
+    // The cost is that every node survives as its own mesh, i.e. one draw call per part instead
+    // of one for the model. If that ever shows up in a profile the fix is to emit the .sdskel's
+    // Nodes list with Preserve:false on everything but the moving groups — Stride then merges the
+    // rest back into the closest preserved ancestor — rather than to give the bolt up.
+    // ...and whenever the model has LOCATORS beside more than one mesh. A locator is the artist
+    // saying "this point matters at runtime", and a point only matters if something can be moved to
+    // it — the flag's flag_bottom/flag_top pair is a travel, and a travel needs a part to travel.
+    // Blockbench does not require a group to express that, so grouping alone missed it.
+    //
+    // Narrow on purpose, and both halves earn their place: crate, dummy, grass, mortar_tube and
+    // shovel are all multi-mesh with no locators and must stay merged, because the cost of a
+    // skeleton is one draw call per part and grass is drawn everywhere.
+    var needsSkeleton = gltf.LogicalAnimations.Count > 0
+        || gltf.LogicalSkins.Count > 0
+        || HasArticulatedGroup(gltf)
+        || HasLocatedParts(gltf);
     var skeletonContentPath = contentPath + "_skeleton";
     var skeletonGuid = ComputeGuid(skeletonContentPath);
 
@@ -239,7 +261,7 @@ return 0;
 // ValidationMode.Skip is NOT enough on its own: a null inside a translation/rotation/
 // scale array fails while System.Text.Json is still READING the number, long before
 // any validation rule gets a say, so the whole build dies on one bad export. (A
-// Blockbench 5.1.6 export of sniper_rifle.gltf did exactly that, writing
+// One malformed Blockbench 5.1.6 export did exactly that, writing
 // "scale":[null,null,null] on its locator nodes.) A null component is the exporter
 // failing to write a value, so the identity default for that channel is the honest
 // reading of it — and it is repaired loudly, not silently.
@@ -305,6 +327,25 @@ static byte[] RepairNullTransforms(byte[] json, string fileName)
     }
 }
 
+// True when some mesh-less node has a mesh somewhere beneath it — the artist grouped parts, which
+// only means anything at runtime if the node hierarchy survives. A locator's parent does NOT count:
+// locators are mesh-less all the way down, so a rack of anchors never drags in a skeleton.
+static bool HasArticulatedGroup(SharpGLTF.Schema2.ModelRoot gltf)
+    => gltf.LogicalNodes.Any(node => node.Mesh == null && HasMeshDescendant(node));
+
+static bool HasMeshDescendant(SharpGLTF.Schema2.Node node)
+    => node.VisualChildren.Any(child => child.Mesh != null || HasMeshDescendant(child));
+
+// True when the artist authored named anchor points AND more than one mesh — see needsSkeleton.
+// The mesh count is what keeps this from firing on a single-part model that merely carries a muzzle
+// anchor: one mesh has nothing to articulate against, so it can stay merged and keep its one draw
+// call.
+static bool HasLocatedParts(SharpGLTF.Schema2.ModelRoot gltf)
+    => gltf.LogicalNodes.Count(node => node.Mesh != null) > 1
+       && gltf.LogicalNodes.Any(node => node.Mesh == null
+           && !string.IsNullOrEmpty(node.Name)
+           && !HasMeshDescendant(node));
+
 // Pulls the mesh-less "locator" nodes out of a model as name -> transform in the model's
 // own root space, in the rest pose and again at the start of each animation clip.
 //
@@ -319,7 +360,7 @@ static byte[] RepairNullTransforms(byte[] json, string fileName)
 // That same baking is why the offsets are directly usable: vertices end up expressed in
 // root space, which is the space these transforms are measured in.
 //
-// MESH-LESS is the load-bearing filter, not a tidiness one — sniper_rifle.gltf has a
+// MESH-LESS is the load-bearing filter, not a tidiness one — a malformed export can have a
 // MESH node named `barrel` as well as a locator named `barrel`, and only the second is
 // a locator. Blockbench also writes each locator as a PAIR of same-named nodes, a parent
 // holding the position and a child holding an internal unit scale; both resolve to the

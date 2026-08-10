@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:machine_gun",
+  "projectileSpeed": 800,
+  "benchMoa": 3,
+  "recoilPerShotMoa": 26,
+  "recoilDecayMoaPerSecond": 55,
+  "recoilCapMoa": 200,
+  "sightingMoa": 150
+}

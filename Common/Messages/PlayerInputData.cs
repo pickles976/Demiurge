@@ -1,5 +1,5 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge
 {
@@ -15,6 +15,9 @@ namespace Demiurge
         /// never inserted — the field order IS the protocol.</summary>
         public float Pitch;
 
+        /// <summary>Currently selected numbered hotbar position. APPENDED.</summary>
+        public HotbarSlot Hotbar;
+
         public void Serialize(Message message)
         {
             message.AddUInt(Sequence);
@@ -22,6 +25,7 @@ namespace Demiurge
             message.AddUShort((ushort)State);
             message.AddFloat(Yaw);
             message.AddFloat(Pitch);
+            message.AddByte((byte)Hotbar);
         }
 
         public void Deserialize(Message message)
@@ -31,6 +35,7 @@ namespace Demiurge
             State = (PlayerStateFlags)message.GetUShort();
             Yaw = message.GetFloat();
             Pitch = message.GetFloat();
+            Hotbar = (HotbarSlot)message.GetByte();
         }
     }
 }

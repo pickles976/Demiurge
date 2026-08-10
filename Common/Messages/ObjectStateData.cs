@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge
 {

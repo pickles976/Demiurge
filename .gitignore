@@ -10,3 +10,4 @@ obj
 .claude
 *.pdf
 /assets/locators.txt
+/books

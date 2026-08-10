@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:grenade",
+  "networkId": 5,
+  "displayName": "Grenade",
+  "aliases": ["grenade"],
+  "category": "equippable",
+  "slot": "hand",
+  "hotbar": "grenade",
+  "behavior": "grenade",
+  "weapon": {
+    "magazineCapacity": 2,
+    "roundsPerMinute": 1800,
+    "reloadSeconds": 1.5,
+    "damage": 0,
+    "ballistics": "demiurge:throwable",
+    "fireMode": "automatic"
+  },
+  "presentation": {
+    "model": "assets/models/grenade.gltf",
+    "cameraTrauma": 0,
+    "visualRecoil": { "back": 0, "lift": 0, "pitchDegrees": 0 }
+  }
+}

@@ -50,6 +50,10 @@ public enum EditorPlacementKind
     Pickup,
     Mob,
     PlayerSpawn,
+    Flag,
+
+    /// <summary>A weapon pickup crated as map supply. The archetype is the item it hands out.</summary>
+    SupplyCrate,
 }
 
 public sealed record EditorPlacement
@@ -60,6 +64,8 @@ public sealed record EditorPlacement
     public required Int3 Cell { get; init; }
     public float Yaw { get; init; }
     public string? WeaponId { get; init; }
+    /// <summary>Zero is neutral; playable teams use positive integers.</summary>
+    public int Team { get; init; } = 1;
     public Guid? GroupId { get; init; }
 }
 
@@ -92,6 +98,7 @@ public sealed record EditorDocument
                     Kind = EditorPlacementKind.PlayerSpawn,
                     ArchetypeId = "demiurge:spawn/default",
                     Cell = new Int3(0, (int)MathF.Floor(spawnY), 0),
+                    Team = 1,
                 },
             ],
         };

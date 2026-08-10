@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:mortar",
+  "projectileSpeed": 60,
+  "benchMoa": 0,
+  "recoilPerShotMoa": 0,
+  "recoilDecayMoaPerSecond": 0,
+  "recoilCapMoa": 0,
+  "sightingMoa": 0
+}

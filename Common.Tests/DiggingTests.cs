@@ -128,6 +128,80 @@ public class DiggingTests
         }
     }
 
+    /// <summary>
+    /// Placing is digging with the sign flipped, so the two brushes must land on opposite sides of
+    /// the same surface — asserted as that relationship rather than as two coordinates, since what
+    /// matters is that they never pick the same voxel however the hit rounds.
+    /// </summary>
+    [Theory]
+    [InlineData(0f, 1f, 0f)]     // floor
+    [InlineData(-1f, 0f, 0f)]    // wall
+    [InlineData(0f, -1f, 0f)]    // ceiling
+    public void PlacementLandsOnTheAirSideOfWhateverDiggingTakesOut(float nx, float ny, float nz)
+    {
+        var normal = new Vector3(nx, ny, nz);
+
+        // Half a voxel out from a grid point along the normal, which is where a sign change actually
+        // puts a surface. A hit ON a grid point is the degenerate case — both steps land on a
+        // midpoint and round to the same voxel — and it is not a case the field can produce.
+        var hit = new Vector3(4f, 12f, 7f) + normal * 0.5f;
+
+        var dug = Digging.TargetVoxel(hit, normal);
+        var placed = Digging.PlacementVoxel(hit, normal);
+
+        Assert.NotEqual(dug, placed);
+        // The step is along the normal, so the placed voxel is the further one out of the solid.
+        Assert.True(Vector3.Dot(placed - dug, normal) > 0f);
+    }
+
+    /// <summary>
+    /// The placement half of <see cref="PartialDigsMatchOneFullBiteAtTheTarget"/>, and the same
+    /// property: however many clicks a voxel is spread over, the finished field is the one full
+    /// brush would have written. That is the whole meaning of "inverse of the dig" — the two run the
+    /// same brush at the same strength, and neither is allowed its own arithmetic.
+    /// </summary>
+    [Fact]
+    public void TwoClicksPlaceAWholeVoxel()
+    {
+        var full = SyntheticTerrain.Flat();
+        var partial = SyntheticTerrain.Flat();
+
+        // The first air sample above the surface, which is where a placement aimed at the ground
+        // lands. Building into open air is not reachable: the target always comes off a raycast hit.
+        var target = new Vector3(4f, 13f, 7f);
+
+        Assert.False(IsSolid(partial, target));
+
+        TerrainEdits.ApplyBox(
+            full, target, Digging.Bite, EditMode.Add, Digging.PlacedBlock, EditShape.Sphere);
+
+        for (int i = 0; i < Digging.ClicksPerVoxel; i++)
+            TerrainEdits.ApplyBox(
+                partial, target, Digging.Bite, EditMode.Add, Digging.PlacedBlock,
+                EditShape.Sphere, Digging.BiteStrength);
+
+        Assert.True(IsSolid(partial, target));
+        Assert.True(TerrainCollision.TrySampleRaw(full, target, out float fullDensity));
+        Assert.True(TerrainCollision.TrySampleRaw(partial, target, out float partialDensity));
+        Assert.Equal(fullDensity, partialDensity, 4);
+
+        // And it is made of what was placed, not of whatever the terrain around it is.
+        Assert.True(partial.TryGetVoxel(4, 13, 7, out var voxel));
+        Assert.Equal(Digging.PlacedBlock, voxel.Material);
+    }
+
+    /// <summary>A player may not build the block they are standing in — the one placement rule that
+    /// is not taste, since the brush lands where the body is whenever you look down.</summary>
+    [Fact]
+    public void PlacementIsRefusedInsideTheBuildersOwnBody()
+    {
+        var feet = new Vector3(0f, 12f, 0f);
+
+        Assert.True(Digging.WouldEncasePlayer(feet, new Vector3(0f, 13f, 0f)));   // chest height
+        Assert.False(Digging.WouldEncasePlayer(feet, new Vector3(0f, 16f, 0f)));  // overhead
+        Assert.False(Digging.WouldEncasePlayer(feet, new Vector3(3f, 13f, 0f)));  // an arm away
+    }
+
     [Fact]
     public void ReachIsMeasuredFromTheEye()
     {

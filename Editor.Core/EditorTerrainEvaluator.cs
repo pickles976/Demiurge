@@ -134,19 +134,33 @@ public sealed class EditorTerrainEvaluator
                 ItemCatalog.TryResolve(placement.ArchetypeId, out var item)
                     ? item
                     : throw new InvalidDataException($"Unknown item {placement.ArchetypeId}")),
+            EditorPlacementKind.SupplyCrate => new RuntimePlacement(
+                RuntimePlacementKind.SupplyCrate, position, placement.Yaw,
+                ItemCatalog.TryResolve(placement.ArchetypeId, out var crated)
+                    ? crated
+                    : throw new InvalidDataException($"Unknown item {placement.ArchetypeId}")),
             EditorPlacementKind.Mob => new RuntimePlacement(
                 RuntimePlacementKind.Mob, position, placement.Yaw,
-                Item: ResolveMobWeapon(placement)),
+                Item: ResolveMobWeapon(placement),
+                Team: placement.Team),
             EditorPlacementKind.PlayerSpawn => new RuntimePlacement(
                 RuntimePlacementKind.PlayerSpawn, position, placement.Yaw,
-                SpawnId: placement.ArchetypeId["demiurge:spawn/".Length..]),
+                SpawnId: placement.ArchetypeId["demiurge:spawn/".Length..],
+                Team: placement.Team),
+            EditorPlacementKind.Flag => new RuntimePlacement(
+                RuntimePlacementKind.Flag, position, placement.Yaw,
+                SpawnId: "flag",
+                Team: 0),
             _ => throw new InvalidDataException($"Unknown placement kind {placement.Kind}"),
         };
     }
 
     private static ItemType ResolveMobWeapon(EditorPlacement placement)
     {
-        string weaponId = placement.WeaponId ?? ItemCatalog.Id(ItemType.Ak47);
+        // No authored weapon means "use the server's mixed squad loadout", represented by the
+        // RuntimePlacement default. An explicit editor equip remains authoritative.
+        if (placement.WeaponId is null) return default;
+        string weaponId = placement.WeaponId;
         if (!ItemCatalog.TryResolve(weaponId, out var weapon) || WeaponConfig.Get(weapon) is null)
             throw new InvalidDataException($"Unknown mob weapon {weaponId}");
         return weapon;

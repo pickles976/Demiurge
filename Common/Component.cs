@@ -1,5 +1,5 @@
 using System.Numerics;
-using Riptide;
+using Demiurge.Net;
 
 namespace Demiurge
 {
@@ -12,7 +12,12 @@ namespace Demiurge
         TrainingDummy,
         PlayerStatus,
         Item,
-        Tree
+        Tree,
+        Grenade,
+        Flag,
+        /// <summary>A mortar bomb in the air. Distinct from Grenade so the client can tell the two
+        /// apart — they fly differently and only one of them draws a tracer.</summary>
+        MortarRound,
     }
 
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon
@@ -20,10 +25,16 @@ namespace Demiurge
     /// into ItemConfig + ItemCosmetics — append-only.</summary>
     public enum ItemType : ushort
     {
-        Ak47 = 1,
-        AWP = 2,
-        Glock = 3,
+        // 1-3 are retired wire values. They must never be reused: an old packet should be unknown,
+        // not silently become another item.
         BodyArmor = 4,
+        Grenade = 5,
+        Sks = 6,
+        Shovel = 7,
+        Ppsh = 8,
+        Mosin = 9,
+        Dp27 = 10,
+        Mortar = 11,
     }
 
     /// <summary>One bit per replicated component. Doubles as "what an object HAS"
@@ -39,7 +50,9 @@ namespace Demiurge
         Owner = 1 << 3,
         Armor = 1 << 4,
         Item = 1 << 5,
-        Attachment = 1 << 6
+        Attachment = 1 << 6,
+        Team = 1 << 7,
+        Impulse = 1 << 8,
     }
 
     public struct TransformState : IMessageSerializable
@@ -64,9 +77,28 @@ namespace Demiurge
     /// drift mid-match. Present only on items whose config has a weapon section.</summary>
     public struct WeaponState : IMessageSerializable
     {
+        /// <summary>Rounds in the magazine — what firing spends.</summary>
         public int CurrentAmmo;
-        public void Serialize(Message m) => m.AddInt(CurrentAmmo);
-        public void Deserialize(Message m) => CurrentAmmo = m.GetInt();
+
+        /// <summary>
+        /// Rounds in the pouches — what reloading spends. On the WEAPON rather than on the player
+        /// because that is what makes a dead man's rifle worth taking: the reserve rides the object
+        /// through drop and pickup on the same CopyComponents line the magazine does, so what you
+        /// get is the gun as he left it and not a fresh one.
+        /// </summary>
+        public int ReserveAmmo;
+
+        public void Serialize(Message m)
+        {
+            m.AddInt(CurrentAmmo);
+            m.AddInt(ReserveAmmo);
+        }
+
+        public void Deserialize(Message m)
+        {
+            CurrentAmmo = m.GetInt();
+            ReserveAmmo = m.GetInt();
+        }
     }
 
     /// <summary>Which player an object belongs to / is attached to. The view uses
@@ -109,6 +141,54 @@ namespace Demiurge
         public void Deserialize(Message m) => Slot = (EquipSlot)m.GetByte();
     }
 
+    /// <summary>
+    /// Zero is neutral; positive values identify playable teams. Flag objects additionally use
+    /// CapturingTeam and normalized Progress for their timed capture state.
+    /// </summary>
+    public struct TeamState : IMessageSerializable
+    {
+        public int Value;
+        public int CapturingTeam;
+        public float Progress;
+
+        public void Serialize(Message m)
+        {
+            m.AddInt(Value);
+            m.AddInt(CapturingTeam);
+            m.AddFloat(Progress);
+        }
+
+        public void Deserialize(Message m)
+        {
+            Value = m.GetInt();
+            CapturingTeam = m.GetInt();
+            Progress = m.GetFloat();
+        }
+    }
+
+    /// <summary>
+    /// The push the blow that killed this object imparted, as a velocity the corpse starts with.
+    /// A gun's points along the bullet, a blast's points out from where it went off, and both scale
+    /// with the damage dealt — see <see cref="RagdollImpulse"/>, which is the one place that maths
+    /// lives.
+    ///
+    /// It rides as a component rather than its own message so it lands in the SAME bundle as the
+    /// health that reached zero. Reliable delivery here is unordered and at-least-once, so a
+    /// separate message would arrive before, after, or twice around the death it belongs to, and the
+    /// client would need a pending-impulse cache to sort that out. In the bundle there is nothing to
+    /// sort: the death and its cause are one snapshot.
+    ///
+    /// Zero means "nothing told us" — a death from some path that does not deal a directional blow —
+    /// and the corpse falls back to its own topple.
+    /// </summary>
+    public struct ImpulseState : IMessageSerializable
+    {
+        public Vector3 Velocity;
+
+        public void Serialize(Message m) => m.AddVector3(Velocity);
+        public void Deserialize(Message m) => Velocity = m.GetVector3();
+    }
+
     /// <summary>Some subset of an object's components, mask-prefixed. The if-chain
     /// order is the wire format; new components go at the end of both methods.</summary>
     public struct ComponentBundle : IMessageSerializable
@@ -121,6 +201,8 @@ namespace Demiurge
         public ArmorState Armor;
         public ItemState Item;
         public AttachmentState Attachment;
+        public TeamState Team;
+        public ImpulseState Impulse;
 
         public void Serialize(Message m)
         {
@@ -132,6 +214,8 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Armor)) m.AddSerializable(Armor);
             if (Mask.HasFlag(NetComponents.Item)) m.AddSerializable(Item);
             if (Mask.HasFlag(NetComponents.Attachment)) m.AddSerializable(Attachment);
+            if (Mask.HasFlag(NetComponents.Team)) m.AddSerializable(Team);
+            if (Mask.HasFlag(NetComponents.Impulse)) m.AddSerializable(Impulse);
         }
 
         public void Deserialize(Message m)
@@ -144,6 +228,8 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Armor)) Armor = m.GetSerializable<ArmorState>();
             if (Mask.HasFlag(NetComponents.Item)) Item = m.GetSerializable<ItemState>();
             if (Mask.HasFlag(NetComponents.Attachment)) Attachment = m.GetSerializable<AttachmentState>();
+            if (Mask.HasFlag(NetComponents.Team)) Team = m.GetSerializable<TeamState>();
+            if (Mask.HasFlag(NetComponents.Impulse)) Impulse = m.GetSerializable<ImpulseState>();
         }
     }
 }

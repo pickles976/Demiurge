@@ -12,6 +12,12 @@ public class LocalPlayerController : SyncScript
 	public required WeaponMount Mount { get; init; }
 	public required LocalWeaponView WeaponView { get; init; }
 	public required ClientInputState InputState { get; init; }
+	public required SpawnReadiness Readiness { get; init; }
+
+	private bool primaryWasDown;
+	private uint? primedGrenadeId;
+	private bool prone;
+	private bool proneKeyWasDown;
 
 	/// <summary>How far down the line of sight to look for something to aim at.</summary>
 	public float MaxAimDistance { get; set; } = 200f;
@@ -43,18 +49,39 @@ public class LocalPlayerController : SyncScript
 	{
 		var local = Registry.LocalPlayer;
 		if (local == null) return;   // not spawned yet
-
-		// The debug fly camera has the input; stand the player down. Note this keeps SENDING a
-		// zero-intent move every tick rather than going silent: when the server's move queue
-		// starves it re-steps with the last intent it saw, forever (GameWorld.Tick), so a player
-		// frozen mid-sprint would keep running server-side while the client stopped predicting.
-		if (InputState.TerminalOpen || CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
+		if (local.IsDead)
 		{
+			primaryWasDown = false;
+			primedGrenadeId = null;
+			prone = false;
+			proneKeyWasDown = Input.IsKeyDown(Keys.Z);
+			AimPoint = null;
+			local.EnterDeath();
+			return;
+		}
+		local.LeaveDeath();
+
+		// Three reasons to stand the player down: the terminal has the keyboard, the fly camera has
+		// the input, or the ground under the spawn has not finished meshing and walking would mean
+		// walking through a world that is not there yet.
+		//
+		// All three keep SENDING a zero-intent move rather than going silent: when the server's move
+		// queue starves it re-steps with the last intent it saw, forever (GameWorld.Tick), so a
+		// player frozen mid-sprint would keep running server-side while the client stopped
+		// predicting.
+		if (InputState.TerminalOpen
+			|| !Readiness.Ready
+			|| CameraEntity.Get<DebugFlyCameraScript>()?.Active == true)
+		{
+			primaryWasDown = false;
+			primedGrenadeId = null;
+			proneKeyWasDown = Input.IsKeyDown(Keys.Z);
 			local.State = local.State
 				.With(PlayerStateFlags.Moving, false)
 				.With(PlayerStateFlags.Sprinting, false)
 				.With(PlayerStateFlags.Aiming, false)
 				.With(PlayerStateFlags.Crouching, false)
+				.With(PlayerStateFlags.Prone, prone)
 				.With(PlayerStateFlags.Jumping, false)
 				.With(PlayerStateFlags.Shooting, false)
 				.With(PlayerStateFlags.Reloading, local.IsReloading);   // let an in-flight reload finish
@@ -66,20 +93,77 @@ public class LocalPlayerController : SyncScript
 		// Position
 		var intent = ComputeIntent();   // the WASD + camera-flatten math you already have
 
-		// State
-		bool aiming = Input.IsMouseButtonDown(MouseButton.Right);
+		// Hands full. This gates the KIT and nothing else: walking, running, crouching and jumping
+		// are unaffected, because carrying something heavy makes you slow, not immobile — the weight
+		// is already priced into every speed by ItemConfig.MoveSpeedScale.
+		//
+		// Gated as conditions rather than as an early return, deliberately. Returning early here
+		// skipped the whole state block below, which is where Moving, Sprinting, Crouching and
+		// Jumping are read — so those froze at whatever they happened to be when the thing was
+		// picked up, and a man who pressed E mid-sprint stayed flagged sprinting until he put it
+		// down. The actions are what must stop; the man goes on being a man.
+		//
+		// Refused here as well as on the server so the two agree: predicting a shot the server will
+		// reject is how a phantom tracer gets drawn.
+		bool handsFull = local.IsCarrying;
+
+		// On an emplacement: the man is a gunner, not an infantryman. He does not walk, his kit is
+		// not to hand, and the left button belongs to MortarControlScript rather than to a rifle.
+		// Zeroed here as well as on the server so prediction agrees about a man holding W with his
+		// hands on a mortar.
+		bool operating = local.IsOperating;
+		if (operating) intent = Vector3.Zero;
+
+		// Prone is a toggle because the stance outlives a key press. Sprint stands all the way up;
+		// crouch steps up only as far as crouched. Both transitions happen before this frame's flags
+		// are built, so prediction never emits an impossible crouching+prone state.
+		bool sprinting = Input.IsKeyDown(Keys.LeftShift);
+		bool crouching = Input.IsKeyDown(Keys.LeftCtrl);
+		bool proneKeyDown = Input.IsKeyDown(Keys.Z);
+		if (sprinting)
+			prone = false;
+		else if (crouching && prone)
+			prone = false;
+		else if (proneKeyDown && !proneKeyWasDown)
+			prone = !prone;
+		proneKeyWasDown = proneKeyDown;
+
+		if (!handsFull && !operating) HandleHotbarInput(local);
+
+		// State. A reload takes the sight picture away whether or not the button is still held —
+		// both hands are on the magazine. Working a bolt does NOT: the rifle stays on the shoulder
+		// and the eye stays behind the sights, which is the whole reason a marksman can watch what
+		// he just shot at.
+		// Not while the shovel is out. A tool has nothing to aim — WeaponMount already refuses to
+		// move it on right-click — but the shared aim flag would still narrow the field of view and
+		// halve the walk speed of somebody holding a spade.
+		bool aiming = !handsFull
+			&& !operating
+			&& Input.IsMouseButtonDown(MouseButton.Right)
+			&& !local.IsReloading
+			&& local.Hotbar != HotbarSlot.Shovel;
+		// Nothing is actuated with full hands, and clearing the button here is what turns the fire,
+		// grenade-prime and dig paths below off at once rather than one guard each.
+		bool primaryDown = !handsFull && !operating && Input.IsMouseButtonDown(MouseButton.Left);
+
+		// Shooting means "actuating the held item", which is why digging sets it too: it is the
+		// replicated signal every other client's view reads to swing the shovel, and it is
+		// cosmetic on the server (nothing gates on it), so widening it costs nothing.
+		bool usingItem = primaryDown && (local.IsArmed || local.Hotbar == HotbarSlot.Shovel);
 
 		local.State = local.State
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
-			.With(PlayerStateFlags.Sprinting, Input.IsKeyDown(Keys.LeftShift))
+			.With(PlayerStateFlags.Sprinting, sprinting)
 			.With(PlayerStateFlags.Aiming, aiming)
-			.With(PlayerStateFlags.Crouching, Input.IsKeyDown(Keys.LeftCtrl))
+			.With(PlayerStateFlags.Crouching, !prone && crouching)
+			.With(PlayerStateFlags.Prone, prone)
 			// Level-triggered on purpose: the shared step only acts on Jumping while grounded, so
 			// holding Space jumps again the moment you land. It also sidesteps IsKeyPressed, which
 			// re-fires on OS auto-repeat and is not a reliable one-shot for a held key.
 			.With(PlayerStateFlags.Jumping, Input.IsKeyDown(Keys.Space))
-			.With(PlayerStateFlags.Shooting, aiming && Input.IsMouseButtonDown(MouseButton.Left))
-			.With(PlayerStateFlags.Reloading, local.IsReloading);
+			.With(PlayerStateFlags.Shooting, usingItem)
+			.With(PlayerStateFlags.Reloading, local.IsReloading)
+			.StandForSprint();
 
 		// Rotation. The active look camera owns facing — you look where the camera looks. Turning
 		// only while aiming or standing still, as the old cursor-aimed camera did, reads as the
@@ -103,28 +187,86 @@ public class LocalPlayerController : SyncScript
 
 		local.Update(intent, (float)Game.UpdateTime.Elapsed.TotalSeconds);
 
-		// Where the line of sight lands, resolved AFTER the rotation block so it uses this frame's
-		// camera rather than last frame's. The reticle reads it back off this script.
-		var cameraTransform = CameraEntity.Transform;
-		AimPoint = ComputeAimPoint(
-			cameraTransform.Position,
-			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
+		// Where the line of sight lands, resolved AFTER the rotation block so hip fire and ADS
+		// both use this frame's camera rather than last frame's.
+		UpdateAimPoint();
 
-		// Holding LMB is level-triggered input, but TryFire's cooldown gate turns it into one
-		// edge-triggered PlayerFire per shot — that's where "hold to fire at 10/s" comes from.
+		// Automatic weapons remain level-triggered and let TryFire's cooldown produce their cadence;
+		// a SEMI-AUTOMATIC one wants the trigger PRESS, so holding the button pays out exactly one
+		// round. That distinction lives in WeaponConfig rather than here — see FireMode for why the
+		// server enforces cadence and not the trigger edge. A grenade is primed while LMB is held
+		// (the view uses Shooting for its pullback) and is thrown exactly once on release, provided
+		// the same grenade is still equipped.
 		//
 		// A POINT, not a direction. The muzzle is not the camera, so a direction copied from the
 		// camera would send the bullet parallel to the line of sight and never onto the reticle —
-		// see TryFire. Aiming-only, so the aim point is always the one the reticle is showing.
-		if (local.IsArmed && aiming && Input.IsMouseButtonDown(MouseButton.Left) && AimPoint is { } target)
-			local.TryFire(target, Registry.RenderTick, FireOrigin(local));
+		// see TryFire. Hip fire uses this same centre point; its lower accuracy comes from spread.
+		bool grenadeEquipped = local.Weapon is { } equipped
+			&& ItemCatalog.HasBehavior(equipped.Item.Type, ItemBehavior.Grenade);
+		if (grenadeEquipped)
+		{
+			if (primaryDown)
+				primedGrenadeId ??= local.Weapon!.NetworkId;
+			else if (primaryWasDown
+			         && primedGrenadeId == local.Weapon!.NetworkId
+			         && AimPoint is { } grenadeTarget)
+				local.TryFire(grenadeTarget, Registry.RenderTick, FireOrigin(local));
+		}
+		else if (primedGrenadeId == null
+		         && local.IsArmed
+		         && TriggerPulled(local, primaryDown)
+		         && AimPoint is { } weaponTarget)
+		{
+			local.TryFire(weaponTarget, Registry.RenderTick, FireOrigin(local));
+		}
 
-		if (Input.IsKeyPressed(Keys.R))
+		if (!primaryDown) primedGrenadeId = null;
+		primaryWasDown = primaryDown;
+
+		if (Input.IsKeyPressed(Keys.R) && !handsFull && !operating)
 			local.TryReload();
 
 		if (Input.IsKeyPressed(Keys.E))
 			local.TryInteract();
 
+		if (Input.IsKeyPressed(Keys.F))
+			local.TryUse();
+
+	}
+
+	/// <summary>Where this frame's line of sight lands, for the reticle and for firing.</summary>
+	private void UpdateAimPoint()
+	{
+		var cameraTransform = CameraEntity.Transform;
+		AimPoint = ComputeAimPoint(
+			cameraTransform.Position,
+			Stride.Core.Mathematics.Vector3.Transform(-Stride.Core.Mathematics.Vector3.UnitZ, cameraTransform.Rotation));
+	}
+
+	/// <summary>
+	/// Whether the trigger is asking for a shot this frame: held for an automatic, freshly pressed
+	/// for a semi-automatic. The cooldown in TryFire still caps how fast presses pay out, so a
+	/// player clicking faster than the weapon cycles gets the weapon's rate and nothing more.
+	/// </summary>
+	private bool TriggerPulled(LocalPlayer local, bool primaryDown)
+		=> local.Stats.FireMode == FireMode.SemiAutomatic
+			? primaryDown && !primaryWasDown
+			: primaryDown;
+
+	private void HandleHotbarInput(LocalPlayer local)
+	{
+		if (Input.IsKeyPressed(Keys.D1) || Input.IsKeyPressed(Keys.NumPad1))
+			local.SelectHotbar(HotbarSlot.Primary);
+		else if (Input.IsKeyPressed(Keys.D2) || Input.IsKeyPressed(Keys.NumPad2))
+			local.SelectHotbar(HotbarSlot.Shovel);
+		else if (Input.IsKeyPressed(Keys.D3) || Input.IsKeyPressed(Keys.NumPad3))
+			local.SelectHotbar(HotbarSlot.Grenade);
+
+		float wheel = Input.MouseWheelDelta;
+		if (wheel > 0f)
+			local.SelectHotbar(HotbarConfig.Scroll(local.Hotbar, -1));
+		else if (wheel < 0f)
+			local.SelectHotbar(HotbarConfig.Scroll(local.Hotbar, 1));
 	}
 
 	private Vector3 FireOrigin(LocalPlayer local)
@@ -133,10 +275,12 @@ public class LocalPlayerController : SyncScript
 			return muzzle;
 
 		var cameraTransform = CameraEntity.Transform;
-		var grip = local.State.HasFlag(PlayerStateFlags.Aiming)
-			? WeaponMount.AimGripOffset
-			: WeaponMount.HipGripOffset;
-		var offset = Mount.FirstPersonMuzzleOffset(local.Weapon!.Item.Type, grip).ToStride();
+		var type = local.Weapon!.Item.Type;
+		float scale = ItemCosmetics.FirstPersonScale(type);
+		var grip = ItemCatalog.HasBehavior(type, ItemBehavior.Grenade)
+			? WeaponMount.GrenadePullbackGripOffset
+			: Mount.FirstPersonGripOffset(type, local.State.HasFlag(PlayerStateFlags.Aiming), scale);
+		var offset = Mount.FirstPersonMuzzleOffset(type, grip, scale).ToStride();
 
 		return (Vector3)(cameraTransform.Position
 			+ Stride.Core.Mathematics.Vector3.Transform(offset, cameraTransform.Rotation));

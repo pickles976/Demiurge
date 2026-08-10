@@ -4,7 +4,7 @@ using System.Numerics;
 namespace Demiurge.Editor;
 
 public enum EditorToolMode { Terrain, Block, Object }
-public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn }
+public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, Flag, Crate }
 
 public sealed record EditorToolSettings
 {
@@ -22,6 +22,7 @@ public sealed record EditorToolSettings
     public EditorObjectChoiceKind ObjectKind { get; set; }
     public string? ObjectId { get; set; }
     public float ObjectYaw { get; set; }
+    public int ObjectTeam { get; set; } = 1;
 }
 
 public readonly record struct EditorCommandResult(bool Success, string Output)
@@ -147,7 +148,9 @@ public static class EditorCommandParser
 
     private static EditorCommandResult SetObject(string[] tokens, EditorToolSettings settings)
     {
-        if (tokens.Length < 2) return EditorCommandResult.Fail("Usage: editor object <pickup|mob|spawn|clear> ...");
+        if (tokens.Length < 2)
+            return EditorCommandResult.Fail(
+                "Usage: editor object <pickup|crate|mob|spawn|flag|team|clear> ...");
         switch (tokens[1].ToLowerInvariant())
         {
             case "pickup":
@@ -155,6 +158,12 @@ public static class EditorCommandParser
                     return EditorCommandResult.Fail("Usage: editor object pickup <item-id>");
                 settings.ObjectKind = EditorObjectChoiceKind.Pickup;
                 settings.ObjectId = ItemCatalog.Id(item);
+                break;
+            case "crate":
+                if (tokens.Length != 3 || !ItemCatalog.TryResolve(tokens[2], out var crated))
+                    return EditorCommandResult.Fail("Usage: editor object crate <item-id>");
+                settings.ObjectKind = EditorObjectChoiceKind.Crate;
+                settings.ObjectId = ItemCatalog.Id(crated);
                 break;
             case "mob":
                 settings.ObjectKind = EditorObjectChoiceKind.Mob;
@@ -164,6 +173,23 @@ public static class EditorCommandParser
                 settings.ObjectKind = EditorObjectChoiceKind.Spawn;
                 settings.ObjectId = $"demiurge:spawn/{(tokens.Length > 2 ? tokens[2] : "default")}";
                 break;
+            case "flag":
+                if (tokens.Length != 2)
+                    return EditorCommandResult.Fail("Usage: editor object flag");
+                settings.ObjectKind = EditorObjectChoiceKind.Flag;
+                settings.ObjectId = "demiurge:flag";
+                break;
+            case "team":
+                if (tokens.Length != 3
+                    || !int.TryParse(
+                        tokens[2],
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out int team)
+                    || team <= 0)
+                    return EditorCommandResult.Fail("Usage: editor object team <positive-integer>");
+                settings.ObjectTeam = team;
+                break;
             case "clear":
                 settings.ObjectKind = EditorObjectChoiceKind.None;
                 settings.ObjectId = null;
@@ -172,7 +198,8 @@ public static class EditorCommandParser
                 return EditorCommandResult.Fail($"Unknown object kind: {tokens[1]}");
         }
         settings.Mode = EditorToolMode.Object;
-        return EditorCommandResult.Ok($"Object: {settings.ObjectId ?? "none"}");
+        return EditorCommandResult.Ok(
+            $"Object: {settings.ObjectId ?? "none"} team={settings.ObjectTeam}");
     }
 
     private static EditorCommandResult Rotate(string[] tokens, EditorToolSettings settings)
@@ -184,7 +211,7 @@ public static class EditorCommandParser
 
     private static string Status(EditorToolSettings settings, EditorSession? session)
     {
-        string status = $"mode={settings.Mode.ToString().ToLowerInvariant()} terrain={settings.TerrainMode.ToString().ToLowerInvariant()}/{settings.TerrainShape.ToString().ToLowerInvariant()} size={settings.TerrainHalfExtent * 2f} strength={settings.TerrainStrength:0.##} material={BlockCatalog.Id(settings.TerrainMaterial)} block={BlockCatalog.Id(settings.Block)} blockSize={settings.BlockSize.X}x{settings.BlockSize.Y}x{settings.BlockSize.Z} object={settings.ObjectId ?? "none"}";
+        string status = $"mode={settings.Mode.ToString().ToLowerInvariant()} terrain={settings.TerrainMode.ToString().ToLowerInvariant()}/{settings.TerrainShape.ToString().ToLowerInvariant()} size={settings.TerrainHalfExtent * 2f} strength={settings.TerrainStrength:0.##} material={BlockCatalog.Id(settings.TerrainMaterial)} block={BlockCatalog.Id(settings.Block)} blockSize={settings.BlockSize.X}x{settings.BlockSize.Y}x{settings.BlockSize.Z} object={settings.ObjectId ?? "none"} team={settings.ObjectTeam}";
         if (session is null) return status;
         var diagnostics = session.Diagnostics();
         return status

@@ -14,17 +14,33 @@ ExplicitFolders: []
 Bundles: []
 TemplateFolders: []
 RootAssets:
-    - 1bb93fd9-49ed-9714-3495-d9d5bafdfc1b:models/ak47
     - 1a8baa39-b12d-505b-401c-4ec3beb60a50:models/body_armor
-    - a9c9c33d-d0f7-8e22-959a-0ad5c3538937:models/cat_orange
-    - e13f8a9e-58fb-0f01-4923-3b3bd3d82899:models/cat_orange_skeleton
-    - fb7c8408-a6cd-ed2a-6b12-059c4acce042:models/cat_orange_anim_Walk
-    - b2a11960-b4e4-a0b3-3854-b8e81642cd37:models/cat_orange_anim_Idle
-    - 6571ef5b-6dac-4612-744c-3c63feceb0b0:models/cat_orange_anim_Aiming
-    - 0c2502c5-c18c-c2b2-f2f8-7f38f141a438:models/cat_orange_anim_Crouch
-    - 2dbe99ca-cefa-efdf-eb3f-f128fd299472:models/cat_orange_anim_CrouchWalk
+    - 353d1f34-3ba8-f410-56c0-42f7b01a0db7:models/cat
+    - ddc290ac-af1e-4ff6-751b-17fb949f2c7c:models/cat_skeleton
+    - 6083b5dc-61c4-be12-ae26-8784e8800063:models/cat_anim_Walk
+    - ea5f1c8e-86d0-eb77-f8ba-3ad3ac419470:models/cat_anim_Idle
+    - e5598cab-9193-e105-678a-b5b313bb54ac:models/cat_anim_Aiming
+    - 6762ff9d-9a8b-63bd-9ba3-9e36f818bddb:models/cat_anim_Crouch
+    - 508a0c6f-ccdc-26dc-f769-b200611164b9:models/cat_anim_CrouchWalk
+    - 847e8e50-23aa-5b39-28a7-54d0b358e796:models/cat_anim_Prone
+    - 9f09e514-4c4b-0122-0d03-c91095253693:models/cat_anim_ProneCrawl
+    - aa09233d-4762-44f7-a82e-1d2968738d31:models/crate
+    - 5e701637-223b-4073-e81f-43aa55ad113a:models/dp_27
+    - b6431852-c82a-4e9e-2134-1365f0b24e8f:models/dp_27_skeleton
     - b5161cb9-fa9d-4264-e5df-b483a6e166a4:models/dummy
-    - a1c2311d-86f9-2c54-4afa-520e8bf3e1e5:models/glock
+    - f1bb23c3-5082-42d7-a560-ebb34d79a32e:models/flag
+    - 470cf5b7-2a95-0852-191c-8b3b56d6d010:models/flag_skeleton
     - d5a9cf33-e6e0-1d7a-8e30-373b802dea66:models/grass
-    - 3a9e81c9-5c45-e565-ab69-bf706522d89a:models/sniper_rifle
+    - c605e5d7-c639-5541-5331-8318a2984af1:models/grenade
+    - fa8b4eb7-70c4-bdfb-9cde-401b8f3bb3fb:models/helmet
+    - 016d02af-936e-8fe5-34b6-ecbf1fb18204:models/mortar_tube
+    - fd649226-80d2-a505-e213-de3739edf665:models/mortar
+    - 7343b844-5900-3b08-7028-2752608fb224:models/mosin
+    - 8f53437d-a0be-dd5d-295c-bd35d482d6dd:models/mosin_skeleton
+    - 3aa2019a-0c38-617b-6392-cd993646fd91:models/ppsh
+    - 88e75af5-6e6c-cc31-7933-053209af5a3b:models/ppsh_skeleton
+    - 0d15c1eb-9e34-a972-e091-f2f524af60c7:models/shovel
+    - 898107ad-0fcb-75f5-57cb-bbd3ce64873e:models/sks
+    - f52e82d5-ad52-47d8-cc6f-891fe13d672a:models/sks_skeleton
     - 69f81542-a178-1823-fa87-59125b72178f:models/tree
+    - fc0085aa-e7b4-0602-dedf-70978cbde59a:models/tree_skeleton

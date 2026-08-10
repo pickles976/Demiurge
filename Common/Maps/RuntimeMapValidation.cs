@@ -19,7 +19,8 @@ public static class RuntimeMapValidation
             (WorldGen.Max.x - WorldGen.Min.x + 1) *
             (WorldGen.Max.z - WorldGen.Min.z + 1);
         if (map.Terrain.Count != expectedChunks)
-            errors.Add($"Map has {map.Terrain.Count} chunks; version 1 requires {expectedChunks}");
+            errors.Add(
+                $"Map has {map.Terrain.Count} chunks; runtime format {RuntimeMap.CurrentFormatVersion} requires {expectedChunks}");
 
         for (int z = WorldGen.Min.z; z <= WorldGen.Max.z; z++)
             for (int x = WorldGen.Min.x; x <= WorldGen.Max.x; x++)
@@ -65,12 +66,15 @@ public static class RuntimeMapValidation
             switch (placement.Kind)
             {
                 case RuntimePlacementKind.Pickup:
+                case RuntimePlacementKind.SupplyCrate:
                     try { _ = ItemCatalog.Get(placement.Item); }
                     catch (ArgumentOutOfRangeException) { errors.Add($"Unknown pickup item {placement.Item}"); }
                     WarnIfUnsupported(map, placement, warnings);
                     break;
                 case RuntimePlacementKind.PlayerSpawn:
                     spawnCount++;
+                    if (placement.Team <= 0)
+                        errors.Add($"Player spawn {placement.SpawnId} must use a positive team");
                     if (string.IsNullOrWhiteSpace(placement.SpawnId) || placement.SpawnId.Length > 64)
                         errors.Add("Player spawn ID must be 1-64 characters");
                     if (!TerrainCollision.TryDeepestContact(
@@ -79,6 +83,8 @@ public static class RuntimeMapValidation
                         errors.Add($"Player spawn {placement.SpawnId} intersects terrain");
                     break;
                 case RuntimePlacementKind.Mob:
+                    if (placement.Team <= 0)
+                        errors.Add("Mob placement must use a positive team");
                     if (placement.Item != default)
                     {
                         try
@@ -93,6 +99,11 @@ public static class RuntimeMapValidation
                     }
                     WarnIfUnsupported(map, placement, warnings);
                     break;
+                case RuntimePlacementKind.Flag:
+                    if (placement.Team != 0)
+                        errors.Add("Flags must start neutral");
+                    WarnIfUnsupported(map, placement, warnings);
+                    break;
                 default:
                     errors.Add($"Unknown placement kind {(byte)placement.Kind}");
                     break;
@@ -100,7 +111,8 @@ public static class RuntimeMapValidation
         }
 
         if (spawnCount == 0) errors.Add("Runtime map requires at least one player spawn");
-        if (!map.Placements.Any(p => p.Kind == RuntimePlacementKind.Pickup))
+        if (!map.Placements.Any(p =>
+                p.Kind is RuntimePlacementKind.Pickup or RuntimePlacementKind.SupplyCrate))
             warnings.Add("Map has no pickup placements");
         if (!map.Placements.Any(p => p.Kind == RuntimePlacementKind.Mob))
             warnings.Add("Map has no mob placements");

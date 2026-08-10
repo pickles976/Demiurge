@@ -9,6 +9,16 @@ namespace Demiurge.GameServer
         // Fields, not properties: mutable structs accessed through a property getter
         // return a copy, so `obj.Transform.Position = x` would edit the copy, not the object
 
+        /// <summary>
+        /// Tick this object is swept away, or 0 for "never" — battlefield litter, and nothing else.
+        ///
+        /// Server-only and deliberately not replicated: a client has nothing to do with the number,
+        /// since the object simply despawns like any other when it expires. It is also NOT carried by
+        /// <see cref="CopyComponents"/>, which is what makes picking a dropped rifle up and throwing
+        /// it down again restart its clock rather than inherit a nearly-expired one.
+        /// </summary>
+        public uint DespawnAtTick;
+
         public NetComponents Dirty;
         public TransformState Transform;
         public HealthState Health;
@@ -17,6 +27,8 @@ namespace Demiurge.GameServer
         public ArmorState Armor;
         public ItemState Item;
         public AttachmentState Attachment;
+        public TeamState Team;
+        public ImpulseState Impulse;
 
         /// <summary>THE one place component state moves between server object
         /// instances (ItemSystem's equip/drop transitions). New component = one
@@ -31,6 +43,8 @@ namespace Demiurge.GameServer
             if (mask.HasFlag(NetComponents.Armor)) dst.Armor = src.Armor;
             if (mask.HasFlag(NetComponents.Item)) dst.Item = src.Item;
             if (mask.HasFlag(NetComponents.Attachment)) dst.Attachment = src.Attachment;
+            if (mask.HasFlag(NetComponents.Team)) dst.Team = src.Team;
+            if (mask.HasFlag(NetComponents.Impulse)) dst.Impulse = src.Impulse;
         }
     }
 }

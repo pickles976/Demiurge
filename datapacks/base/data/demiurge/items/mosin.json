@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "demiurge:mosin",
+  "networkId": 9,
+  "displayName": "Mosin-Nagant",
+  "aliases": ["mosin", "mosin-nagant", "m9130"],
+  "category": "equippable",
+  "slot": "hand",
+  "hotbar": "primary",
+  "behavior": "firearm",
+  "weapon": {
+    "magazineCapacity": 5,
+    "roundsPerMinute": 40,
+    "reloadSeconds": 5.067,
+    "damage": 70,
+    "ballistics": "demiurge:sniper_rifle",
+    "fireMode": "semiAutomatic"
+  },
+  "presentation": {
+    "model": "assets/models/mosin.gltf",
+    "aimMagnification": 2,
+    "shotSounds": ["assets/sfx/mosin_shot_1.wav", "assets/sfx/mosin_shot_2.wav"],
+    "reloadSound": "assets/sfx/mosin_reload.wav",
+    "distantReportSound": "assets/sfx/rifle_shot_far.wav",
+    "cameraTrauma": 0.75,
+    "visualRecoil": { "back": 0.1, "lift": 0.02, "pitchDegrees": 6 },
+    "bolt": {
+      "delaySeconds": 0.15,
+      "travelSeconds": 0.286,
+      "holdSeconds": 0.65,
+      "returnSeconds": 0.286,
+      "soundPath": "assets/sfx/mosin_bolt.wav"
+    }
+  }
+}

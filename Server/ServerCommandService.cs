@@ -56,6 +56,8 @@ internal sealed class ServerCommandService
                 SpawnMobCommand command => SpawnMob(requestId, source, command),
                 SpawnPickupCommand command => SpawnPickup(requestId, source, command),
                 EquipCommand command => Equip(requestId, source, command),
+                SetTeamCommand command => SetTeam(requestId, source, command),
+                AiStatsCommand => Result(requestId, true, world.AiStats()),
                 _ => Result(requestId, false, "Unsupported command"),
             };
         }
@@ -101,11 +103,24 @@ internal sealed class ServerCommandService
             return Result(requestId, false, $"Actor @{actorId} does not exist");
 
         var stats = ItemConfig.Get(command.Item);
-        if (stats.Category != ItemCategory.Equippable)
+        if (!ItemConfig.IsHeld(command.Item))
             return Result(requestId, false, $"{ItemCatalog.Id(command.Item)} cannot be equipped");
 
         world.Equip(target, command.Item);
         return Result(requestId, true, $"Equipped @{actorId} with {ItemCatalog.Id(command.Item)}");
+    }
+
+    private CommandResultData SetTeam(uint requestId, ServerCommandSource source, SetTeamCommand command)
+    {
+        if (command.Target.IsSelf && source.Actor is null)
+            return Result(requestId, false, "@s is unavailable from the dedicated server console");
+
+        ushort actorId = command.Target.IsSelf ? source.Actor!.Id : command.Target.ActorId;
+        if (!world.TryGetActor(actorId, out var target))
+            return Result(requestId, false, $"Actor @{actorId} does not exist");
+
+        bool changed = world.TrySetTeam(target, command.Team, out string message);
+        return Result(requestId, changed, message);
     }
 
     private bool TryResolvePosition(

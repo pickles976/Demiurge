@@ -15,6 +15,7 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/GltfAssetGenerator/GltfAssetGenerator.csproj" />
+    <Project Path="tools/MapBaker/MapBaker.csproj" />
   </Folder>
   <Project Path="DemiurgeSharp.csproj" />
 </Solution>

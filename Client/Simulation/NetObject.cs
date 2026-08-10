@@ -15,6 +15,8 @@ public class NetObject
     public ArmorState Armor;
     public ItemState Item;
     public AttachmentState Attachment;
+    public TeamState Team;
+    public ImpulseState Impulse;
     
     public SnapshotBuffer Snapshots { get; } = new();
 }

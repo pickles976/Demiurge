@@ -1,4 +1,4 @@
-using Riptide;
+using Demiurge.Net;
 using System.Numerics;
 
 namespace Demiurge.GameServer
@@ -7,6 +7,9 @@ namespace Demiurge.GameServer
     /// Server-authoritative terrain edits. The server owns the field; clients ask, this decides, and
     /// the decision is broadcast as a command every client replays.
     ///
+    /// Digging and placing are one path with the operator flipped — see <see cref="TerrainAction"/>
+    /// — so the rate gate, the reach check and the grid snap are written once and cannot come apart.
+    ///
     /// Digging is gated on TICKS rather than on how fast the client sends, for the same reason
     /// firing is: a message rate is whatever a client chooses it to be, while a tick is the same
     /// clock on both ends. The cost this protects is NOT bandwidth — an edit is 26 bytes — it is
@@ -14,7 +17,7 @@ namespace Demiurge.GameServer
     /// </summary>
     public class TerrainSystem
     {
-        private readonly Server server;
+        private readonly INetServer server;
         private readonly ChunkMap terrain;
 
         /// <summary>
@@ -24,7 +27,7 @@ namespace Demiurge.GameServer
         /// </summary>
         private const uint TicksPerDig = Digging.TicksPerDig;
 
-        public TerrainSystem(Server server, ChunkMap terrain)
+        public TerrainSystem(INetServer server, ChunkMap terrain)
         {
             this.server = server;
             this.terrain = terrain;
@@ -35,8 +38,10 @@ namespace Demiurge.GameServer
             if (!IsFinite(dig.Target)) return;
             if (tick < player.NextDigTick) return;
 
-            // Hands only, for now. The equipped Hand slot being empty IS being unarmed.
-            if (player.Equipped.ContainsKey(EquipSlot.Hand)) return;
+            // Slot 2 is the placeholder shovel: it deliberately has no item object yet, but
+            // selecting it authorizes digging for players and NPCs through the same path.
+            if (player.Hotbar != HotbarSlot.Shovel)
+                return;
 
             // The one thing genuinely worth enforcing: you dig what you can reach. Everything else
             // about the request is the client's own aim, which the server has no better view of.
@@ -52,14 +57,28 @@ namespace Demiurge.GameServer
             // broadcast and a re-mesh on every client for no change at all.
             if (target.Y <= ChunkConstants.WorldMinY) return;
 
+            bool placing = dig.Action == TerrainAction.Place;
+
+            // The client will not ask while placement is off, so this is the server refusing to take
+            // an old or hand-made request's word for it — the same reason reach is re-checked.
+            if (placing && !Digging.PlacementEnabled) return;
+
+            // Nothing above the world to build on or into, and the top plane is where a section
+            // stops owning grid points.
+            if (target.Y >= ChunkConstants.WorldMaxY - 1) return;
+
+            // You may not build through yourself. Re-checked here rather than trusted because the
+            // client's refusal is a highlight the player can see and this one is the rule.
+            if (placing && Digging.WouldEncasePlayer(player.Position, target)) return;
+
             player.NextDigTick = tick + TicksPerDig;
 
             Apply(new TerrainEditData
             {
                 Centre = target,
                 HalfExtent = Digging.Bite,
-                Mode = EditMode.Subtract,
-                Fill = BlockType.BlockType_Air,
+                Mode = placing ? EditMode.Add : EditMode.SubtractSoil,
+                Fill = placing ? Digging.PlacedBlock : BlockType.BlockType_Air,
                 Shape = EditShape.Sphere,
                 Strength = Digging.BiteStrength,
             });

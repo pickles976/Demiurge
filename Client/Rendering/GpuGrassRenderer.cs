@@ -18,8 +18,30 @@ namespace Demiurge
     public sealed class GpuGrassRenderer : IDisposable
     {
         public const int DefaultMaxInstances = 200_000;
-        private const int BladesPerSeed = 60;
-        private const int DensityQuantum = 5;
+
+        /// <summary>
+        /// Blades grown from one seed, at full density. A seed is one square metre of grass surface
+        /// (GrassField.DefaultCellSize) and blades jitter across that metre, so this IS the density
+        /// in blades per square metre.
+        ///
+        /// Was 60, which put roughly 380,000 cards inside the 45 m radius and over a million
+        /// vertices in front of an iGPU that shares its bandwidth with the CPU. Six is the same
+        /// field at a tenth the cost, and the cost is nearly all of it — the seeds, the streaming and
+        /// the chunk meshes are unchanged, only how much grass each seed grows.
+        /// </summary>
+        private const int BladesPerSeed = 6;
+
+        /// <summary>
+        /// Granularity of the distance fade, in blades. Its whole job is to bound how often a chunk
+        /// is rebuilt as the player walks: without it every metre of movement would change some
+        /// chunk's target by one and re-upload it.
+        ///
+        /// One, now that there are six blades to fade through rather than sixty. At the old quantum
+        /// of five the fade would have had two steps and read as grass switching off; at one it has
+        /// seven, which is FEWER distinct targets than the twelve the old pairing produced, so this
+        /// rebuilds less often than before rather than more.
+        /// </summary>
+        private const int DensityQuantum = 1;
         private const int MaxChunkUploadsPerFrame = 1;
         private const float BuriedDepth = 0.25f;
 

@@ -1,0 +1,6 @@
+!Skeleton
+Id: ddc290ac-af1e-4ff6-751b-17fb949f2c7c
+SerializedVersion: {Stride: 2.0.0}
+Tags: []
+Source: !file cat.gltf
+Nodes: []

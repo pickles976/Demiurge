@@ -3,6 +3,21 @@ using System.Numerics;
 namespace Demiurge
 {
     /// <summary>
+    /// What a shovel is doing this click. One request type covers both because they are one action
+    /// with the sign flipped: same reach, same rate limit, same grid, same brush, same number of
+    /// clicks per voxel — only the CSG operator and which side of the surface it lands on differ.
+    /// Wire protocol (rides inside PlayerDigData) — append-only.
+    /// </summary>
+    public enum TerrainAction : byte
+    {
+        /// <summary>Take the voxel behind the surface out. The default, so an old-shaped request and
+        /// every NPC dig still mean exactly what they used to.</summary>
+        Dig = 0,
+        /// <summary>Put a voxel in front of the surface in.</summary>
+        Place = 1,
+    }
+
+    /// <summary>
     /// Turning "where the player is looking" into "which voxel comes out".
     ///
     /// In Common because BOTH ends have to agree on it. The client highlights a voxel and asks for
@@ -34,11 +49,31 @@ namespace Demiurge
         /// </summary>
         public const float BiteRadius = 0.7f;
 
-        /// <summary>How many accepted dig edits should amount to one old full-strength bite.</summary>
+        /// <summary>How many accepted dig edits should amount to one old full-strength bite. Shared
+        /// with placement, which is the same brush run the other way — two clicks to take a voxel
+        /// out, two to put one back.</summary>
         public const int ClicksPerVoxel = 2;
 
         /// <summary>Strength of one accepted dig relative to the old full bite.</summary>
         public const float BiteStrength = 1f / ClicksPerVoxel;
+
+        /// <summary>
+        /// Whether the shovel can build as well as dig.
+        ///
+        /// Off. The mechanism is intact and tested — <see cref="TerrainAction"/>, the placement
+        /// target, the brush, the server gate — this is the one switch that decides whether players
+        /// are offered it. Read by BOTH ends deliberately: the client must not highlight or request
+        /// what the server would refuse, or the outline sits on a voxel that never appears.
+        /// </summary>
+        public const bool PlacementEnabled = false;
+
+        /// <summary>
+        /// What a shovel builds with. Fixed rather than carried on the request: there is no way for
+        /// a player to CHOOSE a material yet, and a block type off the wire would be a client
+        /// deciding what the world is made of. When a material picker exists this becomes a field on
+        /// PlayerDigData that the server validates against what the player is carrying.
+        /// </summary>
+        public const BlockType PlacedBlock = BlockType.BlockType_Sandbags;
 
         /// <summary>Held digging cadence. The client sends at this rate; the server enforces it.</summary>
         public const float HoldHz = 2f;
@@ -76,6 +111,55 @@ namespace Demiurge
         {
             var inside = hitPoint - Vector3.Normalize(normal) * 0.5f;
             return new Vector3(MathF.Round(inside.X), MathF.Round(inside.Y), MathF.Round(inside.Z));
+        }
+
+        /// <summary>
+        /// The grid point a placement fills, given the same hit and normal a dig would use.
+        ///
+        /// Literally the inverse: step half a voxel OUT along the normal instead of in, so the brush
+        /// lands on the air sample against the surface rather than the solid one behind it. Rounding
+        /// after the step is what keeps the two on one grid — a placement that landed between
+        /// samples would build a shell that no dig could line up with.
+        /// </summary>
+        public static Vector3 PlacementVoxel(Vector3 hitPoint, Vector3 normal)
+        {
+            var outside = hitPoint + Vector3.Normalize(normal) * 0.5f;
+            return new Vector3(MathF.Round(outside.X), MathF.Round(outside.Y), MathF.Round(outside.Z));
+        }
+
+        /// <summary>The grid point one action targets. One function so the client's highlight and the
+        /// server's edit cannot pick different voxels for the same click.</summary>
+        public static Vector3 TargetVoxel(Vector3 hitPoint, Vector3 normal, TerrainAction action)
+            => action == TerrainAction.Place
+                ? PlacementVoxel(hitPoint, normal)
+                : TargetVoxel(hitPoint, normal);
+
+        /// <summary>
+        /// Whether a placement at <paramref name="target"/> would be built through the player
+        /// standing at <paramref name="feet"/>.
+        ///
+        /// Digging never needed this — you cannot dig the air you are standing in — but building
+        /// does, and it is the one placement rule that cannot be left to taste: the brush lands
+        /// roughly an arm away at chest height, which is exactly where the body is when you look
+        /// down. Without it the ordinary way to place a floor is to entomb yourself in it.
+        ///
+        /// Checked against the capsule the movement step actually collides with, widened by the
+        /// brush radius, so "it would have pushed me" and "it is refused" are the same volume.
+        /// Only the requesting player: another actor standing where you build gets shoved by the
+        /// collision step, which is survivable, whereas scanning every actor per click is not free
+        /// and is a rule nobody can see.
+        /// </summary>
+        public static bool WouldEncasePlayer(Vector3 feet, Vector3 target)
+        {
+            var body = PlayerMovement.Body;
+            float reach = body.Radius + BiteRadius;
+
+            float dx = target.X - feet.X;
+            float dz = target.Z - feet.Z;
+            if (dx * dx + dz * dz > reach * reach) return false;
+
+            return target.Y > feet.Y - BiteRadius
+                && target.Y < feet.Y + body.Height + BiteRadius;
         }
 
         /// <summary>Where a player's reach is centred, given where they are standing.</summary>

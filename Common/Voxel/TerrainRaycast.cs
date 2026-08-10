@@ -41,6 +41,26 @@ namespace Demiurge
         const float MaxStep = Voxel.Maximum / Voxel.Scale;
 
         /// <summary>
+        /// Extra steps allowed for a ray converging on a surface it approaches at a shallow angle.
+        /// </summary>
+        /// <remarks>
+        /// Sphere tracing steps by the distance to the surface, so a ray running nearly parallel to a
+        /// slope closes that distance by a small FRACTION each time. The approach is geometric, not
+        /// linear: one measured ray shrank its clearance about 3% per step, from 1.55 down to 0.03 over
+        /// a hundred steps, and needed roughly 153 to reach <see cref="SurfaceEpsilon"/>.
+        ///
+        /// The budget used to be 64 on top of the open-air term — about 119 all told — which stopped
+        /// that ray at 37.8 m with solid ground beginning at 38.75 m. Sized from the convergence
+        /// instead: reaching <see cref="SurfaceEpsilon"/> from <see cref="MaxStep"/> at a ratio r takes
+        /// ln(eps/MaxStep) / ln(r) steps, so 1024 covers everything down to about r = 0.994. Past that
+        /// the ray is parallel to the surface for practical purposes, and the exhaustion path below
+        /// handles it.
+        ///
+        /// Only grazing rays ever pay this; a ray through open air still finishes in about 24 steps.
+        /// </remarks>
+        const int GrazingStepAllowance = 1024;
+
+        /// <summary>
         /// Fires a ray and returns the first surface it meets, or null for a clean miss.
         ///
         /// Null ALSO means the ray ran out of loaded terrain — deliberately a miss rather than a hit,
@@ -60,10 +80,16 @@ namespace Demiurge
 
             direction /= length;
 
-            // Every step advances at least SurfaceEpsilon (below), so this cannot spin: it is the
-            // budget for the pathological case of grazing a surface, where steps stay tiny. The
-            // MaxStep term is the ordinary open-air cost.
-            int maxSteps = (int)(maxDistance / MaxStep) + 4 * RefineIterations + 64;
+            // Ordinary open-air cost, plus the grazing allowance below. The first term is what a ray
+            // through clear space needs; on its own it is nowhere near enough for a shallow approach.
+            int maxSteps = (int)(maxDistance / MaxStep) + 4 * RefineIterations + GrazingStepAllowance;
+
+            // ONE memo for the whole march. Each step samples the field 64 times and the old code
+            // built a fresh cursor for each of the two calls, so a 40 m ray threw the chunk lookup
+            // away thousands of times over — while consecutive steps are at most MaxStep apart and
+            // therefore nearly always in the chunk the previous step already resolved. Same
+            // arithmetic, same hit, far fewer dictionary probes.
+            var cursor = new VoxelCursor(map);
 
             float travelled = 0f;
             float previous = 0f;
@@ -73,16 +99,23 @@ namespace Demiurge
             {
                 var at = origin + direction * travelled;
 
-                if (!TerrainCollision.TrySample(map, at, out var point)) return null;   // ran out of loaded world
-                if (!TerrainCollision.TrySampleRaw(map, at, out float raw)) return null;
+                // Eight voxel reads, not 56. The march needs a safe step length and a "have I arrived"
+                // test; it does NOT need a surface normal, and the smoothed central-difference gradient
+                // that TrySample divides by is 48 of those 56 reads. The normal is resampled once, at
+                // the hit, in At(). See TrySampleCellCorrected for why the per-cell gradient is a sound
+                // substitute for THIS decision and not for shading or pushout.
+                if (!TerrainCollision.TrySampleCellCorrected(ref cursor, at, out float raw, out float corrected))
+                    return null;   // ran out of loaded world
 
-                if (point.Distance <= SurfaceEpsilon)
+                if (corrected <= SurfaceEpsilon)
                 {
                     // Bisect between the last known-outside sample and this known-inside one. On the
                     // very first sample there is no outside to bracket with — the ray started in
                     // terrain — so report the origin rather than inventing a crossing behind it.
-                    float hit = havePrevious ? Refine(map, origin, direction, previous, travelled) : travelled;
-                    return At(map, origin, direction, hit);
+                    float hit = havePrevious
+                        ? Refine(ref cursor, origin, direction, previous, travelled)
+                        : travelled;
+                    return At(ref cursor, origin, direction, hit);
                 }
 
                 previous = travelled;
@@ -90,10 +123,22 @@ namespace Demiurge
 
                 // The clamp is what guarantees progress. A grazing ray samples a distance that
                 // approaches zero without ever crossing, and stepping by it would converge in place.
-                travelled += MathF.Max(SafeStep(raw, point.Distance), SurfaceEpsilon);
+                travelled += MathF.Max(SafeStep(raw, corrected), SurfaceEpsilon);
             }
 
-            return null;
+            // Two ways out of that loop, and they mean opposite things.
+            //
+            // Past maxDistance is a genuine miss: the ray was still taking real steps and simply ran
+            // out of range. Out of STEPS is not — every step advances at least SurfaceEpsilon, so
+            // exhausting the budget means the average step was a fraction of a voxel, which only
+            // happens when the ray is converging on a surface it never formally crossed.
+            //
+            // Reporting that as a miss is what let line of sight pass through a hillside: the caller
+            // cannot distinguish "nothing there" from "I gave up next to something". Report the
+            // converged position instead. It is within a hundredth of a voxel of the surface, and for
+            // both of the things that ask — can this NPC see that one, where does this bullet land —
+            // treating a graze as contact is the answer that does not invent open sky.
+            return travelled > maxDistance ? null : At(ref cursor, origin, direction, travelled);
         }
 
         /// <summary>
@@ -125,14 +170,20 @@ namespace Demiurge
         /// ends were both good, so the crossing is real and still between them, and giving up here
         /// would turn a genuine hit into a miss at a chunk seam.
         /// </summary>
-        static float Refine(ChunkMap map, Vector3 origin, Vector3 direction, float outside, float inside)
+        /// <remarks>
+        /// Samples raw rather than corrected, which is not an approximation — it is the same test.
+        /// The corrected distance is <c>raw / |gradient|</c> and the gradient length is positive, so
+        /// <c>corrected &lt;= 0</c> and <c>raw &lt;= 0</c> are the same predicate. Eight reads per
+        /// iteration instead of 56, bit-identical bracket.
+        /// </remarks>
+        static float Refine(ref VoxelCursor cursor, Vector3 origin, Vector3 direction, float outside, float inside)
         {
             for (int i = 0; i < RefineIterations; i++)
             {
                 float middle = 0.5f * (outside + inside);
-                if (!TerrainCollision.TrySample(map, origin + direction * middle, out var point)) break;
+                if (!TerrainCollision.TrySampleRaw(ref cursor, origin + direction * middle, out float raw)) break;
 
-                if (point.Distance <= 0f) inside = middle;
+                if (raw <= 0f) inside = middle;
                 else outside = middle;
             }
 
@@ -144,10 +195,10 @@ namespace Demiurge
         /// carried out of the march because the march's last sample sits wherever the stepping left
         /// it, which is not the surface.
         /// </summary>
-        static TerrainHit At(ChunkMap map, Vector3 origin, Vector3 direction, float travelled)
+        static TerrainHit At(ref VoxelCursor cursor, Vector3 origin, Vector3 direction, float travelled)
         {
             var point = origin + direction * travelled;
-            var normal = TerrainCollision.TrySample(map, point, out var field) ? field.Normal : -direction;
+            var normal = TerrainCollision.TrySample(ref cursor, point, out var field) ? field.Normal : -direction;
             return new TerrainHit(point, normal, travelled);
         }
     }

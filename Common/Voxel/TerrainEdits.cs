@@ -30,6 +30,18 @@ namespace Demiurge
         Add,
         /// <summary>Difference: solid where the terrain is solid and the shape is not.</summary>
         Subtract,
+        /// <summary>
+        /// Difference applied only to <see cref="Blocks.IsSoil"/> samples — what a shovel can move.
+        /// Air still receives updated distance values so the carved soil surface remains a valid
+        /// SDF; stone is bit-identical.
+        /// </summary>
+        SubtractSoil,
+        /// <summary>
+        /// Difference applied to <see cref="Blocks.IsBlastable"/> samples: everything a shovel can
+        /// move, plus masonry. The wider list is the whole difference between the two — a charge
+        /// brings a brick wall down and a spade does not, while natural rock is untouched by either.
+        /// </summary>
+        SubtractBlast,
     }
 
     public static class TerrainEdits
@@ -221,12 +233,15 @@ namespace Demiurge
                 {
                     for (int x = minX; x <= maxX; x++)
                     {
+                        int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
+                        var voxel = chunk[i];
+                        if (!Blocks.CanRemove(mode, voxel.Material))
+                            continue;
+
                         var world = new Vector3(originX + x, y, originZ + z);
                         float shape = ShapeDistance(world - centre, halfExtent, editShape, world);
 
-                        int i = ChunkTransforms.LocalVoxelIndex(x, y - ChunkConstants.WorldMinY, z);
-
-                        float existing = chunk[i].Distance;
+                        float existing = voxel.Distance;
                         float full = mode == EditMode.Add
                             ? MathF.Min(existing, shape)
                             : MathF.Max(existing, -shape);
@@ -236,7 +251,6 @@ namespace Demiurge
                         // No edit may open the world floor — see ChunkConstants.BedrockThickness.
                         combined = ChunkConstants.ClampToWorldFloor(y, combined);
 
-                        var voxel = chunk[i];
                         voxel.Distance = combined;
 
                         // Density is the authority on what exists; material only labels it. Three
@@ -381,6 +395,7 @@ namespace Demiurge
             if (mode == EditMode.Subtract && editShape is EditShape.Sphere or EditShape.Organic)
                 CullTinySolidComponents(map, low, high, MaxDisconnectedSolidSamples);
 
+            map.MarkEdited(first, last);
             return (new Vector3(low.X, low.Y, low.Z), new Vector3(high.X, high.Y, high.Z));
         }
 

@@ -12,6 +12,11 @@ public class PlayerViewScript : SyncScript
     public required PlayerRegistry Registry {get; init;}
     public required Player Player { get; init; }
 
+    /// <summary>The worn helmet, hidden and shown with the body it sits on. Driven from here rather
+    /// than by its own script so the two can never disagree — a helmet left visible on a first-person
+    /// player hangs in front of their eyes, and one left on a corpse floats where the body was.</summary>
+    public ModelComponent? Helmet { get; init; }
+
     public PlayerStateFlags State;
 
     private PlayingAnimation? CurrentAnimation { get; set; }
@@ -22,6 +27,11 @@ public class PlayerViewScript : SyncScript
 
     public override void Update()
     {
+        bool bodyVisible = Player is not LocalPlayer && !Player.IsDead;
+        if (Entity.Get<ModelComponent>() is { } model)
+            model.Enabled = bodyVisible;
+        if (Helmet is { } helmet)
+            helmet.Enabled = bodyVisible;
 
         switch (Player)
         {
@@ -116,9 +126,11 @@ public class PlayerViewScript : SyncScript
         // Must stay at index 0 so overlays blend on top of it. We only (re)create
         // it when the clip actually changes, otherwise it would restart every frame
         // and wipe the aiming overlay.
-        string baseClip = State.HasFlag(PlayerStateFlags.Crouching) ?
-            (State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch") :
-            (State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
+        string baseClip = State.HasFlag(PlayerStateFlags.Prone)
+            ? (State.HasFlag(PlayerStateFlags.Moving) ? "ProneCrawl" : "Prone")
+            : State.HasFlag(PlayerStateFlags.Crouching)
+                ? (State.HasFlag(PlayerStateFlags.Moving) ? "CrouchWalk" : "Crouch")
+                : (State.HasFlag(PlayerStateFlags.Moving) ? "Walk" : "Idle");
 
         bool baseMissing = CurrentAnimation == null || !anim.PlayingAnimations.Contains(CurrentAnimation);
         if (baseMissing || CurrentAnimation!.Name != baseClip)

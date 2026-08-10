@@ -103,6 +103,7 @@ internal sealed class DedicatedServerConsole : IDisposable
                   spawn mob <x> <z>
                   spawn pickup <item> <x> <z>
                   equip <@actor-id> <item>
+                  ai stats
                   map status
                   map load <map-name>
                   stop
@@ -123,7 +124,7 @@ internal sealed class DedicatedServerConsole : IDisposable
                         spawn pickup <item> <x> <z>
                           Spawns an item pickup on the terrain at absolute X/Z coordinates.
                           Success prints its network object ID, for example #1.
-                          Example: spawn pickup ak47 0 0
+                          Example: spawn pickup sks 0 0
                           Run 'items' to list item names.
                         """
                     : """
@@ -132,15 +133,19 @@ internal sealed class DedicatedServerConsole : IDisposable
                           spawn pickup <item> <x> <z>
                         Examples:
                           spawn mob 10 -15
-                          spawn pickup ak47 0 0
+                          spawn pickup sks 0 0
                         Run 'help spawn mob', 'help spawn pickup', or 'items' for details.
                         """,
             "equip" => """
                 equip <@actor-id> <item>
                   Equips a player or mob. Run 'players' to find actor IDs.
-                  Example: equip @60000 ak47
+                  Example: equip @60000 sks
                   The dedicated console cannot use @s.
                   Equipment changes are session-only and are not written into map files.
+                """,
+            "ai" => """
+                ai stats
+                  Shows the latest 1-second average for mob movement and off-thread path searches.
                 """,
             "map" => """
                 Map commands:

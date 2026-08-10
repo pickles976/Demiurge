@@ -10,6 +10,7 @@ public static class RuntimeMapSerializer
     private const uint Magic = 0x50414D44; // "DMAP" little endian
     public const int HashBytes = 32;
     private const int MaxNameBytes = 512;
+    private const int MaxItemIdBytes = 256;
     private const int MaxPlacements = 100_000;
 
     public static void Save(string path, RuntimeMap map)
@@ -117,8 +118,12 @@ public static class RuntimeMapSerializer
             writer.Write(placement.Position.Y);
             writer.Write(placement.Position.Z);
             writer.Write(placement.Yaw);
-            writer.Write((ushort)placement.Item);
+            WriteString(
+                writer,
+                placement.Item == default ? string.Empty : ItemCatalog.Id(placement.Item),
+                MaxItemIdBytes);
             WriteString(writer, placement.SpawnId ?? string.Empty, 256);
+            writer.Write(placement.Team);
         }
     }
 
@@ -126,7 +131,7 @@ public static class RuntimeMapSerializer
     {
         if (reader.ReadUInt32() != Magic) throw new InvalidDataException("Not a Demiurge runtime map");
         int version = reader.ReadInt32();
-        if (version != RuntimeMap.CurrentFormatVersion)
+        if (version is < 1 or > RuntimeMap.CurrentFormatVersion)
             throw new InvalidDataException($"Unsupported runtime map version {version}");
 
         var mapId = new Guid(ReadExact(reader, 16));
@@ -178,9 +183,26 @@ public static class RuntimeMapSerializer
             var kind = (RuntimePlacementKind)reader.ReadByte();
             var position = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
             float yaw = reader.ReadSingle();
-            var item = (ItemType)reader.ReadUInt16();
+            ItemType item;
+            if (version >= 3)
+            {
+                string itemId = ReadString(reader, MaxItemIdBytes);
+                if (itemId.Length == 0)
+                {
+                    item = default;
+                }
+                else if (!ItemCatalog.TryResolve(itemId, out item))
+                {
+                    throw new InvalidDataException($"Runtime map references unknown item '{itemId}'");
+                }
+            }
+            else
+            {
+                item = (ItemType)reader.ReadUInt16();
+            }
             string spawnId = ReadString(reader, 256);
-            placements[i] = new RuntimePlacement(kind, position, yaw, item, spawnId);
+            int team = version >= 2 ? reader.ReadInt32() : 1;
+            placements[i] = new RuntimePlacement(kind, position, yaw, item, spawnId, team);
         }
 
         return new RuntimeMap
