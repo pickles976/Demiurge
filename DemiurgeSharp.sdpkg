@@ -28,6 +28,7 @@ RootAssets:
     - 5e701637-223b-4073-e81f-43aa55ad113a:models/dp_27
     - b6431852-c82a-4e9e-2134-1365f0b24e8f:models/dp_27_skeleton
     - b5161cb9-fa9d-4264-e5df-b483a6e166a4:models/dummy
+    - f1bb23c3-5082-42d7-a560-ebb34d79a32e:models/flag
     - d5a9cf33-e6e0-1d7a-8e30-373b802dea66:models/grass
     - c605e5d7-c639-5541-5331-8318a2984af1:models/grenade
     - fa8b4eb7-70c4-bdfb-9cde-401b8f3bb3fb:models/helmet

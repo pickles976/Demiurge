@@ -66,6 +66,14 @@ internal sealed class MobIntegrationHarness : IDisposable
         foreach (var actor in Actors)
             if (actor.IsMob && actor.Status is { Health.Current: > 0 })
                 Mobs.Step(actor, NetworkConfig.FixedDt, tick, Actors);
+        // The same systems GameWorld.Tick runs after the actors have decided, in its order. These
+        // used to be missing, and their absence was invisible in the worst way: rounds were fired
+        // and never flew, so no scenario built on this harness could kill anybody and every one of
+        // them was quietly measuring a fight that could not resolve.
+        Flags.Tick(NetworkConfig.FixedDt, Actors);
+        Items.Tick(tick);
+        Weapons.Tick(NetworkConfig.FixedDt, tick, Actors);
+        Grenades.Tick(NetworkConfig.FixedDt, tick, Actors);
         Mortars.Tick(NetworkConfig.FixedDt, tick, Actors);
         if (wallClockDelayMs > 0)
             Thread.Sleep(wallClockDelayMs);

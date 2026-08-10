@@ -2,7 +2,19 @@ using System.Numerics;
 
 namespace Demiurge;
 
-/// <summary>A team-relative view of one capturable flag for strategic planning.</summary>
+/// <summary>
+/// A team-relative view of one capturable flag for strategic planning.
+///
+/// <paramref name="FriendlyPresence"/> and <paramref name="EnemyPresence"/> are men inside
+/// <see cref="FlagConfig.CaptureRadius"/> — four metres, so they answer "who is turning the capture
+/// clock right now" and nothing else. The two APPROACH terms answer the questions the planner
+/// actually asks: how much of our own force is already handling this flag, and how long we have
+/// before one of ours changes hands. Measuring either at four metres made a flag defended by six men
+/// in holes twenty metres out look abandoned.
+/// </summary>
+/// <param name="FriendlyApproaching">Our living men within <see cref="StrategicValue.InfluenceRadius"/>.</param>
+/// <param name="EnemyApproachSeconds">Walk-seconds for the nearest living enemy to reach this flag,
+/// or <see cref="float.PositiveInfinity"/> when no enemy is alive.</param>
 public readonly record struct StrategicFlag(
     uint FlagId,
     Vector3 Position,
@@ -10,7 +22,9 @@ public readonly record struct StrategicFlag(
     int CapturingTeam,
     float Progress,
     int FriendlyPresence,
-    int EnemyPresence);
+    int EnemyPresence,
+    int FriendlyApproaching = 0,
+    float EnemyApproachSeconds = float.PositiveInfinity);
 
 /// <summary>Stable squad identity and its long-term origin/current assignment.</summary>
 public readonly record struct StrategicSquad(

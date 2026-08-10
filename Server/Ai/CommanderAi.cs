@@ -15,6 +15,11 @@ internal sealed class CommanderAi
     private uint nextPlanTick;
     private int plannedSquadCount = -1;
 
+    // Rebuilt once per team per replan, not once per squad: every tube on a team is solving against
+    // the same battlefield, and this is the whole of it.
+    private readonly List<MortarTarget> fireMissionEnemies = [];
+    private readonly List<System.Numerics.Vector3> fireMissionFriendlies = [];
+
     public CommanderAi(FlagSystem flags, ObjectReplication objects)
     {
         this.flags = flags;
@@ -72,12 +77,13 @@ internal sealed class CommanderAi
                     pair.Value.SetObjective(null);
                 }
             }
-            AssignResources(tick, boards, actors, claimedResources);
+            AssignResources(tick, team, boards, actors, claimedResources);
         }
     }
 
     private void AssignResources(
         uint tick,
+        int team,
         KeyValuePair<(int Team, int Squad), SquadBlackboard>[] boards,
         ICollection<ServerPlayer> actors,
         HashSet<uint> claimed)
@@ -93,63 +99,63 @@ internal sealed class CommanderAi
             .Where(obj => obj.Has.HasFlag(NetComponents.Item | NetComponents.Transform))
             .ToArray();
 
+        BuildFireMissionInputs(team, actors);
+
         foreach (var pair in boards)
         {
             var board = pair.Value;
             SquadResourceObjective? selected = null;
+            float bestMissionValue = MortarTargeting.MinimumMissionValue;
 
-            if (board.TryGetPrimaryThreat(tick, out var threat)
-                && MortarTargetIsSafe(pair.Key.Team, threat.Position, actors))
+            // Any tube this squad already has a man on, laid on wherever the fire mission says.
+            //
+            // The target no longer comes from the squad's own primary threat, and that is the point.
+            // A mortar is served on information the TEAM has, not on what the man behind it can
+            // personally see: the tube is fifty metres behind the line by construction, so a contact
+            // model built for a rifleman's line of sight is the wrong instrument entirely, and the
+            // one that was there delivered a single moving individual reported a third of a second
+            // late. See MortarTargeting.
+            foreach (ushort actorId in board.Roster)
             {
-                foreach (ushort actorId in board.Roster)
-                {
-                    if (!actorById.TryGetValue(actorId, out var currentOperator)
-                        || currentOperator.OperatingObjectId == 0
-                        || !objects.TryGet(currentOperator.OperatingObjectId, out var currentMortar)
-                        || !ItemCatalog.HasBehavior(currentMortar.Item.Type, ItemBehavior.Mortar)
-                        || !MortarBallistics.IsTargetInFireSector(
-                            currentMortar.Transform.Position,
-                            currentMortar.Transform.Yaw,
-                            threat.Position))
-                        continue;
+                if (!actorById.TryGetValue(actorId, out var currentOperator)
+                    || currentOperator.OperatingObjectId == 0
+                    || !objects.TryGet(currentOperator.OperatingObjectId, out var currentMortar)
+                    || !ItemCatalog.HasBehavior(currentMortar.Item.Type, ItemBehavior.Mortar)
+                    || !TryFireMission(currentMortar, out var target, out float value)
+                    || value <= bestMissionValue)
+                    continue;
 
-                    selected = new SquadResourceObjective(
-                        SquadResourceKind.OperateMortar,
-                        currentOperator.Id,
-                        currentMortar.NetworkId,
-                        currentMortar.Item.Type,
-                        currentMortar.Transform.Position,
-                        threat.Position);
-                    break;
-                }
+                bestMissionValue = value;
+                selected = new SquadResourceObjective(
+                    SquadResourceKind.OperateMortar,
+                    currentOperator.Id,
+                    currentMortar.NetworkId,
+                    currentMortar.Item.Type,
+                    currentMortar.Transform.Position,
+                    target);
+            }
 
-                float bestMortarDistance = ResourceSearchRadius * ResourceSearchRadius;
-                foreach (var mortar in selected is null ? pickups : [])
-                {
-                    if (claimed.Contains(mortar.NetworkId)
-                        || worked.Contains(mortar.NetworkId)
-                        || !ItemCatalog.HasBehavior(mortar.Item.Type, ItemBehavior.Mortar)
-                        || !MortarBallistics.IsTargetInFireSector(
-                            mortar.Transform.Position,
-                            mortar.Transform.Yaw,
-                            threat.Position))
-                        continue;
+            // Otherwise, a tube on the ground worth walking to. Judged by the mission it could fire
+            // rather than by how close it is: a mortar nobody can bring to bear is not a resource.
+            foreach (var mortar in selected is null ? pickups : [])
+            {
+                if (claimed.Contains(mortar.NetworkId)
+                    || worked.Contains(mortar.NetworkId)
+                    || !ItemCatalog.HasBehavior(mortar.Item.Type, ItemBehavior.Mortar)
+                    || !TryFireMission(mortar, out var target, out float value)
+                    || value <= bestMissionValue
+                    || !NearestAvailableOperator(
+                        board, actorById, mortar.Transform.Position, out var gunner, out _))
+                    continue;
 
-                    if (NearestAvailableOperator(
-                            board, actorById, mortar.Transform.Position,
-                            out var gunner, out float distanceSquared)
-                        && distanceSquared < bestMortarDistance)
-                    {
-                        bestMortarDistance = distanceSquared;
-                        selected = new SquadResourceObjective(
-                            SquadResourceKind.OperateMortar,
-                            gunner.Id,
-                            mortar.NetworkId,
-                            mortar.Item.Type,
-                            mortar.Transform.Position,
-                            threat.Position);
-                    }
-                }
+                bestMissionValue = value;
+                selected = new SquadResourceObjective(
+                    SquadResourceKind.OperateMortar,
+                    gunner.Id,
+                    mortar.NetworkId,
+                    mortar.Item.Type,
+                    mortar.Transform.Position,
+                    target);
             }
 
             if (selected is null)
@@ -199,6 +205,80 @@ internal sealed class CommanderAi
         }
     }
 
+    /// <summary>
+    /// Everybody a fire mission cares about, from the server's own actor list.
+    ///
+    /// Deliberately GROUND TRUTH rather than the squad's believed contacts. A mortar is an indirect
+    /// weapon: it is laid on a grid reference somebody else supplied, and there is nobody behind the
+    /// tube who can see the target by construction — the minimum range is fifty metres. Modelling a
+    /// forward-observer network so the AI could arrive back at "the team knows where the enemy is"
+    /// would be machinery in service of a result already available, and it would make the weapon
+    /// worse at the one thing it is for. It is also what was asked for.
+    /// </summary>
+    private void BuildFireMissionInputs(int team, ICollection<ServerPlayer> actors)
+    {
+        fireMissionEnemies.Clear();
+        fireMissionFriendlies.Clear();
+        if (team <= 0) return;
+
+        foreach (var actor in actors)
+        {
+            if (actor.Team <= 0 || actor.Status is { Health.Current: 0 }) continue;
+            if (actor.Team == team)
+            {
+                fireMissionFriendlies.Add(actor.Position);
+                continue;
+            }
+
+            // Counter-battery, as a weight rather than as a mode. A man on a crew weapon is worth
+            // more than a rifleman because the tube goes with him, and he is also standing still,
+            // which MortarTargeting already prices as the easier shot it is.
+            bool crewServed = actor.OperatingObjectId != 0
+                && objects.TryGet(actor.OperatingObjectId, out var served)
+                && served.Has.HasFlag(NetComponents.Item)
+                && ItemCatalog.HasBehavior(served.Item.Type, ItemBehavior.Mortar);
+
+            fireMissionEnemies.Add(new MortarTarget(
+                actor.Position,
+                actor.Move.Velocity,
+                crewServed ? MortarTargeting.CrewServedWeaponValue : 1f));
+        }
+    }
+
+    /// <summary>The best mission this tube can fire, given where it is emplaced and which way it was
+    /// laid. Its own sector and range band are what make one tube's answer differ from another's.</summary>
+    private bool TryFireMission(ServerObject mortar, out System.Numerics.Vector3 target, out float value)
+    {
+        target = default;
+        value = 0f;
+        if (fireMissionEnemies.Count == 0) return false;
+
+        // One representative flight, at the middle of the band, rather than re-solving the arc per
+        // candidate. The arc varies by a couple of seconds across the whole reachable band and the
+        // spread it feeds is already several metres wide; paying for exactness inside that would buy
+        // no different decision.
+        var muzzle = mortar.Transform.Position
+            + System.Numerics.Vector3.UnitY * MortarBallistics.MuzzleHeight;
+        var midpoint = muzzle
+            + new System.Numerics.Vector3(
+                MathF.Sin(mortar.Transform.Yaw),
+                0f,
+                MathF.Cos(mortar.Transform.Yaw))
+                * ((MortarConfig.MinimumRange + MortarConfig.MaximumRange) * 0.5f);
+        float flightSeconds =
+            MortarBallistics.FlightSeconds(muzzle, midpoint, ProjectileMotion.Gravity)
+            ?? MortarConfig.MaxFlightSeconds * 0.5f;
+
+        return MortarTargeting.TrySolve(
+            mortar.Transform.Position,
+            mortar.Transform.Yaw,
+            flightSeconds,
+            fireMissionEnemies,
+            fireMissionFriendlies,
+            out target,
+            out value);
+    }
+
     private bool TryPrimary(ServerPlayer actor, out ItemType type)
     {
         type = default;
@@ -239,12 +319,26 @@ internal sealed class CommanderAi
     private static float Horizontal(System.Numerics.Vector3 a, System.Numerics.Vector3 b)
         => MathF.Sqrt(HorizontalSquared(a, b));
 
+    /// <summary>
+    /// The last check before the lanyard, and deliberately NOT a second opinion on the target.
+    ///
+    /// Whether a mission is worth firing is <see cref="MortarTargeting"/>'s question, and it already
+    /// prices our own casualties in the same tickets as theirs — which is what lets a round that
+    /// kills three of theirs land thirty metres from one of ours, as it should. This is the floor
+    /// under that: a plan is up to a commander-second old and men walk six metres in a second, so a
+    /// friendly who has since moved UNDER the burst stops the round. Lethal radius plus the tube's
+    /// own scatter, i.e. "we would certainly kill him", not the fifteen-metre ring the score handles.
+    ///
+    /// It used to be that fifteen-metre ring plus scatter, twenty metres of veto over a weapon that
+    /// only reaches fifty — so a squad advancing anywhere near its own objective silenced its own
+    /// support, and the tube sat loaded.
+    /// </summary>
     internal static bool MortarTargetIsSafe(
         int team,
         System.Numerics.Vector3 target,
         IEnumerable<ServerPlayer> actors)
     {
-        float safeRadius = MortarConfig.DamageRadius + MortarConfig.DispersionMetres;
+        float safeRadius = MortarConfig.LethalRadius + MortarConfig.DispersionMetres;
         float safeSquared = safeRadius * safeRadius;
         foreach (var actor in actors)
             if (actor.Team == team

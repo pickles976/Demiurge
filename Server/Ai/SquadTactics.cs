@@ -264,11 +264,23 @@ internal static class SquadTactics
         var movers = new Dictionary<int, float>(allowedMovers);
         var taken = new HashSet<float>();
 
-        foreach (var (index, gain) in candidates)
+        foreach (var (index, _) in candidates)
         {
             if (movers.Count >= allowedMovers) break;
-            if (gain < MinimumGainToLeaveTheFiringLine) continue;
 
+            // A LIVE commitment is not re-litigated against the number that produced it.
+            //
+            // The gain test used to be here too, and it undid the commitment it was standing next
+            // to: gain is a function of live positions on both sides, so it dips below the bar for
+            // half a second whenever the man crosses a fold or the threat shifts. That released him
+            // mid-bound, which released his bearing (PlanSquadTactics calls Released on any
+            // non-Bound order), so he stopped where he was; the next replan found the gain healthy
+            // again and dealt him a FRESH bearing, usually a different one. Twice a second, that is
+            // a man turning around rather than crossing.
+            //
+            // The bar belongs on STARTING a bound — it prices leaving a working firing position —
+            // and the loop below is where it is applied. Continuing is bounded instead by
+            // MoverTimeoutTicks, which already removed timed-out movers from `candidates`.
             if (!members[index].CommittedBearing.TryGet(input.Tick, out float committed)) continue;
             if (!taken.Add(committed)) continue;
             movers[index] = committed;

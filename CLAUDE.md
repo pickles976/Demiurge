@@ -200,6 +200,15 @@ which is the second worked example of this method — and note that the design w
 the unit, not the algorithm that compares in it. Weapon identity is gone from the AI, fire discipline
 is a rate choice, and squad roles are a joint score.
 
+Also claimed: indirect fire, in `Common/Ai/MortarTargeting.cs`. The unit is expected blast coverage
+weighted by what each man is worth, summed over a candidate impact POINT rather than picked for a
+target — and the three behaviours that were asked for separately fall out of the one sum. Clusters
+score higher because it is a sum. Dug-in men score higher because a man who is not moving is where the
+solver said he would be when the round lands nine seconds later, so entrenchment is rewarded for being
+PREDICTABLE and nothing asks whether anybody is in a hole. Counter-battery is a crew being worth more
+than a rifleman and also standing still, so it needs no mode. Blue-on-blue is subtracted in the same
+tickets rather than vetoed, which is what lets a good mission be fired danger close.
+
 Unclaimed today: `MobSystem`'s per-unit arbitration is still an ordered `ActorIntent` ternary rather
 than a comparison of scored actions — `ActorIntent.HoldAndFire` is declared and never constructed.
 The currency it needs already exists, so this is wiring. See "The combat currency" and "What is still
@@ -281,6 +290,28 @@ terminal (an arrived NPC that can never move again is why nothing bounded), and 
 allowed to run a cover query even though it does not want to advance (otherwise it stands in the open,
 never goes set, and nobody in the squad is ever cleared to move). `ai track` draws the NPC debug
 overlay; roles are server-only and deliberately not on the wire.
+
+**A man's arrival must be tested against where HE was sent, not against the squad's objective.**
+`holdingObjective` measured the flag while every man but the point walks to his slot in the wedge, ten
+to twenty metres off it — so a flanker arrived, was told he had not, asked for a path, walked a metre
+onto it, arrived, and asked again, about once a second forever. This is the general shape and it will
+recur wherever a formation offsets a destination: the layer that DISPATCHES a man and the layer that
+decides he has ARRIVED have to use the same point.
+
+**Reported AI churn is three different bugs and only measurement separates them.** A squad's man can
+churn his SQUAD (`SquadFormation`), his OBJECTIVE (`CommanderAi`), or his PATH (`PathFollower` and the
+search) — they look identical in the game and have nothing in common in the code. The instrument is
+`ConquestChurnDiagnosticTests`: a headless seven-minute conquest fight on the real map that samples
+each NPC's squad, flag, and destination every tick and reports movement reversals per five-second
+window against them. It is what showed the rubber-banding was in the third layer while the destination
+never moved once, after two plausible fixes to the first two changed nothing. Note its variance —
+stall rate swings 6% to 12% on identical code because the fight happens somewhere different — which is
+why the only thing it ASSERTS is path requests per actor-second, the one measure that separated the
+loop cleanly (1.9–2.5 broken against 0.5–0.9 fixed).
+
+**`MobIntegrationHarness` did not tick weapons, grenades, or items until 2026-08-10**, so no NPC in any
+integration scenario could ever be shot. Every fight measured before that date was a fight that could
+not resolve. It now runs the same systems in `GameWorld.Tick`'s order.
 
 An actor's hittable volume is the capsule `PlayerMovement.Body` describes, via
 `GunMath.PlayerHitDistance`. It was a single sphere at 0.5 m, which left a standing player's head and

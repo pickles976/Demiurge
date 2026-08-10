@@ -125,7 +125,7 @@ public class ObjectViewFactory : IDisposable
             new ModelComponent(GLTFLoader.LoadModel(
                 game,
                 ItemCosmetics.Model(ItemCatalog.RequireBehavior(ItemBehavior.Grenade)))),
-            new MortarRoundScript { Priority = 10 },
+            new MortarRoundScript { Players = players, Priority = 10 },
         };
 
     private Entity CreateThrownGrenade()

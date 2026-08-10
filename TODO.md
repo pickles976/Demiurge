@@ -14,57 +14,31 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 
 # PVP Mechanics
 
-## Event Queue
-Event queue implementation
-
 ## Misc
 
-Bugs: 
-- NPCs dont aim well with the mortar. They need to have perfect awareness of enemmies when using the mortar, do counter-battery fire against other mortars, and target clusters of units and dug-in units.
-
 Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
+- [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
+- [ ] add grass (10x less dense, spawn only on grass blocks)
 
-- Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
 
-- Add UI to show players and NPCs when player holds Tab. Many shooters do this. Should track kills and deaths.
-- Add command to change player's teams. 
+Bugs: 
 
-Bugs:
+AI:
 
-- NPCs rubber-banding, likely related to formation code. Looks like position-assignment churn.
-- NPCs still pile onto one pair of flags
-
-- NPCs sometimes digging down to cross a big trench rather than just jumping in
-
-If Digging still sucks
-- Stop all digging during combat. Let's get combat working first and then we can figure out how to appropriately add digging
-
-New Features
-- Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
-
-- Try to add digging back in to combat
-
-- [ ] mortar whistle sound
+- [ ] NPCs sometimes digging down to cross a big trench rather than just jumping in
+- [ ] Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
 
 Stop Using Claude
 - Codex clean up all comments
 - Codex refactor certain parts of the code
 
-## Richer Environment
+## Event Queue
+Event queue implementation
 
-- [ ] add wood texture
-- [ ] add wood block type
+## Richer Environment
 
 - [ ] structure editor
 
-- [ ] DP-27 Pixel Art
-
-- [ ] flag 3D model     
-- [ ] fix audio cutting off
-
-- [ ] add 4 more NPCs to each team
-
-- [ ] add grass
 - [ ] add trees
 - [ ] tree destruction
       - [ ] low LOD tree
@@ -119,7 +93,10 @@ Bugs found during design, each explaining part of the observed behaviour:
 
 # PVP Demo
 
+- [ ] add 4 more NPCs to each team
 - [ ] add screen where you enter a server IP and port
+- [ ] test over VPN
+
 - [ ] Host a server and run external multiplayer playtests
   - [ ] Provision a DigitalOcean host
   - [ ] Configure the scrungy.com domain

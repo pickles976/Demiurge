@@ -545,12 +545,17 @@ public class ItemAttachScript : SyncScript
 }
 
 /// <summary>
-/// The white trail behind a mortar bomb.
+/// The white trail behind a mortar bomb, and the two sounds its flight implies.
 ///
-/// Drawn from where the bomb has BEEN rather than from a predicted arc, so it shows the flight that
-/// actually happened — including the scatter, which a predicted line drawn to the aim point would
-/// quietly hide. The entity's transform is driven by NetTransformScript off the replicated
-/// position, so sampling it once a frame is sampling the real thing.
+/// The trail is drawn from where the bomb has BEEN rather than from a predicted arc, so it shows the
+/// flight that actually happened — including the scatter, which a predicted line drawn to the aim
+/// point would quietly hide. The entity's transform is driven by NetTransformScript off the
+/// replicated position, so sampling it once a frame is sampling the real thing.
+///
+/// The sounds are here for the same reason ThrownGrenadeScript owns the bounce: both are facts about
+/// a flight the client can already see, so neither needs an event on the wire. A round SPAWNS at the
+/// muzzle when the tube fires and DESPAWNS when it lands — the first is the report below, the second
+/// is what BlastEffectScript already listens to for the burst.
 /// </summary>
 public sealed class MortarRoundScript : SyncScript
 {
@@ -562,9 +567,44 @@ public sealed class MortarRoundScript : SyncScript
     /// duplicates of one point.</summary>
     private const float MinimumStep = 0.35f;
 
+    private const string LaunchSound = "assets/sfx/mortar_shot_1.wav";
+    private const string IncomingSound = "assets/sfx/mortar_incoming.wav";
+
+    /// <summary>
+    /// How long before it arrives the whistle starts.
+    ///
+    /// The length of the sample, near enough: mortar_incoming.wav runs 1.26 s, so starting it here
+    /// carries it right into the burst instead of leaving a gap of silence before the bang. It was
+    /// two seconds first, and the three quarters of a second of nothing that left was audible.
+    /// Re-cut the clip and this moves with it.
+    /// </summary>
+    private const float IncomingLeadSeconds = 1.3f;
+
     private static readonly Color TrailColor = new(250, 250, 250, 215);
 
     private readonly List<Stride.Core.Mathematics.Vector3> trail = [];
+
+    /// <summary>Where the local player is, to answer "when does this thing get down to MY level".
+    /// A round is warned about, not merely heard, so the warning is computed against the man being
+    /// warned.</summary>
+    public required PlayerRegistry Players { get; init; }
+
+    private SoundManager sound = null!;
+    private Stride.Core.Mathematics.Vector3 previous;
+    private bool hasPrevious;
+    private bool whistled;
+
+    public override void Start()
+    {
+        sound = Services.GetSafeServiceAs<SoundManager>();
+
+        // First frame of the round's existence IS the moment the tube fired: the server spawns it at
+        // the muzzle in the same tick it accepts the fire request.
+        sound.PlayOneShotSpatial(
+            LaunchSound,
+            Entity.Transform.Position,
+            falloff: SoundFalloff.MortarLaunch);
+    }
 
     public override void Update()
     {
@@ -576,10 +616,57 @@ public sealed class MortarRoundScript : SyncScript
             if (trail.Count > MaxSamples) trail.RemoveAt(0);
         }
 
+        UpdateWhistle(here);
+
         // The live position closes the line every frame, so the trail stays attached to the bomb
         // between samples instead of lagging up to MinimumStep behind it.
         if (trail.Count < 2) return;
         LineRenderer.DrawPolyline(trail, TrailColor);
         LineRenderer.DrawLine(trail[^1], here, TrailColor);
+    }
+
+    /// <summary>
+    /// Plays the whistle once, <see cref="IncomingLeadSeconds"/> before the round reaches the local
+    /// player's own altitude, at the point on the ground it is coming down on.
+    ///
+    /// Solved against the LISTENER's height rather than against the terrain under the round, and that
+    /// is the simplification that makes this four lines instead of an iteration. The whistle is a
+    /// warning to a particular man, so the moment worth warning him about is the moment the round
+    /// gets down to where he is standing — no chunk lookup, no guessing an impact point before
+    /// knowing the time, and correct by construction for the only person who can hear it.
+    ///
+    /// Placed at the predicted impact rather than on the round: a warning is about a PLACE, and a
+    /// one-shot pinned to a bomb travelling a hundred metres a second would be somewhere else by the
+    /// time it finished. The falloff then does the rest of the work — a round coming down two
+    /// hundred metres away is not audible, which is exactly right.
+    /// </summary>
+    private void UpdateWhistle(Stride.Core.Mathematics.Vector3 here)
+    {
+        var last = previous;
+        bool had = hasPrevious;
+        previous = here;
+        hasPrevious = true;
+        if (whistled || !had) return;
+        if (Players.LocalPlayer is not { IsDead: false } local) return;
+
+        float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+        if (dt <= 0f) return;
+
+        var velocity = (here - last) / dt;
+        if (velocity.Y >= 0f) return;   // still on the way up; nothing is arriving yet
+
+        float earHeight = Digging.Eye(local.Position).Y;
+        float seconds = ProjectileMotion.SecondsToFall(
+            here.Y - earHeight,
+            velocity.Y,
+            ProjectileMotion.Gravity);
+        if (seconds > IncomingLeadSeconds || seconds < 0f) return;
+
+        whistled = true;
+        var impact = here + velocity * seconds;
+        sound.PlayOneShotSpatial(
+            IncomingSound,
+            new Stride.Core.Mathematics.Vector3(impact.X, earHeight, impact.Z),
+            falloff: SoundFalloff.MortarIncoming);
     }
 }

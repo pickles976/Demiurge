@@ -215,20 +215,31 @@ public sealed class FlagSystem
         ICollection<ServerPlayer> players)
     {
         float radiusSq = FlagConfig.CaptureRadius * FlagConfig.CaptureRadius;
+        float influenceSq = StrategicValue.InfluenceRadius * StrategicValue.InfluenceRadius;
         var snapshot = new StrategicFlag[flags.Count];
         for (int i = 0; i < flags.Count; i++)
         {
             var flag = flags[i];
             int friendlyPresence = 0;
             int enemyPresence = 0;
+            int friendlyApproaching = 0;
+            float nearestEnemySquared = float.PositiveInfinity;
             foreach (var player in players)
             {
-                if (player.Team <= 0
-                    || player.Status is not { Health.Current: > 0 }
-                    || Vector3.DistanceSquared(player.Position, flag.Position) > radiusSq)
+                if (player.Team <= 0 || player.Status is not { Health.Current: > 0 })
                     continue;
-                if (player.Team == team) friendlyPresence++;
-                else enemyPresence++;
+
+                float distanceSquared = Vector3.DistanceSquared(player.Position, flag.Position);
+                if (player.Team == team)
+                {
+                    if (distanceSquared <= radiusSq) friendlyPresence++;
+                    if (distanceSquared <= influenceSq) friendlyApproaching++;
+                }
+                else
+                {
+                    if (distanceSquared <= radiusSq) enemyPresence++;
+                    nearestEnemySquared = MathF.Min(nearestEnemySquared, distanceSquared);
+                }
             }
 
             snapshot[i] = new StrategicFlag(
@@ -238,7 +249,15 @@ public sealed class FlagSystem
                 flag.Object.Team.CapturingTeam,
                 flag.Object.Team.Progress,
                 friendlyPresence,
-                enemyPresence);
+                enemyPresence,
+                friendlyApproaching,
+                // Straight-line walk time. The planner is comparing flags against each other, and a
+                // route's detours cost every candidate about the same; paying for a real path per
+                // flag per team per second to learn that would be the expensive way to change no
+                // decision.
+                float.IsPositiveInfinity(nearestEnemySquared)
+                    ? float.PositiveInfinity
+                    : MathF.Sqrt(nearestEnemySquared) / PlayerMovement.WalkSpeed);
         }
 
         return snapshot;

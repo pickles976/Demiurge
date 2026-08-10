@@ -30,6 +30,13 @@ public class CommanderAiTests
         Assert.Equal(dp27.NetworkId, objective.ObjectId);
     }
 
+    /// <summary>
+    /// Rewritten 2026-08-10 along with the fire-mission model. The threat used to be a CONTACT
+    /// published to the squad's blackboard, and there was no enemy in the world at all — which is
+    /// exactly the premise that made the weapon useless. A tube is laid on the team's knowledge of
+    /// where the enemy is, not on what the man behind it saw a third of a second ago, so the enemy
+    /// now has to exist. See MortarTargeting.
+    /// </summary>
     [Fact]
     public void CommanderAssignsOneOperatorToAMortarCoveringTheThreat()
     {
@@ -40,19 +47,58 @@ public class CommanderAiTests
         items.SpawnInfantryLoadout(actor, ItemType.Sks);
         var mortar = items.SpawnPickup(ItemType.Mortar, Vector3.Zero);
         mortar.Transform.Yaw = 0f;
+        var enemy = MobAt(60100, new Vector3(0f, 0f, 100f), team: 2);
         var board = BoardAt(Vector3.Zero);
-        board.Publish(new AiContact(7, new Vector3(0f, 0f, 100f), 1, 1f), 1);
-        board.Advance(100);
         var squads = new Dictionary<(int Team, int Squad), SquadBlackboard>
         {
             [(1, 0)] = board,
         };
 
-        new CommanderAi(flags, objects).Update(100, squads, [actor]);
+        new CommanderAi(flags, objects).Update(100, squads, [actor, enemy]);
 
         Assert.True(board.TryGetResourceObjective(actor.Id, out var objective));
         Assert.Equal(SquadResourceKind.OperateMortar, objective.Kind);
         Assert.Equal(mortar.NetworkId, objective.ObjectId);
+        Assert.True(
+            MortarBallistics.IsTargetInFireSector(
+                mortar.Transform.Position, mortar.Transform.Yaw, objective.Target),
+            "the mission has to be one this tube can actually fire");
+    }
+
+    /// <summary>
+    /// Counter-battery, end to end. Two enemy groups the tube can reach, one of them serving a
+    /// mortar; the mission goes to the guns. Nothing in the commander names counter-battery — the
+    /// crew is worth more and is standing still, and the sum does the rest.
+    /// </summary>
+    [Fact]
+    public void CommanderShootsBackAtAnEnemyMortarRatherThanAtRiflemen()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var flags = new FlagSystem(objects);
+        var items = new ItemSystem(objects);
+        var gunner = MobAt(60000, Vector3.Zero);
+        items.SpawnInfantryLoadout(gunner, ItemType.Sks);
+        var ours = items.SpawnPickup(ItemType.Mortar, Vector3.Zero);
+        ours.Transform.Yaw = 0f;
+
+        var rifleman = MobAt(60100, new Vector3(-40f, 0f, 100f), team: 2);
+        var crew = MobAt(60101, new Vector3(40f, 0f, 100f), team: 2);
+        var theirs = items.SpawnPickup(ItemType.Mortar, crew.Position);
+        crew.OperatingObjectId = theirs.NetworkId;
+
+        var board = BoardAt(Vector3.Zero);
+        var squads = new Dictionary<(int Team, int Squad), SquadBlackboard>
+        {
+            [(1, 0)] = board,
+        };
+
+        new CommanderAi(flags, objects).Update(100, squads, [gunner, rifleman, crew]);
+
+        Assert.True(board.TryGetResourceObjective(gunner.Id, out var objective));
+        Assert.Equal(SquadResourceKind.OperateMortar, objective.Kind);
+        Assert.True(
+            objective.Target.X > 0f,
+            $"the mission should land on the enemy tube, not the rifleman; aimed at {objective.Target}");
     }
 
     [Fact]
@@ -82,26 +128,31 @@ public class CommanderAiTests
         Assert.Equal(1, assignments);
     }
 
+    /// <summary>
+    /// One enemy is not worth one of ours. The friendly cost is subtracted in the same tickets rather
+    /// than vetoing the mission, so what this pins is the arithmetic coming out negative — and
+    /// MortarTargetingTests pins the other side of it, where three of theirs DO outweigh a risk to
+    /// one of ours.
+    /// </summary>
     [Fact]
-    public void CommanderDoesNotShellFriendliesNearTheContact()
+    public void CommanderDoesNotShellAnEnemyStandingOnTopOfItsOwnMen()
     {
         var objects = new ObjectReplication(new NullNetServer());
         var flags = new FlagSystem(objects);
         var items = new ItemSystem(objects);
         var gunner = MobAt(60000, Vector3.Zero);
-        var friendly = MobAt(60001, new Vector3(0f, 0f, 60f));
+        var friendly = MobAt(60001, new Vector3(0f, 0f, 100f));
+        var enemy = MobAt(60100, new Vector3(0f, 0f, 100f), team: 2);
         items.SpawnInfantryLoadout(gunner, ItemType.Sks);
         var mortar = items.SpawnPickup(ItemType.Mortar, Vector3.Zero);
         mortar.Transform.Yaw = 0f;
         var board = BoardAt(Vector3.Zero);
-        board.Publish(new AiContact(7, friendly.Position, 1, 1f), 1);
-        board.Advance(100);
         var squads = new Dictionary<(int Team, int Squad), SquadBlackboard>
         {
             [(1, 0)] = board,
         };
 
-        new CommanderAi(flags, objects).Update(100, squads, [gunner, friendly]);
+        new CommanderAi(flags, objects).Update(100, squads, [gunner, friendly, enemy]);
 
         Assert.False(board.TryGetResourceObjective(gunner.Id, out _));
     }
@@ -160,12 +211,12 @@ public class CommanderAiTests
         return board;
     }
 
-    private static ServerPlayer MobAt(ushort id, Vector3 position)
+    private static ServerPlayer MobAt(ushort id, Vector3 position, int team = 1)
         => new()
         {
             Id = id,
             IsMob = true,
-            Team = 1,
+            Team = team,
             Move = new MoveState { Position = position },
             Status = new ServerObject
             {

@@ -142,11 +142,19 @@ public sealed class BlastEffectScript : SyncScript
     public required ObjectRegistry Objects { get; init; }
     public required PlayerRegistry Players { get; init; }
 
-    private const string ExplosionSound = "assets/sfx/grenade_explosion.wav";
-
-    /// <summary>Past WeaponFx.DistantReportMetres a blast is a rumble from elsewhere, and gets its
-    /// own recording for the same reason distant rifle fire does.</summary>
-    private const string DistantExplosionSound = "assets/sfx/grenade_explosion_far.wav";
+    /// <summary>
+    /// What one thing going off sounds like, near and far.
+    ///
+    /// Past WeaponFx.DistantReportMetres a blast is a rumble from elsewhere and gets its own
+    /// recording, for the same reason distant rifle fire does. Both recordings live beside the blast
+    /// profile rather than as globals because a grenade and a mortar bomb are not the same bang, and
+    /// a mortar that borrowed the grenade's sample told the player the wrong thing about what had
+    /// just landed near him.
+    /// </summary>
+    private readonly record struct Detonation(
+        BlastProfile Blast,
+        string Sound,
+        string DistantSound);
 
     /// <summary>Where a far-off blast is placed: along the true bearing, at a range it can be heard
     /// from. The recording already sounds distant — see PlayShotReport for the full reasoning.</summary>
@@ -170,10 +178,16 @@ public sealed class BlastEffectScript : SyncScript
     /// What each thing that despawns is worth as a bang, or null for everything that simply stopped
     /// existing. One table rather than a branch per weapon: a new explosive is a row here.
     /// </summary>
-    private static BlastProfile? BlastFor(ObjectType type) => type switch
+    private static Detonation? DetonationFor(ObjectType type) => type switch
     {
-        ObjectType.Grenade => GrenadeConfig.Blast,
-        ObjectType.MortarRound => MortarConfig.Blast,
+        ObjectType.Grenade => new Detonation(
+            GrenadeConfig.Blast,
+            "assets/sfx/grenade_explosion.wav",
+            "assets/sfx/grenade_explosion_far.wav"),
+        ObjectType.MortarRound => new Detonation(
+            MortarConfig.Blast,
+            "assets/sfx/mortar_explosion.wav",
+            "assets/sfx/mortar_impact_far_off.wav"),
         _ => null,
     };
 
@@ -195,14 +209,16 @@ public sealed class BlastEffectScript : SyncScript
 
     private void OnObjectDespawned(NetObject obj)
     {
-        if (BlastFor(obj.Type) is not { } blast) return;
+        if (DetonationFor(obj.Type) is not { } detonation) return;
 
+        var blast = detonation.Blast;
         var position = obj.Transform.Position;
         ExplosionManager.Spawn(position.ToStride(), blast);
 
         if (Players.LocalPlayer is not { IsDead: false } local)
         {
-            sound.PlayOneShotSpatial(ExplosionSound, position.ToStride(), falloff: SoundFalloff.Explosion);
+            sound.PlayOneShotSpatial(
+                detonation.Sound, position.ToStride(), falloff: SoundFalloff.Explosion);
             return;
         }
 
@@ -215,13 +231,14 @@ public sealed class BlastEffectScript : SyncScript
                 ? System.Numerics.Vector3.Normalize(toBlast)
                 : System.Numerics.Vector3.UnitZ;
             sound.PlayOneShotSpatial(
-                DistantExplosionSound,
+                detonation.DistantSound,
                 (ear + bearing * DistantExplosionRange).ToStride(),
                 falloff: SoundFalloff.DistantReport);
         }
         else
         {
-            sound.PlayOneShotSpatial(ExplosionSound, position.ToStride(), falloff: SoundFalloff.Explosion);
+            sound.PlayOneShotSpatial(
+                detonation.Sound, position.ToStride(), falloff: SoundFalloff.Explosion);
         }
 
         // LINEAR in distance, deliberately. CameraTrauma already squares trauma to get its shake,

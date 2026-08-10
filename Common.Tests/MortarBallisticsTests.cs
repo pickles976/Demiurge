@@ -172,5 +172,58 @@ public class MortarBallisticsTests
             Assert.Equal(aim.Y, MortarBallistics.Disperse(aim, random).Y);
     }
 
+    /// <summary>
+    /// The arrival time the incoming whistle is scheduled against, checked against actually flying
+    /// the round: a warning that is early or late by more than a frame is worse than none.
+    /// </summary>
+    [Fact]
+    public void SecondsToFallAgreesWithFlyingTheRound()
+    {
+        var muzzle = Muzzle(Emplacement);
+        var target = Emplacement + new Vector3(0f, 0f, 140f);
+        var velocity = MortarBallistics.SolveVelocity(muzzle, target, ProjectileMotion.Gravity)!.Value;
+
+        // Fly it to the top of the arc and a little past, then ask from there.
+        var position = muzzle;
+        const float dt = 1f / 240f;
+        float flown = 0f;
+        while (position.Y > muzzle.Y || velocity.Y > 0f)
+        {
+            var step = ProjectileMotion.Advance(position, velocity, dt, ProjectileMotion.SafetyDistance);
+            position = step.End;
+            velocity = step.Velocity;
+            flown += dt;
+            if (flown > MortarConfig.MaxFlightSeconds) break;
+        }
+
+        float predicted = ProjectileMotion.SecondsToFall(
+            position.Y - target.Y,
+            velocity.Y,
+            ProjectileMotion.Gravity);
+
+        float actual = 0f;
+        while (position.Y > target.Y && actual < MortarConfig.MaxFlightSeconds)
+        {
+            var step = ProjectileMotion.Advance(position, velocity, dt, ProjectileMotion.SafetyDistance);
+            position = step.End;
+            velocity = step.Velocity;
+            actual += dt;
+        }
+
+        Assert.Equal(actual, predicted, 2);
+    }
+
+    /// <summary>A round that tops out below the height asked about never gets there, and must say so
+    /// rather than returning a time somebody schedules a sound at.</summary>
+    [Fact]
+    public void SecondsToFallRefusesAHeightTheRoundNeverReaches()
+    {
+        Assert.True(
+            ProjectileMotion.SecondsToFall(-40f, verticalSpeed: 5f, ProjectileMotion.Gravity) < 0f);
+        Assert.True(
+            ProjectileMotion.SecondsToFall(-1f, verticalSpeed: -12f, ProjectileMotion.Gravity) < 0f,
+            "already past it counts as never, not as a negative time");
+    }
+
     private static float Flat(Vector3 v) => new Vector3(v.X, 0f, v.Z).Length();
 }

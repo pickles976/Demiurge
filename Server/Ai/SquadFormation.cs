@@ -20,18 +20,30 @@ internal readonly record struct SquadMember(
 internal static class SquadFormation
 {
     /// <summary>
-    /// How far a member may drift from its squad centre before it is treated as separated. Generous
-    /// on purpose: squads legitimately spread out to flank, and re-forming a squad mid-bound would
-    /// throw away the very plan that spread them.
+    /// How far a member may drift from its squad centre before it is treated as separated.
+    ///
+    /// DERIVED from the manoeuvre the squad's own tactics can order, not chosen. It was a flat 30 m,
+    /// and 30 m is smaller than the plan: <see cref="SquadTactics.ApproachPosition"/> sends a
+    /// bounding man to <see cref="SquadTactics.OpeningStandoff"/> (45 m) from the threat on a
+    /// bearing up to 90 degrees around it, so two men executing one squad's fire-and-movement are
+    /// routinely further apart than the rule that says they are one squad. The squad therefore
+    /// dissolved at the exact moment it was manoeuvring — measured on the conquest map, sixteen NPCs
+    /// a side ended a fight as thirteen squads, nine of them a single man, and each fragment then
+    /// drew its own flag from the commander. That is the "one or two units sent to capture a flag"
+    /// report, and it is a second classifier disagreeing with the first rather than a tuning miss.
+    ///
+    /// One bound past the opening standoff, so a squad that has begun closing is still a squad.
     /// </summary>
-    public const float CohesionRadius = 30f;
+    public const float CohesionRadius =
+        SquadTactics.OpeningStandoff + SquadTactics.BoundLength;
 
     /// <summary>
-    /// How close a separated member must be to another squad's centre to join it. Smaller than
-    /// <see cref="CohesionRadius"/> so joining is a deliberate "these men are fighting together"
-    /// judgement rather than the inverse of leaving.
+    /// How close a separated member must be to another squad's centre to join it. The manoeuvre
+    /// envelope itself, so it stays strictly smaller than <see cref="CohesionRadius"/> — joining has
+    /// to be harder than staying or a man on the boundary oscillates between two squads, which is
+    /// the churn this whole pass is about.
     /// </summary>
-    public const float JoinRadius = 20f;
+    public const float JoinRadius = SquadTactics.OpeningStandoff;
 
     /// <summary>
     /// Recomputes squad indices. Writes one entry per member into <paramref name="assignments"/>,

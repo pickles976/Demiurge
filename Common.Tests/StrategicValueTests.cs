@@ -15,8 +15,19 @@ public class StrategicValueTests
         int owner,
         int friendly = 0,
         int enemy = 0,
-        uint id = 1)
-        => new(id, Vector3.Zero, owner, FlagConfig.NeutralTeam, 0f, friendly, enemy);
+        uint id = 1,
+        int approaching = 0,
+        float enemySeconds = float.PositiveInfinity)
+        => new(
+            id,
+            Vector3.Zero,
+            owner,
+            FlagConfig.NeutralTeam,
+            0f,
+            friendly,
+            enemy,
+            approaching,
+            enemySeconds);
 
     /// <summary>
     /// The bug, as a property. Taking an undefended flag flips a whole flag of bleed; adding a
@@ -90,4 +101,51 @@ public class StrategicValueTests
     [Fact]
     public void AQuietFriendlyFlagIsWorthNothing()
         => Assert.Equal(0f, StrategicValue.Marginal(Us, Flag(Us), 0, travelSeconds: 1f), 4);
+
+    /// <summary>
+    /// Defence is a function of WHEN, not of whether. A flag of ours the enemy is walking up to is
+    /// worth defending; the same flag with the enemy on the far side of the map is not. Nothing here
+    /// classifies a flag as threatened — the approach time is a continuous input to the same discount
+    /// every other flag pays, which is what stops one man crossing an arbitrary line from reshuffling
+    /// the whole plan.
+    /// </summary>
+    [Fact]
+    public void OwnedFlagValueRisesSmoothlyAsTheEnemyClosesOnIt()
+    {
+        float previous = 0f;
+        foreach (float seconds in new[] { 240f, 120f, 60f, 30f, 15f, 5f })
+        {
+            float value = StrategicValue.Marginal(
+                Us, Flag(Us, enemySeconds: seconds), 0, travelSeconds: 10f);
+            Assert.True(
+                value > previous,
+                $"an enemy {seconds}s away must be worth more than one further off");
+            Assert.True(
+                value - previous < StrategicValue.TicketsPerSecondPerFlag,
+                $"and must not step: {previous} -> {value}");
+            previous = value;
+        }
+
+        Assert.True(
+            previous
+                < StrategicValue.Marginal(Us, Flag(Them), 0, travelSeconds: 10f) * 1.5f,
+            "defending must stay comparable to attacking, not dominate it");
+    }
+
+    /// <summary>
+    /// The other half of the pile-up, and the half a per-plan counter could never see. Every plan
+    /// starts with nothing assigned, so a flag six of our men were standing on looked exactly as free
+    /// as an empty one to the next squad. Men present and squads assigned are the same thing to the
+    /// flag and are counted as one.
+    /// </summary>
+    [Fact]
+    public void MenAlreadyThereDiscountTheFlagForTheNextSquad()
+    {
+        float covered = StrategicValue.Marginal(
+            Us, Flag(Them, approaching: 8), squadsAlreadyAssigned: 0, travelSeconds: 20f);
+        float free = StrategicValue.Marginal(
+            Us, Flag(Them, approaching: 0, id: 2), squadsAlreadyAssigned: 0, travelSeconds: 20f);
+
+        Assert.True(free > covered * 2f, $"free {free} must clearly outbid covered {covered}");
+    }
 }

@@ -144,6 +144,36 @@ namespace Demiurge.GameServer
         /// </summary>
         public int BoundsStarted { get; private set; }
 
+        /// <summary>
+        /// Who is in which squad and what that squad is chasing, right now. Diagnostic only — the
+        /// churn questions ("did this man change squad", "did his squad change flag") cannot be
+        /// answered from actor positions, so they cannot be answered from outside the AI at all.
+        /// </summary>
+        /// <summary>
+        /// Path searches asked for since the server started. Diagnostic, and a sharper instrument
+        /// than it looks: an actor that has arrived and cannot tell should be asking for nothing, so
+        /// this counts one specific failure — walking a metre, arriving, and asking again — that no
+        /// position or timing measurement distinguishes from ordinary movement.
+        /// </summary>
+        internal long DebugPathRequests => navigation.SnapshotMetrics().Requested;
+
+        internal IEnumerable<(ushort ActorId, int Team, int Squad, uint FlagId, Vector3 Destination)>
+            DebugAssignments()
+        {
+            foreach (var pair in brains)
+                yield return (
+                    pair.Key,
+                    pair.Value.Team,
+                    pair.Value.SquadIndex,
+                    squads.TryGetValue((pair.Value.Team, pair.Value.SquadIndex), out var board)
+                        && board.TryGetObjective(out var objective)
+                            ? objective.FlagId
+                            : 0u,
+                    pair.Value.Navigation.HasDestination
+                        ? pair.Value.Navigation.Destination
+                        : Vector3.Zero);
+        }
+
         // Temporary diagnostics for the hilltop-assault investigation. Actor-ticks, not events.
         public int DiagNoOrder;
         public int DiagRoleNone;
@@ -850,11 +880,27 @@ namespace Demiurge.GameServer
                 CancelPending(mob.Id, brain.Navigation, forCover: true);
             }
             var follower = brain.Navigation.Path;
+            // Arrived where HE was sent, not where the squad's objective is.
+            //
+            // This was measured against objective.Position — the flag — while the destination every
+            // man but the point walks to is his slot in the wedge, ten to twenty metres off it. So a
+            // flanker reached his slot, ObjectiveReached went true, and this test said no: he was not
+            // holding, so the follower was not cleared, so the next tick found no path and asked for
+            // one, arrived on it in a metre, and asked again. Measured on the conquest map, a hundred
+            // path requests a second across thirty-two actors, twelve nodes each, and 5.7 direction
+            // reversals per five seconds in the windows where men covered ground without getting
+            // anywhere. That is the reported rubber-banding, and the destination never changed once
+            // while it was happening — the churn was between the follower and the search, not in any
+            // assignment.
+            //
+            // The radius keeps its old value and gains a second meaning it already fits: for the
+            // point man it is still "inside the capture radius", and for everyone else it is "on my
+            // station".
             bool holdingObjective =
                 hasObjective
                 && brain.ObjectiveReached
                 && !heardGunshot
-                && HorizontalDistanceSquared(mob.Position, objective.Position)
+                && HorizontalDistanceSquared(mob.Position, destination)
                     <= ObjectiveHoldRadius * ObjectiveHoldRadius;
             PathFollowState followState;
             Vector3 intent;

@@ -24,6 +24,26 @@ namespace Demiurge
         /// </summary>
         public const float Gravity = 19.62f;
 
+        /// <summary>
+        /// Seconds for a falling projectile to descend <paramref name="rise"/> metres, given the
+        /// vertical speed it has now, or -1 if it never gets there.
+        ///
+        /// The descending root of <c>rise + vy·t − ½g·t² = 0</c>. Separate from
+        /// <see cref="Advance"/> because it answers a different question: Advance FLIES a projectile
+        /// a step at a time, and this asks when one already in the air will arrive — which is what
+        /// anybody warning about it needs, and what stepping to find out would be a loop for.
+        /// </summary>
+        public static float SecondsToFall(float rise, float verticalSpeed, float gravity)
+        {
+            if (gravity <= 0f) return verticalSpeed < 0f ? rise / -verticalSpeed : -1f;
+
+            float discriminant = verticalSpeed * verticalSpeed + 2f * gravity * rise;
+            if (discriminant < 0f) return -1f;   // it tops out above the height asked about
+
+            float seconds = (verticalSpeed + MathF.Sqrt(discriminant)) / gravity;
+            return seconds >= 0f ? seconds : -1f;
+        }
+
         public static ProjectileStep Advance(
             Vector3 position,
             Vector3 velocity,

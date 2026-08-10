@@ -41,6 +41,21 @@ namespace Demiurge
             new(45f, 0.9f, WeaponFx.DistantReportMetres);
 
         /// <summary>
+        /// A tube firing. The loudest thing on the map and the only one with no distant recording to
+        /// hand over to, so it carries the whole way rather than being culled at the crossover — a
+        /// mortar you cannot hear firing is one you cannot locate, and locating it is the entire
+        /// counter-battery game.
+        /// </summary>
+        public static readonly SoundFalloff MortarLaunch = new(70f, 0.6f, 260f);
+
+        /// <summary>
+        /// The whistle, played at the point the round is coming down on rather than at the round.
+        /// Sized to the warning it is: everyone who might be caught should hear it, which is the
+        /// blast's damage radius and its dispersion and then some, and nobody else needs to.
+        /// </summary>
+        public static readonly SoundFalloff MortarIncoming = new(35f, 1.1f, 150f);
+
+        /// <summary>
         /// The far-off recordings. Placed a short way off along the true bearing, so the reference
         /// distance is set well beyond that: the sample already sounds distant, and attenuating it
         /// again for a distance it is not actually at is what made it inaudible.

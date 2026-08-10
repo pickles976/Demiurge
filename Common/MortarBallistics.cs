@@ -157,4 +157,23 @@ public static class MortarBallistics
         var direction = flat / distance;
         return direction * (speed * cos) + Vector3.UnitY * (speed * MathF.Sin(angle));
     }
+
+    /// <summary>
+    /// How long the bomb is in the air on its way to <paramref name="target"/>, or null when
+    /// <see cref="SolveVelocity"/> cannot reach it.
+    ///
+    /// Horizontal distance over horizontal speed, which is exact here because the horizontal
+    /// component is the one thing gravity does not touch. It matters to anybody AIMING the tube
+    /// rather than flying the round: at these ranges it is several seconds, which is long enough
+    /// that a man walks out from under a bomb laid on where he was standing.
+    /// </summary>
+    public static float? FlightSeconds(Vector3 muzzle, Vector3 target, float gravity)
+    {
+        if (SolveVelocity(muzzle, target, gravity) is not { } velocity) return null;
+        float horizontalSpeed = MathF.Sqrt(velocity.X * velocity.X + velocity.Z * velocity.Z);
+        if (horizontalSpeed < 1e-3f) return null;
+
+        var flat = new Vector3(target.X - muzzle.X, 0f, target.Z - muzzle.Z);
+        return flat.Length() / horizontalSpeed;
+    }
 }
