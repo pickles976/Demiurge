@@ -145,9 +145,18 @@ foreach (var gltfPath in gltfFiles)
     // of one for the model. If that ever shows up in a profile the fix is to emit the .sdskel's
     // Nodes list with Preserve:false on everything but the moving groups — Stride then merges the
     // rest back into the closest preserved ancestor — rather than to give the bolt up.
+    // ...and whenever the model has LOCATORS beside more than one mesh. A locator is the artist
+    // saying "this point matters at runtime", and a point only matters if something can be moved to
+    // it — the flag's flag_bottom/flag_top pair is a travel, and a travel needs a part to travel.
+    // Blockbench does not require a group to express that, so grouping alone missed it.
+    //
+    // Narrow on purpose, and both halves earn their place: crate, dummy, grass, mortar_tube and
+    // shovel are all multi-mesh with no locators and must stay merged, because the cost of a
+    // skeleton is one draw call per part and grass is drawn everywhere.
     var needsSkeleton = gltf.LogicalAnimations.Count > 0
         || gltf.LogicalSkins.Count > 0
-        || HasArticulatedGroup(gltf);
+        || HasArticulatedGroup(gltf)
+        || HasLocatedParts(gltf);
     var skeletonContentPath = contentPath + "_skeleton";
     var skeletonGuid = ComputeGuid(skeletonContentPath);
 
@@ -326,6 +335,16 @@ static bool HasArticulatedGroup(SharpGLTF.Schema2.ModelRoot gltf)
 
 static bool HasMeshDescendant(SharpGLTF.Schema2.Node node)
     => node.VisualChildren.Any(child => child.Mesh != null || HasMeshDescendant(child));
+
+// True when the artist authored named anchor points AND more than one mesh — see needsSkeleton.
+// The mesh count is what keeps this from firing on a single-part model that merely carries a muzzle
+// anchor: one mesh has nothing to articulate against, so it can stay merged and keep its one draw
+// call.
+static bool HasLocatedParts(SharpGLTF.Schema2.ModelRoot gltf)
+    => gltf.LogicalNodes.Count(node => node.Mesh != null) > 1
+       && gltf.LogicalNodes.Any(node => node.Mesh == null
+           && !string.IsNullOrEmpty(node.Name)
+           && !HasMeshDescendant(node));
 
 // Pulls the mesh-less "locator" nodes out of a model as name -> transform in the model's
 // own root space, in the rest pose and again at the start of each animation clip.

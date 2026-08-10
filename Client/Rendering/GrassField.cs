@@ -13,7 +13,7 @@ namespace Demiurge
         public const float DefaultRadius = 45f;
         public const float DefaultCellSize = 1f;
 
-        public static Entity CreateFollower(Game game, PlayerRegistry registry, TerrainState terrain)
+        public static Entity CreateFollower(PlayerRegistry registry, TerrainState terrain)
             => new("GrassField")
             {
                 new GrassFollowerScript
@@ -50,9 +50,15 @@ namespace Demiurge
             renderer.SetWind(strength: 0.12f, speed: 1.4f, frequency: 0.75f);
             renderer.GrassEntity.Scene = Entity.Scene;
 
-            Terrain.ChunkCompleted += chunk => dirty.Add(chunk);
-            Terrain.RegionEdited += (min, max) => MarkEditedChunks(min, max);
+            // Named handlers rather than lambdas so Cancel can take them off again. It matters: in a
+            // playtest the TerrainState belongs to the EDITOR session and outlives this one, so a
+            // subscription left behind would keep calling into a dead script's collections every
+            // time the editor streamed or edited a chunk.
+            Terrain.ChunkCompleted += OnChunkCompleted;
+            Terrain.RegionEdited += MarkEditedChunks;
         }
+
+        private void OnChunkCompleted(ChunkIndex chunk) => dirty.Add(chunk);
 
         public override void Update()
         {
@@ -74,8 +80,12 @@ namespace Demiurge
 
         public override void Cancel()
         {
+            Terrain.ChunkCompleted -= OnChunkCompleted;
+            Terrain.RegionEdited -= MarkEditedChunks;
             renderer?.Dispose();
             renderer = null;
+            active.Clear();
+            dirty.Clear();
         }
 
         private void RefreshActiveChunks(Vector3 center)

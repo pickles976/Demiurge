@@ -12,6 +12,9 @@ public sealed record EquipCommand(ActorSelector Target, ItemType Item) : GameCom
 
 public sealed record AiStatsCommand : GameCommand;
 
+/// <summary>Move an actor — player or NPC — to another side.</summary>
+public sealed record SetTeamCommand(ActorSelector Target, int Team) : GameCommand;
+
 /// <summary>An absolute coordinate, or an offset from the command source when prefixed by '~'.</summary>
 public readonly record struct CommandCoordinate(float Value, bool Relative)
 {
@@ -70,6 +73,7 @@ public static class GameCommandParser
         {
             "spawn" => ParseSpawn(tokens),
             "equip" => ParseEquip(tokens),
+            "team" => ParseTeam(tokens),
             "ai" => ParseAi(tokens),
             _ => CommandParseResult.Fail($"Unknown command: {tokens[0]}"),
         };
@@ -125,6 +129,23 @@ public static class GameCommandParser
         if (!TryPosition(tokens[3], tokens[4], out var position, out string? error))
             return CommandParseResult.Fail(error!);
         return CommandParseResult.Ok(new SpawnPickupCommand(item, position));
+    }
+
+    /// <summary>
+    /// <c>team &lt;@s|@actor-id&gt; &lt;team&gt;</c>. Which team numbers exist is a property of the
+    /// loaded map, so the parser only insists on a positive one and the server rejects the rest —
+    /// a grammar that knew the map's teams would be a grammar that goes stale when it changes.
+    /// </summary>
+    private static CommandParseResult ParseTeam(IReadOnlyList<string> tokens)
+    {
+        if (tokens.Count != 3)
+            return CommandParseResult.Fail("Usage: team <@s|@actor-id> <team>");
+        if (!TryActorSelector(tokens[1], out var selector))
+            return CommandParseResult.Fail($"Invalid actor selector: {tokens[1]}");
+        if (!int.TryParse(tokens[2], NumberStyles.None, CultureInfo.InvariantCulture, out int team)
+            || team <= 0)
+            return CommandParseResult.Fail($"Invalid team: {tokens[2]}");
+        return CommandParseResult.Ok(new SetTeamCommand(selector, team));
     }
 
     private static CommandParseResult ParseEquip(IReadOnlyList<string> tokens)

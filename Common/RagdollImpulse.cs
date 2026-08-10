@@ -16,18 +16,24 @@ namespace Demiurge;
 public static class RagdollImpulse
 {
     /// <summary>
-    /// Metres per second per point of damage. A rifle body shot (30) shoves at 1.2 m/s — a stagger
-    /// and a fall — while a point-blank grenade reaches the cap.
+    /// Metres per second per point of damage. A rifle body shot (30) shoves at 3.6 m/s — a hard
+    /// stagger and a fall — while a point-blank grenade reaches the cap.
     /// </summary>
-    public const float SpeedPerDamage = 0.04f;
+    public const float SpeedPerDamage = 0.12f;
 
     /// <summary>
     /// The ceiling, in m/s. It exists because damage has no upper bound worth trusting — a headshot
     /// doubles it, and blast damage scales off a victim's maximum health — and because an
     /// unbounded shove is the failure this feature had the first time: bodies launched skyward and
-    /// span for several seconds. A brisk run, roughly.
+    /// span for several seconds. A sprint, roughly, twice over.
+    ///
+    /// Tripled WITH <see cref="SpeedPerDamage"/> rather than left alone, and the pairing is the
+    /// point: raising only the rate would have moved the saturation point down to 33 damage, so
+    /// every rifle headshot and every grenade — the deaths most worth seeing thrown — would have
+    /// been pinned at the old speed while only glancing hits got harder. Scaling the cap with the
+    /// rate is what makes "three times stronger" true of the whole curve instead of its bottom.
     /// </summary>
-    public const float MaxSpeed = 4f;
+    public const float MaxSpeed = 12f;
 
     /// <summary>
     /// The shove a bullet leaves, along the round's line of travel. Direction need not be

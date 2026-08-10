@@ -135,10 +135,18 @@ public sealed class ClientRagdollScript : SyncScript
     /// </summary>
     private static readonly NVector3 BlowLever = new(0f, 0.3f, 0f);
 
-    /// <summary>Ceiling on the spin a blow can impart, in rad/s. Held in proportion to
-    /// RagdollImpulse.MaxSpeed, since spin here is derived from the shove: past about this a corpse
-    /// reads as a prop being thrown rather than a body falling.</summary>
-    private const float MaxBlowSpin = 4f;
+    /// <summary>
+    /// Ceiling on the spin a blow can impart, in rad/s. Held in proportion to the shove it is
+    /// derived from: past about this a corpse reads as a prop being thrown rather than a body
+    /// falling.
+    ///
+    /// Now literally tied to RagdollImpulse.MaxSpeed rather than being a number whose comment
+    /// claimed it was. When the shove was tripled, a separate 4 would have stayed put — bodies
+    /// flying three times as fast while tumbling exactly as much, which is the prop-being-slid look
+    /// this cap exists to avoid. The two numbers were the same to begin with; making that an
+    /// equality is what stops them drifting the next time either moves.
+    /// </summary>
+    private static readonly float MaxBlowSpin = RagdollImpulse.MaxSpeed;
 
     // Bind-pose offsets from the pelvis/root, measured from the cat rig. Keep the radii close to
     // the visible body thickness: oversized contacts are stable but make the mesh visibly hover.

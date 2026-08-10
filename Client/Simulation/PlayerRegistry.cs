@@ -45,6 +45,7 @@ public class PlayerRegistry : IDisposable
         network.PlayerSpawned += OnPlayerSpawned;
         network.PlayerDespawned += OnPlayerDespawned;
         network.PlayerPositionReceived += OnPlayerPosition;
+        network.ScoreboardReceived += OnScoreboard;
     }
 
     private void OnPlayerSpawned(PlayerSpawnData data)
@@ -73,6 +74,23 @@ public class PlayerRegistry : IDisposable
         PlayerJoined?.Invoke(player);
     }
 
+    /// <summary>
+    /// Applies whose side everybody is on, from the roster the server keeps.
+    ///
+    /// Sides reach the client here rather than through PlayerSpawn, and the reason is one layer up:
+    /// a repeat spawn for an actor we already have is deliberately ignored, because replacing a live
+    /// actor orphans its view. That guard is right and a re-sent spawn would silently swallow a side
+    /// change, so the roster — which is a whole snapshot and therefore idempotent by construction —
+    /// carries it instead. A row for somebody we have not been told about yet is simply skipped; his
+    /// own spawn message carries his side, and the next board repairs anything that crossed.
+    /// </summary>
+    private void OnScoreboard(ScoreboardData data)
+    {
+        foreach (var entry in data.Entries ?? [])
+            if (players.TryGetValue(entry.ActorId, out var player))
+                player.Team = entry.Team;
+    }
+
     private void OnPlayerDespawned(PlayerDespawnData data)
     {
         Player player = players[data.PlayerId];
@@ -86,6 +104,7 @@ public class PlayerRegistry : IDisposable
     {
         network.PlayerSpawned -= OnPlayerSpawned;
         network.PlayerDespawned -= OnPlayerDespawned;
+        network.ScoreboardReceived -= OnScoreboard;
         network.PlayerPositionReceived -= OnPlayerPosition;
         players.Clear();
         LocalPlayer = null;

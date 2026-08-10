@@ -211,8 +211,17 @@ public sealed class RuntimeClientSession : IClientSession
         terrainView = embedding?.TerrainView
             ?? new ClientTerrain(scene, new ChunkMeshFactory(game, new TerrainMaterials(game)), terrainState);
 
-        Add(HUD.CreateUI(game, objectRegistry));
+        Add(HUD.CreateUI(game, objectRegistry, inputState));
         Add(HUD.CreateDebugStats(game));
+        // Grass is disabled. This one line is the whole of turning it on — GrassField follows the
+        // local player and streams itself off the terrain the same chunks arrive in, so it needs
+        // nothing from here but the two things it reads, and it removes its own chunk entities and
+        // terrain subscriptions when this entity leaves the scene below.
+        //
+        // Left as a comment rather than deleted because that is how it went missing last time: it was
+        // commented out in Program.cs during the editor refactor and then vanished when Program.cs
+        // was split into sessions, leaving a complete subsystem nothing referenced.
+        // Add(GrassField.CreateFollower(registry, terrainState));
         Add(new Entity("TracerSystem")
         {
             new TracerSystem(),

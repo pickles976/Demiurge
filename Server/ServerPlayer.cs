@@ -8,6 +8,12 @@ namespace Demiurge.GameServer
         public bool IsMob { get; init; }
         public int Team { get; set; } = 1;
 
+        /// <summary>Kills credited and deaths suffered this match. Server-side truth for the
+        /// scoreboard; see <see cref="MatchScoreSystem"/> for who increments them and why it is
+        /// exactly two places.</summary>
+        public int Kills { get; set; }
+        public int Deaths { get; set; }
+
         /// <summary>
         /// Authoritative movement state, stepped by <see cref="PlayerMovement.Step"/>. A field rather
         /// than a property so it can be passed by ref — a property would step a copy and throw the

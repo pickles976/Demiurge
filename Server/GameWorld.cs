@@ -19,6 +19,7 @@ namespace Demiurge.GameServer
         private readonly TicketSystem tickets;
         private readonly TerrainSystem terrainEdits;
         private readonly ActivityFeedSystem activityFeed;
+        private readonly MatchScoreSystem score;
         private readonly ChunkTcpServer chunks;
 
         private readonly INetServer server;
@@ -162,7 +163,8 @@ namespace Demiurge.GameServer
 
             objects = new ObjectReplication(server);
             items = new ItemSystem(objects);
-            activityFeed = new ActivityFeedSystem(server);
+            score = new MatchScoreSystem(server);
+            activityFeed = new ActivityFeedSystem(server, score);
             weapons = new WeaponSystem(server, objects, terrain, activityFeed);
             flags = new FlagSystem(objects, activityFeed);
             tickets = new TicketSystem(server, flags, playableTeams);
@@ -353,6 +355,7 @@ namespace Demiurge.GameServer
 
             objects.SendCatchUp(clientId); // catch the newcomer up on objects
             tickets.SendTo(clientId);      // ...and on the score, which only moves every 3 s
+            score.SendTo(clientId, players.Values);   // ...and on the board
 
             int team = AssignPlayerTeam();
             var player = new ServerPlayer { Id = clientId, Team = team };
@@ -365,6 +368,7 @@ namespace Demiurge.GameServer
                 obj.Health = new HealthState { Current = 100, Max = 100};
             });
             players[clientId] = player;
+            score.Invalidate();
             server.SendToAll(CreateSpawnMessage(player));      // announce the newcomer
             items.SpawnInfantryLoadout(player);
 
@@ -385,6 +389,8 @@ namespace Demiurge.GameServer
                     mobs.RemoveMob(player);
                 items.DespawnFor(player);
                 if (player.Status != null) objects.Despawn(player.Status.NetworkId);
+                // Or he stays on everybody's board until the next time anyone dies.
+                score.Invalidate();
             }
 
             Message message = Message.Create(MessageSendMode.Reliable, ServerToClientId.PlayerDespawn);
@@ -623,6 +629,9 @@ namespace Demiurge.GameServer
                     // The moment of death, which runs once: RespawnTick is non-zero from here until
                     // he is back on his feet, so the kit cannot be dropped twice.
                     items.DropOnDeath(player);
+                    // The one tick a death is observed, which is why the tally lives here and not
+                    // beside the kill: a man who drowns or falls is dead and nobody shot him.
+                    score.CountDeath(player);
                     player.RespawnTick = RespawnConfig.NextWaveTick(_Tick);
                     player.PendingMoves.Clear();
                     player.LastIntent = Vector3.Zero;
@@ -632,26 +641,14 @@ namespace Demiurge.GameServer
                 }
                 if (_Tick < player.RespawnTick) continue;
 
-                player.Move = SpawnPlayerMove(player.Team, useOverride: false);
-                player.History.Clear();
-                player.PendingMoves.Clear();
-                player.LastIntent = Vector3.Zero;
-                player.State = 0;
-                player.Hotbar = HotbarSlot.Primary;
-                player.NextFireTick = 0;
-                player.ReloadDoneTick = 0;
-                player.NextGrenadeThrowTick = 0;
-                player.Spread = default;
-                status.Health.Current = status.Health.Max;
-                status.Dirty |= NetComponents.Health;
-                items.RefillRespawnLoadout(player);
-                if (player.IsMob) mobs.OnRespawn(player);
+                PutBackInTheFight(player, status);
                 tickets.ChargeRespawn(player.Team);
                 player.RespawnTick = 0;
             }
 
             objects.BroadcastDirtyStatess(_Tick);
             BroadcastPositions();
+            score.BroadcastIfChanged(players.Values);
 
             if (_Tick % (NetworkConfig.TickRate * 2) == 0) mobs.LogStats();
 
@@ -664,6 +661,69 @@ namespace Demiurge.GameServer
                 afterGrenades,
                 Stopwatch.GetTimestamp(),
                 projectiles: weapons.LiveProjectiles);
+        }
+
+        /// <summary>
+        /// Everything it takes to put a body back on its feet at its own team's spawn, healed,
+        /// re-kitted and with every per-life counter cleared.
+        ///
+        /// Extracted from the respawn loop so switching sides can use it. It deliberately does NOT
+        /// charge a ticket or clear RespawnTick — those belong to the wave clock, and a man moved to
+        /// the other team has not respawned in the sense the economy means.
+        /// </summary>
+        private void PutBackInTheFight(ServerPlayer player, ServerObject status)
+        {
+            player.Move = SpawnPlayerMove(player.Team, useOverride: false);
+            player.History.Clear();
+            player.PendingMoves.Clear();
+            player.LastIntent = Vector3.Zero;
+            player.State = 0;
+            player.Hotbar = HotbarSlot.Primary;
+            player.NextFireTick = 0;
+            player.ReloadDoneTick = 0;
+            player.NextGrenadeThrowTick = 0;
+            player.Spread = default;
+            player.OperatingObjectId = 0;
+            status.Health.Current = status.Health.Max;
+            status.Dirty |= NetComponents.Health;
+            items.RefillRespawnLoadout(player);
+            if (player.IsMob) mobs.OnRespawn(player);
+        }
+
+        /// <summary>
+        /// Moves an actor to another side, and puts him where that side starts.
+        ///
+        /// The relocation is not a courtesy. Team decides who shoots at you, which flags you can
+        /// take, and where you respawn, so leaving a switched actor standing in what is now the
+        /// enemy line hands the other team a free kill and, for an NPC, a squad-mate its own
+        /// commander is planning around. He arrives at his new team's spawn, whole and re-kitted,
+        /// exactly as if he had walked in with them.
+        ///
+        /// An NPC additionally gets a NEW BRAIN rather than an edited one — MobBrain.Team is
+        /// init-only and that is the right shape, because a brain carries squad membership, cover
+        /// leases and a bound in progress, every one of which belongs to the side it was formed on.
+        /// </summary>
+        public bool TrySetTeam(ServerPlayer actor, int team, out string message)
+        {
+            if (!playableTeams.Contains(team))
+            {
+                message = $"Team {team} is not playable on this map "
+                    + $"(teams: {string.Join(", ", playableTeams)})";
+                return false;
+            }
+            if (actor.Team == team)
+            {
+                message = $"@{actor.Id} is already on team {team}";
+                return false;
+            }
+
+            actor.Team = team;
+            if (actor.IsMob) mobs.ChangeTeam(actor);
+            if (actor.Status is { } status) PutBackInTheFight(actor, status);
+            score.Invalidate();
+
+            message = $"Moved @{actor.Id} to team {team}";
+            return true;
         }
 
         private int AssignPlayerTeam()

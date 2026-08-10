@@ -110,4 +110,28 @@ public class CommandParserTests
             "'sks' is an item. Use 'spawn pickup demiurge:sks <x> <z>'",
             result.Error);
     }
+
+    [Theory]
+    [InlineData("team @s 2", true, 0, 2)]
+    [InlineData("team @60000 1", false, 60000, 1)]
+    public void ParsesTeamChanges(string input, bool self, int actorId, int team)
+    {
+        var result = GameCommandParser.Parse(input);
+
+        var command = Assert.IsType<SetTeamCommand>(result.Command);
+        Assert.Equal(self, command.Target.IsSelf);
+        if (!self) Assert.Equal((ushort)actorId, command.Target.ActorId);
+        Assert.Equal(team, command.Team);
+    }
+
+    /// <summary>Zero is the neutral team and negatives are not teams at all. WHICH positive numbers
+    /// a map has is the server's business — see ServerCommandServiceTests.</summary>
+    [Theory]
+    [InlineData("team @s 0")]
+    [InlineData("team @s -1")]
+    [InlineData("team @s two")]
+    [InlineData("team @s")]
+    [InlineData("team 60000 2")]
+    public void RejectsMalformedTeamChanges(string input)
+        => Assert.False(GameCommandParser.Parse(input).Success);
 }

@@ -1216,6 +1216,28 @@ namespace Demiurge.GameServer
         public bool TryDequeueStuckMob(out ushort mobId)
             => stuckMobs.TryDequeue(out mobId);
 
+        /// <summary>
+        /// Re-forms this NPC's brain on the side its actor now belongs to.
+        ///
+        /// A fresh brain rather than an edited one, because MobBrain.Team is init-only and should
+        /// stay that way: a brain holds a squad index, cover leases, a bound in progress and a
+        /// believed set of contacts, and every one of those is a fact about the side it was formed
+        /// on. Releasing it through the old board and building a new one puts him back through the
+        /// same path a newly spawned NPC takes — unsquadded, and picked up by the next
+        /// <see cref="ReformSquads"/> pass with whoever he is now standing beside.
+        /// </summary>
+        public void ChangeTeam(ServerPlayer mob)
+        {
+            navigation.Cancel(mob.Id);
+            if (brains.Remove(mob.Id, out var previous))
+            {
+                BoardFor(previous).Release(mob.Id);
+                previous.Navigation.Clear();
+            }
+            brains[mob.Id] = CreateBrain(mob.Team, mob.Position);
+            brains[mob.Id].Navigation.SetDestination(RandomSurfacePoint(mob.Position));
+        }
+
         public void RemoveMob(ServerPlayer mob)
         {
             navigation.Cancel(mob.Id);

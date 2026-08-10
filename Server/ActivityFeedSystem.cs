@@ -7,11 +7,26 @@ namespace Demiurge.GameServer;
 public sealed class ActivityFeedSystem
 {
     private readonly INetServer server;
+    private readonly MatchScoreSystem? score;
 
-    public ActivityFeedSystem(INetServer server) => this.server = server;
+    public ActivityFeedSystem(INetServer server, MatchScoreSystem? score = null)
+    {
+        this.server = server;
+        this.score = score;
+    }
 
+    /// <summary>
+    /// Credits the kill as well as announcing it.
+    ///
+    /// Both here because every weapon that can kill somebody already reports here — rifle, grenade
+    /// and bomb — so this is the funnel that exists rather than a second one to remember. See
+    /// <see cref="MatchScoreSystem"/> for where the other half, the death, is counted.
+    /// </summary>
     public void ReportKill(ServerPlayer killer, ServerPlayer victim)
-        => Broadcast(Actor(killer), Plain(" killed "), Actor(victim));
+    {
+        score?.CreditKill(killer, victim);
+        Broadcast(Actor(killer), Plain(" killed "), Actor(victim));
+    }
 
     public void ReportFlagCaptured(int team, Vector3 position)
         => Broadcast(TeamName(team), Plain($" captured flag at {Coordinates(position)}"));

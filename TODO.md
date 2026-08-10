@@ -16,28 +16,21 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 
 ## Misc
 
+- [ ] structure editor 
+      - [ ] launch with a separate command
+      - [ ] build in a flat void
+      - [ ] save structure with name
+      - [ ] load structure in map editor, show placement preview
+
 Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
 - [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
-- [ ] add grass (10x less dense, spawn only on grass blocks)
 
-
-Bugs: 
-
-AI:
-
-- [ ] NPCs sometimes digging down to cross a big trench rather than just jumping in
-- [ ] Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
-
-Stop Using Claude
+## Refactoring and Cleanup
 - Codex clean up all comments
 - Codex refactor certain parts of the code
-
-## Event Queue
-Event queue implementation
+- Codex event queue implementation
 
 ## Richer Environment
-
-- [ ] structure editor
 
 - [ ] add trees
 - [ ] tree destruction
@@ -51,10 +44,6 @@ Try to upgrade Stride version and get particle system working
 https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/code-only/Example12_Particles
 
 # NPC AI Overhaul
-
-- Make AI skill variable 
-- Fuzzy logic for decision making
-http://www.datapax.com.au/mirror/20585341-The-Quake-III-Arena-Bot.pdf
 
 Design: [docs/superpowers/specs/2026-08-04-ai-overhaul-design.md](docs/superpowers/specs/2026-08-04-ai-overhaul-design.md)
 
@@ -88,6 +77,11 @@ Bugs found during design, each explaining part of the observed behaviour:
 - [ ] `ai stats` reports `follow` as a residual containing the collision solver, making path
       following look 55× more expensive than its actual 51 µs/tick.
 - [ ] `docs/BARITONE.md` cites `StaircaseDigTargetsStayInsideOneMetreCorridor`, which does not exist.
+
+## AI Final Cleanup
+
+- [ ] NPCs sometimes digging down to cross a big trench rather than just jumping in
+- [ ] Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
 
 # MERGE INTO MAIN
 

@@ -76,6 +76,13 @@ namespace Demiurge
         /// <summary>Dressed stone. Built rather than generated, and as un-diggable as the rock it
         /// was cut from.</summary>
         BlockType_StoneBricks,
+
+        /// <summary>
+        /// Timber — planking, revetment, a plank bridge. A shovel is the wrong tool for it, so it
+        /// is not soil; a charge does not care what it is made of, so it blasts exactly as readily
+        /// as the dirt beside it.
+        /// </summary>
+        BlockType_Wood,
     }
 
     /// <summary>
@@ -102,13 +109,18 @@ namespace Demiurge
         /// <summary>
         /// Whether an explosion can take this material out.
         ///
-        /// Everything a shovel can move, plus masonry: a charge brings a brick wall down and a spade
-        /// does not. Natural stone is on neither list, which is what keeps the shape of the map a
-        /// fixed thing that players build on and inside rather than something a few grenades can
-        /// rewrite.
+        /// Everything a shovel can move, plus the built materials: a charge brings a brick wall or a
+        /// timber revetment down and a spade does not. Natural stone is on neither list, which is
+        /// what keeps the shape of the map a fixed thing that players build on and inside rather
+        /// than something a few grenades can rewrite.
+        ///
+        /// Note that the two lists being separate is the whole reason wood needs no rule of its own.
+        /// "Cannot be dug, blasts like dirt" is not a third category — it is being off IsSoil and on
+        /// this one, which is a position masonry already occupies.
         /// </summary>
         public static bool IsBlastable(BlockType type)
-            => IsSoil(type) || type == BlockType.BlockType_StoneBricks;
+            => IsSoil(type)
+            || type is BlockType.BlockType_StoneBricks or BlockType.BlockType_Wood;
 
         /// <summary>
         /// Whether an edit in this mode may remove this material. The one place the two material

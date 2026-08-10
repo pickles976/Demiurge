@@ -27,6 +27,7 @@ Commands accept an optional leading `/`.
 spawn mob [x z]
 spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
+team <@s|@actor-id> <team>
 ai stats
 ai track [off|on|beacons|facing|clustering|colliders|ids|states]
 net <seed|log>
@@ -39,6 +40,8 @@ spawn mob
 spawn pickup demiurge:ppsh ~3 ~
 equip @s demiurge:body_armor
 equip @60002 demiurge:sks
+team @s 2
+team @60002 1
 ai track on
 ai track beacons clustering
 ```
@@ -48,6 +51,13 @@ components prefixed by `~` are relative to the issuer. Y always comes from the s
 terrain surface. Mob and player IDs share one actor-ID space; a successful mob spawn prints the ID to
 use with `equip`, for example `actor ID @60000`. A pickup spawn prints a distinct replicated object
 ID such as `object ID #1`; `equip` accepts actor IDs, not object IDs.
+
+`team` moves an actor — player or NPC — to another side, and puts him where that side starts:
+team decides who shoots at you and where you respawn, so a switched actor left standing in what is
+now the enemy line is a free kill. Which team numbers exist comes from the loaded map's player
+spawns, so the command refuses one the map does not have rather than the grammar rejecting it. An
+NPC is given a fresh brain on its new side, so it re-forms into a squad there instead of carrying
+its old squad's orders across.
 
 ### `net` — in-process transport diagnostics
 

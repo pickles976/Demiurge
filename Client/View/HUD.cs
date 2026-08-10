@@ -98,7 +98,7 @@ namespace Demiurge
             };
         }
 
-        public static Entity CreateUI(Game game, ObjectRegistry objects)
+        public static Entity CreateUI(Game game, ObjectRegistry objects, ClientInputState inputState)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
@@ -333,6 +333,24 @@ namespace Demiurge
             };
             root.Children.Add(pickupPanel);
 
+            // Held-Tab board. One vertical run of rows, rebuilt when the server sends a new one
+            // rather than every frame — it changes on a kill, not on a tick.
+            var scoreboardRows = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(18, 12, 18, 12),
+            };
+            var scoreboardPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 205),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Content = scoreboardRows,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(scoreboardPanel);
+
             var respawnText = new TextBlock
             {
                 Text = "KILLCAM",
@@ -385,6 +403,9 @@ namespace Demiurge
                     ActivityPanel = activityPanel,
                     ActivityLines = activityLines,
                     ActivityFont = font,
+                    ScoreboardPanel = scoreboardPanel,
+                    ScoreboardRows = scoreboardRows,
+                    InputState = inputState,
                     TicketCounters = ticketCounters,
                     TicketFills = ticketFills,
                 },
@@ -607,6 +628,12 @@ namespace Demiurge
             public UIElement ActivityPanel { get; set; } = null!;
             public StackPanel ActivityLines { get; set; } = null!;
             public SpriteFont ActivityFont { get; set; } = null!;
+            /// <summary>Read before polling Tab: the developer terminal completes command tokens
+            /// with it, and a board that popped up behind an open terminal would be answering a
+            /// keystroke that was never meant for the game.</summary>
+            public ClientInputState InputState { get; set; } = null!;
+            public UIElement ScoreboardPanel { get; set; } = null!;
+            public StackPanel ScoreboardRows { get; set; } = null!;
             /// <summary>Index 0 is team 1, index 1 is team 2 — the two sides the bar draws.</summary>
             public TextBlock[] TicketCounters { get; set; } = [];
             public Border[] TicketFills { get; set; } = [];
@@ -647,12 +674,21 @@ namespace Demiurge
             private readonly object _ticketGate = new();
             private readonly int[] _shownTickets = [-1, -1];
 
+            // Same hand-off as the tickets above, and for the same reason: the board arrives whole,
+            // on the network thread, and is applied on the main one.
+            private ScoreboardData? _receivedScoreboard;
+            private readonly object _scoreboardGate = new();
+            private ScoreboardEntry[] _scoreboard = [];
+            private bool _scoreboardDirty;
+            private bool _scoreboardShown;
+
             public override void Start()
             {
                 _registry = Services.GetSafeServiceAs<PlayerRegistry>();
                 _network = Services.GetSafeServiceAs<NetworkManager>();
                 _network.ActivityFeedReceived += OnActivityFeed;
                 _network.MatchTicketsReceived += OnMatchTickets;
+                _network.ScoreboardReceived += OnScoreboard;
                 Root.Visibility = Visibility.Collapsed;   // until spawn
             }
 
@@ -662,6 +698,7 @@ namespace Demiurge
                 {
                     _network.ActivityFeedReceived -= OnActivityFeed;
                     _network.MatchTicketsReceived -= OnMatchTickets;
+                    _network.ScoreboardReceived -= OnScoreboard;
                 }
             }
 
@@ -676,6 +713,9 @@ namespace Demiurge
                     Root.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
                 }
                 RefreshTickets();
+                // Before the local-player gate: the board is about the match, so a dead or
+                // not-yet-spawned player is exactly who wants to look at it.
+                RefreshScoreboard();
                 if (local == null) return;
 
                 int health = local.Status?.Health.Current ?? 0;
@@ -859,6 +899,100 @@ namespace Demiurge
                 ActivityLines.Children.Clear();
                 foreach (var entry in _activity)
                     ActivityLines.Children.Add(BuildActivityLine(entry.Segments));
+            }
+
+            /// <summary>Network thread. Keeps only the newest board; an older one that overtakes it
+            /// would be a stale roster, and every board is complete so nothing is lost by dropping
+            /// it.</summary>
+            private void OnScoreboard(ScoreboardData data)
+            {
+                lock (_scoreboardGate) _receivedScoreboard = data;
+            }
+
+            /// <summary>
+            /// Draws the board while Tab is held.
+            ///
+            /// IsKeyDown rather than IsKeyPressed: this is a hold, and Stride's pressed edge re-fires
+            /// on the OS key auto-repeat, which would make a held key look like a burst of taps.
+            ///
+            /// Rows are rebuilt when the SERVER's board changes, not per frame and not on the key —
+            /// showing it is a visibility flip over rows that are already correct.
+            /// </summary>
+            private void RefreshScoreboard()
+            {
+                ScoreboardData? received;
+                lock (_scoreboardGate)
+                {
+                    received = _receivedScoreboard;
+                    _receivedScoreboard = null;
+                }
+                if (received is { } board)
+                {
+                    _scoreboard = board.Entries ?? [];
+                    _scoreboardDirty = true;
+                }
+
+                bool show = InputState?.TerminalOpen != true
+                    && Input.IsKeyDown(Stride.Input.Keys.Tab);
+                if (show && _scoreboardDirty)
+                {
+                    _scoreboardDirty = false;
+                    ScoreboardRows.Children.Clear();
+                    ScoreboardRows.Children.Add(BuildScoreboardRow(
+                        "PLAYER", "K", "D", new Color(210, 214, 220, 235), header: true));
+                    foreach (var entry in _scoreboard)
+                        ScoreboardRows.Children.Add(BuildScoreboardRow(
+                            entry.IsMob ? $"NPC {entry.ActorId}" : $"Player {entry.ActorId}",
+                            entry.Kills.ToString(),
+                            entry.Deaths.ToString(),
+                            TeamColor(entry.Team),
+                            header: false));
+                }
+
+                if (show == _scoreboardShown) return;
+                _scoreboardShown = show;
+                ScoreboardPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            /// <summary>One line of the board. Fixed column widths rather than a Grid: three columns
+            /// whose sizes never change do not need a layout pass to agree about them.</summary>
+            private StackPanel BuildScoreboardRow(
+                string name,
+                string kills,
+                string deaths,
+                Color color,
+                bool header)
+            {
+                var row = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                row.Children.Add(ScoreboardCell(name, color, 190f, TextAlignment.Left, header));
+                row.Children.Add(ScoreboardCell(kills, color, 55f, TextAlignment.Right, header));
+                row.Children.Add(ScoreboardCell(deaths, color, 55f, TextAlignment.Right, header));
+                return row;
+            }
+
+            private TextBlock ScoreboardCell(
+                string text,
+                Color color,
+                float width,
+                TextAlignment alignment,
+                bool header)
+            {
+                var cell = new TextBlock
+                {
+                    Text = text,
+                    TextColor = header ? new Color(160, 165, 175, 220) : color,
+                    Font = ActivityFont,
+                    TextSize = header ? 15 : 18,
+                    TextAlignment = alignment,
+                    WrapText = false,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                cell.Width = width;
+                return cell;
             }
 
             private StackPanel BuildActivityLine(ActivityFeedSegment[] segments)

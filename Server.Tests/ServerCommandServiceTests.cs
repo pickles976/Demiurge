@@ -140,6 +140,65 @@ public class ServerCommandServiceTests
         string command)
         => service.Execute(issuer, new CommandRequestData { RequestId = 7, Command = command });
 
+    [Fact]
+    public void TeamCommandMovesTheNamedActor()
+    {
+        var world = new FakeCommandWorld();
+        world.AddActor(1, Vector3.Zero);
+        world.AddActor(60000, new Vector3(5, 0, 5), isMob: true);
+        var service = new ServerCommandService(world, allowCheats: true);
+
+        Assert.True(Execute(service, 1, "team @60000 2").Success);
+
+        Assert.True(world.TryGetActor(60000, out var mob));
+        Assert.Equal(2, mob.Team);
+    }
+
+    /// <summary>@s is the issuer, so a player can put himself on the other side without knowing his
+    /// own actor id.</summary>
+    [Fact]
+    public void TeamCommandAcceptsSelf()
+    {
+        var world = new FakeCommandWorld();
+        world.AddActor(1, Vector3.Zero);
+        var service = new ServerCommandService(world, allowCheats: true);
+
+        Assert.True(Execute(service, 1, "team @s 2").Success);
+
+        Assert.True(world.TryGetActor(1, out var player));
+        Assert.Equal(2, player.Team);
+    }
+
+    /// <summary>
+    /// A team the map does not have is refused by the WORLD rather than by the grammar, and the
+    /// failure has to reach the issuer: which sides exist is a property of what is loaded, so a
+    /// parser that knew them would be a parser that goes stale when the map changes.
+    /// </summary>
+    [Fact]
+    public void TeamCommandRefusesASideTheMapDoesNotHave()
+    {
+        var world = new FakeCommandWorld();
+        world.AddActor(1, Vector3.Zero);
+        var service = new ServerCommandService(world, allowCheats: true);
+
+        var result = Execute(service, 1, "team @s 9");
+
+        Assert.False(result.Success);
+        Assert.Contains("not playable", result.Output);
+        Assert.True(world.TryGetActor(1, out var player));
+        Assert.Equal(1, player.Team);
+    }
+
+    [Fact]
+    public void TeamCommandRejectsAnActorThatDoesNotExist()
+    {
+        var world = new FakeCommandWorld();
+        world.AddActor(1, Vector3.Zero);
+        var service = new ServerCommandService(world, allowCheats: true);
+
+        Assert.False(Execute(service, 1, "team @60123 2").Success);
+    }
+
     private sealed class FakeCommandWorld : ICommandWorld
     {
         private readonly Dictionary<ushort, ServerPlayer> actors = new();
@@ -187,6 +246,25 @@ public class ServerCommandServiceTests
             EquippedActor = actor.Id;
             EquippedItem = type;
             return new ServerObject { NetworkId = nextObjectId++, Type = ObjectType.Item };
+        }
+
+        /// <summary>Two playable sides, which is what the real world's map placements usually
+        /// amount to; anything else is rejected so the "not playable" path is reachable here.</summary>
+        public bool TrySetTeam(ServerPlayer actor, int team, out string message)
+        {
+            if (team is not (1 or 2))
+            {
+                message = $"Team {team} is not playable on this map";
+                return false;
+            }
+            if (actor.Team == team)
+            {
+                message = $"@{actor.Id} is already on team {team}";
+                return false;
+            }
+            actor.Team = team;
+            message = $"Moved @{actor.Id} to team {team}";
+            return true;
         }
 
         public bool IsSpawnableColumn(float worldX, float worldZ)

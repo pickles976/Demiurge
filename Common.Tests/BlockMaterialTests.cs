@@ -40,6 +40,21 @@ public class BlockMaterialTests
         Assert.False(Blocks.IsBlastable(BlockType.BlockType_Stone));
     }
 
+    /// <summary>
+    /// Timber is the built material a spade is the wrong tool for. It needs no rule of its own —
+    /// "un-diggable but blasts like dirt" is just off one list and on the other, which is where
+    /// masonry already sits.
+    /// </summary>
+    [Fact]
+    public void AShovelDoesNotMoveTimberButAChargeDoes()
+    {
+        Assert.False(Blocks.IsSoil(BlockType.BlockType_Wood));
+        Assert.True(Blocks.IsBlastable(BlockType.BlockType_Wood));
+        Assert.Equal(
+            Blocks.IsBlastable(BlockType.BlockType_Dirt),
+            Blocks.IsBlastable(BlockType.BlockType_Wood));
+    }
+
     /// <summary>Anything a shovel can move, an explosion can too. The blast list is a superset by
     /// construction, and a future material that broke that would be a rule nobody could explain.</summary>
     [Theory]
@@ -49,6 +64,7 @@ public class BlockMaterialTests
     [InlineData(BlockType.BlockType_Stone)]
     [InlineData(BlockType.BlockType_Sandbags)]
     [InlineData(BlockType.BlockType_StoneBricks)]
+    [InlineData(BlockType.BlockType_Wood)]
     public void ExplosionsRemoveEverythingAShovelCan(BlockType type)
     {
         if (Blocks.IsSoil(type)) Assert.True(Blocks.IsBlastable(type));
@@ -72,7 +88,9 @@ public class BlockMaterialTests
 
             // A type with no manifest row draws the purple prototype, which is the intended
             // missing-art failure — but sandbags and brick have art, so theirs must not be it.
-            if (type is BlockType.BlockType_Sandbags or BlockType.BlockType_StoneBricks)
+            if (type is BlockType.BlockType_Sandbags
+                or BlockType.BlockType_StoneBricks
+                or BlockType.BlockType_Wood)
             {
                 Assert.True(BlockTextures.Has(type));
                 Assert.Equal(4, entry.Variants);

@@ -122,7 +122,8 @@ namespace Demiurge
         TerrainEdit,
         CommandResult,
         ActivityFeed,
-        MatchTickets
+        MatchTickets,
+        Scoreboard
     }
 
     public enum ClientToServerId : ushort

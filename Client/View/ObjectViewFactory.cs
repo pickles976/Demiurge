@@ -49,7 +49,13 @@ public class ObjectViewFactory : IDisposable
             [ObjectType.MortarRound] = _ => CreateMortarRound(),
             [ObjectType.Flag] = obj => new Entity
             {
-                new FlagViewScript { Object = obj },
+                new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/flag.gltf")),
+                new FlagViewScript
+                {
+                    Object = obj,
+                    Locators = modelLocators,
+                    Players = players,
+                },
             },
         };
         registry.ObjectSpawned += CreateView;
