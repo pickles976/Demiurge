@@ -11,4 +11,11 @@ RiptideLogger.Initialize(
     includeTimestamps: false);
 
 using var application = new ClientApplication();
-application.Run(Environment.GetCommandLineArgs()[1..]);
+var arguments = Environment.GetCommandLineArgs()[1..];
+#if SINGLEPLAYER_BUILD
+// Release builds produced by the singleplayer workflow should be directly launchable. Explicit
+// modes still work: ClientApplication checks --editor before --singleplayer.
+if (!arguments.Contains("--singleplayer", StringComparer.OrdinalIgnoreCase))
+    arguments = [.. arguments, "--singleplayer"];
+#endif
+application.Run(arguments);

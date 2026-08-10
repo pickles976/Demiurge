@@ -1,0 +1,70 @@
+name: Singleplayer release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: singleplayer-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    env:
+      ARCHIVE: DemiurgeSharp-singleplayer-linux-x64.tar.gz
+
+    steps:
+      - name: Check out merge commit
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore DemiurgeSharp.slnx --runtime linux-x64
+
+      - name: Test
+        run: dotnet test DemiurgeSharp.slnx --no-restore --filter "Category!=Benchmark&Category!=Integration"
+
+      - name: Build self-contained singleplayer executable
+        run: >-
+          dotnet build DemiurgeSharp.csproj
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --no-restore
+          -p:SingleplayerBuild=true
+          -p:DebugType=None
+
+      - name: Package
+        run: |
+          mkdir -p artifacts
+          tar -C bin/Release/net10.0/linux-x64 -czf "$GITHUB_WORKSPACE/artifacts/$ARCHIVE" .
+
+      - name: Keep workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DemiurgeSharp-singleplayer-linux-x64
+          path: artifacts/${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: singleplayer-${{ github.sha }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "artifacts/$ARCHIVE" --clobber
+          else
+            gh release create "$RELEASE_TAG" "artifacts/$ARCHIVE" \
+              --target "$GITHUB_SHA" \
+              --title "Singleplayer $GITHUB_SHA" \
+              --generate-notes
+          fi

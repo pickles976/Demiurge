@@ -14,6 +14,8 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 
 merge into main.
 
+Bug: NPCs on Team 1 not capturing flag right next to base
+
 - [ ] add trees
       - [ ] tree 3D model
       - [ ] low LOD tree

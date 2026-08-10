@@ -114,12 +114,15 @@ public class LocalPlayerController : SyncScript
 		bool operating = local.IsOperating;
 		if (operating) intent = Vector3.Zero;
 
-		// Prone is a toggle because the stance outlives a key press. Sprint is the explicit way out:
-		// pressing Shift clears it before this frame's predicted movement is built, so the client and
-		// server never spend a tick trying to crawl and sprint at the same time.
+		// Prone is a toggle because the stance outlives a key press. Sprint stands all the way up;
+		// crouch steps up only as far as crouched. Both transitions happen before this frame's flags
+		// are built, so prediction never emits an impossible crouching+prone state.
 		bool sprinting = Input.IsKeyDown(Keys.LeftShift);
+		bool crouching = Input.IsKeyDown(Keys.LeftCtrl);
 		bool proneKeyDown = Input.IsKeyDown(Keys.Z);
 		if (sprinting)
+			prone = false;
+		else if (crouching && prone)
 			prone = false;
 		else if (proneKeyDown && !proneKeyWasDown)
 			prone = !prone;
@@ -152,7 +155,7 @@ public class LocalPlayerController : SyncScript
 			.With(PlayerStateFlags.Moving, intent != Vector3.Zero)
 			.With(PlayerStateFlags.Sprinting, sprinting)
 			.With(PlayerStateFlags.Aiming, aiming)
-			.With(PlayerStateFlags.Crouching, !prone && Input.IsKeyDown(Keys.LeftCtrl))
+			.With(PlayerStateFlags.Crouching, !prone && crouching)
 			.With(PlayerStateFlags.Prone, prone)
 			// Level-triggered on purpose: the shared step only acts on Jumping while grounded, so
 			// holding Space jumps again the moment you land. It also sidesteps IsKeyPressed, which
