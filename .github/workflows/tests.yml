@@ -1,0 +1,31 @@
+name: Tests
+
+# Tests run on pull requests only — when one is opened, when a commit is pushed to its branch
+# (synchronize), and when it is reopened. The release workflow builds and publishes on push to
+# main and deliberately does not re-run them.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out merge commit
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore DemiurgeSharp.slnx --runtime linux-x64
+
+      - name: Test
+        run: dotnet test DemiurgeSharp.slnx --no-restore --filter "Category!=Benchmark&Category!=Integration"

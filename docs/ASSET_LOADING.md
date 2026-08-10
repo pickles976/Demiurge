@@ -11,7 +11,11 @@ This keeps runtime code simple and lets Stride's asset compiler handle texture/m
 
 ## MSBuild Step: `SyncStrideGltfAssets`
 
-Defined in `DemiurgeSharp.csproj`, this target runs before `StrideCompileAsset` for every build.
+Defined in `DemiurgeSharp.csproj`, this target runs before `AssignTargetPaths` and `StrideCompileAsset` for every build.
+
+**Both hooks matter.** `StrideCompileAsset` appends itself to `PrepareForRunDependsOn`, so it runs *after* `CopyFilesToOutputDirectory` — and one of this target's outputs, `assets/locators.txt`, is deployed as `Content`. Hooked to `StrideCompileAsset` alone, the generator ran a build too late and the copy only succeeded because a previous build had left the file on disk. A fresh checkout has no `assets/locators.txt` (it's generated, hence gitignored) and the build failed with `MSB3030: Could not copy … locators.txt`, which is how CI broke while every developer machine was fine. The rule generalizes: **anything generated during the build and also deployed as `Content` must be generated before `CopyFilesToOutputDirectory`.**
+
+The up-to-date stamp lives in `obj/` for a related reason — it used to sit at the repo root and be committed, so a clone could receive a stamp newer than the `.gltf` files it guards and skip generation entirely.
 
 It invokes the `GltfAssetGenerator` console tool (`tools/GltfAssetGenerator`), which uses SharpGLTF to parse each `assets/**/*.gltf` file and emits the corresponding Stride descriptors. Keeping the generator as a standalone console app avoids wrestling with inline-task assembly references and makes the pipeline easier to maintain and debug.
 

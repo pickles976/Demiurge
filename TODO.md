@@ -12,7 +12,15 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 5. Refactor commands
 6. Multiplayer test
 
-merge into main.
+We want to add a structure editor.
+The structure editor should be launched with a separate command, similar to the map editor.
+We should build in a flat 100x100m world with a debug floor (add the debug voxel, the texture is already added).
+Save structure with name from the terminal.
+In the map editor, we should be able to pick a structure and see a preview of it before we place it. 
+We should add trie-based autocomplete to the terminal, to make it easier to use.
+Also, the terminal needs to hide all other UI elements, and be about 50% larger.
+
+
 
 Bug: NPCs on Team 1 not capturing flag right next to base
 
@@ -26,12 +34,6 @@ Bug: NPCs on Team 1 not capturing flag right next to base
 
 
 ## Misc
-
-- [ ] structure editor 
-      - [ ] launch with a separate command
-      - [ ] build in a flat void
-      - [ ] save structure with name
-      - [ ] load structure in map editor, show placement preview
 
 Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
 - [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.

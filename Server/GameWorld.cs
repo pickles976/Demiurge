@@ -431,6 +431,22 @@ namespace Demiurge.GameServer
                 weapons.ApplyReload(player, _Tick);
         }
 
+        /// <summary>
+        /// Records the kit this player wants issued next time he is given one.
+        ///
+        /// Deliberately not gated on being dead. The class is a preference the server keeps, and
+        /// the loadout is issued at spawn by <see cref="ItemSystem.RefillRespawnLoadout"/> — so
+        /// "you may only choose while waiting to respawn" is a rule about what the CLIENT offers,
+        /// not a second place for the server to decide who is allowed a rifle. Accepting it at any
+        /// time also makes the message idempotent, which at-least-once delivery requires.
+        /// </summary>
+        public void ApplySelectClass(ushort clientId, byte playerClass)
+        {
+            if (!players.TryGetValue(clientId, out var player)) return;
+            if (!PlayerClasses.IsDefined(playerClass)) return;
+            player.Class = (PlayerClass)playerClass;
+        }
+
         public void ApplyDig(ushort clientId, PlayerDigData dig)
         {
             if (players.TryGetValue(clientId, out var player)
@@ -731,6 +747,33 @@ namespace Demiurge.GameServer
             score.Invalidate();
 
             message = $"Moved @{actor.Id} to team {team}";
+            return true;
+        }
+
+        /// <summary>
+        /// Kills an actor by taking his health to zero and leaving the rest to the tick.
+        ///
+        /// Deliberately not a second death path: the death branch in <see cref="Tick"/> already
+        /// drops the kit, counts the death and books the respawn wave, and it runs off health being
+        /// zero rather than off whatever caused it. A command that dropped the kit itself would be
+        /// a second answer to "what happens when a man dies" and would drift from the first.
+        /// </summary>
+        public bool TryKill(ServerPlayer actor, out string message)
+        {
+            if (actor.Status is not { } status)
+            {
+                message = $"@{actor.Id} has no health to take";
+                return false;
+            }
+            if (status.Health.Current == 0)
+            {
+                message = $"@{actor.Id} is already dead";
+                return false;
+            }
+
+            status.Health.Current = 0;
+            status.Dirty |= NetComponents.Health;
+            message = $"Killed @{actor.Id}";
             return true;
         }
 

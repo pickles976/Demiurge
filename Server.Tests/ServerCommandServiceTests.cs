@@ -267,6 +267,15 @@ public class ServerCommandServiceTests
             return true;
         }
 
+        public List<ushort> Killed { get; } = new();
+
+        public bool TryKill(ServerPlayer actor, out string message)
+        {
+            Killed.Add(actor.Id);
+            message = $"Killed @{actor.Id}";
+            return true;
+        }
+
         public bool IsSpawnableColumn(float worldX, float worldZ)
             => MathF.Abs(worldX) < 500 && MathF.Abs(worldZ) < 500;
 

@@ -115,6 +115,9 @@ namespace Demiurge.GameServer
                         e.ClientId,
                         e.Message.GetSerializable<MortarFireData>());
                     break;
+                case ClientToServerId.SelectClass:
+                    world.ApplySelectClass(e.ClientId, e.Message.GetByte());
+                    break;
                 case ClientToServerId.PlayerDig:
                     world.ApplyDig(e.ClientId, e.Message.GetSerializable<PlayerDigData>());
                     break;

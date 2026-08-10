@@ -15,6 +15,9 @@ public sealed record AiStatsCommand : GameCommand;
 /// <summary>Move an actor — player or NPC — to another side.</summary>
 public sealed record SetTeamCommand(ActorSelector Target, int Team) : GameCommand;
 
+/// <summary>Kill an actor outright, as any other lethal damage would.</summary>
+public sealed record KillCommand(ActorSelector Target) : GameCommand;
+
 /// <summary>An absolute coordinate, or an offset from the command source when prefixed by '~'.</summary>
 public readonly record struct CommandCoordinate(float Value, bool Relative)
 {
@@ -74,6 +77,7 @@ public static class GameCommandParser
             "spawn" => ParseSpawn(tokens),
             "equip" => ParseEquip(tokens),
             "team" => ParseTeam(tokens),
+            "kill" => ParseKill(tokens),
             "ai" => ParseAi(tokens),
             _ => CommandParseResult.Fail($"Unknown command: {tokens[0]}"),
         };
@@ -146,6 +150,22 @@ public static class GameCommandParser
             || team <= 0)
             return CommandParseResult.Fail($"Invalid team: {tokens[2]}");
         return CommandParseResult.Ok(new SetTeamCommand(selector, team));
+    }
+
+    /// <summary>
+    /// <c>kill [&lt;@s|@actor-id&gt;]</c>. The target defaults to the issuer, because killing
+    /// yourself to get back to a respawn wave is what this is for and <c>kill @s</c> would be the
+    /// only spelling anyone ever typed.
+    /// </summary>
+    private static CommandParseResult ParseKill(IReadOnlyList<string> tokens)
+    {
+        if (tokens.Count == 1)
+            return CommandParseResult.Ok(new KillCommand(ActorSelector.Self));
+        if (tokens.Count != 2)
+            return CommandParseResult.Fail("Usage: kill [<@s|@actor-id>]");
+        if (!TryActorSelector(tokens[1], out var selector))
+            return CommandParseResult.Fail($"Invalid actor selector: {tokens[1]}");
+        return CommandParseResult.Ok(new KillCommand(selector));
     }
 
     private static CommandParseResult ParseEquip(IReadOnlyList<string> tokens)

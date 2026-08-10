@@ -81,6 +81,15 @@ namespace Demiurge.GameServer
         /// </summary>
         public uint RespawnTick { get; set; }
 
+        /// <summary>
+        /// The kit this player has asked for. A PREFERENCE, not a state: it is read when a loadout
+        /// is issued and never applied to a man already on his feet, so choosing a class mid-life
+        /// arms him at the next respawn wave rather than swapping the gun out of his hands.
+        ///
+        /// Meaningless for a mob, whose weapon comes from its place in the spawn cohort.
+        /// </summary>
+        public PlayerClass Class { get; set; } = PlayerClasses.Default;
+
         // Inputs arrive about once per-frame (unreliably) and are consumed once per tick, so they are queued.
         public Queue<PlayerInputData> PendingMoves {get; } = new();
         public uint LastReceivedSequence {get; set;} // newest enqueued

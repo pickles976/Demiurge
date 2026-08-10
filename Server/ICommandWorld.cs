@@ -9,6 +9,7 @@ internal interface ICommandWorld
     bool TryGetActor(ushort actorId, out ServerPlayer actor);
     ServerObject Equip(ServerPlayer actor, ItemType type);
     bool TrySetTeam(ServerPlayer actor, int team, out string message);
+    bool TryKill(ServerPlayer actor, out string message);
     bool IsSpawnableColumn(float worldX, float worldZ);
     Vector3 SurfacePosition(float worldX, float worldZ);
     string AiStats();

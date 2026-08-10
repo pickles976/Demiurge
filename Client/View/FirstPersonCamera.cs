@@ -97,6 +97,13 @@ namespace Demiurge
 			if (Registry.LocalPlayer is not { } local) return;
 			if (local.IsDead)
 			{
+				// Hand the pointer back for the same reason the mortar does below: the killcam is
+				// not aimed, and the loadout picker in front of it is clicked. Without this the
+				// cursor stays locked to the centre from the moment of death and the cards can only
+				// be reached with the number keys.
+				if (mouseLocked) Input.UnlockMousePosition();
+				Game.IsMouseVisible = true;
+				mouseLocked = false;
 				following = false;
 				return;
 			}

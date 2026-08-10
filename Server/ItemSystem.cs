@@ -126,10 +126,15 @@ namespace Demiurge.GameServer
             actor.Hotbar = HotbarSlot.Primary;
         }
 
+        /// <summary>
+        /// The gun a man is issued when he has none: a mob's from the standard NPC primary, a
+        /// player's from the class he picked. One function, so the first spawn and every respawn
+        /// cannot disagree about what a class means.
+        /// </summary>
         private static ItemType DefaultPrimary(ServerPlayer actor)
             => actor.IsMob
                 ? ItemConfig.DefaultNpcPrimaryWeapon
-                : ItemConfig.DefaultPlayerPrimaryWeapon;
+                : PlayerClasses.Weapon(actor.Class);
 
         /// <summary>
         /// Who is issued a grenade stack: every player, and the NPCs carrying the assault gun.

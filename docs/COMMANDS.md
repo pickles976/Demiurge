@@ -28,6 +28,7 @@ spawn mob [x z]
 spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
 team <@s|@actor-id> <team>
+kill [<@s|@actor-id>]
 ai stats
 ai track [off|on|beacons|facing|clustering|colliders|ids|states]
 net <seed|log>
@@ -42,6 +43,8 @@ equip @s demiurge:body_armor
 equip @60002 demiurge:sks
 team @s 2
 team @60002 1
+kill
+kill @60002
 ai track on
 ai track beacons clustering
 ```
@@ -58,6 +61,11 @@ now the enemy line is a free kill. Which team numbers exist comes from the loade
 spawns, so the command refuses one the map does not have rather than the grammar rejecting it. An
 NPC is given a fresh brain on its new side, so it re-forms into a squad there instead of carrying
 its old squad's orders across.
+
+`kill` kills an actor exactly as any lethal damage would: the kit drops where he falls, the death is
+counted, and he comes back on the next respawn wave with a ticket charged. Bare `kill` means `kill
+@s`, which is how you get to the respawn screen — and to the loadout picker — without finding
+somebody to shoot you.
 
 ### `net` — in-process transport diagnostics
 

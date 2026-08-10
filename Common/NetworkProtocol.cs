@@ -142,7 +142,10 @@ namespace Demiurge
         /// trying and failing to express.</summary>
         PlayerUse,
         /// <summary>Drop a bomb on a point. Only legal while operating an emplaced mortar.</summary>
-        MortarFire
+        MortarFire,
+        /// <summary>The kit to issue at this player's next respawn. One <see cref="PlayerClass"/>
+        /// byte; the server stores it and hands it out when a loadout is next issued.</summary>
+        SelectClass
     }
 
     public static class MessageExtensions

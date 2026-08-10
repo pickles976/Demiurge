@@ -262,6 +262,68 @@ public class ItemSystemTests
     }
 
     /// <summary>
+    /// The chosen class decides the primary a player is issued, on his first spawn and on every
+    /// respawn after it — one function feeds both, so this asserts the property rather than either
+    /// path. A mob is unaffected: its weapon comes from its place in the spawn cohort, and nothing
+    /// about a player's menu may reach it.
+    /// </summary>
+    [Theory]
+    [InlineData(PlayerClass.Rifleman)]
+    [InlineData(PlayerClass.Marksman)]
+    [InlineData(PlayerClass.Assault)]
+    public void PlayersAreIssuedTheirChosenClassWeapon(PlayerClass playerClass)
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+        var player = new ServerPlayer { Id = 7, Class = playerClass };
+        var mob = new ServerPlayer { Id = 60000, IsMob = true, Class = playerClass };
+
+        items.SpawnInfantryLoadout(player);
+        items.SpawnInfantryLoadout(mob);
+
+        Assert.True(objects.TryGet(player.Equipped[EquipSlot.HotbarPrimary], out var spawned));
+        Assert.Equal(PlayerClasses.Weapon(playerClass), spawned.Item.Type);
+        Assert.True(objects.TryGet(mob.Equipped[EquipSlot.HotbarPrimary], out var mobPrimary));
+        Assert.Equal(ItemConfig.DefaultNpcPrimaryWeapon, mobPrimary.Item.Type);
+
+        // What he died holding is on the ground, so the respawn issues the class weapon fresh.
+        items.DropOnDeath(player);
+        items.RefillRespawnLoadout(player);
+
+        Assert.True(objects.TryGet(player.Equipped[EquipSlot.HotbarPrimary], out var reissued));
+        Assert.Equal(PlayerClasses.Weapon(playerClass), reissued.Item.Type);
+    }
+
+    /// <summary>
+    /// Every class carries the same everything-else. Written against the classes rather than
+    /// against three item names so a pack that changes what a marksman carries cannot quietly
+    /// change what he carries it WITH.
+    /// </summary>
+    [Fact]
+    public void EveryClassCarriesTwoGrenadesAndAShovel()
+    {
+        var objects = new ObjectReplication(new NullNetServer());
+        var items = new ItemSystem(objects);
+
+        foreach (var playerClass in PlayerClasses.All)
+        {
+            var player = new ServerPlayer { Id = 7, Class = playerClass };
+            items.SpawnInfantryLoadout(player);
+
+            Assert.True(player.Equipped.ContainsKey(EquipSlot.HotbarShovel));
+            Assert.True(objects.TryGet(player.Equipped[EquipSlot.HotbarGrenade], out var grenades));
+            Assert.Equal(2, grenades.Weapon.CurrentAmmo);
+
+            Assert.True(objects.TryGet(player.Equipped[EquipSlot.HotbarPrimary], out var primary));
+            var weapon = WeaponConfig.Require(primary.Item.Type);
+            Assert.Equal(weapon.MagazineCapacity, primary.Weapon.CurrentAmmo);
+            Assert.Equal(
+                weapon.MagazineCapacity * ItemConfig.SpareMagazines,
+                primary.Weapon.ReserveAmmo);
+        }
+    }
+
+    /// <summary>
     /// A dead man leaves his rifle and nothing else. The rest of his kit staying equipped is the
     /// half that is easy to lose: dropping the lot would strip his armour and carpet the ground in
     /// shovels, and neither is what "drop your weapon" means.

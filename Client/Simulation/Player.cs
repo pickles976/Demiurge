@@ -316,6 +316,22 @@ public class RemotePlayer : Player
     public void TryUse() => network.SendUse();
 
     /// <summary>
+    /// The kit to be issued at the next respawn wave.
+    ///
+    /// Held here as well as on the server because the picker has to show what you chose the instant
+    /// you choose it, and the choice is not observable in the world until you are already holding
+    /// the gun. It is a request, not a prediction: nothing about the man you are looking at changes,
+    /// so there is no state to reconcile if the server disagrees.
+    /// </summary>
+    public PlayerClass SelectedClass { get; private set; } = PlayerClasses.Default;
+
+    public void SelectClass(PlayerClass playerClass)
+    {
+        SelectedClass = playerClass;
+        network.SendSelectClass(playerClass);
+    }
+
+    /// <summary>
     /// Ask for a bomb on a point. Not predicted at all — there is no local effect to show and the
     /// dispersion is the server's to sample, so the request goes and the bomb arrives replicated.
     /// </summary>

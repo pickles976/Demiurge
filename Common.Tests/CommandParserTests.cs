@@ -124,6 +124,26 @@ public class CommandParserTests
         Assert.Equal(team, command.Team);
     }
 
+    /// <summary>A bare <c>kill</c> is <c>kill @s</c>, which is the only spelling worth typing.</summary>
+    [Theory]
+    [InlineData("kill", true, 0)]
+    [InlineData("kill @s", true, 0)]
+    [InlineData("kill @60000", false, 60000)]
+    public void ParsesKill(string input, bool self, int actorId)
+    {
+        var result = GameCommandParser.Parse(input);
+
+        var command = Assert.IsType<KillCommand>(result.Command);
+        Assert.Equal(self, command.Target.IsSelf);
+        if (!self) Assert.Equal((ushort)actorId, command.Target.ActorId);
+    }
+
+    [Theory]
+    [InlineData("kill 60000")]
+    [InlineData("kill @s now")]
+    public void RejectsMalformedKill(string input)
+        => Assert.False(GameCommandParser.Parse(input).Success);
+
     /// <summary>Zero is the neutral team and negatives are not teams at all. WHICH positive numbers
     /// a map has is the server's business — see ServerCommandServiceTests.</summary>
     [Theory]

@@ -57,6 +57,7 @@ internal sealed class ServerCommandService
                 SpawnPickupCommand command => SpawnPickup(requestId, source, command),
                 EquipCommand command => Equip(requestId, source, command),
                 SetTeamCommand command => SetTeam(requestId, source, command),
+                KillCommand command => Kill(requestId, source, command),
                 AiStatsCommand => Result(requestId, true, world.AiStats()),
                 _ => Result(requestId, false, "Unsupported command"),
             };
@@ -95,32 +96,64 @@ internal sealed class ServerCommandService
 
     private CommandResultData Equip(uint requestId, ServerCommandSource source, EquipCommand command)
     {
-        if (command.Target.IsSelf && source.Actor is null)
-            return Result(requestId, false, "@s is unavailable from the dedicated server console");
-
-        ushort actorId = command.Target.IsSelf ? source.Actor!.Id : command.Target.ActorId;
-        if (!world.TryGetActor(actorId, out var target))
-            return Result(requestId, false, $"Actor @{actorId} does not exist");
+        if (!TryResolveTarget(source, command.Target, out var target, out string? error))
+            return Result(requestId, false, error!);
 
         var stats = ItemConfig.Get(command.Item);
         if (!ItemConfig.IsHeld(command.Item))
             return Result(requestId, false, $"{ItemCatalog.Id(command.Item)} cannot be equipped");
 
         world.Equip(target, command.Item);
-        return Result(requestId, true, $"Equipped @{actorId} with {ItemCatalog.Id(command.Item)}");
+        return Result(requestId, true, $"Equipped @{target.Id} with {ItemCatalog.Id(command.Item)}");
     }
 
     private CommandResultData SetTeam(uint requestId, ServerCommandSource source, SetTeamCommand command)
     {
-        if (command.Target.IsSelf && source.Actor is null)
-            return Result(requestId, false, "@s is unavailable from the dedicated server console");
-
-        ushort actorId = command.Target.IsSelf ? source.Actor!.Id : command.Target.ActorId;
-        if (!world.TryGetActor(actorId, out var target))
-            return Result(requestId, false, $"Actor @{actorId} does not exist");
+        if (!TryResolveTarget(source, command.Target, out var target, out string? error))
+            return Result(requestId, false, error!);
 
         bool changed = world.TrySetTeam(target, command.Team, out string message);
         return Result(requestId, changed, message);
+    }
+
+    private CommandResultData Kill(uint requestId, ServerCommandSource source, KillCommand command)
+    {
+        if (!TryResolveTarget(source, command.Target, out var target, out string? error))
+            return Result(requestId, false, error!);
+
+        bool killed = world.TryKill(target, out string message);
+        return Result(requestId, killed, message);
+    }
+
+    /// <summary>
+    /// Resolves the actor a command names — the issuer for <c>@s</c>, otherwise an actor id.
+    ///
+    /// One copy because three commands now want the same two failures worded the same way, and a
+    /// selector that means different things to different commands is exactly the kind of drift a
+    /// grammar exists to prevent.
+    /// </summary>
+    private bool TryResolveTarget(
+        ServerCommandSource source,
+        ActorSelector selector,
+        out ServerPlayer target,
+        out string? error)
+    {
+        if (selector.IsSelf && source.Actor is null)
+        {
+            target = null!;
+            error = "@s is unavailable from the dedicated server console";
+            return false;
+        }
+
+        ushort actorId = selector.IsSelf ? source.Actor!.Id : selector.ActorId;
+        if (!world.TryGetActor(actorId, out target))
+        {
+            error = $"Actor @{actorId} does not exist";
+            return false;
+        }
+
+        error = null;
+        return true;
     }
 
     private bool TryResolvePosition(

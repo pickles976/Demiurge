@@ -7,6 +7,7 @@ using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Engine.Events;
 using Stride.Graphics;
+using Stride.Input;
 using Stride.Rendering;
 using Stride.Rendering.Sprites;
 
@@ -36,6 +37,15 @@ namespace Demiurge
         /// The colour a team is drawn in anywhere on the HUD: the ticket bar, the activity feed.
         /// Team 1 is orange and team 2 grey, matching the cat models the two sides wear.
         /// </summary>
+        /// <summary>Loadout cards: the plate colour of the class you are not taking, and of the
+        /// one you are.</summary>
+        public static readonly Color UnselectedClassColor = new(14, 14, 17, 205);
+        public static readonly Color SelectedClassColor = new(74, 92, 58, 235);
+
+        /// <summary>Card width in the page's 1280x720 units. Set on the card CONTENT rather than on
+        /// the button — see the note where it is used.</summary>
+        private const float ClassCardWidth = 152f;
+
         public static Color TeamColor(int team) => team switch
         {
             1 => Team1Color,
@@ -441,6 +451,81 @@ namespace Demiurge
             };
             root.Children.Add(respawnPanel);
 
+            // The loadout picker, shown with the killcam. Below the respawn clock rather than over
+            // the middle of the screen: the killcam is the other thing you are watching while you
+            // wait, and a menu across it would be trading one for the other.
+            var classButtons = new Button[PlayerClasses.All.Length];
+            var classTitles = new TextBlock[PlayerClasses.All.Length];
+            var classCards = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            for (int i = 0; i < PlayerClasses.All.Length; i++)
+            {
+                var playerClass = PlayerClasses.All[i];
+                var title = new TextBlock
+                {
+                    Text = PlayerClasses.Name(playerClass),
+                    TextColor = Color.White,
+                    Font = font,
+                    TextSize = 19,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                };
+                var key = new TextBlock
+                {
+                    Text = $"[{i + 1}]",
+                    TextColor = new Color(180, 180, 188, 170),
+                    Font = font,
+                    TextSize = 13,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 6, 0, 0),
+                };
+
+                // The card's own width, not the button's. Button.SizeToContent must stay true:
+                // with it false, MeasureOverride measures the button's IMAGE and never measures
+                // its content at all, so every line of text inside lands at the same origin.
+                var card = new StackPanel
+                {
+                    Orientation = Orientation.Vertical,
+                    Width = ClassCardWidth,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                card.Children.Add(title);
+                card.Children.Add(key);
+
+                // A Button rather than a Border, for the one thing a Border cannot do: ButtonBase
+                // sets CanBeHitByUser and raises Click on release, which is what makes the card
+                // clickable at all. Its images are left null so it draws as the flat plate the rest
+                // of this HUD is made of.
+                var button = new Button
+                {
+                    Content = card,
+                    Padding = new Thickness(8, 12, 8, 12),
+                    Margin = new Thickness(5, 0, 5, 0),
+                    BackgroundColor = UnselectedClassColor,
+                };
+                classButtons[i] = button;
+                classTitles[i] = title;
+                classCards.Children.Add(button);
+            }
+
+            var classPanel = new Border
+            {
+                BackgroundColor = new Color(5, 5, 7, 175),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                // Under the respawn clock, which sits at 92 and is two lines of 30pt text tall.
+                Margin = new Thickness(0, 186, 0, 0),
+                Padding = new Thickness(10, 10, 10, 10),
+                Content = classCards,
+                Visibility = Visibility.Collapsed,
+            };
+            root.Children.Add(classPanel);
+
             // Put the driving script on the same entity as the UI and hand it the text
             // block to write into.
             var uiEntity = new Entity
@@ -462,6 +547,9 @@ namespace Demiurge
                     Thumbnails = thumbnails,
                     RespawnPanel = respawnPanel,
                     RespawnText = respawnText,
+                    ClassPanel = classPanel,
+                    ClassButtons = classButtons,
+                    ClassTitles = classTitles,
                     Readiness = game.Services.GetService<SpawnReadiness>(),
                     WeaponPanels = [statusPanel, hotbarPanel],
                     PickupPanel = pickupPanel,
@@ -684,6 +772,11 @@ namespace Demiurge
                 = new Dictionary<ItemType, SpriteFromTexture>();
             public UIElement RespawnPanel { get; set; } = null!;
             public TextBlock RespawnText { get; set; } = null!;
+            /// <summary>The loadout picker, shown while waiting for a wave. Nullable so the script
+            /// stays usable without one rather than assuming its own layout.</summary>
+            public UIElement? ClassPanel { get; set; }
+            public Button[] ClassButtons { get; set; } = [];
+            public TextBlock[] ClassTitles { get; set; } = [];
             /// <summary>Ammo, health and the hotbar — everything about the weapon in hand. Hidden
             /// together whenever the hands are not available for one.</summary>
             public UIElement[] WeaponPanels { get; set; } = [];
@@ -730,6 +823,8 @@ namespace Demiurge
             private int _lastGrenades = int.MinValue;
             private bool _lastDead;
             private int _lastRespawnSeconds = int.MinValue;
+            private PlayerClass? _shownClass;
+            private bool _classPanelShown;
             /// <summary>Network id the prompt currently names; 0 for none. Keyed by id rather than
             /// by item type so walking between two identical rifles still refreshes.</summary>
             private uint _promptedPickup;
@@ -756,6 +851,16 @@ namespace Demiurge
                 _network.ActivityFeedReceived += OnActivityFeed;
                 _network.MatchTicketsReceived += OnMatchTickets;
                 _network.ScoreboardReceived += OnScoreboard;
+
+                // Subscribed here rather than where the cards are built: the click means "issue me
+                // this kit", which needs the local player, and layout has no business knowing about
+                // him. One handler per card, so the class is captured rather than searched for.
+                for (int i = 0; i < ClassButtons.Length && i < PlayerClasses.All.Length; i++)
+                {
+                    var playerClass = PlayerClasses.All[i];
+                    ClassButtons[i].Click += (_, _) => SelectClass(playerClass);
+                }
+
                 Root.Visibility = Visibility.Collapsed;   // until spawn
             }
 
@@ -1087,6 +1192,11 @@ namespace Demiurge
             private void RefreshRespawn(LocalPlayer local)
             {
                 bool dead = local.IsDead;
+                // Before the change gate below: keys are pressed between redraws, and the clock
+                // only ticks once a second.
+                if (dead) ReadClassKeys(local);
+                RefreshClassSelection(local, dead);
+
                 int seconds = local.RespawnTick == 0
                     ? RespawnConfig.WaveSeconds
                     : Math.Max(
@@ -1101,6 +1211,52 @@ namespace Demiurge
                 RespawnPanel.Visibility = dead ? Visibility.Visible : Visibility.Collapsed;
                 if (dead)
                     RespawnText.Text = $"KILLCAM\nRESPAWN WAVE IN {seconds}";
+            }
+
+            /// <summary>
+            /// 1, 2 and 3 pick a class while you are waiting. The same keys select hotbar slots
+            /// alive, which is not a clash: <c>LocalPlayerController</c> stops reading input at all
+            /// once the local player is dead, and a dead man has no hotbar to switch.
+            ///
+            /// Not while the terminal is open — those digits are being typed at it.
+            /// </summary>
+            private void ReadClassKeys(LocalPlayer local)
+            {
+                if (InputState.TerminalOpen) return;
+
+                if (Input.IsKeyPressed(Keys.D1) || Input.IsKeyPressed(Keys.NumPad1))
+                    SelectClass(PlayerClasses.All[0]);
+                else if (Input.IsKeyPressed(Keys.D2) || Input.IsKeyPressed(Keys.NumPad2))
+                    SelectClass(PlayerClasses.All[1]);
+                else if (Input.IsKeyPressed(Keys.D3) || Input.IsKeyPressed(Keys.NumPad3))
+                    SelectClass(PlayerClasses.All[2]);
+            }
+
+            private void SelectClass(PlayerClass playerClass)
+                => _registry.LocalPlayer?.SelectClass(playerClass);
+
+            /// <summary>Shows the picker while a wave is pending, and marks the card you took.</summary>
+            private void RefreshClassSelection(LocalPlayer local, bool dead)
+            {
+                if (ClassPanel is null) return;
+
+                // Both gated: Visibility and BackgroundColor invalidate layout, and this runs every
+                // frame the player is on the screen.
+                if (dead != _classPanelShown)
+                {
+                    _classPanelShown = dead;
+                    ClassPanel.Visibility = dead ? Visibility.Visible : Visibility.Collapsed;
+                }
+                if (!dead || local.SelectedClass == _shownClass) return;
+
+                _shownClass = local.SelectedClass;
+                for (int i = 0; i < ClassButtons.Length && i < PlayerClasses.All.Length; i++)
+                {
+                    bool selected = PlayerClasses.All[i] == local.SelectedClass;
+                    ClassButtons[i].BackgroundColor = selected ? SelectedClassColor : UnselectedClassColor;
+                    if (i < ClassTitles.Length)
+                        ClassTitles[i].TextColor = selected ? Color.White : new Color(215, 215, 222, 225);
+                }
             }
 
             /// <summary>

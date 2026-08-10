@@ -30,8 +30,8 @@ jobs:
       - name: Restore
         run: dotnet restore DemiurgeSharp.slnx --runtime linux-x64
 
-      - name: Test
-        run: dotnet test DemiurgeSharp.slnx --no-restore --filter "Category!=Benchmark&Category!=Integration"
+      # Tests are not run here: .github/workflows/tests.yml runs them on the pull request that
+      # produced this commit, so re-running them on the merge only costs time.
 
       - name: Build self-contained singleplayer executable
         run: >-

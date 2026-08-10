@@ -18,7 +18,9 @@ public sealed class DataPackRegistryTests
         ];
 
         Assert.Equal(expected, ItemCatalog.All.Select(item => item.Id).Order().ToArray());
-        Assert.Equal(ItemType.Mosin, ItemConfig.DefaultPlayerPrimaryWeapon);
+        // The player default is the rifleman's carbine, because the rifleman is the class a player
+        // has until he picks another one — see PlayerClasses.Weapon.
+        Assert.Equal(ItemType.Sks, ItemConfig.DefaultPlayerPrimaryWeapon);
         Assert.Equal(ItemType.Sks, ItemConfig.DefaultNpcPrimaryWeapon);
         Assert.Equal(ItemType.Ppsh, ItemConfig.DefaultAssaultWeapon);
         Assert.Equal(ItemType.Mosin, ItemConfig.DefaultMarksmanWeapon);

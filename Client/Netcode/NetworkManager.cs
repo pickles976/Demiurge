@@ -128,6 +128,17 @@ namespace Demiurge.GameClient
             client.Send(message);
         }
 
+        /// <summary>
+        /// Asks for a kit at the next respawn. Reliable and idempotent — it is a preference, so the
+        /// last one to arrive wins and a duplicate is the same choice made twice.
+        /// </summary>
+        public void SendSelectClass(PlayerClass playerClass)
+        {
+            Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.SelectClass);
+            message.AddByte((byte)playerClass);
+            client.Send(message);
+        }
+
         public void SendDig(PlayerDigData dig)
         {
             Message message = Message.Create(MessageSendMode.Reliable, ClientToServerId.PlayerDig);

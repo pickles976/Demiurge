@@ -97,10 +97,21 @@
          .sdm3d      - model asset descriptors (with Materials list)
          .sdpkg      - package manifest with model RootAssets
        Drop a .gltf into assets/ and dotnet run — no other steps required.
-       GUIDs are deterministic MD5 hashes of content paths. -->
-  <Target Name="SyncStrideGltfAssets" BeforeTargets="StrideCompileAsset" Inputs="@(GltfAsset)" Outputs="$(MSBuildProjectDirectory)/.stride-assets.stamp">
+       GUIDs are deterministic MD5 hashes of content paths.
+
+       It also writes assets/locators.txt, which is deployed as Content above — and content is
+       copied to the output directory during CopyFilesToOutputDirectory, which Stride's
+       StrideCompileAsset runs AFTER (it appends itself to PrepareForRunDependsOn). Hooking this
+       target only to StrideCompileAsset therefore generates locators.txt one build too late: the
+       copy succeeds only because a previous build left the file on disk. A fresh checkout has no
+       locators.txt (it's generated, so gitignored) and the build fails with MSB3030. Hence the
+       AssignTargetPaths hook, which is early enough to precede the copy.
+
+       The stamp lives in obj/ for the same reason: a stamp committed to git can arrive newer than
+       the .gltf files it guards and skip generation entirely on a fresh clone. -->
+  <Target Name="SyncStrideGltfAssets" BeforeTargets="StrideCompileAsset;AssignTargetPaths" Inputs="@(GltfAsset)" Outputs="$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)stride-assets.stamp">
     <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/tools/GltfAssetGenerator/GltfAssetGenerator.csproj&quot; -- &quot;$(MSBuildProjectDirectory)&quot; &quot;$(MSBuildProjectName)&quot;" />
-    <Touch Files="$(MSBuildProjectDirectory)/.stride-assets.stamp" AlwaysCreate="true" />
+    <Touch Files="$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)stride-assets.stamp" AlwaysCreate="true" />
   </Target>
 
 </Project>

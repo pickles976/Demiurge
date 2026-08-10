@@ -184,9 +184,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         if (tokenIndex == 0)
             return current is EditorClientSession activeEditor
                 ? activeEditor.IsPlaytesting
-                    ? ["spawn", "equip", "ai", "net", "map", "session", "clear", "help"]
+                    ? ["spawn", "equip", "team", "kill", "ai", "net", "map", "session", "clear", "help"]
                     : ["editor", "map", "session", "clear", "help"]
-                : ["spawn", "equip", "ai", "net", "map", "session", "clear", "help"];
+                : ["spawn", "equip", "team", "kill", "ai", "net", "map", "session", "clear", "help"];
 
         if (tokens.Length == 0) return [];
         string root = tokens[0].ToLowerInvariant();
@@ -259,7 +259,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         if (root == "help")
         {
             if (tokenIndex == 1)
-                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "ai", "net"];
+                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "team", "kill", "ai", "net"];
             if (tokenIndex == 2 && tokens.Length > 1
                 && tokens[1].Equals("editor", StringComparison.OrdinalIgnoreCase))
                 return ["terrain", "block", "object"];
@@ -353,6 +353,20 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  equip <@s|@actor-id> <item-id>",
                 $"Items: {string.Join(", ", ItemCatalog.All.Select(definition => definition.Id))}",
                 "Runtime equipment changes last for the current session only; map save does not record them.",
+            ],
+            "kill" =>
+            [
+                "Kill an actor:",
+                "  kill [<@s|@actor-id>]",
+                "No target means yourself. Death is the ordinary one - the kit drops, the death is",
+                "counted, and you return on the next respawn wave, where the loadout picker is.",
+            ],
+            "team" =>
+            [
+                "Move an actor to another side:",
+                "  team <@s|@actor-id> <team>",
+                "He arrives at that side's spawn, whole and re-kitted. Which team numbers exist",
+                "comes from the loaded map's player spawns.",
             ],
             "net" =>
             [
