@@ -221155,6 +221155,86 @@
       "weaponId": null,
       "team": 0,
       "groupId": null
+    },
+    {
+      "id": "3ff0f34d-b53a-4b8c-aaa7-de250d7d9786",
+      "kind": "supplyCrate",
+      "archetypeId": "demiurge:dp27",
+      "cell": {
+        "x": -152,
+        "y": 24,
+        "z": 7,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
+    },
+    {
+      "id": "822da60f-ffd4-452c-b234-60c2a1648876",
+      "kind": "supplyCrate",
+      "archetypeId": "demiurge:dp27",
+      "cell": {
+        "x": -36,
+        "y": 45,
+        "z": -166,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
+    },
+    {
+      "id": "c664ede6-a493-4e54-a191-ae2a31a842bc",
+      "kind": "supplyCrate",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 31,
+        "y": 22,
+        "z": 209,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
+    },
+    {
+      "id": "f0191820-1524-486f-8cf1-1d612cd6f7b3",
+      "kind": "supplyCrate",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 254,
+        "y": 22,
+        "z": -168,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
+    },
+    {
+      "id": "f460a216-f68a-432f-b73d-e6e23b829d5a",
+      "kind": "supplyCrate",
+      "archetypeId": "demiurge:dp27",
+      "cell": {
+        "x": 172,
+        "y": 28,
+        "z": -59,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 0,
+      "groupId": null
     }
   ]
 }

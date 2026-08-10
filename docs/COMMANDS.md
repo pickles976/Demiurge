@@ -164,6 +164,7 @@ the swapped item. This prevents repeated terminal commands from leaving unwanted
 ```text
 session status
 session editor <map-name>
+session structure [name]
 session host <map-name>
 session host <map-name> --build
 session join <host>
@@ -193,17 +194,22 @@ The editor autosaves after a quiet period. When `autosave.json` is newer than `s
 terminal reports it. `map recover` promotes the autosave to the explicit source while retaining the
 old source backup; `map discard-autosave` removes it.
 
-Launching directly into the editor creates the map when no source exists:
+`session structure` opens the same editor against a flat 100x100 m debug pad instead of a map. It is
+never saved — only the structures built in it are, into the shared `structures/` library beside
+`maps/`, from where any map can place them. See `docs/EDITOR.md`.
+
+Launching directly into either editor creates the map when no source exists:
 
 ```bash
 dotnet run -- --editor trench-test
+dotnet run -- --structure-editor
 ```
 
 ## Editor Commands
 
 ```text
 editor status
-editor mode <terrain|block|object>
+editor mode <terrain|block|object|structure>
 
 editor terrain operation <add|subtract>
 editor terrain shape <sphere|box|organic>
@@ -253,9 +259,8 @@ another terrain material is an explicit override.
 Structure capture and placement use highlighted cells:
 
 ```text
-editor structure corner 1
-editor structure corner 2
-editor structure pivot
+editor mode structure
+editor structure list
 editor structure save <name>
 editor structure select <name>
 editor structure rotate <multiple-of-90>
@@ -263,7 +268,15 @@ editor structure mirror x
 editor structure clear
 ```
 
-Selected structures place as one grouped block transaction and undo in one operation.
+`editor structure save` captures everything in the current document and is only accepted in the
+structure editor, where "everything" means the pad you built on. Bounds come from the blocks
+themselves and the anchor is the base of that box at its horizontal centre, so a structure rotates
+in place rather than swinging off the cursor.
+
+Placing is its own tool mode, reached with `4` or `editor mode structure`. The selected structure
+draws as a ghost at the cursor with rotation and mirroring applied, turns red where it will not fit,
+and a click places it as one grouped transaction that undoes in one step. `R` rotates. The library
+is shared by every map, so `list` and `select` see the same structures everywhere.
 
 Editor controls:
 

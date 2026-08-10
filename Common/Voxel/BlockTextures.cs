@@ -44,6 +44,9 @@ namespace Demiurge
             [BlockType.BlockType_Sandbags] = Entry.Numbered("sandbags", variants: 4, tileSize: 1f),
             [BlockType.BlockType_StoneBricks] = Entry.Numbered("stone_bricks", variants: 4, tileSize: 1f),
             [BlockType.BlockType_Wood] = Entry.Numbered("wood", variants: 4, tileSize: 1f),
+            // One variant on purpose: it is a measuring grid, and a floor that varies cell to cell
+            // would be worse at the one job it has.
+            [BlockType.BlockType_Debug] = Entry.Numbered("debug", variants: 1, tileSize: 1f),
         };
 
         /// <summary>

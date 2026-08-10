@@ -879,8 +879,10 @@ data remains relatively sparse.
 maps/<map-name>/source.json
 maps/<map-name>/autosave.json
 maps/<map-name>/runtime.dmap
-maps/<map-name>/structures/
 ```
+
+Structures are **not** under a map — see [Structure Library](#structure-library). They sit in a
+`structures/` directory beside `maps/`, because one is authored once and placed into any map.
 
 Save rules:
 
@@ -1035,20 +1037,45 @@ A structure document contains:
 - Optional embedded editor placements
 - Bounds and content hash
 
-Initial terminal workflow:
+The library is shared by every map, so `editor structure list` is the same list wherever you are.
+
+### The structure editor
+
+`session structure [name]`, or `dotnet run -- --structure-editor [name]`, opens the ordinary editor
+against a different world: a flat, gridded 100x100 m pad at y=32 with air around it, and nothing
+else in the document.
+
+The pad is **generated, not placed**. `BaseTerrainDefinition.GeneratorId` selects it
+(`demiurge:flat-debug`), which is also the point at which that field stopped being a stored intention
+nobody read — evaluation used to generate noise regardless of what the document declared. The floor
+being terrain rather than block placements is what keeps it out of a capture: `editor structure save`
+copies the document's block placements, and the floor is not one of them.
+
+Nothing about the world is persisted. It is not a map, has no player spawn, and is never baked; the
+only thing that leaves it is a saved structure. Relaunching gives you a fresh pad.
+
+**A capture selects no region.** Everything on the pad is the structure, so the bounds are the
+bounding box of its block placements and there is nothing for the user to mark out first. This
+replaced a two-corner capture set from the terminal, which asked for a box the document could
+already describe and gave no feedback until it failed at save time.
+
+The pivot follows from the same box: its base, at its horizontal centre. That is the anchor a
+placement is positioned by, and centring it is what makes rotation turn a structure in place instead
+of swinging it around a corner and off the cursor.
+
+Saving is refused outside a structure world, where "everything in the document" would mean the whole
+map. Placing is its own tool mode (`4`, or `editor mode structure`).
+
+Terminal workflow:
 
 ```text
-editor structure corner 1
-editor structure corner 2
+editor structure list
 editor structure save demiurge:bunker
 editor structure select demiurge:bunker
 editor structure rotate 90
 editor structure mirror x
 editor structure clear
 ```
-
-`corner 1` and `corner 2` capture the currently highlighted cells. Saving copies block placements in
-the inclusive box relative to the chosen pivot.
 
 Placing a structure creates one `PlaceStructureCommand`. It expands the structure into normal source
 block placements with one shared group ID. The map does not retain a live dependency on the library
@@ -1305,8 +1332,7 @@ Deliberately absent: authenticated remote administration and state transfer betw
 ### Phase 10: Named Structures
 
 - [ ] Define the versioned structure format and catalog.
-- [ ] Add two-corner volume capture.
-- [ ] Add pivot selection.
+- [x] Capture the pad's own bounding box (replaced two-corner capture and pivot selection).
 - [ ] Add structure select, rotate, and mirror commands.
 - [ ] Draw a structure bounds preview.
 - [ ] Place structures as grouped block transactions.

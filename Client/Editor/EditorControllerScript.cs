@@ -32,6 +32,7 @@ public sealed class EditorControllerScript : SyncScript
     private bool terrainModeWasDown;
     private bool blockModeWasDown;
     private bool objectModeWasDown;
+    private bool structureModeWasDown;
     private EditMode activeStrokeMode;
     private bool blockRemoving;
     private Guid? selectedPlacement;
@@ -102,7 +103,11 @@ public sealed class EditorControllerScript : SyncScript
         {
             var objectCells = EditorTargeting.Cells(terrainHit.Point, terrainHit.Normal);
             var blockSamples = EditorTargeting.Samples(terrainHit.Point, terrainHit.Normal);
-            TargetCell = Settings.Mode == EditorToolMode.Block ? blockSamples.Air : objectCells.Air;
+            // Structure mode targets sample cells like block mode does — it is placing and
+            // capturing blocks, and `editor structure corner` reads this.
+            TargetCell = Settings.Mode is EditorToolMode.Block or EditorToolMode.Structure
+                ? blockSamples.Air
+                : objectCells.Air;
             TargetIsValid = IsTargetValid(terrainHit, objectCells, blockSamples);
             DrawPreview(terrainHit, objectCells, blockSamples);
 
@@ -114,6 +119,9 @@ public sealed class EditorControllerScript : SyncScript
                 case EditorToolMode.Block:
                     HandleBlocks(
                         blockSamples, left, right, leftPressed, rightPressed, leftReleased, rightReleased);
+                    break;
+                case EditorToolMode.Structure:
+                    HandleStructures(blockSamples, leftPressed);
                     break;
                 case EditorToolMode.Object:
                     if (leftPressed) HandleObject(objectCells);
@@ -202,14 +210,6 @@ public sealed class EditorControllerScript : SyncScript
         bool leftReleased,
         bool rightReleased)
     {
-        if (Structures.Selected is { } structure && leftPressed)
-        {
-            if (!TargetIsValid) return;
-            Session.Execute(StructureLibrary.CreatePlacementCommand(
-                structure, cells.Air, Structures.QuarterTurns, Structures.MirrorX, Session));
-            return;
-        }
-
         if (leftPressed || rightPressed)
         {
             blockBefore.Clear();
@@ -247,6 +247,20 @@ public sealed class EditorControllerScript : SyncScript
             blockRemoving ? "Remove blocks" : "Place blocks", blockBefore, after));
         blockBefore.Clear();
         blockCells.Clear();
+    }
+
+    /// <summary>
+    /// Structure mode places the selected structure, and does nothing without one.
+    ///
+    /// There is deliberately no capture interaction. What a save captures is the whole pad, bounded
+    /// by the blocks already on it, so there is no region for the user to mark out — the corners
+    /// this mode used to ask for were a question the document could answer itself.
+    /// </summary>
+    private void HandleStructures(EditorTargetCells cells, bool leftPressed)
+    {
+        if (Structures.Selected is not { } structure || !leftPressed || !TargetIsValid) return;
+        Session.Execute(StructureLibrary.CreatePlacementCommand(
+            structure, cells.Air, Structures.QuarterTurns, Structures.MirrorX, Session));
     }
 
     private void HandleObject(EditorTargetCells cells)
@@ -337,7 +351,7 @@ public sealed class EditorControllerScript : SyncScript
         bool rotate = Input.IsKeyDown(Keys.R);
         if (rotate && !rotateWasDown)
         {
-            if (Settings.Mode == EditorToolMode.Block && Structures.Selected is not null)
+            if (Settings.Mode == EditorToolMode.Structure && Structures.Selected is not null)
                 Structures.QuarterTurns = (Structures.QuarterTurns + 1) % 4;
             else if (selectedPlacement is { } selected && Session.Placement(selected) is { } current)
                 Session.Execute(new UpdatePlacementCommand(
@@ -375,6 +389,7 @@ public sealed class EditorControllerScript : SyncScript
         bool terrain = IsModeKeyDown(Keys.D1, Keys.NumPad1);
         bool block = IsModeKeyDown(Keys.D2, Keys.NumPad2);
         bool objects = IsModeKeyDown(Keys.D3, Keys.NumPad3);
+        bool structures = IsModeKeyDown(Keys.D4, Keys.NumPad4);
 
         EditorToolMode? requested = terrain && !terrainModeWasDown
             ? EditorToolMode.Terrain
@@ -382,11 +397,14 @@ public sealed class EditorControllerScript : SyncScript
                 ? EditorToolMode.Block
                 : objects && !objectModeWasDown
                     ? EditorToolMode.Object
-                    : null;
+                    : structures && !structureModeWasDown
+                        ? EditorToolMode.Structure
+                        : null;
 
         terrainModeWasDown = terrain;
         blockModeWasDown = block;
         objectModeWasDown = objects;
+        structureModeWasDown = structures;
 
         if (requested is not { } mode || mode == Settings.Mode) return;
 
@@ -404,6 +422,7 @@ public sealed class EditorControllerScript : SyncScript
         terrainModeWasDown = IsModeKeyDown(Keys.D1, Keys.NumPad1);
         blockModeWasDown = IsModeKeyDown(Keys.D2, Keys.NumPad2);
         objectModeWasDown = IsModeKeyDown(Keys.D3, Keys.NumPad3);
+        structureModeWasDown = IsModeKeyDown(Keys.D4, Keys.NumPad4);
     }
 
     private void CaptureDisabledInput()
@@ -446,7 +465,7 @@ public sealed class EditorControllerScript : SyncScript
             return;
         }
 
-        if (Settings.Mode == EditorToolMode.Block && Structures.Selected is null)
+        if (Settings.Mode == EditorToolMode.Block)
         {
             int delta = Math.Sign(wheel);
             var size = new EInt3(
@@ -481,20 +500,10 @@ public sealed class EditorControllerScript : SyncScript
                         hit.Point - Settings.TerrainHalfExtent,
                         hit.Point + Settings.TerrainHalfExtent, targetColor);
                 break;
+            case EditorToolMode.Structure:
+                DrawStructurePreview(blockSamples, targetColor);
+                break;
             case EditorToolMode.Block:
-                if (Structures.Selected is { } structure)
-                {
-                    foreach (var block in structure.Blocks)
-                    {
-                        var offset = StructureLibrary.Transform(
-                            block.Offset, Structures.QuarterTurns, Structures.MirrorX);
-                        WorldPreviewRenderer.VoxelSample(new EInt3(
-                            blockSamples.Air.X + offset.X,
-                            blockSamples.Air.Y + offset.Y,
-                            blockSamples.Air.Z + offset.Z), targetColor);
-                    }
-                }
-                else
                 {
                     var anchor = Input.IsMouseButtonDown(MouseButton.Right)
                         ? blockSamples.Solid
@@ -523,6 +532,23 @@ public sealed class EditorControllerScript : SyncScript
             WorldPreviewRenderer.Cell(placement.Cell, new Color(220, 220, 220, 220));
     }
 
+    /// <summary>The ghost of what is about to be placed. Nothing selected draws nothing: the mode
+    /// has no other state to show.</summary>
+    private void DrawStructurePreview(EditorTargetCells blockSamples, Color targetColor)
+    {
+        if (Structures.Selected is not { } structure) return;
+
+        foreach (var block in structure.Blocks)
+        {
+            var offset = StructureLibrary.Transform(
+                block.Offset, Structures.QuarterTurns, Structures.MirrorX);
+            WorldPreviewRenderer.VoxelSample(new EInt3(
+                blockSamples.Air.X + offset.X,
+                blockSamples.Air.Y + offset.Y,
+                blockSamples.Air.Z + offset.Z), targetColor);
+        }
+    }
+
     private static Color TeamColor(int team, byte alpha)
     {
         if (team <= 0) return new Color(220, 220, 220, alpha);
@@ -543,7 +569,7 @@ public sealed class EditorControllerScript : SyncScript
         {
             EditorToolMode.Terrain => EditorValidation.IsBrushInBounds(
                 Float3.From(hit.Point), Float3.From(Settings.TerrainHalfExtent)),
-            EditorToolMode.Block when Structures.Selected is { } structure =>
+            EditorToolMode.Structure when Structures.Selected is { } structure =>
                 structure.Blocks.All(block =>
                 {
                     var offset = StructureLibrary.Transform(
@@ -553,6 +579,8 @@ public sealed class EditorControllerScript : SyncScript
                         blockSamples.Air.Y + offset.Y,
                         blockSamples.Air.Z + offset.Z));
                 }),
+            // Capturing: any cell you can point at is a corner you can set.
+            EditorToolMode.Structure => EditorValidation.IsCellInBounds(blockSamples.Air),
             EditorToolMode.Block => IsBlockTargetValid(
                 Input.IsMouseButtonDown(MouseButton.Right)
                     ? blockSamples.Solid

@@ -12,15 +12,8 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 5. Refactor commands
 6. Multiplayer test
 
-We want to add a structure editor.
-The structure editor should be launched with a separate command, similar to the map editor.
-We should build in a flat 100x100m world with a debug floor (add the debug voxel, the texture is already added).
-Save structure with name from the terminal.
-In the map editor, we should be able to pick a structure and see a preview of it before we place it. 
-We should add trie-based autocomplete to the terminal, to make it easier to use.
-Also, the terminal needs to hide all other UI elements, and be about 50% larger.
 
-
+- [ ] add map editor and structure editor UI block select, object select
 
 Bug: NPCs on Team 1 not capturing flag right next to base
 

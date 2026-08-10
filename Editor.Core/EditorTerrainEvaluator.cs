@@ -8,17 +8,18 @@ public sealed class EditorTerrainEvaluator
     {
         var operationIndex = EditorOperationIndex.Build(document, this);
         var map = new ChunkMap();
-        for (int x = WorldGen.Min.x; x <= WorldGen.Max.x; x++)
-            for (int z = WorldGen.Min.z; z <= WorldGen.Max.z; z++)
+        var terrain = document.BaseTerrain;
+        for (int x = terrain.MinChunkX; x <= terrain.MaxChunkX; x++)
+            for (int z = terrain.MinChunkZ; z <= terrain.MaxChunkZ; z++)
             {
                 var index = new ChunkIndex { x = x, z = z };
-                map.Insert(EvaluateChunk(index, operationIndex));
+                map.Insert(EvaluateChunk(index, terrain, operationIndex));
             }
         return map;
     }
 
     public TerrainChunk EvaluateChunk(EditorDocument document, ChunkIndex index)
-        => EvaluateChunk(index, EditorOperationIndex.Build(document, this));
+        => EvaluateChunk(index, document.BaseTerrain, EditorOperationIndex.Build(document, this));
 
     public IReadOnlyDictionary<ChunkIndex, TerrainChunk> EvaluateChunks(
         EditorDocument document,
@@ -27,15 +28,34 @@ public sealed class EditorTerrainEvaluator
         var operationIndex = EditorOperationIndex.Build(document, this);
         return chunks
             .Distinct()
-            .ToDictionary(index => index, index => EvaluateChunk(index, operationIndex));
+            .ToDictionary(
+                index => index,
+                index => EvaluateChunk(index, document.BaseTerrain, operationIndex));
     }
 
     public EditorOperationDiagnostics Diagnostics(EditorDocument document)
         => EditorOperationIndex.Build(document, this).Diagnostics;
 
-    private static TerrainChunk EvaluateChunk(ChunkIndex index, EditorOperationIndex operationIndex)
+    /// <summary>
+    /// Replays the document's operations onto the base terrain it declares.
+    ///
+    /// Which base terrain that is was a stored intention nobody read until the structure editor
+    /// needed a flat one: <see cref="BaseTerrainDefinition"/> has always been on the document and
+    /// evaluation always generated noise regardless. Every kind of world now comes from the same
+    /// declaration, so "what is under this map" is answered in one place instead of two.
+    /// </summary>
+    private static TerrainChunk EvaluateChunk(
+        ChunkIndex index,
+        BaseTerrainDefinition terrain,
+        EditorOperationIndex operationIndex)
     {
-        var chunk = ChunkGenerator.GenerateChunk(index);
+        var chunk = terrain.GeneratorId switch
+        {
+            BaseTerrainDefinition.FlatDebugGenerator =>
+                ChunkGenerator.GenerateFlatChunk(index, terrain.FloorY, terrain.PadHalfExtent),
+            BaseTerrainDefinition.NoiseGenerator => ChunkGenerator.GenerateChunk(index),
+            _ => throw new InvalidDataException($"Unknown base terrain {terrain.GeneratorId}"),
+        };
 
         foreach (var operation in operationIndex.For(index))
         {

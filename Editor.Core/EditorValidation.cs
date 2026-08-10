@@ -18,13 +18,33 @@ public static class EditorValidation
             errors.Add($"Unsupported source schema {document.SchemaVersion}");
         if (document.MapId == Guid.Empty) errors.Add("Map ID cannot be empty");
         if (!MapPathResolver.IsValidName(document.Name)) errors.Add("Map name is not a safe slug");
-        if (document.BaseTerrain.GeneratorId != "demiurge:terrain-v1")
-            errors.Add($"Unsupported generator {document.BaseTerrain.GeneratorId}");
-        if (document.BaseTerrain.MinChunkX != WorldGen.Min.x
-            || document.BaseTerrain.MinChunkZ != WorldGen.Min.z
-            || document.BaseTerrain.MaxChunkX != WorldGen.Max.x
-            || document.BaseTerrain.MaxChunkZ != WorldGen.Max.z)
-            errors.Add("Source map bounds do not match runtime version 1");
+        // Bounds are checked against whatever base terrain the document declares, because the two
+        // are one decision: the runtime map format fixes the extent of a NOISE world, and the
+        // structure editor's pad is a different world with a different extent. Checking every
+        // document against the runtime map's bounds would have made the pad permanently invalid.
+        (int min, int max) = StructureWorld.ChunkBounds;
+        switch (document.BaseTerrain.GeneratorId)
+        {
+            case BaseTerrainDefinition.NoiseGenerator:
+                if (document.BaseTerrain.MinChunkX != WorldGen.Min.x
+                    || document.BaseTerrain.MinChunkZ != WorldGen.Min.z
+                    || document.BaseTerrain.MaxChunkX != WorldGen.Max.x
+                    || document.BaseTerrain.MaxChunkZ != WorldGen.Max.z)
+                    errors.Add("Source map bounds do not match runtime version 1");
+                break;
+            case BaseTerrainDefinition.FlatDebugGenerator:
+                if (document.BaseTerrain.MinChunkX != min
+                    || document.BaseTerrain.MinChunkZ != min
+                    || document.BaseTerrain.MaxChunkX != max
+                    || document.BaseTerrain.MaxChunkZ != max)
+                    errors.Add("Structure world bounds do not match the authoring pad");
+                if (document.BaseTerrain.PadHalfExtent <= 0f)
+                    errors.Add("Structure world pad has no extent");
+                break;
+            default:
+                errors.Add($"Unsupported generator {document.BaseTerrain.GeneratorId}");
+                break;
+        }
 
         var ids = new HashSet<Guid>();
         foreach (var stroke in document.TerrainStrokes)
@@ -102,14 +122,22 @@ public static class EditorValidation
             }
         }
 
-        if (spawns == 0) errors.Add("Source map requires at least one player spawn");
+        // Everything above is true of any document. What follows is true of a MAP — somewhere to
+        // spawn, something to pick up, someone to fight — and the structure editor's pad is none of
+        // those things: it is never hosted, so demanding a spawn point on it would be demanding one
+        // for a session that cannot exist.
+        if (!document.IsStructureWorld)
+        {
+            if (spawns == 0) errors.Add("Source map requires at least one player spawn");
+            if (!document.Placements.Any(p =>
+                    p.Kind is EditorPlacementKind.Pickup or EditorPlacementKind.SupplyCrate))
+                warnings.Add("Map has no pickups");
+            if (!document.Placements.Any(p => p.Kind == EditorPlacementKind.Mob))
+                warnings.Add("Map has no mobs");
+        }
+
         if (document.TerrainStrokes.Count > 10_000)
             warnings.Add("Map has more than 10,000 terrain strokes; consider compaction");
-        if (!document.Placements.Any(p =>
-                p.Kind is EditorPlacementKind.Pickup or EditorPlacementKind.SupplyCrate))
-            warnings.Add("Map has no pickups");
-        if (!document.Placements.Any(p => p.Kind == EditorPlacementKind.Mob))
-            warnings.Add("Map has no mobs");
 
         return new EditorValidationResult(errors, warnings);
     }

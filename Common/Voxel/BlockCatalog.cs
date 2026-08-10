@@ -17,6 +17,7 @@ public static class BlockCatalog
         new(BlockType.BlockType_StoneBricks, "demiurge:stone_bricks",
             ["stone_bricks", "stone-bricks", "stonebricks", "bricks", "brick"]),
         new(BlockType.BlockType_Wood, "demiurge:wood", ["wood", "timber", "planks", "plank"]),
+        new(BlockType.BlockType_Debug, "demiurge:debug", ["debug", "grid"]),
     ];
 
     private static readonly Dictionary<string, BlockType> byName = BuildLookup();

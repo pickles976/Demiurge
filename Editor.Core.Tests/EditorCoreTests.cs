@@ -5,6 +5,109 @@ namespace Demiurge.Editor.Tests;
 
 public sealed class EditorCoreTests
 {
+    /// <summary>
+    /// The structure editor's world is a flat pad of the size it says it is. Asserted through the
+    /// document rather than against the generator directly, because the property that matters is
+    /// that the DECLARED base terrain is the one evaluation builds — that declaration existed and
+    /// was ignored until this world needed it.
+    /// </summary>
+    [Fact]
+    public void StructureWorldIsAFlatDebugPadOfTheDeclaredSize()
+    {
+        var document = EditorDocument.CreateStructureWorld("scratch");
+        var evaluator = new EditorTerrainEvaluator();
+        var map = new ChunkMap();
+        foreach (var index in new[]
+                 {
+                     ChunkTransforms.ChunkAt(0, 0),
+                     ChunkTransforms.ChunkAt((int)StructureWorld.HalfExtent + 8, 0),
+                 })
+            map.Insert(evaluator.EvaluateChunk(document, index));
+
+        int floor = StructureWorld.FloorY;
+
+        // Standing on the pad: solid below the surface, air above it.
+        Assert.True(map.TryGetVoxel(0, floor - 1, 0, out var below));
+        Assert.True(below.Distance < 0f);
+        Assert.Equal(BlockType.BlockType_Debug, below.Material);
+        Assert.True(map.TryGetVoxel(0, floor + 1, 0, out var above));
+        Assert.True(above.Distance > 0f);
+
+        // Past the edge there is no pad at all — that is what makes the working area visible.
+        int outside = (int)StructureWorld.HalfExtent + 8;
+        Assert.True(map.TryGetVoxel(outside, floor - 1, 0, out var beyond));
+        Assert.True(beyond.Distance > 0f);
+
+        // ...but the world floor is still sealed, wherever you are.
+        Assert.True(map.TryGetVoxel(outside, ChunkConstants.WorldMinY, 0, out var bedrock));
+        Assert.True(bedrock.Distance < 0f);
+    }
+
+    /// <summary>
+    /// The scratch pad validates as itself and never becomes a map file. Both halves matter: the
+    /// first because bounds used to be checked against the runtime map's extent whatever the
+    /// document declared, the second because the shutdown autosave would otherwise create a map
+    /// directory for a world nobody asked to keep.
+    /// </summary>
+    [Fact]
+    public void StructureWorldValidatesButCannotBeSavedAsAMap()
+    {
+        var document = EditorDocument.CreateStructureWorld("scratch");
+
+        Assert.True(document.IsStructureWorld);
+        Assert.True(EditorValidation.Validate(document).IsValid);
+
+        var maps = new MapRepository(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        Assert.Throws<InvalidOperationException>(() => maps.Save(document));
+        Assert.Throws<InvalidOperationException>(() => maps.SaveAutosave(document));
+        Assert.False(Directory.Exists(maps.Paths.Root));
+    }
+
+    /// <summary>
+    /// A capture is bounded by the blocks themselves, and anchored at the base of that box's
+    /// horizontal centre. The centre is what makes rotation turn a structure in place instead of
+    /// swinging it away from the cursor, so it is asserted as a property of the pair rather than as
+    /// a pivot coordinate: the same set of cells, rotated, occupies the same footprint.
+    /// </summary>
+    [Fact]
+    public void CaptureBoundsItselfAndRotatesAboutItsCentre()
+    {
+        // A 3x1x3 pad of blocks from (10,20,30) to (12,20,32), plus one block above the middle.
+        var blocks = new List<EditorBlockPlacement>();
+        for (int x = 10; x <= 12; x++)
+            for (int z = 30; z <= 32; z++)
+                blocks.Add(BlockAt(new Int3(x, 20, z)));
+        blocks.Add(BlockAt(new Int3(11, 21, 31)));
+
+        var structure = StructureLibrary.Capture("pad", blocks);
+
+        Assert.Equal(blocks.Count, structure.Blocks.Count);
+        // Centre of 10..12 and 30..32, at the lowest occupied layer.
+        Assert.Equal(new Int3(11, 20, 31), structure.Pivot);
+
+        var footprint = structure.Blocks
+            .Select(block => StructureLibrary.Transform(block.Offset, 0, mirrorX: false))
+            .OrderBy(o => o.X).ThenBy(o => o.Y).ThenBy(o => o.Z)
+            .ToArray();
+        var turned = structure.Blocks
+            .Select(block => StructureLibrary.Transform(block.Offset, 1, mirrorX: false))
+            .OrderBy(o => o.X).ThenBy(o => o.Y).ThenBy(o => o.Z)
+            .ToArray();
+        Assert.Equal(footprint, turned);
+    }
+
+    [Fact]
+    public void CaptureRefusesAnEmptyPad()
+        => Assert.Throws<ArgumentException>(() => StructureLibrary.Capture("empty", []));
+
+    private static EditorBlockPlacement BlockAt(Int3 cell) => new()
+    {
+        Id = Guid.NewGuid(),
+        Sequence = 1,
+        Cell = cell,
+        BlockId = "demiurge:stone",
+    };
+
     [Fact]
     public void TargetingUsesCorrectSidesAcrossNegativeBoundary()
     {

@@ -83,6 +83,14 @@ namespace Demiurge
         /// as the dirt beside it.
         /// </summary>
         BlockType_Wood,
+
+        /// <summary>
+        /// The gridded floor of the structure editor. Scaffolding rather than terrain: it exists to
+        /// be built on and measured against, so it is on neither the soil list nor the blast list —
+        /// nothing a player carries can touch it, for the same reason natural rock cannot be dug.
+        /// A structure captured off it contains the blocks placed ON the floor, never the floor.
+        /// </summary>
+        BlockType_Debug,
     }
 
     /// <summary>

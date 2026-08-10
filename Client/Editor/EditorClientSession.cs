@@ -104,7 +104,7 @@ public sealed class EditorClientSession : IClientSession
 
         placementViews = new EditorPlacementViewFactory(game, scene, Editor);
         var status = HUD.CreateEditorStatus(
-            game, Settings, Editor, Controller, interactionState);
+            game, Settings, Editor, Controller, interactionState, Structures, inputState);
         status.Scene = scene;
         ownedEntities.Add(status);
         terrainState.AnnounceAll();
@@ -224,10 +224,11 @@ public sealed class EditorClientSession : IClientSession
 
 public sealed class EditorStructureState
 {
+    /// <summary>
+    /// The structure being placed, and how it is oriented. There is no capture state: what a save
+    /// captures is the pad's own contents, so there is nothing for the user to set up first.
+    /// </summary>
     public StructureDocument? Selected { get; set; }
     public int QuarterTurns { get; set; }
     public bool MirrorX { get; set; }
-    public Demiurge.Editor.Int3? Corner1 { get; set; }
-    public Demiurge.Editor.Int3? Corner2 { get; set; }
-    public Demiurge.Editor.Int3? Pivot { get; set; }
 }

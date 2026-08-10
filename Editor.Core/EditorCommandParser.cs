@@ -3,7 +3,12 @@ using System.Numerics;
 
 namespace Demiurge.Editor;
 
-public enum EditorToolMode { Terrain, Block, Object }
+/// <summary>
+/// Which tool the mouse is holding. Structures are their own mode rather than a state block mode
+/// can be in: a selected structure took over left-click entirely and disabled the brush-size wheel,
+/// so "block mode" already meant two different tools depending on a field somewhere else.
+/// </summary>
+public enum EditorToolMode { Terrain, Block, Object, Structure }
 public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, Flag, Crate }
 
 public sealed record EditorToolSettings
@@ -67,7 +72,7 @@ public static class EditorCommandParser
     private static EditorCommandResult SetMode(string[] tokens, EditorToolSettings settings)
     {
         if (tokens.Length != 2 || !Enum.TryParse<EditorToolMode>(tokens[1], true, out var mode))
-            return EditorCommandResult.Fail("Usage: editor mode <terrain|block|object>");
+            return EditorCommandResult.Fail("Usage: editor mode <terrain|block|object|structure>");
         settings.Mode = mode;
         return EditorCommandResult.Ok($"Editor mode: {mode.ToString().ToLowerInvariant()}");
     }

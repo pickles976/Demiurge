@@ -24,25 +24,33 @@ public static class StructureLibrary
         WriteIndented = true,
     };
 
-    public static StructureDocument Capture(
-        string name,
-        Int3 first,
-        Int3 second,
-        Int3 pivot,
-        IEnumerable<EditorBlockPlacement> blocks)
+    /// <summary>
+    /// Captures every block given, bounded by where they actually are.
+    ///
+    /// There is no region to select. This runs against a structure world, whose whole content is
+    /// what you built — so a box drawn around it can only ever be the box the blocks already
+    /// describe, and asking for it twice is asking the user to restate something the document
+    /// knows. The corners used to be set by hand and were the most confusing part of the feature.
+    ///
+    /// The pivot is the base of the bounding box at its horizontal centre. That is the anchor a
+    /// placement is positioned by, and centring it is what makes <see cref="Transform"/> rotate the
+    /// structure IN PLACE rather than swinging it around a corner and off the cursor.
+    /// </summary>
+    public static StructureDocument Capture(string name, IEnumerable<EditorBlockPlacement> blocks)
     {
         MapPathResolver.ValidateName(name);
-        int minX = Math.Min(first.X, second.X);
-        int minY = Math.Min(first.Y, second.Y);
-        int minZ = Math.Min(first.Z, second.Z);
-        int maxX = Math.Max(first.X, second.X);
-        int maxY = Math.Max(first.Y, second.Y);
-        int maxZ = Math.Max(first.Z, second.Z);
+        var cells = blocks as IReadOnlyCollection<EditorBlockPlacement> ?? blocks.ToArray();
+        if (cells.Count == 0)
+            throw new ArgumentException("There are no blocks to capture", nameof(blocks));
 
-        var captured = blocks
-            .Where(block => block.Cell.X >= minX && block.Cell.X <= maxX
-                         && block.Cell.Y >= minY && block.Cell.Y <= maxY
-                         && block.Cell.Z >= minZ && block.Cell.Z <= maxZ)
+        int minX = cells.Min(block => block.Cell.X);
+        int minY = cells.Min(block => block.Cell.Y);
+        int minZ = cells.Min(block => block.Cell.Z);
+        int maxX = cells.Max(block => block.Cell.X);
+        int maxZ = cells.Max(block => block.Cell.Z);
+
+        var pivot = new Int3((minX + maxX) / 2, minY, (minZ + maxZ) / 2);
+        var captured = cells
             .Select(block => new StructureBlock(
                 new Int3(block.Cell.X - pivot.X, block.Cell.Y - pivot.Y, block.Cell.Z - pivot.Z),
                 block.BlockId))

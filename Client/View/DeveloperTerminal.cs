@@ -14,7 +14,11 @@ namespace Demiurge;
 public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<TextInputEvent>
 {
     private const int MaxInputLength = 256;
-    private const int VisibleLineCount = 10;
+    /// <summary>
+    /// Scrollback kept, which is also what the output box shows. Sized to fill it at the panel's
+    /// current height and text size — see HUD.CreateTerminal, which the two have to agree with.
+    /// </summary>
+    private const int VisibleLineCount = 18;
 
     public required ClientInputState InputState { get; init; }
     public required ITerminalCommandDispatcher Dispatcher { get; init; }
@@ -202,49 +206,36 @@ public sealed class DeveloperTerminalScript : SyncScript, IInputEventListener<Te
         Refresh();
     }
 
+    /// <summary>
+    /// Tab: fill in as far as the candidates agree, and list them when they do not.
+    ///
+    /// The "as far as they agree" part is the completion trie's answer, not one computed here from
+    /// the returned list — see <see cref="CompletionTrie"/>.
+    /// </summary>
     private void CompleteInput()
     {
-        IReadOnlyList<string> candidates = Dispatcher.Complete(input.ToString());
-        if (candidates.Count == 0) return;
+        var completion = Dispatcher.Complete(input.ToString());
+        if (completion.Matches.Count == 0) return;
 
         int tokenStart = input.Length;
         while (tokenStart > 0 && !char.IsWhiteSpace(input[tokenStart - 1])) tokenStart--;
         string prefix = input.ToString(tokenStart, input.Length - tokenStart);
-        string replacement = candidates.Count == 1
-            ? candidates[0]
-            : LongestCommonPrefix(candidates);
 
-        if (replacement.Length > prefix.Length)
+        if (completion.Extension.Length > prefix.Length)
         {
-            if (tokenStart + replacement.Length > MaxInputLength) return;
+            if (tokenStart + completion.Extension.Length > MaxInputLength) return;
             input.Remove(tokenStart, input.Length - tokenStart);
-            input.Append(replacement);
-            if (candidates.Count == 1 && input.Length < MaxInputLength) input.Append(' ');
+            input.Append(completion.Extension);
+            if (completion.Matches.Count == 1 && input.Length < MaxInputLength) input.Append(' ');
         }
         else
         {
-            output.Add(string.Join("  ", candidates));
+            output.Add(string.Join("  ", completion.Matches));
             TrimOutput();
         }
 
         historyIndex = history.Count;
         Refresh();
-    }
-
-    private static string LongestCommonPrefix(IReadOnlyList<string> values)
-    {
-        string first = values[0];
-        int length = first.Length;
-        for (int i = 1; i < values.Count && length > 0; i++)
-        {
-            int shared = 0;
-            int limit = Math.Min(length, values[i].Length);
-            while (shared < limit
-                && char.ToLowerInvariant(first[shared]) == char.ToLowerInvariant(values[i][shared]))
-                shared++;
-            length = shared;
-        }
-        return first[..length];
     }
 
     private void TrimOutput()

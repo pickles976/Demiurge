@@ -6,6 +6,7 @@ public interface ITerminalCommandDispatcher
 {
     event Action<TerminalOutput>? OutputReceived;
     TerminalOutput? Execute(string commandLine);
-    IReadOnlyList<string> Complete(string commandLine);
+    /// <summary>Candidates for the token being typed, and how far Tab may fill it in.</summary>
+    CompletionResult Complete(string commandLine);
     IReadOnlyList<string> Help(string? topic = null);
 }

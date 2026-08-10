@@ -213,8 +213,7 @@ public sealed class RuntimeClientSession : IClientSession
         terrainView = embedding?.TerrainView
             ?? new ClientTerrain(scene, new ChunkMeshFactory(game, new TerrainMaterials(game)), terrainState);
 
-        Add(HUD.CreateUI(game, objectRegistry, inputState));
-        Add(HUD.CreateDebugStats(game));
+        Add(HUD.CreateDebugStats(game, inputState));
         // Grass is disabled. This one line is the whole of turning it on — GrassField follows the
         // local player and streams itself off the terrain the same chunks arrive in, so it needs
         // nothing from here but the two things it reads, and it removes its own chunk entities and
@@ -274,6 +273,9 @@ public sealed class RuntimeClientSession : IClientSession
             Priority = 12,
         });
         camera.Add(new ReticleScript { Registry = registry, InputState = inputState, Priority = 30 });
+        // Both HUD pages are created here rather than earlier because both need the camera the F3
+        // free camera lives on, and it does not exist until a few lines above.
+        Add(HUD.CreateUI(game, objectRegistry, inputState, camera));
         Add(HUD.CreateMinimap(game, registry, objectRegistry, teamIntel, terrainState, inputState, camera));
 
         camera.Add(new DigScript

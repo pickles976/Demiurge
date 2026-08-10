@@ -38,8 +38,10 @@ dotnet build DemiurgeSharp.slnx --no-incremental
 
 Single player starts a real authoritative server inside the client process and connects through the
 normal network paths. It currently loads the authored `conquest` source map, puts the player on team
-1 with the datapack's default Mosin, and creates 16 PPSh/SKS/Mosin NPCs per team around the authored
-team spawns.
+1 as a rifleman, and creates 16 PPSh/SKS/Mosin NPCs per team around the authored team spawns.
+While waiting for a respawn wave you can pick a class — Rifleman, Marksman or Assault — with the
+number keys or by clicking; every kit also carries a shovel and two grenades. `kill` in the terminal
+is the quick way to get to that screen.
 This is the fastest integrated AI, gameplay, and server test:
 
 ```bash
@@ -99,6 +101,7 @@ Open the terminal with backtick/tilde and choose an editing mode:
 editor mode terrain
 editor mode block
 editor mode object
+editor mode structure
 ```
 
 Typical workflow:
@@ -124,7 +127,7 @@ again to return to the editor.
 Editor controls:
 
 ```text
-1 / 2 / 3             terrain / block / object mode
+1 / 2 / 3 / 4         terrain / block / object / structure mode
 WASD / mouse          fly and look
 Space / Left Ctrl     move up / down
 Left Shift            speed boost
@@ -146,8 +149,54 @@ Source maps are editable JSON. Runtime maps are complete binary packages:
 maps/<name>/source.json
 maps/<name>/autosave.json
 maps/<name>/runtime.dmap
-maps/<name>/structures/
 ```
+
+## Structure Editor
+
+Structures are reusable clusters of blocks — a bunker, a bridge, a revetment — authored once and
+placed into any map. They live in a shared library beside the maps, not inside one:
+
+```text
+structures/<name>.json
+```
+
+Launch the structure editor with its own flag, or `session structure` from the terminal:
+
+```bash
+dotnet run -- --structure-editor
+```
+
+It is the same editor against a different world: a flat 100x100 m debug pad with a gridded floor,
+and nothing else. The pad is generated rather than built, so it never ends up inside a structure you
+capture. Nothing about the world is saved — it is not a map, has no player spawn, and is never
+baked. Relaunching gives you a fresh pad, and the only thing that leaves it is a saved structure.
+
+Build something on the pad in block mode, then name it:
+
+```text
+editor structure save bunker
+```
+
+That is the whole capture step. There is no region to mark out: everything on the pad is the
+structure, so its bounds are the bounding box of the blocks you placed, and its anchor is the base
+of that box at its horizontal centre — which is what makes rotation turn it in place under the
+cursor. The debug floor is generated terrain rather than blocks, so it is never part of what you
+capture.
+
+Place it from any map editor session, in structure mode (press `4`):
+
+```text
+editor structure list
+editor structure select bunker   also switches you to structure mode
+editor structure rotate 90       or press R
+editor structure mirror x
+```
+
+The structure is drawn as a ghost at the cursor — rotation and mirroring included — and turns red
+where it will not fit. Left mouse places it as one grouped transaction, and `U` undoes the whole
+group in one step. `editor structure clear` deselects it and puts you back to capturing.
+
+Press `Tab` in the terminal to complete structure names from the library.
 
 ## Developer Commands
 
@@ -159,6 +208,8 @@ Runtime commands:
 spawn mob [x z]
 spawn pickup <item> [x z]
 equip <@s|@actor-id> <item>
+team <@s|@actor-id> <team>
+kill [<@s|@actor-id>]
 ```
 
 Successful mob spawns print an actor ID such as `@60000`; pass that value to `equip`. Pickup
@@ -172,6 +223,7 @@ Session commands:
 ```text
 session status
 session editor <map-name>
+session structure [name]
 session host <map-name> [--build]
 session join <host>
 session playtest

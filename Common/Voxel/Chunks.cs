@@ -274,6 +274,60 @@ namespace Demiurge
         }
 
         /// <summary>
+        /// The structure editor's authoring pad: a square of level floor at <paramref name="floorY"/>
+        /// with nothing but air around and above it.
+        ///
+        /// A generator rather than a stack of editor block placements. The floor is not part of what
+        /// is being authored — a structure captured here must contain the blocks a user placed and
+        /// not the ground they were placed on — and terrain the document does not own cannot be
+        /// picked up by a capture that reads the document.
+        ///
+        /// Beyond the pad the column is air down to the permanently solid bedrock plane, so the
+        /// edge of the working area is something you can see rather than a number to remember.
+        /// </summary>
+        /// <param name="padHalfExtent">Half the pad's side, in metres, measured from the world origin.</param>
+        public static TerrainChunk GenerateFlatChunk(ChunkIndex index, int floorY, float padHalfExtent)
+        {
+            var chunk = new TerrainChunk(index);
+            var slab = new Voxel[ChunkConstants.ChunkSize];
+
+            for (int slabY = 0; slabY < ChunkConstants.ChunkHeight; slabY++)
+            {
+                int worldY = ChunkConstants.WorldMinY + slabY;
+                bool uniform = true;
+
+                for (int column = 0; column < ChunkConstants.ChunkSize; column++)
+                {
+                    // The one index-to-world function, as everywhere else: a second walk of the
+                    // chunk is how a generator and a mesher come to disagree about where a voxel is.
+                    var world = ChunkTransforms.ColumnWorldPosition(index, column);
+                    bool onPad = MathF.Abs(world.X) <= padHalfExtent
+                              && MathF.Abs(world.Y) <= padHalfExtent;
+
+                    // Off the pad the distance only has to be solidly positive; anything past the
+                    // quantization range clamps to the same "far from any surface" air.
+                    float distance = onPad ? worldY - floorY : ChunkConstants.ChunkHeight;
+                    var voxel = new Voxel
+                    {
+                        Distance = ChunkConstants.ClampToWorldFloor(worldY, distance),
+                    };
+                    voxel.Material = voxel.Distance < 0f
+                        ? BlockType.BlockType_Debug
+                        : BlockType.BlockType_Air;
+
+                    slab[column] = voxel;
+                    if (column > 0 && (voxel.Density != slab[0].Density || voxel.Material != slab[0].Material))
+                        uniform = false;
+                }
+
+                if (uniform) chunk.FillSlab(slabY, slab[0]);
+                else slab.AsSpan().CopyTo(chunk.Materialize(slabY));
+            }
+
+            return chunk;
+        }
+
+        /// <summary>
         /// tan(slope) per column, central-differenced off the PADDED heights — which is the only reason
         /// the heights are padded. No new noise and no extra storage: the surface gradient was already
         /// implied by the height field.

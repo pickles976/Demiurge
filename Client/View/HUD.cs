@@ -60,15 +60,20 @@ namespace Demiurge
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
+            // A big panel with small text: half again the box it used to be, and half the type.
+            // Nothing else is on the screen to make room for while it is open — see the
+            // TerminalOpen checks in HudScript, DebugStatsScript and EditorStatusScript — so the
+            // space goes to scrollback rather than to letter height. VisibleLineCount is what
+            // actually fills it; the two are set together or the box reads as mostly empty.
             var outputText = new TextBlock
             {
                 Text = "",
                 TextColor = new Color(220, 225, 230),
                 Font = font,
-                TextSize = 18,
+                TextSize = 14,
                 WrapText = true,
-                Height = 220,
-                Margin = new Thickness(12, 10, 12, 0),
+                Height = 330,
+                Margin = new Thickness(18, 15, 18, 0),
             };
 
             var promptText = new TextBlock
@@ -76,15 +81,15 @@ namespace Demiurge
                 Text = "> _",
                 TextColor = Color.White,
                 Font = font,
-                TextSize = 20,
-                Margin = new Thickness(12, 4, 12, 10),
+                TextSize = 15,
+                Margin = new Thickness(18, 6, 18, 15),
             };
 
             var panel = new StackPanel
             {
                 Orientation = Orientation.Vertical,
-                Width = 820,
-                Height = 275,
+                Width = 1230,
+                Height = 412,
                 BackgroundColor = new Color(8, 10, 12, 220),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Bottom,
@@ -164,7 +169,16 @@ namespace Demiurge
         private static SpriteFromTexture Icon(Game game, string path)
             => new() { Texture = LoadTexture(game, path) };
 
-        public static Entity CreateUI(Game game, ObjectRegistry objects, ClientInputState inputState)
+        /// <summary>
+        /// <paramref name="cameraEntity"/> is only read to ask whether the F3 free camera has taken
+        /// over — the same question <see cref="MinimapScript"/> asks of it, answered the same way,
+        /// rather than mirrored onto a second flag that could disagree with the camera.
+        /// </summary>
+        public static Entity CreateUI(
+            Game game,
+            ObjectRegistry objects,
+            ClientInputState inputState,
+            Entity? cameraEntity)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
@@ -550,6 +564,7 @@ namespace Demiurge
                     ClassPanel = classPanel,
                     ClassButtons = classButtons,
                     ClassTitles = classTitles,
+                    CameraEntity = cameraEntity,
                     Readiness = game.Services.GetService<SpawnReadiness>(),
                     WeaponPanels = [statusPanel, hotbarPanel],
                     PickupPanel = pickupPanel,
@@ -574,7 +589,9 @@ namespace Demiurge
             EditorToolSettings settings,
             EditorSession session,
             EditorControllerScript controller,
-            EditorInteractionState interactionState)
+            EditorInteractionState interactionState,
+            EditorStructureState structures,
+            ClientInputState inputState)
         {
             var text = new TextBlock
             {
@@ -606,6 +623,9 @@ namespace Demiurge
                     Session = session,
                     Controller = controller,
                     InteractionState = interactionState,
+                    Structures = structures,
+                    Root = panel,
+                    InputState = inputState,
                 },
             };
         }
@@ -615,7 +635,7 @@ namespace Demiurge
         /// DebugTextSystem.Print, whose FastTextRenderer crashes on Vulkan (see
         /// Program.cs); this renders through the UI system instead, which is fine.
         /// </summary>
-        public static Entity CreateDebugStats(Game game)
+        public static Entity CreateDebugStats(Game game, ClientInputState inputState)
         {
             var font = game.Content.Load<SpriteFont>("StrideDefaultFont");
 
@@ -657,7 +677,13 @@ namespace Demiurge
                     Page = new UIPage { RootElement = canvas },
                     RenderGroup = RenderGroup.Group31 // rendered by AddCleanUIStage()
                 },
-                new DebugStatsScript { StatsText = statsText, ServerText = serverText },
+                new DebugStatsScript
+                {
+                    StatsText = statsText,
+                    ServerText = serverText,
+                    Root = canvas,
+                    InputState = inputState,
+                },
             };
         }
 
@@ -714,12 +740,15 @@ namespace Demiurge
         {
             public TextBlock StatsText { get; set; } = null!;
             public TextBlock ServerText { get; set; } = null!;
+            public UIElement Root { get; set; } = null!;
+            public ClientInputState InputState { get; set; } = null!;
 
             private NetworkManager _network = null!;
 
             private int _lastEntityCount = -1;
             private int _lastFps = -1;
             private ushort _lastClientId;
+            private bool _lastTerminalOpen;
 
             public override void Start()
             {
@@ -730,6 +759,13 @@ namespace Demiurge
 
             public override void Update()
             {
+                // Off while the console is up, like the rest of the HUD.
+                if (InputState.TerminalOpen != _lastTerminalOpen)
+                {
+                    _lastTerminalOpen = InputState.TerminalOpen;
+                    Root.Visibility = _lastTerminalOpen ? Visibility.Collapsed : Visibility.Visible;
+                }
+
                 if (_network.ClientId != _lastClientId)
                     RefreshServerText();
 
@@ -777,6 +813,9 @@ namespace Demiurge
             public UIElement? ClassPanel { get; set; }
             public Button[] ClassButtons { get; set; } = [];
             public TextBlock[] ClassTitles { get; set; } = [];
+            /// <summary>Carries the F3 free camera, when there is one. Null in configurations
+            /// without a runtime camera.</summary>
+            public Entity? CameraEntity { get; set; }
             /// <summary>Ammo, health and the hotbar — everything about the weapon in hand. Hidden
             /// together whenever the hands are not available for one.</summary>
             public UIElement[] WeaponPanels { get; set; } = [];
@@ -878,7 +917,10 @@ namespace Demiurge
             {
                 var local = _registry.LocalPlayer;
 
-                bool visible = local != null;
+                // The terminal takes the screen while it is open. Everything below still runs —
+                // the readouts stay current so reopening shows the present, not the moment it was
+                // hidden — but nothing is drawn over the console.
+                bool visible = local != null && !InputState.TerminalOpen;
                 if (visible != _lastVisible)
                 {
                     _lastVisible = visible;
@@ -1192,10 +1234,14 @@ namespace Demiurge
             private void RefreshRespawn(LocalPlayer local)
             {
                 bool dead = local.IsDead;
+                // The free camera is a look at the world with the game's own controls stood down —
+                // the picker goes with them, keys included, so F3 is not a way to change class
+                // while flying around with the menu in the way.
+                bool choosing = dead && CameraEntity?.Get<DebugFlyCameraScript>()?.Active != true;
                 // Before the change gate below: keys are pressed between redraws, and the clock
                 // only ticks once a second.
-                if (dead) ReadClassKeys(local);
-                RefreshClassSelection(local, dead);
+                if (choosing) ReadClassKeys();
+                RefreshClassSelection(local, choosing);
 
                 int seconds = local.RespawnTick == 0
                     ? RespawnConfig.WaveSeconds
@@ -1220,7 +1266,7 @@ namespace Demiurge
             ///
             /// Not while the terminal is open — those digits are being typed at it.
             /// </summary>
-            private void ReadClassKeys(LocalPlayer local)
+            private void ReadClassKeys()
             {
                 if (InputState.TerminalOpen) return;
 
@@ -1236,18 +1282,18 @@ namespace Demiurge
                 => _registry.LocalPlayer?.SelectClass(playerClass);
 
             /// <summary>Shows the picker while a wave is pending, and marks the card you took.</summary>
-            private void RefreshClassSelection(LocalPlayer local, bool dead)
+            private void RefreshClassSelection(LocalPlayer local, bool choosing)
             {
                 if (ClassPanel is null) return;
 
                 // Both gated: Visibility and BackgroundColor invalidate layout, and this runs every
                 // frame the player is on the screen.
-                if (dead != _classPanelShown)
+                if (choosing != _classPanelShown)
                 {
-                    _classPanelShown = dead;
-                    ClassPanel.Visibility = dead ? Visibility.Visible : Visibility.Collapsed;
+                    _classPanelShown = choosing;
+                    ClassPanel.Visibility = choosing ? Visibility.Visible : Visibility.Collapsed;
                 }
-                if (!dead || local.SelectedClass == _shownClass) return;
+                if (!choosing || local.SelectedClass == _shownClass) return;
 
                 _shownClass = local.SelectedClass;
                 for (int i = 0; i < ClassButtons.Length && i < PlayerClasses.All.Length; i++)
@@ -1345,10 +1391,21 @@ namespace Demiurge
             public required EditorSession Session { get; init; }
             public required EditorControllerScript Controller { get; init; }
             public required EditorInteractionState InteractionState { get; init; }
+            public required EditorStructureState Structures { get; init; }
+            public required UIElement Root { get; init; }
+            public required ClientInputState InputState { get; init; }
             private string previous = string.Empty;
+            private bool terminalWasOpen;
 
             public override void Update()
             {
+                // Off while the console is up, like the rest of the HUD.
+                if (InputState.TerminalOpen != terminalWasOpen)
+                {
+                    terminalWasOpen = InputState.TerminalOpen;
+                    Root.Visibility = terminalWasOpen ? Visibility.Collapsed : Visibility.Visible;
+                }
+
                 if (InteractionState.Playtesting)
                 {
                     const string playtest =
@@ -1369,10 +1426,11 @@ namespace Demiurge
                     EditorToolMode.Object => Controller.SelectedPlacementId is { } selected
                         ? $"Selected {EditorPlacementIds.Display(selected)}"
                         : $"{Settings.ObjectId ?? "No object selected"} team={Settings.ObjectTeam}",
+                    EditorToolMode.Structure => StructureDetail(),
                     _ => string.Empty,
                 };
                 string value =
-                    "[1] Terrain   [2] Block   [3] Object\n" +
+                    "[1] Terrain   [2] Block   [3] Object   [4] Structure\n" +
                     "[U] Undo   [Y] Redo   [R] Rotate selection   [F4] Playtest\n" +
                     $"MODE: {Settings.Mode.ToString().ToUpperInvariant()}" +
                     (Session.Dirty ? "  *" : string.Empty) +
@@ -1381,6 +1439,15 @@ namespace Demiurge
                 previous = value;
                 Text.Text = value;
             }
+
+            /// <summary>Structure mode's status is the next thing to do: pick one, or place the one
+            /// you picked.</summary>
+            private string StructureDetail()
+                => Structures.Selected is { } selected
+                    ? $"{selected.Name}  {Structures.QuarterTurns * 90} deg"
+                        + (Structures.MirrorX ? "  mirrored" : string.Empty)
+                        + "   click to place, [R] rotate"
+                    : "No structure selected - 'editor structure list', then 'select <name>'";
         }
     }
 }

@@ -7,6 +7,34 @@ public sealed class MapPathResolver
     public MapPathResolver(string? root = null)
     {
         Root = Path.GetFullPath(root ?? Path.Combine(Environment.CurrentDirectory, "maps"));
+        StructureRoot = Path.Combine(
+            Path.GetDirectoryName(Root) ?? Root,
+            "structures");
+    }
+
+    /// <summary>
+    /// Structures live BESIDE the maps, not inside one.
+    ///
+    /// A structure is authored once — in the structure editor's flat world, which is not a map at
+    /// all — and placed into any map that wants it. Filing it under the map it happened to be drawn
+    /// in would make "which bunker do I have" a question with a different answer per map, and would
+    /// strand everything built in the scratch world where no real map could reach it.
+    /// </summary>
+    public string StructureRoot { get; }
+
+    public string StructurePath(string name)
+        => Path.Combine(StructureRoot, ValidateName(name) + ".json");
+
+    public IReadOnlyList<string> ListStructures()
+    {
+        if (!Directory.Exists(StructureRoot)) return [];
+
+        return Directory.EnumerateFiles(StructureRoot, "*.json")
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(IsValidName)
+            .Cast<string>()
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public string DirectoryFor(string name) => Path.Combine(Root, ValidateName(name));

@@ -8,6 +8,12 @@ namespace Demiurge;
 
 public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisposable
 {
+    /// <summary>
+    /// What the scratch world is called when nobody names it. It is never written to disk — only
+    /// the structures built in it are — so the name is a label on the session, not a map.
+    /// </summary>
+    public const string DefaultStructureWorld = "structure-scratch";
+
     private readonly Game game;
     private readonly ClientInputState inputState;
     private readonly MapRepository maps;
@@ -111,7 +117,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
 
         var lines = new List<string>
         {
-            "session <status|editor|host|join|playtest|playtest-networked> ...",
+            "session <status|editor|structure|host|join|playtest|playtest-networked> ...",
             "map <list|new|status|save|save-as|load|recover|discard-autosave|validate|bake> ...",
         };
         if (current is EditorClientSession editor)
@@ -127,7 +133,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             }
             else
             {
-                lines.Add("editor <status|mode|terrain|block|object|rotate|undo|redo> ...");
+                lines.Add("editor <status|mode|terrain|block|object|structure|rotate|undo|redo> ...");
             }
         }
         else
@@ -143,7 +149,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         return lines;
     }
 
-    public IReadOnlyList<string> Complete(string commandLine)
+    public CompletionResult Complete(string commandLine)
     {
         string normalized = commandLine.StartsWith('/') ? commandLine[1..] : commandLine;
         bool startsNewToken = normalized.Length > 0 && char.IsWhiteSpace(normalized[^1]);
@@ -151,17 +157,17 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         int tokenIndex = startsNewToken ? tokens.Length : Math.Max(0, tokens.Length - 1);
         string prefix = startsNewToken || tokens.Length == 0 ? string.Empty : tokens[^1];
 
-        IEnumerable<string> candidates = CompletionCandidates(tokens, tokenIndex);
-        return candidates
-            .Where(candidate => candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        // Built per query rather than kept: which candidates exist depends on the live session, the
+        // command being typed and the token's position in it, so there is no stable set to cache.
+        // Sorting and de-duplication come out of the tree's shape, so this is the whole of it.
+        var trie = new CompletionTrie();
+        trie.AddRange(CompletionCandidates(tokens, tokenIndex));
+        return trie.Complete(prefix);
     }
 
     public void Dispose()
     {
-        if (current is EditorClientSession editor && editor.Editor.Dirty)
+        if (current is EditorClientSession editor && HasChangesToPreserve(editor))
         {
             try
             {
@@ -198,11 +204,12 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             if (tokenIndex == 2 && tokens.Length > 1)
                 return tokens[1].ToLowerInvariant() switch
                 {
-                    "mode" => ["terrain", "block", "object"],
+                    "mode" => ["terrain", "block", "object", "structure"],
                     "terrain" => ["operation", "shape", "size", "strength", "material"],
                     "block" => BlockCatalog.All.Select(definition => definition.Id)
                         .Concat(["size"]),
                     "object" => ["pickup", "crate", "mob", "spawn", "flag", "team", "clear", "list", "select", "equip", "set-team"],
+                    "structure" => ["list", "save", "select", "rotate", "mirror", "clear"],
                     _ => [],
                 };
             if (tokenIndex == 3 && tokens.Length > 2)
@@ -213,6 +220,8 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     "terrain operation" => ["add", "subtract"],
                     "terrain shape" => ["sphere", "box", "organic"],
                     "terrain material" => BlockCatalog.All.Select(definition => definition.Id),
+                    // The saved library, so placing one is browsing rather than recalling a name.
+                    "structure select" => maps.Paths.ListStructures(),
                     "object pickup" or "object crate" =>
                         ItemCatalog.All.Select(definition => definition.Id),
                     "object select" => editor.Editor.Document.Placements
@@ -253,13 +262,13 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 return ["off", "on", "beacons", "facing", "clustering", "colliders", "ids", "states"];
         }
         if (root == "session" && tokenIndex == 1)
-            return ["status", "editor", "host", "join", "playtest", "playtest-networked"];
+            return ["status", "editor", "structure", "host", "join", "playtest", "playtest-networked"];
         if (root == "net") return ["seed", "log"];
 
         if (root == "help")
         {
             if (tokenIndex == 1)
-                return ["editor", "terrain", "block", "object", "map", "session", "spawn", "equip", "team", "kill", "ai", "net"];
+                return ["editor", "terrain", "block", "object", "structure", "map", "session", "spawn", "equip", "team", "kill", "ai", "net"];
             if (tokenIndex == 2 && tokens.Length > 1
                 && tokens[1].Equals("editor", StringComparison.OrdinalIgnoreCase))
                 return ["terrain", "block", "object"];
@@ -278,7 +287,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             "editor" =>
             [
                 "Editor commands:",
-                "  editor mode <terrain|block|object>",
+                "  editor mode <terrain|block|object|structure>",
                 "  editor terrain <operation|shape|size|strength|material> ...",
                 "  editor block <block-id|size> ...",
                 "  editor object <pickup|mob|spawn|flag|team|clear|list|select|equip|set-team> ...",
@@ -327,12 +336,28 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "Session commands:",
                 "  session status",
                 "  session editor <map-name>",
+                "  session structure [name]",
                 "  session host <map-name> [--build]",
                 "  session join <host>",
                 "  session playtest",
                 "  session playtest-networked",
                 "F4 toggles the fast authoritative playtest inside the editor.",
                 "playtest-networked performs the full save/load/stream/remesh validation path.",
+                "structure opens a flat 100x100 m debug pad for authoring structures. It is never",
+                "saved as a map - only the structures built in it are, into a shared library.",
+            ],
+            "structure" =>
+            [
+                "Build one in the structure editor ('session structure'), then save it by name:",
+                "  editor structure save <name>      captures everything on the pad",
+                "Place one in any map, in structure mode (press 4):",
+                "  editor structure list",
+                "  editor structure select <name>    then left-click to place it",
+                "  editor structure rotate <multiple-of-90>",
+                "  editor structure mirror x",
+                "  editor structure clear",
+                "Structures are shared by every map, so one authored in the structure editor can be",
+                "placed in any of them. Selecting one previews it at the cursor before you place it.",
             ],
             "map" =>
             [
@@ -504,7 +529,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         if (tokens.Length < 2)
             return TerminalOutputFor(
                 false,
-                "Usage: session <status|editor|host|join|playtest|playtest-networked> ...");
+                "Usage: session <status|editor|structure|host|join|playtest|playtest-networked> ...");
 
         switch (tokens[1].ToLowerInvariant())
         {
@@ -517,6 +542,23 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                     RuntimeClientSession => "runtime",
                     _ => "idle",
                 });
+
+            case "structure":
+            {
+                if (tokens.Length > 3)
+                    return TerminalOutputFor(false, "Usage: session structure [name]");
+                if (!CanLeaveEditor(discard: false, out var structureError))
+                    return TerminalOutputFor(false, structureError!);
+                string name = tokens.Length == 3 ? tokens[2] : DefaultStructureWorld;
+                if (!MapPathResolver.IsValidName(name))
+                    return TerminalOutputFor(false, $"Invalid name: {name}");
+                playtestEditor = null;
+                transitions.Enqueue(
+                    SessionRequest.EditorDocument(EditorDocument.CreateStructureWorld(name)));
+                return TerminalOutputFor(
+                    true,
+                    $"Structure editor: {StructureWorld.SideMetres:0}x{StructureWorld.SideMetres:0} m pad");
+            }
 
             case "editor":
                 if (tokens.Length != 3) return TerminalOutputFor(false, "Usage: session editor <map-name>");
@@ -746,45 +788,45 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
     private TerminalOutput ExecuteStructure(string[] tokens, EditorClientSession editor)
     {
         if (tokens.Length < 3)
-            return TerminalOutputFor(false, "Usage: editor structure <corner|pivot|save|select|rotate|mirror|clear> ...");
+            return TerminalOutputFor(
+                false,
+                "Usage: editor structure <list|save|select|rotate|mirror|clear> ...");
 
         var state = editor.Structures;
         switch (tokens[2].ToLowerInvariant())
         {
-            case "corner":
-                if (tokens.Length != 4 || tokens[3] is not ("1" or "2"))
-                    return TerminalOutputFor(false, "Usage: editor structure corner <1|2>");
-                if (editor.Controller.TargetCell is not { } corner)
-                    return TerminalOutputFor(false, "No highlighted cell");
-                if (tokens[3] == "1") state.Corner1 = corner;
-                else state.Corner2 = corner;
-                return TerminalOutputFor(true, $"Structure corner {tokens[3]}: {corner}");
+            case "list":
+            {
+                var names = maps.Paths.ListStructures();
+                return TerminalOutputFor(
+                    true,
+                    names.Count == 0
+                        ? "No structures saved"
+                        : $"Structures ({names.Count}): {string.Join(", ", names)}");
+            }
 
-            case "pivot":
-                if (editor.Controller.TargetCell is not { } pivot)
-                    return TerminalOutputFor(false, "No highlighted cell");
-                state.Pivot = pivot;
-                return TerminalOutputFor(true, $"Structure pivot: {pivot}");
-
+            // Saves everything on the pad, bounded by where it is. No region to select, because on
+            // a scratch world there is nothing else it could mean — and in a map there would be no
+            // honest answer, which is why this is refused there rather than quietly capturing the
+            // whole document.
             case "save":
             {
                 if (tokens.Length != 4) return TerminalOutputFor(false, "Usage: editor structure save <name>");
-                if (state.Corner1 is not { } first || state.Corner2 is not { } second)
-                    return TerminalOutputFor(false, "Set structure corners 1 and 2 first");
-                Int3 structurePivot = state.Pivot ?? first;
-                var structure = StructureLibrary.Capture(
-                    tokens[3], first, second, structurePivot, editor.Editor.Document.Blocks);
-                string path = StructurePath(editor.Editor.Document.Name, tokens[3]);
-                StructureLibrary.Save(path, structure);
+                if (!editor.Editor.Document.IsStructureWorld)
+                    return TerminalOutputFor(
+                        false,
+                        "Structures are authored in the structure editor. Run 'session structure'.");
+                var structure = StructureLibrary.Capture(tokens[3], editor.Editor.Document.Blocks);
+                StructureLibrary.Save(maps.Paths.StructurePath(tokens[3]), structure);
                 return TerminalOutputFor(true, $"Saved structure {tokens[3]} ({structure.Blocks.Count} blocks)");
             }
 
             case "select":
                 if (tokens.Length != 4) return TerminalOutputFor(false, "Usage: editor structure select <name>");
-                state.Selected = StructureLibrary.Load(StructurePath(editor.Editor.Document.Name, tokens[3]));
+                state.Selected = StructureLibrary.Load(maps.Paths.StructurePath(tokens[3]));
                 state.QuarterTurns = 0;
                 state.MirrorX = false;
-                editor.Settings.Mode = EditorToolMode.Block;
+                editor.Settings.Mode = EditorToolMode.Structure;
                 return TerminalOutputFor(true, $"Selected structure {tokens[3]}");
 
             case "rotate":
@@ -801,7 +843,6 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
 
             case "clear":
                 state.Selected = null;
-                state.Corner1 = state.Corner2 = state.Pivot = null;
                 return TerminalOutputFor(true, "Cleared structure selection");
 
             default:
@@ -1042,9 +1083,21 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         }
     }
 
+    /// <summary>
+    /// Whether there are unsaved changes worth preserving to disk.
+    ///
+    /// The structure editor's pad is never one: it has no source file and must not acquire one.
+    /// Asked here rather than at each call site because both the periodic autosave and the one on
+    /// shutdown want the same answer, and the first shipped without it — every quiet period in the
+    /// structure editor reported "Autosave failed" from the repository's refusal, which is an
+    /// enforcement message being used as a decision.
+    /// </summary>
+    private static bool HasChangesToPreserve(EditorClientSession editor)
+        => editor.Editor.Dirty && !editor.Editor.Document.IsStructureWorld;
+
     private void Autosave()
     {
-        if (current is not EditorClientSession editor || !editor.Editor.Dirty) return;
+        if (current is not EditorClientSession editor || !HasChangesToPreserve(editor)) return;
         DateTime now = DateTime.UtcNow;
         if (now - lastEditUtc < TimeSpan.FromSeconds(10)) return;
         if (now - lastAutosaveUtc < TimeSpan.FromMinutes(1)) return;
@@ -1102,7 +1155,10 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
 
     private bool CanLeaveEditor(bool discard, out string? error)
     {
-        if (current is EditorClientSession editor && editor.Editor.Dirty && !discard)
+        // Same predicate as the autosave, and for the same reason: "you have unsaved changes"
+        // only means something for a document that CAN be saved. The pad cannot, so refusing to
+        // leave it until you save it is an instruction with nothing behind it.
+        if (current is EditorClientSession editor && HasChangesToPreserve(editor) && !discard)
         {
             error = "Map has unsaved changes; save it, use session host --build, or pass --discard where supported";
             return false;
@@ -1113,11 +1169,6 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
 
     private static TerminalOutput TerminalOutputFor(bool success, string text) => new(success, text);
 
-    private string StructurePath(string mapName, string structureName)
-        => Path.Combine(
-            maps.Paths.DirectoryFor(mapName),
-            "structures",
-            MapPathResolver.ValidateName(structureName) + ".json");
 }
 
 public enum SessionRequestKind

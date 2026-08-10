@@ -1,3 +1,4 @@
+using Demiurge.Editor;
 using Stride.CommunityToolkit.Engine;
 using Stride.CommunityToolkit.Games;
 using Stride.CommunityToolkit.Rendering.Compositing;
@@ -90,6 +91,7 @@ public sealed class ClientApplication : IDisposable
     private static SessionRequest ParseInitialSession(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
+        {
             if (args[i].Equals("--editor", StringComparison.OrdinalIgnoreCase))
             {
                 string name = i + 1 < args.Length && !args[i + 1].StartsWith("--")
@@ -97,6 +99,18 @@ public sealed class ClientApplication : IDisposable
                     : "untitled";
                 return SessionRequest.EditorMap(name);
             }
+
+            // The same editor against a different world: a flat pad instead of a map. Checked in
+            // the same loop so the two cannot both apply, and before --singleplayer for the same
+            // reason --editor is.
+            if (args[i].Equals("--structure-editor", StringComparison.OrdinalIgnoreCase))
+            {
+                string name = i + 1 < args.Length && !args[i + 1].StartsWith("--")
+                    ? args[i + 1]
+                    : ClientSessionCoordinator.DefaultStructureWorld;
+                return SessionRequest.EditorDocument(EditorDocument.CreateStructureWorld(name));
+            }
+        }
 
         if (args.Contains("--singleplayer", StringComparer.OrdinalIgnoreCase))
             return SessionRequest.SourceHost(
