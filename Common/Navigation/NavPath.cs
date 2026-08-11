@@ -11,6 +11,12 @@ public enum NavAction : byte
     /// the voxel targeted by the shovel rather than a place the actor can already stand.
     /// </summary>
     Dig,
+    /// <summary>
+    /// Step off a ledge and let gravity finish the move. No input the follower has to issue — the
+    /// difference from a walk is that the drop was PRICED rather than rejected, and that smoothing
+    /// must not fold the ledge away.
+    /// </summary>
+    Fall,
 }
 
 /// <param name="Action">Action used to travel from the previous waypoint to this one.</param>

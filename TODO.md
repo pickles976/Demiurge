@@ -7,15 +7,17 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 
 1. Finish up AI
 2. Finish PVP MVP
-3. Switch to Stride 4.5
-4. Make the environment richer
-5. Refactor commands
-6. Multiplayer test
+3. Make the environment richer
+4. Refactor commands
+5. Multiplayer test
 
+- NPCs just spamming prone
 
-- [ ] add map editor and structure editor UI block select, object select
+Bug: 
 
-Bug: NPCs on Team 1 not capturing flag right next to base
+Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
+- [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
+
 
 - [ ] add trees
       - [ ] tree 3D model
@@ -24,12 +26,6 @@ Bug: NPCs on Team 1 not capturing flag right next to base
       - [ ] trees delete if the terrain beneath them goes away
       - [ ] tree brush in map editor
       - [ ] add trees to map
-
-
-## Misc
-
-Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
-- [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
 
 ## Refactoring and Cleanup
 - Codex clean up all comments
@@ -85,6 +81,7 @@ Bugs found during design, each explaining part of the observed behaviour:
 
 - [ ] add 4 more NPCs to each team
 - [ ] add screen where you enter a server IP and port
+- [ ] "test" to launch into conquest right away
 - [ ] test over VPN
 
 - [ ] Host a server and run external multiplayer playtests
@@ -93,6 +90,8 @@ Bugs found during design, each explaining part of the observed behaviour:
 - [ ] Track and fix issues found by the Demo
 
 # Open World
+
+- [ ] add map editor and structure editor UI block select, object select
 
 - [ ] Track active chunks per player on the server
 - [ ] Stream chunks as players move

@@ -17,13 +17,18 @@ values allow a bridge, cave floor, and terrain above it to coexist at the same X
 - suspicious ascents and narrow diagonals run a bounded simulation through
   `PlayerMovement.Step`;
 - jump edges simulate the authoritative fixed-timestep jump through landing;
+- fall edges price a step off a ledge as the ballistic time of the drop plus the metres walked to
+  the landing, which is up to three cells out because air control carries the actor while he falls.
+  They are capped at `MaximumFallCells` (8) — not for survivability, there is no fall damage, but
+  because a fall is one way and a bounded search cannot prove the bottom of a ten-metre trench has
+  an exit;
 - dig edges identify one dirt/grass frontier voxel, but never pretend it is already removed;
 - stone is never diggable.
 
 `NavSearch` is deterministic bounded A*. It supports `GoalPosition`, `GoalNear`, and `GoalAwayFrom`,
 caps expansion/time work, checks cancellation every 64 expansions, and returns a useful partial
 prefix when a full goal cannot be reached within the request budget. Collinear walk runs are
-conservatively reduced without smoothing across jump or dig actions.
+conservatively reduced without smoothing across jump, fall, or dig actions.
 
 A result also reports `NavPath.ExhaustedReachable`: whether the open set emptied on its own rather
 than the search stopping on a node or time budget. When the goal was not reached, that distinguishes

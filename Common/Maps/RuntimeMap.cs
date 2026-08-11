@@ -27,7 +27,21 @@ public readonly record struct RuntimePlacement(
 
 public sealed class RuntimeMap
 {
-    public const int CurrentFormatVersion = 3;
+    /// <summary>
+    /// What a bake of this map means, not only how its bytes are laid out.
+    ///
+    /// Bumped when the BAKER changes as well as when the format does, because the editor decides a
+    /// cached bake is current by comparing the source hash — and a change to how a placement
+    /// resolves leaves the source identical while making every existing bake wrong. That is not
+    /// hypothetical: version 4 exists because actor placements began resolving to free space
+    /// instead of the nearest surface, and until this number moved, every session went on loading a
+    /// bake that still had the spawn markers sitting on a roof.
+    /// </summary>
+    public const int CurrentFormatVersion = 4;
+
+    /// <summary>The version this map was read at; <see cref="CurrentFormatVersion"/> for a fresh
+    /// bake. Older means the file predates the current baker, not that it failed to load.</summary>
+    public int FormatVersion { get; init; } = CurrentFormatVersion;
 
     public required Guid MapId { get; init; }
     public required string Name { get; init; }

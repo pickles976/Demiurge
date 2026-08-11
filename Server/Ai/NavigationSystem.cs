@@ -56,6 +56,8 @@ internal sealed class NavigationSystem : IDisposable
         bool AllowJump,
         bool AllowDig,
         long? BlockedCellKey,
+        IReadOnlyList<long> PartialBacktrackCellKeys,
+        int PartialBacktrackAttempts,
         long SharedRouteKey,
         NavigationPriority Priority,
         NavCell? PreferredDigSite,
@@ -149,6 +151,8 @@ internal sealed class NavigationSystem : IDisposable
         bool allowJump = true,
         bool allowDig = false,
         long? blockedCellKey = null,
+        IReadOnlyList<long>? partialBacktrackCellKeys = null,
+        int partialBacktrackAttempts = 0,
         long sharedRouteKey = 0,
         NavigationPriority priority = NavigationPriority.Objective,
         NavCell? preferredDigSite = null)
@@ -165,6 +169,8 @@ internal sealed class NavigationSystem : IDisposable
                 allowJump,
                 allowDig,
                 blockedCellKey,
+                partialBacktrackCellKeys?.ToArray() ?? [],
+                partialBacktrackAttempts,
                 sharedRouteKey,
                 priority,
                 preferredDigSite,
@@ -270,6 +276,15 @@ internal sealed class NavigationSystem : IDisposable
         if (reusedSharedRoute)
             Interlocked.Increment(ref sharedRouteReuses);
         if (!reusedSharedRoute)
+        {
+            int recoveryFailureBudget = request.PartialBacktrackAttempts switch
+            {
+                >= 12 => 16_384,
+                >= 8 => 8_192,
+                >= 4 => 4_096,
+                _ => 0,
+            };
+            int? failureBudget = searchOptions.FailureExpansionBudget;
             path = NavSearch.Find(
                 terrain,
                 request.Start,
@@ -278,11 +293,20 @@ internal sealed class NavigationSystem : IDisposable
                 {
                     AllowJump = request.AllowJump,
                     AllowDig = request.AllowDig,
+                    // Most requests still return at the 128-expansion primary boundary. This only
+                    // raises the hard stop after the actor has consumed several bounded prefixes
+                    // without leaving the same basin, which is direct evidence that another stump
+                    // is cheaper to compute but useless to execute.
+                    FailureExpansionBudget = recoveryFailureBudget > 0
+                        ? Math.Max(failureBudget ?? 0, recoveryFailureBudget)
+                        : failureBudget,
                 },
                 request.BlockedCellKey,
                 () => IsSuperseded(request),
                 traversalCache,
-                request.PreferredDigSite);
+                request.PreferredDigSite,
+                request.PartialBacktrackCellKeys);
+        }
         if (IsSuperseded(request))
         {
             Interlocked.Increment(ref cancelledCount);

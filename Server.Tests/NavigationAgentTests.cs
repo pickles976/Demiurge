@@ -27,4 +27,33 @@ public sealed class NavigationAgentTests
 
         Assert.True(agent.CanPrefetch(100));
     }
+
+    [Fact]
+    public void RepeatedPartialPrefixMarksATrapEvenWhenItRepeatsTheSameCell()
+    {
+        var agent = new NavigationAgent();
+        var start = new NavCell(125, 23, 239);
+
+        for (int attempt = 0; attempt < 4; attempt++)
+            agent.RememberPartialBacktrack(start);
+
+        Assert.True(agent.IsRecoveringFromPartialTrap);
+        Assert.Equal(4, agent.PartialBacktrackAttempts);
+        Assert.Single(agent.PartialBacktrackCellKeys);
+    }
+
+    [Fact]
+    public void SquadTransferCanPreserveTrapRecoveryButRespawnClearsIt()
+    {
+        var agent = new NavigationAgent();
+        for (int attempt = 0; attempt < 4; attempt++)
+            agent.RememberPartialBacktrack(new NavCell(125, 23, 239));
+
+        agent.Clear(preservePartialBacktrack: true);
+        Assert.True(agent.IsRecoveringFromPartialTrap);
+
+        agent.Clear();
+        Assert.False(agent.IsRecoveringFromPartialTrap);
+        Assert.Empty(agent.PartialBacktrackCellKeys);
+    }
 }

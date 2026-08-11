@@ -2,15 +2,25 @@
   "schemaVersion": 1,
   "name": "wood_shack",
   "pivot": {
-    "x": 6,
+    "x": -2,
     "y": 33,
-    "z": 0,
+    "z": 4,
     "samplePosition": {},
     "centre": {}
   },
   "blocks": [
     {
       "offset": {
+        "x": -5,
+        "y": 0,
+        "z": -4,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
         "x": -4,
         "y": 0,
         "z": -4,
@@ -101,17 +111,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 0,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": -4,
+        "x": -5,
         "y": 0,
         "z": -3,
         "samplePosition": {},
@@ -121,7 +121,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "z": -3,
         "samplePosition": {},
@@ -131,7 +131,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 0,
         "z": -2,
         "samplePosition": {},
@@ -141,7 +141,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "z": -2,
         "samplePosition": {},
@@ -151,7 +151,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 0,
         "z": -1,
         "samplePosition": {},
@@ -161,7 +161,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "z": -1,
         "samplePosition": {},
@@ -181,7 +181,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 0,
         "z": 0,
         "samplePosition": {},
@@ -191,17 +191,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 0,
-        "z": 0,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "z": 1,
         "samplePosition": {},
@@ -221,7 +211,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 0,
         "z": 2,
         "samplePosition": {},
@@ -231,17 +221,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 0,
-        "z": 2,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": -4,
+        "x": -5,
         "y": 0,
         "z": 3,
         "samplePosition": {},
@@ -251,7 +231,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "z": 3,
         "samplePosition": {},
@@ -261,7 +241,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 0,
         "z": 4,
         "samplePosition": {},
@@ -271,9 +251,19 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 0,
         "z": 4,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": -5,
+        "y": 0,
+        "z": 5,
         "samplePosition": {},
         "centre": {}
       },
@@ -371,9 +361,9 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 0,
-        "z": 5,
+        "x": -5,
+        "y": 1,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -387,11 +377,11 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
-        "x": -3,
+        "x": -2,
         "y": 1,
         "z": -4,
         "samplePosition": {},
@@ -411,7 +401,7 @@
     },
     {
       "offset": {
-        "x": 0,
+        "x": 1,
         "y": 1,
         "z": -4,
         "samplePosition": {},
@@ -447,21 +437,11 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
-        "y": 1,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
       "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 1,
         "z": -3,
         "samplePosition": {},
@@ -471,7 +451,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 1,
         "z": -3,
         "samplePosition": {},
@@ -481,7 +461,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 1,
         "z": -2,
         "samplePosition": {},
@@ -491,7 +471,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 1,
         "z": -1,
         "samplePosition": {},
@@ -511,7 +491,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 1,
         "z": 0,
         "samplePosition": {},
@@ -521,17 +501,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 1,
-        "z": 0,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
+        "x": 4,
         "y": 1,
         "z": 1,
         "samplePosition": {},
@@ -551,7 +521,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 1,
         "z": 2,
         "samplePosition": {},
@@ -561,17 +531,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 1,
-        "z": 2,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": -4,
+        "x": -5,
         "y": 1,
         "z": 3,
         "samplePosition": {},
@@ -581,7 +541,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 1,
         "z": 4,
         "samplePosition": {},
@@ -591,7 +551,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 1,
         "z": 5,
         "samplePosition": {},
@@ -601,7 +561,17 @@
     },
     {
       "offset": {
-        "x": -3,
+        "x": -4,
+        "y": 1,
+        "z": 5,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:wood"
+    },
+    {
+      "offset": {
+        "x": -2,
         "y": 1,
         "z": 5,
         "samplePosition": {},
@@ -631,7 +601,7 @@
     },
     {
       "offset": {
-        "x": 1,
+        "x": 2,
         "y": 1,
         "z": 5,
         "samplePosition": {},
@@ -657,13 +627,13 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": 5,
-        "y": 1,
-        "z": 5,
+        "x": -5,
+        "y": 2,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -677,7 +647,7 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
@@ -757,21 +727,11 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
-        "y": 2,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
       "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 2,
         "z": -3,
         "samplePosition": {},
@@ -781,7 +741,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 2,
         "z": -3,
         "samplePosition": {},
@@ -791,7 +751,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 2,
         "z": -2,
         "samplePosition": {},
@@ -801,7 +761,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 2,
         "z": -2,
         "samplePosition": {},
@@ -811,7 +771,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 2,
         "z": -1,
         "samplePosition": {},
@@ -821,7 +781,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 2,
         "z": -1,
         "samplePosition": {},
@@ -841,7 +801,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 2,
         "z": 0,
         "samplePosition": {},
@@ -851,37 +811,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 2,
-        "z": 0,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": -5,
-        "y": 2,
-        "z": 1,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": -4,
-        "y": 2,
-        "z": 1,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
+        "x": 4,
         "y": 2,
         "z": 1,
         "samplePosition": {},
@@ -901,7 +831,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 2,
         "z": 2,
         "samplePosition": {},
@@ -911,17 +841,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 2,
-        "z": 2,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": -4,
+        "x": -5,
         "y": 2,
         "z": 3,
         "samplePosition": {},
@@ -931,7 +851,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 2,
         "z": 3,
         "samplePosition": {},
@@ -941,7 +861,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 2,
         "z": 4,
         "samplePosition": {},
@@ -951,13 +871,23 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 2,
         "z": 4,
         "samplePosition": {},
         "centre": {}
       },
       "blockId": "demiurge:wood"
+    },
+    {
+      "offset": {
+        "x": -5,
+        "y": 2,
+        "z": 5,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
@@ -967,7 +897,7 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
@@ -1047,13 +977,13 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": 5,
-        "y": 2,
-        "z": 5,
+        "x": -5,
+        "y": 3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1067,7 +997,7 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
@@ -1147,21 +1077,11 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
-        "y": 3,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
       "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 3,
         "z": -3,
         "samplePosition": {},
@@ -1171,7 +1091,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 3,
         "z": -3,
         "samplePosition": {},
@@ -1181,7 +1101,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 3,
         "z": -2,
         "samplePosition": {},
@@ -1191,7 +1111,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 3,
         "z": -2,
         "samplePosition": {},
@@ -1201,7 +1121,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 3,
         "z": -1,
         "samplePosition": {},
@@ -1211,7 +1131,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 3,
         "z": -1,
         "samplePosition": {},
@@ -1221,7 +1141,17 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
+        "y": 3,
+        "z": 0,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": 4,
         "y": 3,
         "z": 0,
         "samplePosition": {},
@@ -1231,17 +1161,17 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 3,
-        "z": 0,
+        "z": 1,
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 3,
         "z": 1,
         "samplePosition": {},
@@ -1251,17 +1181,17 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 3,
-        "z": 1,
+        "z": 2,
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": -4,
+        "x": 4,
         "y": 3,
         "z": 2,
         "samplePosition": {},
@@ -1271,17 +1201,7 @@
     },
     {
       "offset": {
-        "x": 5,
-        "y": 3,
-        "z": 2,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": -4,
+        "x": -5,
         "y": 3,
         "z": 3,
         "samplePosition": {},
@@ -1291,7 +1211,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 3,
         "z": 3,
         "samplePosition": {},
@@ -1301,7 +1221,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 3,
         "z": 4,
         "samplePosition": {},
@@ -1311,13 +1231,23 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 3,
         "z": 4,
         "samplePosition": {},
         "centre": {}
       },
       "blockId": "demiurge:wood"
+    },
+    {
+      "offset": {
+        "x": -5,
+        "y": 3,
+        "z": 5,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
@@ -1327,7 +1257,7 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
@@ -1407,13 +1337,13 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
+      "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": 5,
-        "y": 3,
-        "z": 5,
+        "x": -5,
+        "y": 4,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1427,7 +1357,7 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
@@ -1507,21 +1437,11 @@
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
-        "y": 4,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
       "blockId": "demiurge:stone_bricks"
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": -3,
         "samplePosition": {},
@@ -1531,7 +1451,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": -3,
         "samplePosition": {},
@@ -1541,7 +1461,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": -2,
         "samplePosition": {},
@@ -1551,7 +1471,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": -2,
         "samplePosition": {},
@@ -1561,7 +1481,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": -1,
         "samplePosition": {},
@@ -1571,7 +1491,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": -1,
         "samplePosition": {},
@@ -1581,7 +1501,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": 0,
         "samplePosition": {},
@@ -1591,7 +1511,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": 0,
         "samplePosition": {},
@@ -1601,7 +1521,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": 1,
         "samplePosition": {},
@@ -1611,7 +1531,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": 1,
         "samplePosition": {},
@@ -1621,7 +1541,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": 2,
         "samplePosition": {},
@@ -1631,7 +1551,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": 2,
         "samplePosition": {},
@@ -1641,7 +1561,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": 3,
         "samplePosition": {},
@@ -1651,7 +1571,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": 3,
         "samplePosition": {},
@@ -1661,7 +1581,7 @@
     },
     {
       "offset": {
-        "x": -4,
+        "x": -5,
         "y": 4,
         "z": 4,
         "samplePosition": {},
@@ -1671,7 +1591,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": 4,
         "y": 4,
         "z": 4,
         "samplePosition": {},
@@ -1681,13 +1601,23 @@
     },
     {
       "offset": {
+        "x": -5,
+        "y": 4,
+        "z": 5,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
         "x": -4,
         "y": 4,
         "z": 5,
         "samplePosition": {},
         "centre": {}
       },
-      "blockId": "demiurge:stone_bricks"
+      "blockId": "demiurge:wood"
     },
     {
       "offset": {
@@ -1764,106 +1694,6 @@
         "x": 4,
         "y": 4,
         "z": 5,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:wood"
-    },
-    {
-      "offset": {
-        "x": 5,
-        "y": 4,
-        "z": 5,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": -3,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": -2,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": -1,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 0,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 1,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 2,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 3,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 4,
-        "y": 5,
-        "z": -4,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 5,
-        "y": 5,
-        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1873,7 +1703,7 @@
       "offset": {
         "x": -4,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1883,7 +1713,7 @@
       "offset": {
         "x": -3,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1893,7 +1723,7 @@
       "offset": {
         "x": -2,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1903,7 +1733,7 @@
       "offset": {
         "x": -1,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1913,7 +1743,7 @@
       "offset": {
         "x": 0,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1923,7 +1753,7 @@
       "offset": {
         "x": 1,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1933,7 +1763,7 @@
       "offset": {
         "x": 2,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1943,7 +1773,7 @@
       "offset": {
         "x": 3,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1953,7 +1783,7 @@
       "offset": {
         "x": 4,
         "y": 5,
-        "z": -3,
+        "z": -4,
         "samplePosition": {},
         "centre": {}
       },
@@ -1961,7 +1791,7 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
         "z": -3,
         "samplePosition": {},
@@ -1973,6 +1803,106 @@
       "offset": {
         "x": -4,
         "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": -3,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": -2,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": -1,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": 0,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": 1,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": 2,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": 3,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": 4,
+        "y": 5,
+        "z": -3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": -5,
+        "y": 5,
+        "z": -2,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone_bricks"
+    },
+    {
+      "offset": {
+        "x": -4,
+        "y": 5,
         "z": -2,
         "samplePosition": {},
         "centre": {}
@@ -2061,9 +1991,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": -2,
+        "z": -1,
         "samplePosition": {},
         "centre": {}
       },
@@ -2161,9 +2091,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": -1,
+        "z": 0,
         "samplePosition": {},
         "centre": {}
       },
@@ -2261,9 +2191,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": 0,
+        "z": 1,
         "samplePosition": {},
         "centre": {}
       },
@@ -2361,9 +2291,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": 1,
+        "z": 2,
         "samplePosition": {},
         "centre": {}
       },
@@ -2461,9 +2391,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": 2,
+        "z": 3,
         "samplePosition": {},
         "centre": {}
       },
@@ -2561,9 +2491,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": 3,
+        "z": 4,
         "samplePosition": {},
         "centre": {}
       },
@@ -2661,9 +2591,9 @@
     },
     {
       "offset": {
-        "x": 5,
+        "x": -5,
         "y": 5,
-        "z": 4,
+        "z": 5,
         "samplePosition": {},
         "centre": {}
       },
@@ -2752,16 +2682,6 @@
     {
       "offset": {
         "x": 4,
-        "y": 5,
-        "z": 5,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks"
-    },
-    {
-      "offset": {
-        "x": 5,
         "y": 5,
         "z": 5,
         "samplePosition": {},
@@ -2770,5 +2690,5 @@
       "blockId": "demiurge:stone_bricks"
     }
   ],
-  "contentHash": "63d7f48f3ac91ed50a4929ae8021e747c0cffc3c336376e9bb91ae2de5bbce79"
+  "contentHash": "7c9cc90c5a2192a81fe86aceffd3b5aad7cf78adebbc534da2438ed2e20045fd"
 }

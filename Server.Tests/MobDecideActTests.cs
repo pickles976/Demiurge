@@ -58,23 +58,45 @@ public class MobDecideActTests
     }
 
     [Theory]
-    [InlineData(true, false, false, true)]
-    [InlineData(false, false, false, false)]
-    [InlineData(true, true, false, false)]
-    [InlineData(true, false, true, false)]
-    public void ProneIsOnlyForPinnedStationaryActorsInTheOpen(
+    [InlineData(true, false, false, true, 60f, 100u, 0u, true)]
+    [InlineData(false, false, false, true, 60f, 100u, 0u, false)]
+    [InlineData(true, true, false, true, 60f, 100u, 0u, false)]
+    [InlineData(true, false, true, true, 60f, 100u, 0u, false)]
+    [InlineData(true, false, false, false, 60f, 100u, 0u, false)]
+    [InlineData(true, false, false, true, 20f, 100u, 0u, false)]
+    [InlineData(true, false, false, true, 60f, 100u, 101u, false)]
+    public void ProneRequiresALongRangeEngagementAndNoStancePenalty(
         bool underFire,
         bool atCover,
         bool digging,
+        bool engaging,
+        float engagementRange,
+        uint tick,
+        uint nextProneTick,
         bool expected)
         => Assert.Equal(
             expected,
-            MobSystem.ShouldGoProne(Vector3.Zero, underFire, atCover, digging));
+            MobSystem.ShouldGoProne(
+                Vector3.Zero,
+                underFire,
+                atCover,
+                digging,
+                engaging,
+                engagementRange,
+                tick,
+                nextProneTick));
 
     [Fact]
     public void MovingActorNeverGoesProne()
         => Assert.False(MobSystem.ShouldGoProne(
-            Vector3.UnitX, underFire: true, atCover: false, digging: false));
+            Vector3.UnitX,
+            underFire: true,
+            atCover: false,
+            digging: false,
+            engaging: true,
+            engagementRange: 60f,
+            tick: 100,
+            nextProneTick: 0));
 
     /// <summary>
     /// The label an NPC carries must be what it actually did. `ai track states` reads DebugIntent,

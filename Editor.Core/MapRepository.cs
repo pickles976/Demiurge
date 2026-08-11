@@ -63,7 +63,12 @@ public sealed class MapRepository
         try
         {
             var map = RuntimeMapSerializer.Load(path);
+            // The source hash alone answers "has the map changed", which is only half of "is this
+            // bake current" — the other half is whether the BAKER has. A bake made by an older one
+            // still loads and still matches its source, and goes on placing actors where that
+            // version of the resolver put them.
             return map.MapId == document.MapId
+                && map.FormatVersion == RuntimeMap.CurrentFormatVersion
                 && map.SourceHash.SequenceEqual(SourceMapSerializer.Hash(document));
         }
         catch

@@ -23,9 +23,13 @@ internal sealed class NavigationAgent
     /// the situation changes.
     /// </summary>
     private const uint DigSiteMemoryTicks = 15 * NetworkConfig.TickRate;
+    private const int MaximumPartialBacktrackCells = 64;
 
     private PendingRequest? pending;
     private long? blockedCellKey;
+    private readonly Queue<long> partialBacktrackCells = new();
+    private readonly HashSet<long> partialBacktrackCellSet = [];
+    private int partialBacktrackAttempts;
     private NavCell? digSite;
     private uint digSiteTick;
     private uint nextPrefetchTick;
@@ -112,15 +116,46 @@ internal sealed class NavigationAgent
     public long? TakeAvoidedCell()
         => blockedCellKey;
 
-    public void Clear()
+    public void RememberPartialBacktrack(NavCell? cell)
+    {
+        if (cell is not { } value) return;
+        partialBacktrackAttempts++;
+        if (!partialBacktrackCellSet.Add(value.Key)) return;
+        partialBacktrackCells.Enqueue(value.Key);
+        while (partialBacktrackCells.Count > MaximumPartialBacktrackCells)
+            partialBacktrackCellSet.Remove(partialBacktrackCells.Dequeue());
+    }
+
+    public IReadOnlyList<long> PartialBacktrackCellKeys
+        => partialBacktrackCells.ToArray();
+
+    public int PartialBacktrackAttempts => partialBacktrackAttempts;
+
+    /// <summary>
+    /// Several consumed bounded prefixes without escape means this actor is resolving a local
+    /// navigation basin. Re-forming it into another squad every second changes the goal and cancels
+    /// the deeper recovery search before a worker can finish it.
+    /// </summary>
+    public bool IsRecoveringFromPartialTrap => partialBacktrackAttempts >= 4;
+
+    public void Clear(bool preservePartialBacktrack = false)
     {
         Path.Clear();
         Progress.Reset();
         pending = null;
         ResetBlocked();
+        if (!preservePartialBacktrack)
+            ClearPartialBacktrack();
         ForgetDigSite();
         nextPrefetchTick = 0;
         Destination = default;
         HasDestination = false;
+    }
+
+    public void ClearPartialBacktrack()
+    {
+        partialBacktrackCells.Clear();
+        partialBacktrackCellSet.Clear();
+        partialBacktrackAttempts = 0;
     }
 }

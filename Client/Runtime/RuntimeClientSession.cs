@@ -314,8 +314,27 @@ public sealed class RuntimeClientSession : IClientSession
         long t2 = Stopwatch.GetTimestamp();
         terrainState.Drain();
         long t3 = Stopwatch.GetTimestamp();
-        var lodFocus = registry.LocalPlayer?.Position ?? System.Numerics.Vector3.Zero;
-        terrainView?.RebuildDirty(lodFocus);
+        // The active observer owns LOD. During normal play that is the player, so camera shake does
+        // not churn selection; while F3 is active it is the detached camera, so the terrain being
+        // inspected receives the detail budget. The live camera lens drives both cases.
+        var local = registry.LocalPlayer;
+        var lodFocus = local?.Position ?? System.Numerics.Vector3.Zero;
+        var lens = camera?.Get<CameraComponent>();
+        var flyCamera = camera?.Get<DebugFlyCameraScript>();
+
+        terrainView?.RebuildDirty(camera is not null && flyCamera?.Active == true
+            ? TerrainViewBuilder.For(
+                game,
+                lens,
+                camera.Transform.Position.ToNumerics(),
+                TerrainViewBuilder.Facing(camera))
+            : local is null
+                ? TerrainViewBuilder.Everywhere(game, lens, lodFocus)
+                : TerrainViewBuilder.For(
+                    game,
+                    lens,
+                    lodFocus + System.Numerics.Vector3.UnitY * Digging.EyeHeight,
+                    TerrainViewBuilder.Facing(local.Yaw, local.Pitch)));
         frame.Record(t0, t1, t2, t3, Stopwatch.GetTimestamp());
 
         // Hold the player still until the ground they are standing on exists. Spawning into a world

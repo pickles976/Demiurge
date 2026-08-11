@@ -31,7 +31,13 @@ public enum NpcTrackerLayers
     /// <summary>Each NPC's current decision over its head. See <see cref="MobDebugFeed"/>.</summary>
     States = 32,
 
-    All = Beacons | Facing | Clustering | Colliders | Ids | States,
+    /// <summary>
+    /// The route each NPC is following, as a line through what it has left of its waypoints, with
+    /// the non-walk actions marked. See <see cref="MobPathFeed"/>.
+    /// </summary>
+    Paths = 64,
+
+    All = Beacons | Facing | Clustering | Colliders | Ids | States | Paths,
 }
 
 /// <summary>
@@ -96,6 +102,19 @@ public sealed class NpcTrackerScript : SyncScript
     private static readonly Color LabelColor = new(255, 255, 255, 235);
     private static readonly Color StateColor = new(140, 255, 190, 235);
 
+    /// <summary>
+    /// Route colours. Walk legs take the actor's team colour so two squads' routes stay apart; the
+    /// non-walk actions get their own, because "why is he not moving" is usually answered by one of
+    /// them — a jump he cannot take off for, a drop, or soil he is waiting to dig.
+    /// </summary>
+    private static readonly Color JumpLegColor = new(255, 235, 120, 235);
+    private static readonly Color FallLegColor = new(120, 220, 255, 235);
+    private static readonly Color DigLegColor = new(255, 150, 80, 235);
+
+    /// <summary>Route lines float at ankle height so they read over the ground rather than in it.</summary>
+    private const float PathRise = 0.15f;
+    private const float PathMarkerSize = 0.25f;
+
     private readonly List<Player> visible = [];
 
     public required PlayerRegistry Registry { get; init; }
@@ -122,6 +141,14 @@ public sealed class NpcTrackerScript : SyncScript
         var states = layers.HasFlag(NpcTrackerLayers.States)
             ? MobDebugFeed.Latest
             : null;
+
+        if (layers.HasFlag(NpcTrackerLayers.Paths))
+        {
+            var routes = MobPathFeed.Latest;
+            foreach (var npc in visible)
+                if (routes.TryGetValue(npc.Id, out var route))
+                    DrawRoute(npc, route);
+        }
 
         foreach (var npc in visible)
         {
@@ -174,6 +201,41 @@ public sealed class NpcTrackerScript : SyncScript
                 Vector3 up = Vector3.UnitY * GunConfig.PlayerCenterHeight;
                 LineRenderer.DrawLine(a.ToStride() + up, b.ToStride() + up, BunchedColor);
             }
+    }
+
+    /// <summary>
+    /// One NPC's remaining route: a line from where he is, through his waypoints, with a cross at
+    /// each one that is not an ordinary walk.
+    ///
+    /// Drawn WITHOUT depth testing, deliberately. A route that disappears behind the wall the actor
+    /// is stuck against is a route you cannot read, and reading it is the entire purpose.
+    /// </summary>
+    private void DrawRoute(Player npc, IReadOnlyList<MobPathPoint> route)
+    {
+        Vector3 previous = npc.Position.ToStride() + Vector3.UnitY * PathRise;
+        Color team = ColorFor(npc.Team);
+        foreach (var point in route)
+        {
+            Vector3 next = point.Position.ToStride() + Vector3.UnitY * PathRise;
+            Color legColor = point.Action switch
+            {
+                NavAction.Jump => JumpLegColor,
+                NavAction.Fall => FallLegColor,
+                NavAction.Dig => DigLegColor,
+                _ => team,
+            };
+            LineRenderer.DrawLine(previous, next, legColor);
+            if (point.Action != NavAction.Walk) DrawMarker(next, legColor);
+            previous = next;
+        }
+    }
+
+    /// <summary>A three-axis cross, which stays legible from any angle a ring or a square does not.</summary>
+    private static void DrawMarker(Vector3 centre, Color color)
+    {
+        LineRenderer.DrawLine(centre - Vector3.UnitX * PathMarkerSize, centre + Vector3.UnitX * PathMarkerSize, color);
+        LineRenderer.DrawLine(centre - Vector3.UnitY * PathMarkerSize, centre + Vector3.UnitY * PathMarkerSize, color);
+        LineRenderer.DrawLine(centre - Vector3.UnitZ * PathMarkerSize, centre + Vector3.UnitZ * PathMarkerSize, color);
     }
 
     /// <summary>

@@ -216,7 +216,7 @@ namespace Demiurge.GameServer
         {
             foreach (var spawn in spawns)
             {
-                Vector3 position = NavTraversal.TryFindNearestStandable(
+                Vector3 position = NavTraversal.TryFindNearestStandableForActor(
                         terrain,
                         spawn.Position,
                         horizontalRadius: 8,
@@ -810,8 +810,19 @@ namespace Demiurge.GameServer
                 return MoveAtSpawn(reserved);
             }
 
+            // A captured flag is a respawn point, and a flag inside a building is a respawn point
+            // inside a building. Resolving it by column would answer with the highest surface there,
+            // which is that building's roof — the same way NPC spawns used to land on one.
             if (flags.TrySpawnPosition(team, out var flag))
-                return PlayerMovement.SpawnAt(terrain, flag.X, flag.Z);
+                return NavTraversal.TryFindNearestStandableForActor(
+                        terrain, flag, horizontalRadius: 4, out var flagCell)
+                    ? new MoveState
+                    {
+                        Position = NavTraversal.Position(terrain, flagCell),
+                        Velocity = Vector3.Zero,
+                        Grounded = true,
+                    }
+                    : PlayerMovement.SpawnAt(terrain, flag.X, flag.Z);
 
             if (playerSpawns.Length == 0)
                 return PlayerMovement.SpawnAt(terrain, SpawnX, SpawnZ);

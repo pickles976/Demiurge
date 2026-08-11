@@ -285,7 +285,20 @@ public class PipelineBenchmarks(ITestOutputHelper output)
     public void LodBoxCount()
     {
         var desired = new HashSet<LodSection>();
-        TerrainLod.CollectDesired(Vector3.Zero, desired);
+
+        // Looking down +Z from the origin at the hip field of view on a 1080-tall back buffer, which
+        // is the configuration the old distance table was tuned for — so this benchmark still measures
+        // the case it was written to measure.
+        var view = new TerrainView(
+            Vector3.Zero,
+            Vector3.UnitZ,
+            Vector3.UnitY,
+            MathF.Tan(74f * MathF.PI / 360f),
+            aspect: 16f / 9f,
+            viewportHeight: 1080f,
+            marginDegrees: TerrainLod.FrustumMarginDegrees);
+
+        new TerrainLod().CollectDesired(view, desired);
 
         var perLevel = new int[LodSection.MaxLevel + 1];
         foreach (var box in desired) perLevel[box.Level]++;

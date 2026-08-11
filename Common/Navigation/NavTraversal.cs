@@ -9,10 +9,45 @@ namespace Demiurge;
 public static class NavTraversal
 {
     public const int MaximumTraverseCellDelta = 2;
-    public const int MaximumFallCells = 16;
+
+    /// <summary>
+    /// The deepest drop <see cref="TryFall"/> will price, in cells, and the one number protecting
+    /// the search from its own honesty about falling.
+    ///
+    /// Not about survivability — there is no fall damage — but about a fall being ONE WAY. Nothing
+    /// in the graph prices being stuck at the bottom, and a search with 256 expansions cannot prove
+    /// there is a way back up, so the graph only offers drops a man would step off on purpose: two
+    /// storeys, the height of the buildings on this map. At sixteen an NPC asked to cross a
+    /// ten-metre trench by an offset bridge stepped into the trench instead — honestly priced at a
+    /// second, genuinely closer to the flag, and unable to get out.
+    ///
+    /// Because the bound is what makes a fall reasonable, nothing downstream second-guesses one:
+    /// see the deep-descent rule in <c>NavSearch.Relax</c>. That rule uses the same threshold for
+    /// simulated jumps, which can discover a landing independently of this bounded fall scan.
+    /// </summary>
+    public const int MaximumFallCells = 8;
 
     private const float SurfaceEpsilon = 1e-5f;
     private const float ContactTolerance = 0.015f;
+    /// <summary>
+    /// Below this a drop is not a fall, it is the ground snap doing its job. Keeps a zero-height
+    /// "fall" out of the graph, where it would compete with the walk edge it duplicates.
+    /// </summary>
+    private const float MinimumFallDrop = PlayerMovement.GroundSnapDistance;
+
+    /// <summary>
+    /// How far up and down a column an actor's own position is looked for. A storey and a half:
+    /// enough to find the floor under a man resolved against a wall, short enough that "near" still
+    /// means near.
+    /// </summary>
+    private const int VerticalSearchCells = 6;
+
+    /// <summary>
+    /// How far out from a ledge a landing is looked for. Three metres is about what a man covers
+    /// while falling four, and it is the difference between a roof whose rim column happens to take
+    /// the capsule and one whose does not — which is chance, not design.
+    /// </summary>
+    private const int MaximumFallRunCells = 3;
     private const float WalkValidationRise =
         PlayerMovement.GroundSnapDistance;
     private static readonly int MaximumWalkValidationTicks =
@@ -285,6 +320,156 @@ public static class NavTraversal
 
         cell = default;
         return false;
+    }
+
+    /// <summary>
+    /// Where to actually put an actor asked for at this point: the capsule-valid surface NEAREST it
+    /// in three dimensions.
+    ///
+    /// Separate from <see cref="TryFindNearestStandable"/>, which takes the first cell that answers
+    /// anything — six cells UP before one cell down, ring by ring. That is fine for nudging a live
+    /// actor off a bad sample, and wrong for placing one: a man whose slot in the spawn formation
+    /// landed on a building's wall was put on its ROOF six metres up when the ground one metre
+    /// sideways was where he belonged. Five of sixteen NPCs spawned on the roof of the conquest
+    /// map's spawn building that way.
+    ///
+    /// Placement can afford this and live navigation cannot — measuring every candidate instead of
+    /// taking the first costs whole rings of capsule probes, and changing the live resolution to
+    /// match measurably broke staircase excavation, which resolves an actor's own cell every tick.
+    /// </summary>
+    public static bool TryFindNearestStandableForActor(
+        ChunkMap map,
+        Vector3 position,
+        int horizontalRadius,
+        out NavCell cell)
+    {
+        if (horizontalRadius < 0)
+            throw new ArgumentOutOfRangeException(nameof(horizontalRadius));
+
+        int centreX = (int)MathF.Floor(position.X);
+        int centreZ = (int)MathF.Floor(position.Z);
+        bool found = false;
+        float bestDistanceSquared = float.PositiveInfinity;
+        NavCell bestCell = default;
+        var cursor = new VoxelCursor(map);
+
+        for (int radius = 0; radius <= horizontalRadius; radius++)
+        {
+            // Every cell on this and later rings is at least radius - 0.5 metres away horizontally,
+            // so once that bound cannot beat the best candidate found, nothing further out can.
+            float ringLowerBound = MathF.Max(0f, radius - 0.5f);
+            if (found && ringLowerBound * ringLowerBound >= bestDistanceSquared)
+                break;
+
+            for (int dz = -radius; dz <= radius; dz++)
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                        continue;
+                    int x = centreX + dx;
+                    int z = centreZ + dz;
+                    if (TryFindStandableNearestY(
+                            ref cursor,
+                            x + 0.5f,
+                            z + 0.5f,
+                            position.Y,
+                            VerticalSearchCells,
+                            out float nearbyY,
+                            out int nearbyCellY))
+                        Consider(new NavCell(x, nearbyCellY, z), nearbyY);
+
+                    // The column's own surface as well, for a point far above or below anything the
+                    // window above reaches — an actor placed in mid-air, or under deep terrain.
+                    if (SurfaceQuery.HighestSurfaceY(map, x, z) is { } surfaceY
+                        && TryFindStandable(
+                            ref cursor,
+                            x,
+                            z,
+                            (int)MathF.Floor(surfaceY),
+                            below: 2,
+                            above: 2,
+                            out var highest,
+                            out float highestY))
+                        Consider(highest, highestY);
+                }
+        }
+
+        cell = bestCell;
+        return found;
+
+        void Consider(NavCell candidate, float candidateSurfaceY)
+        {
+            float deltaX = candidate.X + 0.5f - position.X;
+            float deltaY = candidateSurfaceY - position.Y;
+            float deltaZ = candidate.Z + 0.5f - position.Z;
+            float distanceSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+            if (distanceSquared >= bestDistanceSquared) return;
+            found = true;
+            bestDistanceSquared = distanceSquared;
+            bestCell = candidate;
+        }
+    }
+
+    /// <summary>
+    /// The nearest place in ONE column where the player capsule can stand, scanning up and down from
+    /// a world point and keeping whichever crossing is closest in metres.
+    ///
+    /// This is what "put an actor here" means when the point itself is not somewhere a body fits —
+    /// authored inside a building, inside a block, or under a floor. Scanning both ways matters:
+    /// upward alone climbs out through the roof of whatever the point is inside, which is how a
+    /// spawn marker placed in a building put everyone who used it on top of the building. Distance
+    /// in metres rather than in cells, because the two directions are almost never the same distance
+    /// away and cell offsets cannot tell them apart.
+    ///
+    /// Unlike <see cref="TryFindNearestStandable"/> this never leaves the column: the answer belongs
+    /// to the authored X/Z, and moving an actor sideways to find footing is a different decision
+    /// made by a different caller.
+    /// </summary>
+    public static bool TryFindStandableNearestY(
+        ChunkMap map,
+        float worldX,
+        float worldZ,
+        float aroundY,
+        int range,
+        out float surfaceY)
+    {
+        var cursor = new VoxelCursor(map);
+        return TryFindStandableNearestY(
+            ref cursor, worldX, worldZ, aroundY, range, out surfaceY, out _);
+    }
+
+    /// <summary>Cursor-sharing <see cref="TryFindStandableNearestY(ChunkMap, float, float, float, int, out float)"/>,
+    /// which also reports the cell the crossing belongs to. The scan is one column, so every probe
+    /// after the first is a memo hit.</summary>
+    public static bool TryFindStandableNearestY(
+        ref VoxelCursor cursor,
+        float worldX,
+        float worldZ,
+        float aroundY,
+        int range,
+        out float surfaceY,
+        out int cellY)
+    {
+        if (range < 0) throw new ArgumentOutOfRangeException(nameof(range));
+
+        surfaceY = 0f;
+        cellY = 0;
+        bool found = false;
+        float nearest = float.PositiveInfinity;
+        int centre = (int)MathF.Floor(aroundY);
+
+        for (int y = centre - range; y <= centre + range; y++)
+        {
+            if (!StandableAt(ref cursor, worldX, y, worldZ, out float candidate)) continue;
+            float distance = MathF.Abs(candidate - aroundY);
+            if (distance >= nearest) continue;
+            nearest = distance;
+            surfaceY = candidate;
+            cellY = y;
+            found = true;
+        }
+
+        return found;
     }
 
     /// <summary>
@@ -612,6 +797,136 @@ public static class NavTraversal
 
         return false;
     }
+
+    /// <summary>
+    /// Stepping off a ledge, which is the move that makes a roof a place you can leave.
+    ///
+    /// Deliberately NOT a simulation, unlike <see cref="TryJump"/>. A jump has to be simulated
+    /// because whether the capsule clears the lip is the question; a fall has no such question — the
+    /// actor walks one metre and gravity does the rest — so the answer is the shaft being clear and
+    /// the price is the ballistic time <see cref="NavCosts.Fall"/> already knew how to compute. That
+    /// keeps this cheap enough to offer at every neighbour a walk edge rejected, which is where a
+    /// ledge always turns up.
+    ///
+    /// There is no fall damage in this game, so height carries no cost beyond the seconds it takes.
+    /// A fall is also one way: A* may route a man down somewhere he has to dig out of, and that is
+    /// the cost model being honest rather than a case to special-case.
+    /// </summary>
+    public static bool TryFall(
+        ChunkMap map,
+        NavCell from,
+        int dx,
+        int dz,
+        out NavCell landing,
+        out float cost)
+        => TryFall(new NavProbeCache(map), from, dx, dz, out landing, out cost);
+
+    /// <summary>Memoized <see cref="TryFall(ChunkMap, NavCell, int, int, out NavCell, out float)"/>.
+    /// The ledge, the landing and the shaft between them are one column plus its neighbour, so the
+    /// memo answers nearly everything after the first probe.</summary>
+    public static bool TryFall(
+        NavProbeCache cache,
+        NavCell from,
+        int dx,
+        int dz,
+        out NavCell landing,
+        out float cost)
+    {
+        landing = default;
+        cost = NavCosts.Inf;
+        if (Math.Abs(dx) + Math.Abs(dz) != 1
+            || !Standable(cache, from.X, from.Y, from.Z, out float ledgeY))
+            return false;
+
+        // He does not drop straight down: horizontal velocity is SET from intent every tick, in the
+        // air as much as on the ground, so he sails outward at walk speed for the whole flight. The
+        // column immediately off the ledge is only the FIRST candidate landing, and often not a
+        // legal one — the rim column of a roof or the foot of a cliff frequently has nowhere the
+        // capsule can rest, and a model that only looked there decided a roof had no way off it.
+        for (int run = 1; run <= MaximumFallRunCells; run++)
+        {
+            int x = from.X + dx * run;
+            int z = from.Z + dz * run;
+            // Anything solid at his own height ends the search rather than skipping past it: that is
+            // a wall he would walk into, not a column he flies over.
+            if (!IsCapsuleClearAt(ref cache.Cursor, x, z, ledgeY)) return false;
+
+            if (!TryLandingBelow(cache, x, z, from.Y, out var candidate, out float landingY))
+                continue;
+
+            float drop = ledgeY - landingY;
+            if (drop < MinimumFallDrop) return false;
+            // He can only reach a column he has time to fly to. Cheap and exactly the physics: the
+            // flight lasts Fall(drop) seconds and covers walk speed metres of it.
+            if (run > PlayerMovement.WalkSpeed * NavCosts.Fall(drop)) return false;
+
+            landing = candidate;
+            cost = run * NavCosts.WalkOneMetre + NavCosts.Fall(drop);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the capsule fits down the column it is about to drop through, from the step off the
+    /// ledge to the landing. One probe per metre of drop: the body's three sample spheres overlap
+    /// across its 1.8 m, so metre spacing leaves no gap for an overhang to hide in.
+    /// </summary>
+    /// <summary>
+    /// Where a body dropped down this column stops: the first solid field sample under the ledge,
+    /// then one capsule check to see whether that is somewhere he can stand.
+    ///
+    /// The cheapness is the point, and it took a measurement to learn it. This was a capsule
+    /// standability scan of every cell in the column plus a capsule clearance probe per metre of
+    /// shaft — around two hundred capsule resolves per probe, five times what simulating a whole
+    /// jump costs, spent at EVERY neighbour an ordinary walk edge rejected, which on a map with
+    /// walls is most of them. Searches stopped finishing inside their tick allowance and NPCs paced
+    /// where they used to walk. A raw field sample per metre and one capsule check at the end is the
+    /// same answer for a fiftieth of the work.
+    ///
+    /// It is also more honest than the standability scan was: that one skipped solid ground it did
+    /// not like the look of and kept searching underneath it, which is falling through rock. The
+    /// first solid sample ends the drop whatever it turns out to be.
+    /// </summary>
+    private static bool TryLandingBelow(
+        NavProbeCache cache,
+        int x,
+        int z,
+        int fromY,
+        out NavCell landing,
+        out float landingY)
+    {
+        landing = default;
+        landingY = 0f;
+        int lowest = Math.Max(ChunkConstants.WorldMinY, fromY - MaximumFallCells);
+        for (int y = fromY; y >= lowest; y--)
+        {
+            if (!TerrainCollision.TrySampleRaw(
+                    ref cache.Cursor, new Vector3(x + 0.5f, y, z + 0.5f), out float sample))
+                return false;
+            if (sample >= 0f) continue;
+
+            // Solid but not standable is the foot of a cliff or a steep bank, where the blended
+            // field reads too steep to rest on. Not a landing, and not a reason to keep looking
+            // deeper either — the caller tries the next column out, which is where his horizontal
+            // speed is carrying him anyway.
+            if (!Standable(cache, x, y, z, out landingY)) return false;
+            landing = new NavCell(x, y, z);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>The capsule standing at this column and height touches nothing.</summary>
+    private static bool IsCapsuleClearAt(ref VoxelCursor cursor, int x, int z, float feetY)
+        => TerrainCollision.TryDeepestContact(
+               ref cursor,
+               PlayerMovement.Body,
+               new Vector3(x + 0.5f, feetY, z + 0.5f),
+               out var contact)
+           && contact.Distance >= PlayerMovement.Body.Radius;
 
     /// <summary>
     /// Finds the first soil voxel blocking a cardinal move. This deliberately returns a frontier

@@ -128,7 +128,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 lines.Add("spawn pickup <item> [x z]");
                 lines.Add("equip <@s|@actor-id> <item>");
                 lines.Add("ai stats");
-                lines.Add("ai track <off|on|beacons|facing|clustering|colliders|ids|states>");
+                lines.Add("ai track <off|on|beacons|facing|clustering|colliders|ids|states|paths>");
                 lines.Add("net <seed|log>");
             }
             else
@@ -142,7 +142,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             lines.Add("spawn pickup <item> [x z]");
             lines.Add("equip <@s|@actor-id> <item>");
             lines.Add("ai stats");
-            lines.Add("ai track <off|on|beacons|facing|clustering|colliders|ids|states>");
+            lines.Add("ai track <off|on|beacons|facing|clustering|colliders|ids|states|paths>");
             lines.Add("net <seed|log>");
         }
         lines.Add("Type 'help <command>' for details. Press Tab to complete names and IDs.");
@@ -259,7 +259,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             if (tokenIndex == 1) return ["stats", "track"];
             if (tokenIndex >= 2 && tokens.Length > 1
                 && tokens[1].Equals("track", StringComparison.OrdinalIgnoreCase))
-                return ["off", "on", "beacons", "facing", "clustering", "colliders", "ids", "states"];
+                return ["off", "on", "beacons", "facing", "clustering", "colliders", "ids", "states", "paths"];
         }
         if (root == "session" && tokenIndex == 1)
             return ["status", "editor", "structure", "host", "join", "playtest", "playtest-networked"];
@@ -409,7 +409,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             [
                 "AI diagnostics:",
                 "  ai stats",
-                "  ai track [off|on|beacons|facing|clustering|colliders|ids|states]",
+                "  ai track [off|on|beacons|facing|clustering|colliders|ids|states|paths]",
                 "Shows the latest 1-second average for mob movement and off-thread path searches.",
                 "track draws a debug overlay over every NPC; layers combine, and no argument reports",
                 "the current state. beacons are vertical beams visible through terrain, facing adds a",
@@ -418,7 +418,9 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "actor including yourself - the volumes a shot is tested against, not the model.",
                 "ids labels each NPC with the actor id the terminal takes as @<id>.",
                 "states labels each NPC with what it decided to do: OBJECTIVE, COVER, BOUND, ENTRENCH,",
-                "HOLD or GRENADE. NPC intent is deliberately not on the wire, so states is blank",
+                "HOLD or GRENADE. paths draws the route each NPC has left to walk, in team colour,",
+                "with jump legs yellow, fall legs blue, dig legs orange and a cross at each of them.",
+                "Neither an NPC's intent nor its route is on the wire, so states and paths are blank",
                 "unless this session runs the server - singleplayer, session host, or a playtest.",
                 "Everything else is answered client-side and never reaches the server.",
             ],
@@ -493,11 +495,14 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 case "states" or "state":
                     layers |= NpcTrackerLayers.States;
                     break;
+                case "paths" or "path":
+                    layers |= NpcTrackerLayers.Paths;
+                    break;
                 default:
                     return TerminalOutputFor(
                         false,
                         $"Unknown tracking layer: {tokens[i]}. "
-                        + "Use off, on, beacons, facing, clustering, colliders, ids, or states");
+                        + "Use off, on, beacons, facing, clustering, colliders, ids, states, or paths");
             }
 
         NpcTracker.Layers = layers;
@@ -505,10 +510,14 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
         // The server only builds the per-tick snapshot while somebody is looking at it.
         MobDebugFeed.Enabled = layers.HasFlag(NpcTrackerLayers.States);
         if (!MobDebugFeed.Enabled) MobDebugFeed.Clear();
+        MobPathFeed.Enabled = layers.HasFlag(NpcTrackerLayers.Paths);
+        if (!MobPathFeed.Enabled) MobPathFeed.Clear();
 
-        string note = layers.HasFlag(NpcTrackerLayers.States) && !HostsItsOwnServer
-            ? " (states stay blank: NPC intent is not on the wire, so it only shows when this "
-              + "session runs the server)"
+        bool serverOnlyLayers = layers.HasFlag(NpcTrackerLayers.States)
+            || layers.HasFlag(NpcTrackerLayers.Paths);
+        string note = serverOnlyLayers && !HostsItsOwnServer
+            ? " (states and paths stay blank: an NPC's intent and its route are not on the wire, so "
+              + "they only show when this session runs the server)"
             : string.Empty;
         return TerminalOutputFor(true, $"NPC tracking: {DescribeTrackerLayers(layers)}{note}");
     }

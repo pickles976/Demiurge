@@ -52,6 +52,98 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
                 $"mob {mob.Id} remained at its spawn: {starts[mob.Id]} -> {mob.Position}"));
     }
 
+    /// <summary>
+    /// Team 1's base wall is a receding-horizon trap: bounded searches used to alternate tiny
+    /// prefixes through the same handful of cells. The nearest squad could still capture and hide
+    /// that failure, so every actor must leave the spawn basin as well as securing the near flag.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void TeamOneEscapesSpawnAndCapturesItsNearestFlag()
+    {
+        string root = FindRepositoryRoot();
+        var map = RuntimeMapSerializer.Load(
+            Path.Combine(root, "maps", "conquest", "runtime.dmap"));
+        var plan = InitialTeamSpawnPlan.Create(
+            map.Placements,
+            playerTeam: 1,
+            npcsPerTeam: 16);
+        var teamSpawns = plan.NpcSpawns.Where(spawn => spawn.Team == 1).ToArray();
+        Assert.Equal(16, teamSpawns.Length);
+        Vector3 spawnCentre = new(
+            teamSpawns.Average(spawn => spawn.Position.X),
+            teamSpawns.Average(spawn => spawn.Position.Y),
+            teamSpawns.Average(spawn => spawn.Position.Z));
+
+        using var world = new MobIntegrationHarness(map.Terrain, seed: 0x71A1);
+        var flags = map.Placements
+            .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
+            .Select(placement => (Placement: placement, Object: world.Flags.Spawn(placement.Position)))
+            .ToArray();
+        var nearest = flags.MinBy(flag => HorizontalDistanceSquared(spawnCentre, flag.Placement.Position));
+
+        ushort id = 60_000;
+        var starts = new Dictionary<ushort, Vector3>();
+        foreach (var spawn in teamSpawns)
+        {
+            Vector3 position = NavTraversal.TryFindNearestStandableForActor(
+                    map.Terrain,
+                    spawn.Position,
+                    horizontalRadius: 8,
+                    out var spawnCell)
+                ? NavTraversal.Position(map.Terrain, spawnCell)
+                : spawn.Position;
+            var mob = world.AddMob(id++, position, team: 1);
+            starts[mob.Id] = mob.Position;
+        }
+
+        uint capturedTick = 0;
+        var maximumDisplacement = starts.Keys.ToDictionary(actorId => actorId, _ => 0f);
+        var stuckEvents = new List<(ushort ActorId, float Displacement)>();
+        uint maximumTicks = 180u * NetworkConfig.TickRate;
+        for (uint tick = 0; tick < maximumTicks; tick++)
+        {
+            world.Step(tick, wallClockDelayMs: 2);
+            foreach (var mob in world.Actors.Where(actor => actor.IsMob && actor.Team == 1))
+            {
+                maximumDisplacement[mob.Id] = MathF.Max(
+                    maximumDisplacement[mob.Id],
+                    MathF.Sqrt(HorizontalDistanceSquared(starts[mob.Id], mob.Position)));
+            }
+            while (world.Mobs.TryDequeueStuckMob(out ushort stuckId))
+                stuckEvents.Add((stuckId, maximumDisplacement[stuckId]));
+            if (capturedTick == 0
+                && nearest.Object.Team.Value == 1
+                && nearest.Object.Team.Progress >= 0.999f)
+                capturedTick = tick;
+        }
+
+        output.WriteLine(
+            $"team 1 spawn {spawnCentre}; nearest flag {nearest.Placement.Position}; "
+          + $"captured tick {capturedTick}/{maximumTicks}; path requests {world.Mobs.DebugPathRequests}; "
+          + $"stuck {string.Join(',', stuckEvents.Select(item => $"{item.ActorId}@{item.Displacement:0}m"))}");
+        var flagsById = flags.ToDictionary(flag => flag.Object.NetworkId);
+        foreach (var assignment in world.Mobs.DebugAssignments().OrderBy(item => item.ActorId))
+        {
+            var mob = world.Actors.Single(actor => actor.Id == assignment.ActorId);
+            output.WriteLine(
+                $"mob {mob.Id} squad {assignment.Squad} flag {assignment.FlagId}: "
+              + $"{starts[mob.Id]} -> {mob.Position}; max {maximumDisplacement[mob.Id]:0.0} m; "
+              + $"destination {assignment.Destination}");
+            Assert.True(
+                maximumDisplacement[mob.Id] >= 75f,
+                $"mob {mob.Id} never escaped Team 1's spawn-wall basin");
+            Assert.True(flagsById.TryGetValue(assignment.FlagId, out var assignedFlag));
+            Assert.True(
+                HorizontalDistanceSquared(assignment.Destination, assignedFlag.Placement.Position)
+                    <= 60f * 60f,
+                $"mob {mob.Id} retained destination {assignment.Destination} from another squad "
+              + $"after reassignment to flag {assignment.FlagId} at {assignedFlag.Placement.Position}");
+        }
+        Assert.DoesNotContain(stuckEvents, item => item.Displacement < 75f);
+        Assert.NotEqual(0u, capturedTick);
+    }
+
     [Theory]
     [Trait("Category", "Integration")]
     [InlineData(1)]
@@ -278,12 +370,17 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
             60_000,
             SurfaceQuery.SurfacePosition(terrain, 0.5f, -20.5f),
             primary: ItemType.Sks);
+        float minimumY = mob.Position.Y;
 
         RunUntilSurface(
             world,
             mob,
-            success: actor => actor.Position.Z >= trenchHalfWidth + 2f
-                              && actor.Position.Y >= MobIntegrationTerrain.Ground - 0.5f,
+            success: actor =>
+            {
+                minimumY = MathF.Min(minimumY, actor.Position.Y);
+                return actor.Position.Z >= trenchHalfWidth + 2f
+                       && actor.Position.Y >= MobIntegrationTerrain.Ground - 0.5f;
+            },
             maximumSeconds: 90,
             out uint successTick,
             out int jumpTicks,
@@ -292,8 +389,13 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
 
         output.WriteLine(
             $"wide trench final {mob.Position}; success tick {successTick}; "
-          + $"jumps {jumpTicks}; edits {terrain.EditVersion}; wrong tool {editsWithWrongTool}");
+          + $"minimum Y {minimumY:0.00}; jumps {jumpTicks}; "
+          + $"edits {terrain.EditVersion}; wrong tool {editsWithWrongTool}");
         Assert.NotEqual(0u, successTick);
+        Assert.True(
+            minimumY > MobIntegrationTerrain.Ground - 2f,
+            $"NPC descended into the trench instead of taking the bridge; minimum Y was {minimumY:0.00}");
+        Assert.Equal(0, terrain.EditVersion);
         Assert.Equal(0, editsWithWrongTool);
         Assert.False(world.Mobs.TryDequeueStuckMob(out _));
     }

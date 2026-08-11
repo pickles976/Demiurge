@@ -35,13 +35,17 @@ map. They are compatible, and the first is a prerequisite for measuring the seco
 This is a system, not a patch. It wants the same treatment the time-costed A* got.
 
 **The first way out is DONE, and production takes it.** `NavSearchOptions.Default` now sets
-`PrimaryExpansionBudget = 64` and `FailureExpansionBudget = 256`; the `TimeSpan`s are retained,
+`PrimaryExpansionBudget = 128` and `FailureExpansionBudget = 320`; the `TimeSpan`s are retained,
 ignored, and documented as a record of what the budget was originally meant to buy. The counts are
 calibrated rather than picked — conquest measures ~0.8 ms of CPU per expansion, at which price the
 old 25 ms and 100 ms budgets bought about 32 and 127 expansions, so 64/256 reproduce the same
-ceilings without descheduling overshoot. Both are multiples of the 64-expansion check interval on
-purpose. This does not make navigation cheaper; it makes the cost predictable and stops route quality
-depending on how busy the machine was.
+ceilings without descheduling overshoot. The limits were later raised when 64/256 returned no useful
+prefix for one of the 32 initial conquest routes and repeatedly replanned inside Team 1's spawn.
+Actors that actually repeat bounded prefixes now escalate individually through 4,096, 8,192 and
+16,384 expansions; making 2,048 the default pushed the 32-route conquest benchmark to roughly two
+seconds p95. The ordinary limits remain multiples of the 64-expansion check interval on purpose. This
+does not make navigation cheaper; it makes the cost predictable and stops route quality depending on
+how busy the machine was.
 
 Also since this was written: the heuristic had been quietly deflated 1.5x (it divided distance by
 sprint speed while every edge is priced at walk speed), so the search has only just started behaving

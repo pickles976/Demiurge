@@ -116,7 +116,14 @@ public sealed class EditorClientSession : IClientSession
         if (playtest is not null)
             playtest.Update(time);
         else
-            terrainView?.RebuildDirty(camera.Transform.Position.ToNumerics());
+            // The editor's fly camera IS the observer, so unlike the runtime both the eye and the
+            // facing come from it. TerrainLod's "never the camera" rule is about not letting a SECOND
+            // camera override the player's view; here there is only one.
+            terrainView?.RebuildDirty(TerrainViewBuilder.For(
+                game,
+                camera.Get<CameraComponent>(),
+                camera.Transform.Position.ToNumerics(),
+                TerrainViewBuilder.Facing(camera)));
     }
 
     public void StartPlaytest(RuntimeMap runtimeMap)

@@ -123,9 +123,11 @@ Common/Ai (pure, headlessly testable) -- the currency the layers above decide in
 - Accepted enemy gunshots within 60 m create investigation goals. A projectile passing within 2 m
   creates a two-second incoming-fire stimulus at the firing position, prompting cover selection or
   emergency dirt digging without continuously tracking the live shooter.
-- A pinned NPC that cannot move, is not already protected, and is not digging goes prone. Prone is a
-  real stance in shared geometry: perception/fire origins move down, hit detection uses a horizontal
-  capsule along the actor's yaw, and head/blast/suppression probes follow the lowered body.
+- A pinned NPC that cannot move, is not already protected, is not digging, and is actively engaging
+  beyond 30 m may go prone. Standing up imposes a four-second re-entry penalty, so fluctuating
+  suppression cannot produce prone/stand spam. Prone is a real stance in shared geometry:
+  perception/fire origins move down, hit detection uses a horizontal capsule along the actor's yaw,
+  and head/blast/suppression probes follow the lowered body.
 
 ### The combat currency
 

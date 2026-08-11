@@ -538,7 +538,7 @@ public sealed class EditorCoreTests
         var result = EditorValidation.Validate(document, terrain);
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, error => error.Contains("intersects terrain"));
+        Assert.Contains(result.Errors, error => error.Contains("no free space"));
     }
 
     [Fact]

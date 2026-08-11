@@ -36,10 +36,15 @@ public readonly record struct NavSearchOptions(
     /// Calibrated from measurement rather than picked. On the conquest scenario the pool spends about
     /// 3.5 cores of CPU per tick to complete ~102 searches per second averaging ~45 expansions, which
     /// is roughly 0.8 ms of CPU PER EXPANSION — dominated by walk and jump validation, which run the
-    /// real movement solver 15 and 40 times respectively. At that price the old 25 ms primary budget
-    /// bought about 32 expansions and the 100 ms failure budget about 127, before descheduling
-    /// overshoot. 64 and 256 are the same ceilings with room to spare, so switching the mechanism does
-    /// not quietly shorten routes as well.
+    /// real movement solver 15 and 40 times respectively. The original deterministic 64/256 limits
+    /// reproduced the old wall-clock ceilings, but stopped one of the 32 initial conquest routes
+    /// before it returned a useful prefix and left Team 1 repeatedly searching inside its spawn.
+    /// 128/320 remains the ordinary look-ahead. On Team 1's authored spawn wall, 320, 512 and 1,024
+    /// expansions all returned one- or two-cell lateral stumps; returning those stumps made the next
+    /// search choose the opposite adjacent cell and a whole squad oscillated forever. Production
+    /// therefore escalates only that actor's hard ceiling after repeated partial-prefix attempts;
+    /// see NavigationSystem. Making 2,048 the unconditional default pushed the 32-route conquest
+    /// benchmark from ~440 ms to ~2,034 ms p95, so exceptional recovery must remain exceptional.
     /// </para>
     /// <para>
     /// Both are multiples of 64 on purpose: the budget is only observed at
@@ -57,8 +62,8 @@ public readonly record struct NavSearchOptions(
         100_000,
         16f)
     {
-        PrimaryExpansionBudget = 64,
-        FailureExpansionBudget = 256,
+        PrimaryExpansionBudget = 128,
+        FailureExpansionBudget = 320,
     };
 
     /// <summary>
@@ -525,6 +530,14 @@ public static class NavSearch
             }
         }
 
+        /// <summary>
+        /// Uncached on purpose, unlike every other edge here. A fall is a column scan plus a handful
+        /// of capsule probes against the memo the whole search shares, not a movement simulation,
+        /// and one search asks about a given ledge once. A sixth table would cost more than it saves.
+        /// </summary>
+        public bool TryFall(NavCell from, int dx, int dz, out NavCell landing, out float cost)
+            => NavTraversal.TryFall(probes, from, dx, dz, out landing, out cost);
+
         public bool TryJump(
             ChunkMap map,
             NavCell from,
@@ -748,7 +761,6 @@ public static class NavSearch
     // cheapest frontier candidates after ordinary expansion, with a hard per-search ceiling.
     private const int MaximumDigProbes = 64;
     private const float MinimumAirProgressBeforeFallback = 4f;
-    private const int MaximumCommittedPartialDropCells = 2;
     private const float MinimumGoalRisePerHorizontalMetreForRecovery = 0.5f;
 
     private static readonly (int X, int Z)[] Directions =
@@ -781,7 +793,8 @@ public static class NavSearch
         long? blockedCellKey = null,
         Func<bool>? cancellationRequested = null,
         NavTraversalCache? sharedTraversalCache = null,
-        NavCell? preferredDigSite = null)
+        NavCell? preferredDigSite = null,
+        IReadOnlyList<long>? partialBacktrackCellKeys = null)
     {
         var options = requestedOptions ?? NavSearchOptions.Default;
         var probes = new NavProbeCache(map);
@@ -942,6 +955,7 @@ public static class NavSearch
                     options.AllowJump,
                     options.AllowDig,
                     blockedCellKey,
+                    partialBacktrackCellKeys,
                     preferredDigSite,
                     traversal,
                     nodes,
@@ -1021,6 +1035,7 @@ public static class NavSearch
         bool allowJump,
         bool allowDig,
         long? blockedCellKey,
+        IReadOnlyList<long>? partialBacktrackCellKeys,
         NavCell? preferredDigSite,
         TraversalCache traversal,
         Dictionary<long, Node> nodes,
@@ -1042,7 +1057,8 @@ public static class NavSearch
 
         if (traversable)
         {
-            if (IsAvoided(next, blockedCellKey))
+            if (IsAvoided(next, blockedCellKey)
+                || IsPartialBacktrack(next, partialBacktrackCellKeys))
             {
                 if (allowDig && (dx == 0 || dz == 0))
                     RecordDigFrontier(
@@ -1083,6 +1099,12 @@ public static class NavSearch
                         nodes,
                         open,
                         heuristicWeight);
+                // A ledge the walk validator rejected is exactly where a step down belongs, and the
+                // jump above may have relaxed the same cell at a different price. Offer both and let
+                // A* keep the cheaper one; that is what pricing them in the same unit is for.
+                TryRelaxFall(
+                    goal, current, dx, dz, blockedCellKey, partialBacktrackCellKeys,
+                    traversal, nodes, open, heuristicWeight);
                 if (allowDig && (dx == 0 || dz == 0))
                     RecordDigFrontier(
                         goal,
@@ -1110,11 +1132,25 @@ public static class NavSearch
                 out next,
                 out edgeCost))
         {
-            if (IsAvoided(next, blockedCellKey))
+            if (IsAvoided(next, blockedCellKey)
+                || IsPartialBacktrack(next, partialBacktrackCellKeys))
                 return;
             Relax(goal, current, next, edgeCost, NavAction.Jump, nodes, open, heuristicWeight);
             return;
         }
+
+        // Nothing to walk onto within the traversable band is the ordinary shape of a ledge: the
+        // ground in that direction is further down than a step. Not gated on allowJump — that flag
+        // withdraws an athletic move a live follower already failed, and stepping off a roof is not
+        // one. Without this edge a man on a roof has no way off it but the stairs he came up.
+        //
+        // Deliberately does NOT return when it succeeds. Recording an excavation frontier costs
+        // nothing and commits nothing, and letting a fall suppress it stopped an actor climbing out
+        // of a pit at all: partway up its wall there is always somewhere to drop back to, so the
+        // frontier that would have cut the next tread was never offered.
+        TryRelaxFall(
+            goal, current, dx, dz, blockedCellKey, partialBacktrackCellKeys,
+            traversal, nodes, open, heuristicWeight);
 
         if (!allowDig || dx != 0 && dz != 0)
             return;
@@ -1132,6 +1168,32 @@ public static class NavSearch
             preferredDigSite,
             digFrontiers,
             seenDigFrontiers);
+    }
+
+    /// <summary>
+    /// Prices the drop off this edge, if there is one, and relaxes it. Cardinal only, matching the
+    /// jump and dig edges: a diagonal step off a corner is a shape the follower cannot aim at.
+    /// </summary>
+    private static bool TryRelaxFall(
+        INavGoal goal,
+        Node current,
+        int dx,
+        int dz,
+        long? blockedCellKey,
+        IReadOnlyList<long>? partialBacktrackCellKeys,
+        TraversalCache traversal,
+        Dictionary<long, Node> nodes,
+        NavHeap open,
+        float heuristicWeight)
+    {
+        if (dx != 0 && dz != 0) return false;
+        if (!traversal.TryFall(current.Cell, dx, dz, out var landing, out float cost))
+            return false;
+        if (IsAvoided(landing, blockedCellKey)
+            || IsPartialBacktrack(landing, partialBacktrackCellKeys))
+            return false;
+        Relax(goal, current, landing, cost, NavAction.Fall, nodes, open, heuristicWeight);
+        return true;
     }
 
     private static void RecordDigFrontier(
@@ -1346,6 +1408,20 @@ public static class NavSearch
             && Math.Abs(cell.Z - blocked.Z) <= 1;
     }
 
+    private static bool IsPartialBacktrack(
+        NavCell cell,
+        IReadOnlyList<long>? partialBacktrackCellKeys)
+    {
+        if (partialBacktrackCellKeys is not { Count: > 0 }) return false;
+        // This is route commitment, not collision evidence. Exclude the consumed anchors exactly:
+        // applying the blocked-edge one-cell radius to a trail of prefixes can surround the current
+        // cell completely, producing an empty path/request loop instead of an escape.
+        foreach (long key in partialBacktrackCellKeys)
+            if (cell.Key == key)
+                return true;
+        return false;
+    }
+
     private static void Relax(
         INavGoal goal,
         Node current,
@@ -1373,11 +1449,46 @@ public static class NavSearch
         node.Parent = current.Cell.Key;
         node.ActionFromParent = action;
         node.HasParent = true;
+        // A bounded partial answer does not commit to a descent deeper than a man steps off on
+        // purpose, because it cannot prove there is a way back up and the graph never prices being
+        // stranded. The threshold is the fall bound itself, and it is applied consistently to both
+        // actions because a jump simulation and a fall probe can discover the SAME landing cell.
+        // A* keeps whichever priced it lower; while the two disagreed about commitment, the answer
+        // depended on which edge won by a hundredth of a second. It cost an afternoon — every route
+        // off the conquest spawn building's roof came back empty, because the jump edge undercut the
+        // fall by 0.03 s and dragged the whole region below the roof into "uncommitted", where no
+        // partial answer may end. Sixteen NPCs walked to the edge and stood there.
+        //
+        // Two cells used to be the threshold, from when jumping into a pit was the only way down.
         node.HasUncommittedDeepDescent =
             current.HasUncommittedDeepDescent
-            || action == NavAction.Jump
-                && current.Cell.Y - next.Y > MaximumCommittedPartialDropCells;
+            || action is NavAction.Jump or NavAction.Fall
+                && (current.Cell.Y - next.Y > NavTraversal.MaximumFallCells
+                    || DescentMovesVerticallyAwayFromGoal(goal, current.Cell, next));
         open.EnqueueOrDecrease(next.Key, node.Cost + node.Heuristic * heuristicWeight);
+    }
+
+    /// <summary>
+    /// A local drop can reduce straight-line distance by moving horizontally toward a target while
+    /// making the route categorically worse in Y — the exact shape of stepping into a trench whose
+    /// goal is on the far rim. Keep exploring it, because a complete route may prove a real exit,
+    /// but do not hand the irreversible prefix to a live follower merely because the search budget
+    /// ended first.
+    /// </summary>
+    private static bool DescentMovesVerticallyAwayFromGoal(
+        INavGoal goal,
+        NavCell from,
+        NavCell next)
+    {
+        if (next.Y >= from.Y) return false;
+        NavCell target = goal switch
+        {
+            GoalPosition position => position.Target,
+            GoalNear near => near.Target,
+            _ => default,
+        };
+        return (goal is GoalPosition || goal is GoalNear)
+            && Math.Abs(target.Y - next.Y) > Math.Abs(target.Y - from.Y);
     }
 
     private static bool CardinalClear(

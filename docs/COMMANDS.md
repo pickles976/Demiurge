@@ -30,7 +30,7 @@ equip <@s|@actor-id> <item>
 team <@s|@actor-id> <team>
 kill [<@s|@actor-id>]
 ai stats
-ai track [off|on|beacons|facing|clustering|colliders|ids|states]
+ai track [off|on|beacons|facing|clustering|colliders|ids|states|paths]
 net <seed|log>
 ```
 
@@ -102,18 +102,25 @@ than by a replicated flag, so nothing was added to the wire for it.
 | `colliders` | The volumes a shot is tested against, for **every** actor including yourself: the hit capsule (`GunConfig.HitRadius` 0.6 m over `PlayerMovement.Body.Height` 1.8 m), the head sphere that doubles damage (`HeadCenterHeight` ± `HeadRadius`, dropping when crouched), and — dimmer — the *movement* capsule, whose 0.4 m radius is a different volume from the hit capsule's 0.6 m |
 | `ids` | Each NPC's actor id over its head — the bare number, which `equip` and friends take as `@<id>` |
 | `states` | Each NPC's current decision over its head: `OBJECTIVE`, `COVER`, `BOUND`, `ENTRENCH`, `HOLD` or `GRENADE` |
+| `paths` | The route each NPC has left to walk: a line from the man through his remaining waypoints, team-coloured for walk legs, yellow for a jump, blue for a fall and orange for a dig, with a cross marking each non-walk waypoint. Drawn without depth testing, so a route into the wall an NPC is stuck against stays visible |
 
 `on` and `all` enable every layer. The overlay is drawn by `NpcTrackerScript` from the replicated
 player registry and touches no simulation or network state; the toggle is process-wide, so it
 survives session transitions and can be set before a session exists.
 
-`states` is the one layer that needs something from the server, and it is deliberately **not on the
-wire**: an NPC's intent is a server-side decision no client needs to draw the world, and replicating
-it would cost every player bandwidth forever for a developer's occasional look — the same reasoning
-that keeps `SquadRole` off the wire. `MobSystem` hands the labels to `MobDebugFeed`, a process-local
-snapshot, so `states` shows something only when this session runs the server (singleplayer,
-`session host`, or a playtest) and the command says so when it does not. The server builds the
-snapshot only while the layer is on.
+`states` and `paths` are the two layers that need something from the server, and both are
+deliberately **not on the wire**: an NPC's intent and its route are server-side decisions no client
+needs to draw the world, and replicating them would cost every player bandwidth forever for a
+developer's occasional look — the same reasoning that keeps `SquadRole` off the wire. `MobSystem`
+hands the labels to `MobDebugFeed` and the routes to `MobPathFeed`, process-local snapshots, so both
+layers show something only when this session runs the server (singleplayer, `session host`, or a
+playtest) and the command says so when they do not. The server builds each snapshot only while its
+layer is on.
+
+`paths` is the instrument for pathfinding questions specifically, because it shows the three things
+an intent label cannot: a route that stops two metres away is a search that ran out of budget, a
+route that ends at a wall with an orange cross is excavation, and a route with no way off a roof is
+a fall edge that was never offered.
 
 Labels are drawn by `LineText` as camera-facing line glyphs rather than as UI text. Stride's
 `FastTextRenderer` crashes on this platform, and a UI label anchored to a moving NPC would have to be

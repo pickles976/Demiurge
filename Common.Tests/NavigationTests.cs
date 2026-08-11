@@ -221,6 +221,191 @@ public class NavigationTests
         Assert.Contains(path.Waypoints, waypoint => waypoint.Action == NavAction.Jump);
     }
 
+    /// <summary>
+    /// A roof is somewhere you can get off, and getting off one is not an athletic move: this search
+    /// is denied jumps entirely and still reaches the ground five metres below, which no walk edge
+    /// can produce. That is the difference between a man on a roof and a man stuck on one.
+    /// </summary>
+    [Fact]
+    public void WalkOnlySearchStepsOffALedgeItCannotWalkDown()
+    {
+        float top = SyntheticTerrain.GroundHeight + 5f;
+        var map = Plateau(topY: top, edgeX: 1f);
+        var start = CellAt(map, -4, 0, aroundY: (int)top);
+        var target = CellAt(map, 5, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            CompleteSearch with { AllowJump = false });
+
+        Assert.True(path.ReachedGoal);
+        Assert.Contains(path.Waypoints, waypoint => waypoint.Action == NavAction.Fall);
+        Assert.True(path.Waypoints[^1].Position.Y < path.Waypoints[0].Position.Y - 4f);
+    }
+
+    /// <summary>
+    /// The drop is priced in the same seconds as everything else: the ballistic time of the fall
+    /// plus the metre walked off the edge. Asserted as a property of the cost model rather than a
+    /// number, so tuning walk speed or gravity cannot make this test lie.
+    /// </summary>
+    [Fact]
+    public void FallCostsTheBallisticTimePlusTheStepOff()
+    {
+        float top = SyntheticTerrain.GroundHeight + 5f;
+        var map = Plateau(topY: top, edgeX: 1f);
+        var ledge = CellAt(map, 0, 0, aroundY: (int)top);
+
+        Assert.True(NavTraversal.TryFall(map, ledge, 1, 0, out var landing, out float cost));
+
+        float drop = NavTraversal.Position(map, ledge).Y - NavTraversal.Position(map, landing).Y;
+        // He sails outward while he falls, so the walk is however many cells the landing is out.
+        int run = landing.X - ledge.X;
+        Assert.Equal(run * NavCosts.WalkOneMetre + NavCosts.Fall(drop), cost, 4);
+        Assert.True(drop > 4f);
+    }
+
+    /// <summary>
+    /// A fall edge is intentionally local. Without this bound, the ballistic price makes dropping
+    /// into a deep trench look much cheaper than walking sideways to its bridge, even though the
+    /// bounded search cannot prove that the one-way landing has an exit.
+    /// </summary>
+    [Fact]
+    public void FallDeeperThanTheIntentionalDropBoundIsNotOffered()
+    {
+        float top = SyntheticTerrain.GroundHeight + NavTraversal.MaximumFallCells + 2f;
+        var map = Plateau(topY: top, edgeX: 1f);
+        var ledge = CellAt(map, 0, 0, aroundY: (int)top);
+
+        Assert.False(NavTraversal.TryFall(map, ledge, 1, 0, out _, out _));
+    }
+
+    /// <summary>
+    /// This trench is shallow enough that the local traversal contract honestly offers its floor
+    /// as a fall. A bounded search still must not return that one-way move before proving an exit;
+    /// the useful partial answer is the approach to the offset bridge.
+    /// </summary>
+    [Fact]
+    public void BoundedBridgeSearchDoesNotCommitToAnUnprovedFallTowardTheFarRim()
+    {
+        const float trenchHalfWidth = 7.5f;
+        const float bridgeHalfWidth = 1.5f;
+        const float ground = SyntheticTerrain.GroundHeight;
+        float trenchFloor = ground - 6f;
+        var map = SyntheticTerrain.Build(
+            (x, y, z) =>
+            {
+                float field = y - ground;
+                float trench = MathF.Max(MathF.Abs(z) - trenchHalfWidth, trenchFloor - y);
+                field = MathF.Max(field, -trench);
+                float bridge = MathF.Max(MathF.Abs(x) - bridgeHalfWidth, y - ground);
+                return MathF.Min(field, bridge);
+            },
+            chunkRadius: 2);
+        var start = CellAt(map, 10, -12, aroundY: (int)ground);
+        var target = CellAt(map, 10, 12, aroundY: (int)ground);
+
+        // Prove the tempting edge exists; this test is about partial-path commitment, not the
+        // independent maximum-fall guard.
+        Assert.True(NavTraversal.TryFall(map, CellAt(map, 10, -9), 0, 1, out _, out _));
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            NavSearchOptions.Deterministic(primaryExpansions: 64, failureExpansions: 256));
+
+        Assert.DoesNotContain(path.Waypoints, waypoint => waypoint.Action == NavAction.Fall);
+        Assert.All(
+            path.Waypoints,
+            waypoint => Assert.True(
+                waypoint.Position.Y > ground - 2f,
+                $"Bounded prefix descended into the trench at {waypoint.Position}"));
+    }
+
+    /// <summary>
+    /// A lintel over the column he would step into is not a ledge, however far down the ground is
+    /// beyond it. The shaft has to take the capsule the whole way, not only at the landing.
+    /// </summary>
+    [Fact]
+    public void FallIsRefusedWhereTheShaftIsBlocked()
+    {
+        float top = SyntheticTerrain.GroundHeight + 5f;
+        // A canopy over the drop, starting just past the ledge and reaching two metres above it.
+        var lintelCentre = new Vector3(2.75f, top + 1f, 0f);
+        var lintelExtent = new Vector3(1.25f, 1f, 100f);
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(
+                MathF.Min(y - SyntheticTerrain.GroundHeight, MathF.Max(x - 1f, y - top)),
+                TerrainEdits.BoxDistance(new Vector3(x, y, z) - lintelCentre, lintelExtent)));
+        var ledge = CellAt(map, 0, 0, aroundY: (int)top);
+
+        Assert.False(NavTraversal.TryFall(map, ledge, 1, 0, out _, out _));
+    }
+
+    /// <summary>
+    /// The spawn-placement question: an actor authored in the air inside a building belongs on that
+    /// building's floor, not on top of it. <see cref="SurfaceQuery.HighestSurfaceY"/> answers the
+    /// roof for the same column, which is the whole reason this scan exists.
+    /// </summary>
+    [Fact]
+    public void ColumnScanTakesTheNearerFreeSpaceInEitherDirection()
+    {
+        float roofLow = SyntheticTerrain.GroundHeight + 4f;
+        float roofHigh = roofLow + 1f;
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(y - SyntheticTerrain.GroundHeight, MathF.Max(roofLow - y, y - roofHigh)));
+
+        // Standing inside the room: the floor below is nearer than the roof above.
+        Assert.True(NavTraversal.TryFindStandableNearestY(
+            map, 0.5f, 0.5f, SyntheticTerrain.GroundHeight + 1f, 8, out float inside));
+        Assert.Equal(SyntheticTerrain.GroundHeight, inside, 1);
+
+        // Buried in the roof slab itself: now the top of it is the nearer free space, and the same
+        // scan says so without anyone choosing a direction.
+        Assert.True(NavTraversal.TryFindStandableNearestY(
+            map, 0.5f, 0.5f, roofHigh - 0.25f, 8, out float buried));
+        Assert.Equal(roofHigh, buried, 1);
+
+        Assert.Equal(roofHigh, SurfaceQuery.HighestSurfaceY(map, 0, 0)!.Value, 1);
+    }
+
+    /// <summary>
+    /// A man whose formation slot lands on a wall belongs beside it, not on the roof six metres up.
+    /// This is what put five of sixteen NPCs on the conquest spawn building.
+    /// </summary>
+    [Fact]
+    public void NearestStandablePrefersTheGroundBesideAWallOverItsRoof()
+    {
+        float roofLow = SyntheticTerrain.GroundHeight + 4f;
+        float roofHigh = roofLow + 1f;
+        // A wall filling x in [0, 2] from the ground to the top of the roof it carries.
+        var map = SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(
+                y - SyntheticTerrain.GroundHeight,
+                TerrainEdits.BoxDistance(
+                    new Vector3(x, y, z) - new Vector3(1f, (SyntheticTerrain.GroundHeight + roofHigh) * 0.5f, 0f),
+                    new Vector3(1f, (roofHigh - SyntheticTerrain.GroundHeight) * 0.5f, 100f))));
+
+        Assert.True(NavTraversal.TryFindNearestStandableForActor(
+            map,
+            new Vector3(1.5f, SyntheticTerrain.GroundHeight, 0.5f),
+            horizontalRadius: 4,
+            out var cell));
+
+        Assert.True(
+            NavTraversal.Position(map, cell).Y < roofLow,
+            $"Resolved onto the wall's roof at Y={NavTraversal.Position(map, cell).Y}");
+    }
+
+    /// <summary>Flat ground plus a plateau filling everything up to <paramref name="edgeX"/>.</summary>
+    private static ChunkMap Plateau(float topY, float edgeX)
+        => SyntheticTerrain.Build((x, y, z) =>
+            MathF.Min(
+                y - SyntheticTerrain.GroundHeight,
+                MathF.Max(x - edgeX, y - topY)));
+
     [Fact]
     public void SharpHalfMetreBridgeLipIsAuthoritativelyValidated()
     {

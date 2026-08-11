@@ -212,6 +212,7 @@ public static class RuntimeMapSerializer
             Terrain = terrain,
             Placements = placements,
             SourceHash = sourceHash,
+            FormatVersion = version,
         };
     }
 

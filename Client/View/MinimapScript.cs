@@ -75,10 +75,10 @@ public sealed class MinimapScript : SyncScript
     /// without the pool ever growing mid-frame.</summary>
     private const int MaxFlagIcons = 10;
 
-    private static readonly Color BorderColor = new(225, 230, 238, 90);
-    private static readonly Color SelfColor = new(255, 255, 255, 235);
-    private static readonly Color FriendlyColor = new(120, 190, 255, 220);
-    private static readonly Color EnemyColor = new(255, 105, 95, 235);
+    private static readonly Color BorderColor = new(225, 230, 238, 130);
+    private static readonly Color SelfColor = new(255, 255, 255, 255);
+    private static readonly Color FriendlyColor = new(25, 145, 255, 245);
+    private static readonly Color EnemyColor = new(255, 35, 30, 255);
 
     private readonly List<ImageElement> icons = [];
     private readonly HashSet<ushort> visibleEnemyIds = [];

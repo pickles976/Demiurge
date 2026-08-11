@@ -22,8 +22,42 @@ namespace Demiurge
         readonly ChunkMeshFactory factory;
         readonly GameClient.IClientTerrainSource terrain;
         readonly SectionMeshQueue meshers;
-        /// <summary>Live geometry, with the shared buffers it borrows so they can be released.</summary>
-        readonly Dictionary<LodSection, (Entity Entity, SectionBuffers Buffers)> entities = new();
+
+        /// <summary>
+        /// One box's meshing result, kept whether or not it is currently on screen.
+        ///
+        /// The cache is the reason a level change is no longer a re-mesh. Selection changes with the
+        /// VIEW now, not only with the player's position, so aiming across a valley and lowering the
+        /// rifle again used to mean meshing the same few hundred boxes twice a second; keeping the
+        /// built entity and toggling <c>Entity.Scene</c> makes the second aim free. Detaching is the
+        /// cheapest operation Stride offers here and it releases nothing, which is exactly what is
+        /// wanted.
+        ///
+        /// <see cref="Entity"/> is null when the box meshed to NOTHING, and that case has to be
+        /// cached too rather than merely forgotten: three quarters of all boxes are open air, so a
+        /// cache that only remembered geometry would re-mesh the empty majority of the world on every
+        /// view change — the same mistake, one layer along, that `resolved` exists to prevent.
+        /// </summary>
+        struct Cached
+        {
+            public Entity? Entity;
+            public SectionBuffers? Buffers;
+            public bool Attached;
+
+            /// <summary>Frame this box was last wanted, for LRU eviction.</summary>
+            public long LastUsed;
+        }
+
+        /// <summary>Everything meshed and still believed current, on screen or not.</summary>
+        readonly Dictionary<LodSection, Cached> cache = new();
+
+        /// <summary>Cache entries holding GPU geometry — what the memory ceiling is actually about.</summary>
+        int cachedGeometry;
+
+
+        readonly List<(long LastUsed, LodSection Section)> evictionScratch = new();
+
+        long frameCounter;
 
         // Reused per frame rather than allocated: this runs every frame forever.
         readonly List<(LodSection Section, MeshData Mesh)> batch = new();
@@ -67,12 +101,30 @@ namespace Demiurge
         /// <summary>Chunk the desired set was last computed for; null until the player exists.</summary>
         ChunkIndex? lodAnchor;
 
+        /// <summary>View axis and lens the desired set was last computed for. Zero forward forces the
+        /// first selection, since no real direction can be within 5 degrees of it.</summary>
+        Vector3 lastForward;
+        float lastTanHalfFov;
+
+        /// <summary>Owns the refinement queue's buffers, so reselecting allocates nothing.</summary>
+        readonly TerrainLod lod = new();
+
         /// <summary>
         /// Boxes at a level we no longer want, kept ON SCREEN until the boxes that replace them have
         /// actually been uploaded. Detaching on the spot leaves a hole in the terrain for as long as
         /// meshing and uploading take, which is very visible when walking across a level boundary.
         /// </summary>
-        readonly List<(LodSection Old, List<LodSection> Replacements)> superseded = new();
+        readonly Dictionary<LodSection, List<LodSection>> superseded = new();
+
+        /// <summary>Scratch for retiring, since <see cref="superseded"/> cannot be mutated while walked.</summary>
+        readonly List<LodSection> retired = new();
+
+        /// <summary>
+        /// Cache entries currently in the scene. Maintained rather than derived because reselection
+        /// walks it, and reselection now happens when the player TURNS — walking the whole cache, most
+        /// of which is detached, would make turning cost more the longer the session ran.
+        /// </summary>
+        readonly HashSet<LodSection> attached = new();
 
         /// <summary>
         /// Boxes that have been meshed, whether or not they produced geometry. Distinct from
@@ -115,12 +167,15 @@ namespace Demiurge
             terrain.ChunkCompleted -= MarkChunkDirty;
             terrain.RegionEdited -= onRegionEdited;
             meshers.Dispose();
-            foreach (var (_, value) in entities)
+            foreach (var (_, value) in cache)
             {
-                value.Buffers.Release();
-                value.Entity.Scene = null;
+                value.Buffers?.Release();
+                if (value.Entity is not null) value.Entity.Scene = null;
             }
-            entities.Clear();
+            cache.Clear();
+            attached.Clear();
+            superseded.Clear();
+            cachedGeometry = 0;
         }
 
         /// <summary>Marks every section of one chunk, and anything reading into it.</summary>
@@ -186,17 +241,56 @@ namespace Demiurge
         const int MaxBatchVertices = 150_000;
 
         /// <summary>
+        /// Cached sections holding GPU geometry before the oldest detached ones are dropped.
+        ///
+        /// This is the cache's real cost: on the reference machine the iGPU and the CPU share one
+        /// DDR4 bus, so a buffer held for a view the player might return to competes for bandwidth
+        /// with the frame that is actually being drawn. Roughly twice the live count observed on the
+        /// conquest map, which is enough to hold a couple of aim directions plus the walk between
+        /// them.
+        ///
+        /// Note the ceiling counts SECTIONS, not buffers, and a batch's buffer pair survives until its
+        /// last section is released — so one cached section can pin up to 63 others' memory. Whether
+        /// that matters is a measurement, not a guess: <see cref="Diagnostics"/> reports live buffer
+        /// bytes so the pinning shows up if it is real.
+        /// </summary>
+        const int MaxCachedGeometry = 1024;
+
+        /// <summary>
+        /// Total cache entries, empties included. Empties cost a dictionary slot rather than memory,
+        /// but an unbounded set that grows with distance walked is a leak whatever each entry costs.
+        /// </summary>
+        const int MaxCachedSections = 16_384;
+
+        /// <summary>Evict down to this fraction of a ceiling, so eviction is occasional rather than
+        /// once per frame at the boundary.</summary>
+        const float EvictionTarget = 0.9f;
+
+        /// <summary>
+        /// Reselect when the view axis has turned this far. The frustum used for selection is widened
+        /// by <see cref="TerrainLod.FrustumMarginDegrees"/>, comfortably more than this, so a box that
+        /// flips level between two reselections does it outside what is drawn.
+        ///
+        /// This constant is what turns selection cost into frame cost, so it is worth stating what
+        /// that cost is: CollectDesired measures 0.31 ms at hip and 0.53 ms at the 3x worst case. At
+        /// 5 degrees and a fast 180 deg/s turn that is one reselection every 28 ms, i.e. about 3% of a
+        /// single 16.6 ms frame and nothing on the frames between. Halving this constant doubles that.
+        /// </summary>
+        const float ReselectDegrees = 5f;
+
+        static readonly float ReselectCosine = MathF.Cos(ReselectDegrees * MathF.PI / 180f);
+
+        /// <summary>Relative change in the lens that forces a reselect. Small, because this is what
+        /// makes aiming refine at all, and the ADS blend is a lerp rather than a step.</summary>
+        const float ReselectFovFraction = 0.02f;
+
+        /// <summary>
         /// Hands dirty sections to the mesher threads and uploads whatever came back. Call once per frame,
         /// not once per edit. Returns how many entities were swapped in.
         ///
         /// Sections whose 3x3 chunk neighbourhood hasn't fully arrived are moved to the back of the queue
         /// and retried — that gate is what makes off-thread meshing safe, and it also means the outer ring
         /// of the loaded area produces nothing until the ring beyond it exists.
-        /// </summary>
-        /// <summary>
-        /// <paramref name="playerPosition"/> — deliberately the PLAYER, not the camera. A fly camera can
-        /// sit anywhere; if it drove level selection, flying out would coarsen the terrain under
-        /// inspection and flying in would refine it, so it could never show what the player actually sees.
         /// </summary>
         /// <summary>
         /// Whether the ground around a position has actually been meshed yet — not merely streamed.
@@ -223,67 +317,78 @@ namespace Demiurge
             return desired.Count > 0;
         }
 
-        public int RebuildDirty(Vector3 lodFocus)
+        public int RebuildDirty(in TerrainView view)
         {
-            RefreshLod(lodFocus);
+            frameCounter++;
+            RefreshLod(view);
             Dispatch();
             return Collect();
         }
 
         /// <summary>
-        /// Recomputes which boxes should exist, and reconciles what does. Only when the player crosses a
-        /// chunk boundary: the quadtree walk is cheap but not free, and level boundaries are hundreds of
-        /// voxels out, so nothing changes within a chunk of movement.
+        /// Recomputes which boxes should exist, and reconciles what does.
+        ///
+        /// Gated, because selection is no longer cheap-and-rare. It used to run only when the player
+        /// crossed a chunk boundary, which was sufficient when the only input was a position. It now
+        /// also has to run when the player TURNS or when the lens changes, since both move the error
+        /// of every box in the world — and turning happens continuously. The gate is what keeps that
+        /// from being a per-frame quadtree walk; the widened selection frustum is what keeps the gate
+        /// from causing visible flicker at the frustum edge.
         /// </summary>
-        void RefreshLod(Vector3 playerPosition)
+        void RefreshLod(in TerrainView view)
         {
-            var anchor = ChunkTransforms.ChunkAt(playerPosition);
-            if (lodAnchor is { } previous && previous.Equals(anchor)) return;
+            var anchor = ChunkTransforms.ChunkAt(view.Origin);
+
+            bool moved = lodAnchor is not { } previous || !previous.Equals(anchor);
+            bool turned = Vector3.Dot(view.Forward, lastForward) < ReselectCosine;
+            bool zoomed = MathF.Abs(view.TanHalfFovY - lastTanHalfFov)
+                > ReselectFovFraction * MathF.Max(lastTanHalfFov, 1e-4f);
+
+            if (!moved && !turned && !zoomed) return;
 
             long refreshStart = Stopwatch.GetTimestamp();
 
             lodAnchor = anchor;
-            TerrainLod.CollectDesired(playerPosition, desired);
+            lastForward = view.Forward;
+            lastTanHalfFov = view.TanHalfFovY;
+            lod.CollectDesired(view, desired);
 
-            // Forget boxes the player has walked away from. Two things depend on this, and the second
-            // is the reason it happens HERE rather than opportunistically:
+            // Ask for anything newly wanted, and re-show anything already meshed. `resolved` is NOT
+            // trimmed to the desired set any more, and that single deletion is what the cache is:
+            // a box that leaves the set keeps its geometry and its settled status, so aiming across a
+            // valley and lowering the rifle again costs two dictionary walks rather than meshing the
+            // same few hundred boxes twice.
             //
-            //  - it bounds the set, which otherwise accumulates every box ever meshed and so grows with
-            //    distance walked rather than with view distance;
-            //  - it makes "resolved" mean "meshed while continuously wanted", which is exactly the
-            //    condition under which an edit is guaranteed to have been marked dirty. EnqueueDirty
-            //    drops marks for boxes that are not currently desired, so a box that left the set and
-            //    came back may have missed one — dropping it on the way out forces a re-mesh on the way
-            //    back in, instead of trusting a mesh that predates the dig.
-            resolved.IntersectWith(desired);
-
-            // Ask for anything newly wanted. Already-settled boxes are skipped, so crossing a boundary
-            // only costs the ring that actually changed level.
+            // The correctness that line used to provide has moved to where it belongs. It was there
+            // because EnqueueDirty drops marks for boxes that are not currently desired, so a box that
+            // left the set could miss an edit and come back stale. DirtySectionSink now invalidates
+            // every CACHED level an edit touches instead of only the one desired level, so a stale
+            // cached box is dropped at the edit rather than distrusted forever afterwards.
             //
-            // The test is RESOLVED, not `entities`, and the difference is the whole cost of walking.
+            // The test is RESOLVED, not geometry, and the difference is the whole cost of walking.
             // Most desired boxes are open air and mesh to nothing, so they never produce an entity —
             // measured at roughly 3,000 of 4,000. Asking "do I have geometry for this?" therefore
-            // answers "no" for all of them at every single chunk boundary, and re-queues the empty
-            // three quarters of the world every 16 metres walked: 2,800 sections re-meshed per
-            // crossing, eight workers pinned, thousands of empty results drained on the main thread,
-            // and the urgent dig lane starved behind all of it. `resolved` is the set that already
-            // records "this box has been meshed, whatever the answer was" — see its own comment, which
-            // makes precisely this point about the retirement path.
+            // answers "no" for all of them at every single reselection, and re-queues the empty three
+            // quarters of the world: 2,800 sections re-meshed, eight workers pinned, thousands of
+            // empty results drained on the main thread, and the urgent dig lane starved behind all of
+            // it.
             foreach (var wanted in desired)
+            {
+                Touch(wanted);
+
                 if (!resolved.Contains(wanted) && !inFlight.Contains(wanted)) EnqueueDirty(wanted);
+            }
 
             // Mark what is now at the wrong level, but do NOT detach it yet — record which desired boxes
             // have to arrive first. Retiring immediately is what opened a hole at every LOD transition.
-            foreach (var live in entities.Keys)
+            foreach (var live in attached)
             {
                 if (desired.Contains(live)) continue;
-                if (superseded.Exists(entry => entry.Old.Equals(live))) continue;
+                if (superseded.ContainsKey(live)) continue;
 
                 var replacements = new List<LodSection>();
-                foreach (var wanted in desired)
-                    if (Overlaps(live, wanted)) replacements.Add(wanted);
-
-                superseded.Add((live, replacements));
+                CollectReplacements(live, replacements);
+                superseded[live] = replacements;
             }
 
             stats.LodRefresh(Stopwatch.GetTimestamp() - refreshStart);
@@ -382,13 +487,21 @@ namespace Demiurge
             }
 
             RetireCovered();
+            EvictOverBudget();
 
             stats.EndFrame(
                 dirtyQueue.Count,
                 inFlight.Count,
                 urgentQueue.Count,
                 urgentQueue.Count > 0 && inFlight.Count >= MaxInFlight,
-                new Residency(entities.Count, desired.Count, superseded.Count, resolved.Count));
+                new Residency(
+                    Live: attached.Count,
+                    Desired: desired.Count,
+                    Superseded: superseded.Count,
+                    Resolved: resolved.Count,
+                    CachedGeometry: cachedGeometry,
+                    CachedTotal: cache.Count,
+                    HitCeiling: lod.LastHitCeiling));
             return applied;
         }
 
@@ -398,25 +511,67 @@ namespace Demiurge
         /// </summary>
         void RetireCovered()
         {
-            for (int i = superseded.Count - 1; i >= 0; i--)
+            retired.Clear();
+
+            foreach (var (old, replacements) in superseded)
             {
-                var (old, replacements) = superseded[i];
+                // Wanted again before its replacements ever landed — the view swung back. Cancel the
+                // retirement outright rather than hiding a box that is currently desired, which is a
+                // hole the cache would otherwise open every time somebody looked away and back.
+                if (desired.Contains(old))
+                {
+                    retired.Add(old);
+                    continue;
+                }
 
                 foreach (var replacement in replacements)
                     if (!resolved.Contains(replacement)) goto next;
 
-                Detach(old);
-                superseded.RemoveAt(i);
+                Hide(old);
+                retired.Add(old);
 
                 next: ;
             }
+
+            foreach (var old in retired) superseded.Remove(old);
         }
 
-        /// <summary>Whether two boxes cover any of the same world voxels. Levels nest, so this is a box test.</summary>
-        static bool Overlaps(LodSection a, LodSection b)
-            => a.OriginX < b.OriginX + b.Size && b.OriginX < a.OriginX + a.Size
-            && a.OriginY < b.OriginY + b.Size && b.OriginY < a.OriginY + a.Size
-            && a.OriginZ < b.OriginZ + b.Size && b.OriginZ < a.OriginZ + a.Size;
+        /// <summary>
+        /// The desired boxes covering the same world as one that is on screen at the wrong level.
+        ///
+        /// Found by SHIFTING rather than by scanning the desired set, and that is not a tidiness.
+        /// Levels nest exactly — every box is an aligned octree cell — so a box's coarser counterpart
+        /// is one shift away and its finer ones are a contiguous block, at most 72 lookups all told.
+        /// Scanning instead costs one pass over the whole desired set PER superseded box, which was
+        /// affordable when reselection only happened on a chunk boundary and is quadratic now that it
+        /// happens whenever the player turns five degrees.
+        /// </summary>
+        void CollectReplacements(LodSection live, List<LodSection> into)
+        {
+            for (int level = live.Level + 1; level <= LodSection.MaxLevel; level++)
+            {
+                int shift = level - live.Level;
+                var box = new LodSection(live.X >> shift, live.Y >> shift, live.Z >> shift, level);
+
+                if (desired.Contains(box)) into.Add(box);
+            }
+
+            for (int level = live.Level - 1; level >= 0; level--)
+            {
+                int shift = live.Level - level;
+                int span = 1 << shift;
+                int baseX = live.X << shift, baseY = live.Y << shift, baseZ = live.Z << shift;
+
+                for (int dx = 0; dx < span; dx++)
+                    for (int dy = 0; dy < span; dy++)
+                        for (int dz = 0; dz < span; dz++)
+                        {
+                            var box = new LodSection(baseX + dx, baseY + dy, baseZ + dz, level);
+
+                            if (desired.Contains(box)) into.Add(box);
+                        }
+            }
+        }
 
         /// <summary>
         /// Drains finished results into one shared buffer pair. Empty meshes are applied immediately and
@@ -445,7 +600,9 @@ namespace Demiurge
 
                 if (result.Mesh.Indices.Length == 0)
                 {
-                    Detach(result.Section);         // meshed to nothing: drop whatever was there
+                    // Meshed to nothing. Cached as an EMPTY rather than merely forgotten, so a later
+                    // reselection knows the answer instead of asking again — see Cached's comment.
+                    Attach(result.Section, entity: null, buffers: null, wanted: true);
                     resolved.Add(result.Section);
                     ReportEditLatency(result.Section);
                     stats.Record(hasGeometry: false, 0, 0);
@@ -467,7 +624,10 @@ namespace Demiurge
 
             for (int i = 0; i < batch.Count; i++)
             {
-                Attach(batch[i].Section, built[i], buffers);
+                // Not desired any more means the view moved while this was in flight. Keep the mesh —
+                // that is what the cache is for — but do not put it on screen at a level nobody asked
+                // for, or it would overlap whatever replaced it.
+                Attach(batch[i].Section, built[i], buffers, wanted: desired.Contains(batch[i].Section));
                 resolved.Add(batch[i].Section);
                 ReportEditLatency(batch[i].Section);
             }
@@ -489,23 +649,120 @@ namespace Demiurge
             stats.EditVisible(dispatched - timing.Marked, now - dispatched);
         }
 
-        /// <summary>Removes a section's geometry and releases its claim on the shared buffers.</summary>
-        void Detach(LodSection section)
+        /// <summary>Marks a box as wanted now, and puts it back on screen if it is already meshed.</summary>
+        void Touch(LodSection section)
         {
-            if (!entities.Remove(section, out var previous)) return;
+            if (!cache.TryGetValue(section, out var entry)) return;
 
-            previous.Entity.Scene = null;
-            previous.Buffers.Release();
+            entry.LastUsed = frameCounter;
+
+            if (!entry.Attached && entry.Entity is not null)
+            {
+                entry.Entity.Scene = scene;
+                entry.Attached = true;
+                attached.Add(section);
+                stats.Reused();
+            }
+
+            cache[section] = entry;
         }
 
-        void Attach(LodSection section, Entity entity, SectionBuffers buffers)
+        /// <summary>Takes a box off screen but KEEPS its geometry. The cheap half of the cache.</summary>
+        void Hide(LodSection section)
         {
-            // Detach the old BEFORE attaching the new one, or the stale geometry stays in the scene and
-            // you get two overlapping surfaces after an edit.
-            Detach(section);
+            if (!cache.TryGetValue(section, out var entry) || !entry.Attached) return;
 
-            entity.Scene = scene;
-            entities[section] = (entity, buffers);
+            if (entry.Entity is not null) entry.Entity.Scene = null;
+
+            entry.Attached = false;
+            attached.Remove(section);
+            cache[section] = entry;
+        }
+
+        /// <summary>Drops a box entirely, releasing its claim on the shared buffers.</summary>
+        void Evict(LodSection section)
+        {
+            if (!cache.Remove(section, out var entry)) return;
+
+            if (entry.Entity is not null)
+            {
+                entry.Entity.Scene = null;
+                cachedGeometry--;
+            }
+
+            attached.Remove(section);
+            entry.Buffers?.Release();
+            resolved.Remove(section);
+        }
+
+        /// <summary>
+        /// An edit landed inside a box that is cached at a level nobody is currently asking for.
+        ///
+        /// Dropping it is the whole invalidation story, and it is cheap in the right way: edits are
+        /// rare next to view changes, and the cost is one re-mesh IF the player ever looks at that
+        /// level again. The alternative — keeping it and re-meshing on return — would need the dirty
+        /// mark to survive arbitrarily long in a set nobody bounds.
+        /// </summary>
+        void Invalidate(LodSection section)
+        {
+            if (!cache.ContainsKey(section)) return;
+
+            Evict(section);
+            stats.Invalidated();
+        }
+
+        void Attach(LodSection section, Entity? entity, SectionBuffers? buffers, bool wanted)
+        {
+            // Drop the old BEFORE inserting the new one, or the stale geometry stays in the scene and
+            // you get two overlapping surfaces after an edit.
+            Evict(section);
+
+            if (entity is not null)
+            {
+                cachedGeometry++;
+                if (wanted)
+                {
+                    entity.Scene = scene;
+                    attached.Add(section);
+                }
+            }
+
+            cache[section] = new Cached
+            {
+                Entity = entity,
+                Buffers = buffers,
+                Attached = wanted && entity is not null,
+                LastUsed = frameCounter,
+            };
+        }
+
+        /// <summary>
+        /// Drops the least recently wanted cached boxes once either ceiling is passed.
+        ///
+        /// Only DETACHED, undesired boxes are candidates: evicting something on screen would open a
+        /// hole, and evicting something desired would immediately re-mesh it. The sort is over the
+        /// candidates rather than the whole cache and only runs when a ceiling is actually exceeded.
+        /// </summary>
+        void EvictOverBudget()
+        {
+            if (cachedGeometry <= MaxCachedGeometry && cache.Count <= MaxCachedSections) return;
+
+            evictionScratch.Clear();
+            foreach (var (section, entry) in cache)
+                if (!entry.Attached && !desired.Contains(section))
+                    evictionScratch.Add((entry.LastUsed, section));
+
+            evictionScratch.Sort(static (a, b) => a.LastUsed.CompareTo(b.LastUsed));
+
+            int geometryTarget = (int)(MaxCachedGeometry * EvictionTarget);
+            int sectionTarget = (int)(MaxCachedSections * EvictionTarget);
+
+            foreach (var (_, section) in evictionScratch)
+            {
+                if (cachedGeometry <= geometryTarget && cache.Count <= sectionTarget) break;
+                Evict(section);
+                stats.Evicted();
+            }
         }
 
         // ---- Diagnostics ----
@@ -519,7 +776,14 @@ namespace Demiurge
         /// climbs is a leak, and a leak here costs a scene entity, a draw, and a share of a GPU buffer
         /// that cannot be freed until the last section using it is detached.
         /// </summary>
-        readonly record struct Residency(int Entities, int Desired, int Superseded, int Resolved);
+        readonly record struct Residency(
+            int Live,
+            int Desired,
+            int Superseded,
+            int Resolved,
+            int CachedGeometry,
+            int CachedTotal,
+            bool HitCeiling);
 
         /// <summary>
         /// Where terrain load time actually goes. Kept in the build rather than bolted on when needed:
@@ -555,6 +819,18 @@ namespace Demiurge
             public void BudgetHit() => budgetHits++;
 
             public void NotReady() => notReady++;
+
+            // The cache window: boxes put back on screen without meshing, boxes dropped for space, and
+            // boxes dropped because an edit landed in a level nobody is currently looking at.
+            int reused;
+            int evicted;
+            int invalidated;
+
+            public void Reused() => reused++;
+
+            public void Evicted() => evicted++;
+
+            public void Invalidated() => invalidated++;
 
             // Edit-to-visible, split at the moment a worker picked the section up.
             int editSections;
@@ -603,10 +879,23 @@ namespace Demiurge
                 // invisible in a quiet window by definition.
                 if (residency.Superseded > 0 || lodRefreshes > 0 || dirtyDepth > 0 || inFlightCount > 0)
                     Log.Info(
-                        $"terrain lod: live {residency.Entities} | desired {residency.Desired} "
+                        $"terrain lod: live {residency.Live} | desired {residency.Desired} "
                       + $"| awaiting retire {residency.Superseded} | resolved {residency.Resolved} "
                       + $"| refresh {lodRefreshes}x avg {Ms(lodRefreshTicks) / Math.Max(lodRefreshes, 1):F2} ms "
-                      + $"worst {Ms(lodRefreshWorstTicks):F2} ms");
+                      + $"worst {Ms(lodRefreshWorstTicks):F2} ms"
+                      + (residency.HitCeiling ? " | CEILING" : ""));
+
+                // The cache's own numbers. `reused` is the payoff — boxes put back on screen without
+                // meshing — and if it is not comfortably larger than `sections` while aiming around,
+                // the cache is not earning the memory it holds. Quiet when nothing moved, like the
+                // block above, but the RESIDENT counts are printed whenever anything else is, because
+                // a cached count that only climbs is a leak and a leak is invisible in a still frame.
+                if (reused + evicted + invalidated > 0 || lodRefreshes > 0)
+                    Log.Info(
+                        $"terrain cache: {residency.CachedGeometry} geometry + "
+                      + $"{residency.CachedTotal - residency.CachedGeometry} empty "
+                      + $"= {residency.CachedTotal} | reused {reused} | evicted {evicted} "
+                      + $"| invalidated {invalidated}");
 
                 // Nothing outstanding: stay quiet rather than logging zeroes forever.
                 if (uploads + empties > 0 || dirtyDepth > 0 || inFlightCount > 0)
@@ -629,6 +918,7 @@ namespace Demiurge
                 }
 
                 windowStart = now;
+                reused = evicted = invalidated = 0;
                 frames = uploads = empties = budgetHits = batches = urgentBlocked = notReady = 0;
                 editSections = 0;
                 editWaitTicks = editWorkTicks = editWorstTicks = 0;
@@ -660,9 +950,18 @@ namespace Demiurge
 
         /// <summary>
         /// Adapts <see cref="ChunkMesher.CollectDependentSections"/>, which speaks LOD 0, to whatever box
-        /// currently covers that part of the world. A changed voxel dirties the ONE desired box containing
-        /// it — coarser levels are found by shifting, which floors correctly for negative coordinates.
+        /// currently covers that part of the world. Coarser levels are found by shifting, which floors
+        /// correctly for negative coordinates.
         /// Only Add is ever called; the rest of ICollection exists to satisfy the signature.
+        ///
+        /// EVERY LEVEL IS VISITED, not just the one currently desired, and that is the cache's
+        /// correctness condition rather than a tidiness. Exactly one level of a given voxel is desired
+        /// — the levels partition the world — so that one is re-meshed as before. The other two may
+        /// hold CACHED geometry that predates this edit, and the cache is precisely a promise to show
+        /// that geometry again without re-meshing it. Dropping it here is what makes the promise safe.
+        /// Before the cache existed, RefreshLod's `resolved.IntersectWith(desired)` covered this by
+        /// distrusting anything that had ever left the desired set; deleting that line is what moved
+        /// the obligation to this loop.
         /// </summary>
         sealed class DirtySectionSink(ClientTerrain owner) : ICollection<SectionIndex>
         {
@@ -675,10 +974,8 @@ namespace Demiurge
                 {
                     var box = new LodSection(item.x >> level, item.y >> level, item.z >> level, level);
 
-                    if (!owner.desired.Contains(box)) continue;
-
-                    owner.EnqueueDirty(box);
-                    return;
+                    if (owner.desired.Contains(box)) owner.EnqueueDirty(box);
+                    else owner.Invalidate(box);
                 }
             }
 

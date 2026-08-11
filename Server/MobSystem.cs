@@ -62,10 +62,19 @@ namespace Demiurge.GameServer
         /// materially, lower this rather than making the query cheaper.
         /// </summary>
         private const int CoverQueriesPerTick = 8;
+
+        /// <summary>
+        /// How far up and down a spawn column a body is looked for before deciding the caller gave a
+        /// column rather than a point. A storey and a half: enough to find the floor a marker sits
+        /// on, short enough that "spawn at the origin" with no height still means the ground there.
+        /// </summary>
+        private const int SpawnColumnSearchCells = 6;
         private const float CoverThreatRequeryDistance = 5f;
         private const float TurnRadiansPerSecond = 180f * MathF.PI / 180f;
         private const float ObjectiveFormationRadius = 1.75f;
         private const float ObjectiveHoldRadius = FlagConfig.CaptureRadius - 0.35f;
+        private static readonly float PartialTrapEscapeDistance =
+            NavSearchOptions.Default.MinimumPartialDistance;
         private const float GoldenAngle = 2.39996323f;
 
         /// <summary>Far enough behind the digger to sample untouched ground rather than its own hole.</summary>
@@ -76,6 +85,18 @@ namespace Demiurge.GameServer
         /// moves correctly when a weapon is retuned or a new one is added.
         /// </summary>
         private const float ClosesToFightRange = 25f;
+
+        /// <summary>
+        /// Prone is a deliberate long-range firing stance, not the generic response to suppression.
+        /// Matches the range at which CombatBehavior switches to precision fire.
+        /// </summary>
+        internal const float ProneMinimumEngagementRange = 30f;
+
+        /// <summary>
+        /// Standing up commits the actor to staying up for a few seconds. This is the stance-change
+        /// penalty that prevents suppression flicker from producing prone/stand/prone spam.
+        /// </summary>
+        internal const int ProneReentryPenaltyTicks = 4 * NetworkConfig.TickRate;
 
         /// <summary>
         /// How much of a man's health a blast has to threaten before he abandons what he was doing.
@@ -271,6 +292,18 @@ namespace Demiurge.GameServer
 
         public Vector3 RandomSpawnPoint() => RandomSurfacePoint(Vector3.Zero);
 
+        /// <summary>
+        /// Puts the NPC at the free space nearest the height it was ASKED for, and only falls back
+        /// to the column's surface when the request names nowhere a body fits.
+        ///
+        /// This used to keep the caller's X and Z and re-derive the height through
+        /// <see cref="PlayerMovement.SpawnAt"/>, which resolves the HIGHEST surface in the column —
+        /// so a spawn carefully resolved to a building's floor was silently moved to that building's
+        /// roof, and no amount of fixing the resolution upstream could show, because the answer was
+        /// thrown away here. The fallback stays because callers legitimately ask for a column rather
+        /// than a point: a scenario that spawns a mob at the origin means the ground at the origin,
+        /// not a body twelve metres under it.
+        /// </summary>
         public ServerPlayer CreateMob(ushort id, Vector3 position, int team = 1)
         {
             team = team > 0 ? team : 1;
@@ -279,7 +312,20 @@ namespace Demiurge.GameServer
                 Id = id,
                 IsMob = true,
                 Team = team,
-                Move = PlayerMovement.SpawnAt(terrain, position.X, position.Z),
+                Move = NavTraversal.TryFindStandableNearestY(
+                        terrain,
+                        position.X,
+                        position.Z,
+                        position.Y,
+                        SpawnColumnSearchCells,
+                        out float standingY)
+                    ? new MoveState
+                    {
+                        Position = position with { Y = standingY },
+                        Velocity = Vector3.Zero,
+                        Grounded = true,
+                    }
+                    : PlayerMovement.SpawnAt(terrain, position.X, position.Z),
             };
             homes[mob.Id] = mob.Position;
             brains[mob.Id] = CreateBrain(team, mob.Position);
@@ -380,6 +426,12 @@ namespace Demiurge.GameServer
             ICollection<ServerPlayer> actors)
         {
             var action = Decide(mob, dt, tick, actors);
+            // Charge the stance transition regardless of which decision arm made the actor stand.
+            // Keeping this inside the combat arm let a one-tick contact loss bypass the penalty.
+            if (mob.State.HasFlag(PlayerStateFlags.Prone)
+                && !action.Prone
+                && brains.TryGetValue(mob.Id, out var stanceBrain))
+                stanceBrain.NextProneTick = tick + ProneReentryPenaltyTicks;
             Apply(mob, action, dt);
 
             // After the move, because it measures whether the move achieved anything.
@@ -587,12 +639,17 @@ namespace Demiurge.GameServer
             // than by asking whether the weapon happens to be a PPSh. A weapon whose expected return
             // per round falls below WeaponEffectiveness.MinimumExpectedDamagePerRound yields a zero
             // solution, which IS the decision to hold fire and close instead.
+            bool hasNearestContact =
+                brain.Contacts.TryNearest(mob.Position, tick, out var nearestContact);
+            float engagementRange = hasNearestContact
+                ? HorizontalDistance(mob.Position, nearestContact.Position)
+                : 0f;
             bool holdingForEffectiveRange =
-                brain.Contacts.TryNearest(mob.Position, tick, out var nearestContact)
+                hasNearestContact
                 && weapons.TryGetPrimaryWeapon(mob, out var rangeWeapon)
                 && WeaponEffectiveness.Best(
                     rangeWeapon.Item.Type,
-                    HorizontalDistance(mob.Position, nearestContact.Position),
+                    engagementRange,
                     // Reach, not this target's cover — see the matching note in CombatBehavior.
                     TargetExposure.Full,
                     extraMoa: 0f,
@@ -791,8 +848,11 @@ namespace Demiurge.GameServer
                     combatIntent,
                     underFire,
                     brain.AtCover,
-                    combatDigging);
-
+                    combatDigging,
+                    combatOwnsTick,
+                    engagementRange,
+                    tick,
+                    brain.NextProneTick);
                 // Combat's own flags carried explicitly rather than by merging onto whatever
                 // mob.State happened to hold, which is how a stale flag used to survive a tick.
                 return new MobAction
@@ -988,6 +1048,7 @@ namespace Demiurge.GameServer
                     if (followState == PathFollowState.Complete)
                     {
                         bool reachedGoal = follower.ReachedGoal;
+                        NavCell? partialStart = follower.PartialStartCell;
                         follower.Clear();
                         if (reachedGoal && heardGunshot)
                         {
@@ -1002,6 +1063,7 @@ namespace Demiurge.GameServer
                         }
                         else if (reachedGoal && hasObjective)
                         {
+                            brain.Navigation.ClearPartialBacktrack();
                             brain.ObjectiveReached = true;
                             followState = PathFollowState.Following;
                         }
@@ -1011,6 +1073,13 @@ namespace Demiurge.GameServer
                             // Once the actor consumes the prefix, replace that stale request from
                             // the actual frontier so excavation and newly visible detours compete.
                             replacePendingPath = !reachedGoal;
+                            if (!reachedGoal)
+                            {
+                                if (HasLeftPartialTrap(mob.Position, destination, partialStart))
+                                    brain.Navigation.ClearPartialBacktrack();
+                                else
+                                    brain.Navigation.RememberPartialBacktrack(partialStart);
+                            }
                             if (reachedGoal)
                             {
                                 brain.ObjectiveReached = false;
@@ -1196,6 +1265,7 @@ namespace Demiurge.GameServer
             brain.ClearCombatTarget();
             brain.ClearGunshot();
             brain.ClearUnderFire();
+            brain.NextProneTick = 0;
             brain.Contacts.Forget();
             brain.MovingSinceTick = 0;
             brain.BoundIndex = 0;
@@ -1220,8 +1290,10 @@ namespace Demiurge.GameServer
         public void Dispose()
         {
             // A snapshot must not outlive the server that made it: actor ids repeat across sessions,
-            // so a stale one would label the next session's NPCs with the last one's decisions.
+            // so a stale one would label the next session's NPCs with the last one's decisions, and
+            // draw them the last one's routes.
             MobDebugFeed.Clear();
+            MobPathFeed.Clear();
             navigation.Dispose();
         }
 
@@ -1310,10 +1382,23 @@ namespace Demiurge.GameServer
                     // A man mid-bound keeps his CURRENT squad rather than being reassigned by
                     // proximity, so a replan cannot change his bearing and bound index under him
                     // while he is crossing open ground.
-                    if (brain.MovingSinceTick != 0 || brain.SquadIndex == squadIndex) continue;
+                    if (brain.MovingSinceTick != 0
+                        || brain.Navigation.IsRecoveringFromPartialTrap
+                        || brain.SquadIndex == squadIndex)
+                        continue;
 
                     // Leases belong to the squad that granted them.
                     BoardFor(brain).Release(member.ActorId);
+                    // Revisions are scoped to a blackboard. Two squads can both be at revision 3
+                    // while owning different objectives, so carrying the numeric revision across a
+                    // transfer can retain the old route under the new squad's flag id.
+                    navigation.Cancel(member.ActorId);
+                    // The route is squad-owned, but recently consumed local prefixes describe the
+                    // terrain basin. Preserve those across re-formation or a wall straggler starts
+                    // the same short-path cycle each time its squad index changes.
+                    brain.Navigation.Clear(preservePartialBacktrack: true);
+                    brain.ObjectiveRevision = uint.MaxValue;
+                    brain.ObjectiveReached = false;
                     brain.SquadIndex = squadIndex;
                 }
 
@@ -2218,8 +2303,18 @@ namespace Demiurge.GameServer
             Vector3 intent,
             bool underFire,
             bool atCover,
-            bool digging)
-            => intent == Vector3.Zero && underFire && !atCover && !digging;
+            bool digging,
+            bool engaging,
+            float engagementRange,
+            uint tick,
+            uint nextProneTick)
+            => intent == Vector3.Zero
+               && underFire
+               && !atCover
+               && !digging
+               && engaging
+               && engagementRange >= ProneMinimumEngagementRange
+               && tick >= nextProneTick;
 
         /// <summary>
         /// The one place an NPC's tick output reaches the actor. Every decider returns a MobAction;
@@ -2331,13 +2426,29 @@ namespace Demiurge.GameServer
         /// </summary>
         private void PublishDebugStates(ICollection<ServerPlayer> actors)
         {
-            if (!MobDebugFeed.Enabled) return;
+            if (MobDebugFeed.Enabled)
+            {
+                var states = new Dictionary<ushort, string>(actors.Count);
+                foreach (var actor in actors)
+                    if (actor.IsMob && brains.TryGetValue(actor.Id, out var brain))
+                        states[actor.Id] = brain.DebugIntent;
+                MobDebugFeed.Publish(states);
+            }
 
-            var states = new Dictionary<ushort, string>(actors.Count);
+            if (!MobPathFeed.Enabled) return;
+
+            // A fresh snapshot every tick rather than a mutated one: the reader is on another
+            // thread, and an immutable answer swapped in one write is the whole reason this is safe.
+            var paths = new Dictionary<ushort, IReadOnlyList<MobPathPoint>>(actors.Count);
             foreach (var actor in actors)
-                if (actor.IsMob && brains.TryGetValue(actor.Id, out var brain))
-                    states[actor.Id] = brain.DebugIntent;
-            MobDebugFeed.Publish(states);
+            {
+                if (!actor.IsMob || !brains.TryGetValue(actor.Id, out var brain)) continue;
+                var route = brain.Navigation.Path.RemainingWaypoints
+                    .Select(waypoint => new MobPathPoint(waypoint.Position, waypoint.Action))
+                    .ToArray();
+                if (route.Length > 0) paths[actor.Id] = route;
+            }
+            MobPathFeed.Publish(paths);
         }
 
         public string Stats() => latestStats;
@@ -2430,7 +2541,17 @@ namespace Demiurge.GameServer
                     horizontalRadius: 8,
                     out var target))
                 return false;
+            if (priority == NavigationPriority.Prefetch)
+            {
+                NavCell? partialStart = navigationAgent.Path.PartialStartCell;
+                if (HasLeftPartialTrap(mob.Position, destination, partialStart))
+                    navigationAgent.ClearPartialBacktrack();
+                else
+                    navigationAgent.RememberPartialBacktrack(partialStart);
+            }
             long? blockedCellKey = navigationAgent.TakeAvoidedCell();
+            IReadOnlyList<long> partialBacktrackCellKeys =
+                navigationAgent.PartialBacktrackCellKeys;
             NavCell? preferredDigSite = navigationAgent.PreferredDigSite(tick);
             bool recoveringFromBlockedEdge = blockedCellKey is not null;
             long sharedRouteKey = 0;
@@ -2463,6 +2584,8 @@ namespace Demiurge.GameServer
                 // reposition requests still leave it at its default of false.
                 allowDig: allowDig,
                 blockedCellKey: blockedCellKey,
+                partialBacktrackCellKeys: partialBacktrackCellKeys,
+                partialBacktrackAttempts: navigationAgent.PartialBacktrackAttempts,
                 sharedRouteKey: sharedRouteKey,
                 priority: forCover ? NavigationPriority.Combat : priority,
                 preferredDigSite: preferredDigSite);
@@ -2578,6 +2701,18 @@ namespace Demiurge.GameServer
 
             var slotPosition = WedgeFormation.Slot(centre, squad.Centre, slot, squad.Roster.Count);
             return SurfaceQuery.SurfacePosition(terrain, slotPosition.X, slotPosition.Z);
+        }
+
+        private static bool HasLeftPartialTrap(
+            Vector3 position,
+            Vector3 destination,
+            NavCell? partialStart)
+        {
+            if (partialStart is not { } start) return false;
+            var startPosition = new Vector3(start.X + 0.5f, position.Y, start.Z + 0.5f);
+            return HorizontalDistance(startPosition, destination)
+                 - HorizontalDistance(position, destination)
+                >= PartialTrapEscapeDistance;
         }
 
         private static float HorizontalDistanceSquared(Vector3 a, Vector3 b)

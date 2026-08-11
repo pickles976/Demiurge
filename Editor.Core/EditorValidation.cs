@@ -150,19 +150,26 @@ public static class EditorValidation
 
         foreach (var placement in document.Placements)
         {
-            bool hasSupport = EditorPlacementPosition.TryResolve(
-                terrain, placement.Cell, out _);
             var position = EditorPlacementPosition.Resolve(terrain, placement);
             if (placement.Kind == EditorPlacementKind.PlayerSpawn)
             {
-                if (!hasSupport
+                // Support is whatever the SPAWN resolve found, not whatever the surface resolve
+                // found: an anchor inside a building has no crossing within a metre and a half of it
+                // and is still a perfectly good spawn, because the floor two metres down takes a
+                // body. Asking the same question the bake asks is what stops the two disagreeing.
+                if (!EditorPlacementPosition.TryResolveActorFeet(terrain, placement.Cell, out _)
                     || !TerrainCollision.TryDeepestContact(
                         terrain, PlayerMovement.Body, position, out var contact)
                     || contact.Distance < PlayerMovement.Body.Radius)
-                    errors.Add($"Player spawn {placement.Id} intersects terrain");
+                    errors.Add($"Player spawn {placement.Id} has no free space near its anchor");
                 continue;
             }
 
+            // An actor asks for free space, everything else asks for a surface to sit on — the same
+            // split the bake makes, so a warning here means the same thing the placement will do.
+            bool hasSupport = EditorPlacementPosition.IsActor(placement.Kind)
+                ? EditorPlacementPosition.TryResolveActorFeet(terrain, placement.Cell, out _)
+                : EditorPlacementPosition.TryResolve(terrain, placement.Cell, out _);
             if (!hasSupport)
                 warnings.Add($"Placement {placement.Id} has no nearby support");
         }

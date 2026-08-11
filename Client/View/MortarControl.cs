@@ -52,12 +52,12 @@ public sealed class MortarControlScript : SyncScript
     /// bomb leaving a tube a metre away, not one landing on you.</summary>
     private const float FiringTrauma = 0.45f;
 
-    private static readonly Color SectorColor = new(220, 60, 55, 235);
-    private static readonly Color ScatterColor = new(245, 245, 245, 240);
-    private static readonly Color AimColor = new(245, 245, 245, 150);
-    private static readonly Color InvalidScatterColor = new(245, 60, 55, 240);
-    private static readonly Color InvalidAimColor = new(245, 60, 55, 180);
-    private static readonly Color ReloadColor = new(245, 200, 80, 235);
+    private static readonly Color SectorColor = new(255, 30, 25, 250);
+    private static readonly Color ScatterColor = new(255, 255, 255, 255);
+    private static readonly Color AimColor = new(255, 255, 255, 190);
+    private static readonly Color InvalidScatterColor = new(255, 30, 25, 255);
+    private static readonly Color InvalidAimColor = new(255, 30, 25, 220);
+    private static readonly Color ReloadColor = new(255, 190, 15, 250);
 
     /// <summary>
     /// Contact markers. Coloured by RELATIONSHIP rather than by team number: from the tube the only
@@ -65,8 +65,8 @@ public sealed class MortarControlScript : SyncScript
     /// mid-mission is a gunner who shells his own men. Shape carries the same information again, so
     /// it survives being colour-blind and survives a red-on-brown background.
     /// </summary>
-    private static readonly Color EnemyMarkerColor = new(255, 70, 60, 240);
-    private static readonly Color FriendlyMarkerColor = new(90, 170, 255, 225);
+    private static readonly Color EnemyMarkerColor = new(255, 30, 25, 255);
+    private static readonly Color FriendlyMarkerColor = new(25, 145, 255, 250);
 
     /// <summary>
     /// How big a marker is on the ground, in metres.

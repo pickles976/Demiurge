@@ -58,6 +58,26 @@ internal sealed class PathFollower
 
     public bool ReachedGoal => path?.ReachedGoal == true;
     public bool HasPath => path is not null;
+
+    /// <summary>
+    /// Where the current bounded prefix began. The next search uses this after consuming the prefix
+    /// so it cannot immediately return the actor through the same local basin in reverse.
+    /// </summary>
+    public NavCell? PartialStartCell
+        => path is { ReachedGoal: false, Waypoints.Count: > 0 }
+            ? path.Waypoints[0].Cell
+            : null;
+
+    /// <summary>
+    /// What is left of the route, from the waypoint being steered to. Diagnostic only — the debug
+    /// overlay draws it. Deliberately the REMAINDER rather than the whole path, because "where is
+    /// this man actually going" is the question, and the prefix he has already walked answers a
+    /// different one.
+    /// </summary>
+    internal IEnumerable<NavWaypoint> RemainingWaypoints
+        => path is null
+            ? []
+            : path.Waypoints.Skip(Math.Min(waypoint, path.Waypoints.Count));
     public bool CanReplacePath => !jumpIssued;
     public bool ShouldRefreshPath =>
         path is { ReachedGoal: false }

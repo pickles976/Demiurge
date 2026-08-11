@@ -150,6 +150,12 @@ internal sealed class MobBrain
     public bool ShouldCloseDistance { get; set; }
     public bool AssaultDashActive { get; set; }
     public uint UnderFireUntilTick { get; private set; }
+    /// <summary>
+    /// Earliest tick this actor may drop prone again after standing up. Changing stance has a real
+    /// tactical cost; without this memory a fluctuating suppression sample toggles prone every few
+    /// ticks and buys its accuracy/exposure benefit without ever paying a commitment.
+    /// </summary>
+    public uint NextProneTick { get; set; }
 
     public void MarkUnderFire(uint tick)
         => UnderFireUntilTick = Math.Max(
