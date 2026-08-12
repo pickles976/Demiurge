@@ -11,33 +11,32 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 4. Refactor commands
 5. Multiplayer test
 
-- NPCs just spamming prone
-
-Bug: 
-
-Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
-- [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
-
-
-- [ ] add trees
-      - [ ] tree 3D model
-      - [ ] low LOD tree
-      - [ ] trees have health and take damage and change models to a broken version
-      - [ ] trees delete if the terrain beneath them goes away
-      - [ ] tree brush in map editor
-      - [ ] add trees to map
-
-## Refactoring and Cleanup
-- Codex clean up all comments
-- Codex refactor certain parts of the code
-- Codex event queue implementation
-
-## Stride Upgrade
-
-Try to upgrade Stride version and get particle system working
-https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/code-only/Example12_Particles
+- [ ] Have Claude finish the AI-side stuff
 
 # NPC AI Overhaul
+
+`
+Fatal error.
+System.AccessViolationException: Attempted to read or write protected memory. This is often an indication that other memory is corrupt.
+   at Stride.Rendering.TransformRenderFeature.Prepare(Stride.Rendering.RenderDrawContext)
+   at Stride.Rendering.MeshRenderFeature.Prepare(Stride.Rendering.RenderDrawContext)
+   at Stride.Rendering.RenderSystem.Prepare(Stride.Rendering.RenderDrawContext)
+   at Stride.Rendering.Compositing.GraphicsCompositor.DrawCore(Stride.Rendering.RenderDrawContext)
+   at Stride.Engine.SceneSystem.Draw(Stride.Games.GameTime)
+   at Stride.Games.GameSystemCollection.Draw(Stride.Games.GameTime)
+   at Stride.Games.GameBase.RawTick(System.TimeSpan, Int32, Single, Boolean)
+   at Stride.Games.GameBase.RawTickProducer()
+   at Stride.Games.GamePlatform.OnRunCallback()
+   at Stride.Games.SDLMessageLoop.Run(Stride.Graphics.SDL.Window, RenderCallback)
+   at Stride.Games.GameWindowSDL.Run()
+   at Stride.Games.GamePlatform.Run(Stride.Games.GameContext)
+   at Stride.Games.GameBase.Run(Stride.Games.GameContext)
+   at Stride.CommunityToolkit.Engine.GameExtensions.Run(Stride.Engine.Game, Stride.Games.GameContext, System.Action`1<Stride.Engine.Scene>, System.Action`2<Stride.Engine.Scene,Stride.Games.GameTime>)
+   at Demiurge.ClientApplication.Run(System.String[])
+   at Program.<Main>$(System.String[])`
+
+- Performance issues
+- Flags need to fall with gravity
 
 Design: [docs/superpowers/specs/2026-08-04-ai-overhaul-design.md](docs/superpowers/specs/2026-08-04-ai-overhaul-design.md)
 
@@ -76,6 +75,28 @@ Bugs found during design, each explaining part of the observed behaviour:
 
 - [ ] NPCs sometimes digging down to cross a big trench rather than just jumping in
 - [ ] Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
+
+
+Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
+- [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
+
+- [ ] add trees
+      - [ ] tree 3D model
+      - [ ] low LOD tree
+      - [ ] trees have health and take damage and change models to a broken version
+      - [ ] trees delete if the terrain beneath them goes away
+      - [ ] tree brush in map editor
+      - [ ] add trees to map
+
+## Refactoring and Cleanup
+- Codex clean up all comments
+- Codex refactor certain parts of the code
+- Codex event queue implementation
+
+## Stride Upgrade
+
+Try to upgrade Stride version and get particle system working
+https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/code-only/Example12_Particles
 
 # PVP Demo
 

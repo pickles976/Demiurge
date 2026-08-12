@@ -120,7 +120,10 @@ internal sealed class MobBrain
     public uint ShotSequence { get; set; }
     public int BurstShotsRemaining { get; set; }
     public uint NextBurstTick { get; set; }
-    public uint NextPrecisionShotTick { get; set; }
+
+    /// <summary>How long the sights need after the burst now in progress. Latched with the burst
+    /// length when it starts, because both come from one firing solution.</summary>
+    public uint BurstSettleTicks { get; set; }
     public uint NextSuppressionShotTick { get; set; }
     public uint NextGrenadeDecisionTick { get; set; }
     public bool HasCoverDestination { get; set; }
@@ -172,7 +175,6 @@ internal sealed class MobBrain
         CombatTargetId = 0;
         TargetAcquiredTick = 0;
         BurstShotsRemaining = 0;
-        NextPrecisionShotTick = 0;
         ShouldCloseDistance = false;
     }
 

@@ -14,10 +14,50 @@ namespace Demiurge;
 /// </summary>
 public static class WeaponEffectiveness
 {
-    /// <summary>Rates considered when choosing how fast to shoot. Fire discipline is the choice
-    /// between these, not a burst timer: at range the slow entries win because dispersion is a
-    /// function of rate, and up close the fast ones win because volume is.</summary>
-    private static readonly float[] RateFractions = [1f, 0.5f, 0.25f, 0.1f];
+    /// <summary>
+    /// Fire discipline is a BURST LENGTH, and the length is chosen rather than written down.
+    ///
+    /// This used to be a ladder of rate fractions of cyclic — [1, 0.5, 0.25, 0.1] — executed as
+    /// evenly spaced single shots. Two things were wrong with it. Evenly spaced fire is not how an
+    /// automatic weapon kills: the rounds that do the killing are the two or three that arrive
+    /// before the sights have moved, and a model with no burst in it cannot express that. And the
+    /// dispersion each rung was scored with came from averaging recoil over a whole MAGAZINE, a
+    /// window whose length depends on the rung being evaluated and on the weapon's capacity — so the
+    /// rungs were not comparable to each other, and the DP-27's 47-round pan, the one thing that
+    /// makes it a machine gun, was priced as its largest handicap (182 MOA against 66 for a
+    /// five-round burst).
+    ///
+    /// What replaces it is one maximisation. Another round is always more damage and never free: it
+    /// lands with more recoil on it than the last, and it delays the moment the shooter can look at
+    /// what he did (<see cref="BurstAssessmentSeconds"/>) and fire again. Damage per second over
+    /// FIRE PLUS ASSESSMENT therefore has an interior maximum, and where that maximum sits IS the
+    /// burst — two rounds from a machine gun at ten metres because two rounds is a man, longer at
+    /// distance where fewer of them land, and one from a bolt gun that cannot cycle faster anyway.
+    /// Nobody writes down a burst timer and nobody writes down which weapons burst.
+    /// </summary>
+    private const int MaximumBurstRounds = 256;
+
+    /// <summary>
+    /// The pause between bursts: how long a man takes to see what his last one did.
+    ///
+    /// This is what prices the burst. Another round is more damage and never free, but the thing it
+    /// costs is not the ballistics — it is that you fire a burst at a man and then have to LOOK, and
+    /// a burst long enough to kill him twice spent that time twice.
+    ///
+    /// It is the same half-second the shooter already takes to react to a target appearing
+    /// (<c>CombatBehavior.ReactionTicks</c> derives from this constant, so there is one number), for
+    /// the same reason: it is one man's observe-and-decide latency, and pointing his weapon at a
+    /// fresh problem or at the same one again does not change how long he needs to see it.
+    ///
+    /// A settle-to-zero rule was tried here first and is wrong. It made the pause a function of how
+    /// much recoil the burst had built, which reads plausible and produces a submachine gunner who
+    /// fires six rounds at a man fifteen metres away and then waits four and a half seconds — at
+    /// which point his weapon deals 20 health per second at knife range and
+    /// ThreatResponseTests.AThreatInsideItsOwnKillingRangeIsAlwaysWorthAnswering fails, correctly.
+    /// Recoil already limits the burst through the falling value of each round in it; charging for
+    /// it a second time as dead time is what broke.
+    /// </summary>
+    public const float BurstAssessmentSeconds = 0.55f;
 
     /// <summary>
     /// What one round has to be expected to achieve before it is worth firing, in health points.
@@ -45,11 +85,17 @@ public static class WeaponEffectiveness
     /// </summary>
     public const float MinimumExpectedDamagePerRound = 1f;
 
+    /// <param name="ShotsPerSecond">Average rate over the whole fire-and-settle cycle, reloads
+    /// included — what the engagement actually delivers, not what the action can do.</param>
+    /// <param name="BurstRounds">Rounds to send at the man before looking at what they did.</param>
+    /// <param name="SettleSeconds">The pause that follows — see <see cref="BurstAssessmentSeconds"/>.</param>
     public readonly record struct FiringSolution(
         float ShotsPerSecond,
         float DispersionMoa,
         float HitProbability,
-        float DamagePerSecond);
+        float DamagePerSecond,
+        int BurstRounds = 1,
+        float SettleSeconds = 0f);
 
     private const float PreferredRangeStepMetres = 2f;
     private const float PreferredRangeMaximumMetres = 400f;
@@ -100,7 +146,13 @@ public static class WeaponEffectiveness
              range += PreferredRangeStepMetres)
             peak = MathF.Max(
                 peak,
-                Best(weapon, range, TargetExposure.Full, extraMoa: 0f, skillFactor).DamagePerSecond);
+                Best(
+                    weapon,
+                    range,
+                    TargetExposure.Full,
+                    extraMoa: 0f,
+                    skillFactor,
+                    targetHealth: float.PositiveInfinity).DamagePerSecond);
 
         if (peak <= 0f) return PreferredRangeStepMetres;
 
@@ -111,7 +163,13 @@ public static class WeaponEffectiveness
         for (float range = PreferredRangeStepMetres;
              range <= PreferredRangeMaximumMetres;
              range += PreferredRangeStepMetres)
-            if (Best(weapon, range, TargetExposure.Full, extraMoa: 0f, skillFactor).DamagePerSecond
+            if (Best(
+                    weapon,
+                    range,
+                    TargetExposure.Full,
+                    extraMoa: 0f,
+                    skillFactor,
+                    targetHealth: float.PositiveInfinity).DamagePerSecond
                 >= PreferredRangeFractionOfPeak * peak)
                 best = range;
 
@@ -201,7 +259,8 @@ public static class WeaponEffectiveness
         float range,
         TargetExposure targetExposure,
         float extraMoa,
-        float skillFactor)
+        float skillFactor,
+        float targetHealth = ThreatResponse.NominalHealth)
     {
         if (WeaponConfig.Get(weapon) is not { } stats
             || BallisticsConfig.Get(weapon) is not { } ballistics
@@ -213,40 +272,73 @@ public static class WeaponEffectiveness
 
         float targetRadius = GunConfig.HitRadius * MathF.Sqrt(exposure);
         float cyclic = CyclicShotsPerSecond(stats);
+        if (cyclic <= 0f) return default;
+
+        // Everything that does not move while the burst runs: the weapon's inherent group, what the
+        // shooter can hold, and whatever the caller knows about his state.
+        float steadyMoa = Spread.Combine(
+            ballistics.BenchMoa,
+            ballistics.SightingMoa * MathF.Max(skillFactor, 0.01f),
+            extraMoa);
+
+        float decayPerShot = ballistics.RecoilDecayMoaPerSecond > 0f
+            ? ballistics.RecoilDecayMoaPerSecond / cyclic
+            : 0f;
+        // A burst cannot outrun the magazine — past it the pause is a reload, which is a different
+        // thing and already priced by SustainedShotsPerSecond.
+        int limit = Math.Clamp(stats.MagazineCapacity, 1, MaximumBurstRounds);
+
+        float recoil = 0f;
+        float hits = 0f;
+        float moaSum = 0f;
         var best = default(FiringSolution);
         float bestNet = 0f;
 
-        foreach (float fraction in RateFractions)
+        for (int rounds = 1; rounds <= limit; rounds++)
         {
-            float requested = cyclic * fraction;
-            float rate = SustainedShotsPerSecond(stats, requested);
-            if (rate <= 0f) continue;
+            // This round, fired with whatever the previous ones left on the sights. The first one is
+            // free: a burst starts from a settled weapon, which is what the settle below pays for.
+            float moa = Spread.Combine(steadyMoa, recoil);
+            hits += HitEstimate.Probability(Spread.SigmaRadians(moa), range, targetRadius);
+            moaSum += moa;
+            recoil = MathF.Min(
+                ballistics.RecoilCapMoa,
+                MathF.Max(0f, recoil - decayPerShot) + ballistics.RecoilPerShotMoa);
 
-            // Recoil depends on the rate being requested, not the reload-derated average: the
-            // shooter feels the cyclic rate while the magazine lasts.
-            float moa = Spread.Combine(
-                ballistics.BenchMoa,
-                ballistics.SightingMoa * MathF.Max(skillFactor, 0.01f),
-                AverageRecoilMoa(ballistics, stats.MagazineCapacity, requested),
-                extraMoa);
+            // A burst is aimed at a MAN, and a man only has so much in him. Without this the
+            // arithmetic says to hold the trigger down at close range and mean it: every round hits,
+            // so the 48th round into a corpse still improves damage per second. Capping the burst's
+            // yield at one man's worth of health is what makes the answer two rounds from a machine
+            // gun at ten metres.
+            float dealt = MathF.Min(hits * stats.Damage, MathF.Max(1f, targetHealth));
 
-            float probability = HitEstimate.Probability(
-                Spread.SigmaRadians(moa),
-                range,
-                targetRadius);
+            float cycleSeconds = rounds / cyclic + BurstAssessmentSeconds;
+            float rate = SustainedShotsPerSecond(stats, rounds / cycleSeconds);
+            float reloadDerate = cycleSeconds * rate / rounds;
 
-            // Rates are chosen on NET value and reported on GROSS damage. Net decides whether a shot
-            // is worth the round; gross is what actually lands, and CombatValue's currency has to
-            // stay literal health per second or it stops being comparable to anything else.
-            float expectedPerRound = probability * stats.Damage;
-            float netPerSecond = (expectedPerRound - MinimumExpectedDamagePerRound) * rate;
-            if (netPerSecond <= bestNet) continue;
+            // Bursts are chosen on NET value and reported on GROSS damage. Net decides whether the
+            // rounds are worth spending; gross is what actually lands, and CombatValue's currency
+            // has to stay literal health per second or it stops being comparable to anything else.
+            float net = (dealt - rounds * MinimumExpectedDamagePerRound)
+                * reloadDerate / cycleSeconds;
+            if (net > bestNet)
+            {
+                bestNet = net;
+                best = new FiringSolution(
+                    rate,
+                    moaSum / rounds,
+                    hits / rounds,
+                    dealt * reloadDerate / cycleSeconds,
+                    rounds,
+                    BurstAssessmentSeconds);
+            }
 
-            bestNet = netPerSecond;
-            best = new FiringSolution(rate, moa, probability, expectedPerRound * rate);
+            // Past a killing burst every further round costs time and buys nothing, so the maximum
+            // is behind us.
+            if (dealt >= targetHealth) break;
         }
 
-        // No rate returned its round's worth: the honest answer is that shooting from here is not
+        // No burst returned its rounds' worth: the honest answer is that shooting from here is not
         // worth doing. Zero dealt is what makes closing the distance win, rather than a rule saying
         // so.
         return bestNet > 0f ? best : default;

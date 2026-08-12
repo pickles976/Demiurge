@@ -133,6 +133,44 @@ public class StrategicValueTests
     }
 
     /// <summary>
+    /// The same property as <see cref="AQuietFriendlyFlagIsWorthNothing"/>, at the scale the game is
+    /// actually played at rather than at the degenerate point where the last enemy is dead.
+    ///
+    /// The conquest map's flags sit 140-450 m apart and its spawns 95-650 m from them, so "the enemy
+    /// is nowhere near this flag" means an approach of 100-160 s, not infinity. A flag nobody can
+    /// reach until long after the planning horizon cannot be lost inside the plan, so garrisoning it
+    /// must lose to taking ground that is free right now.
+    /// </summary>
+    [Fact]
+    public void AFlagTheEnemyCannotReachWithinTheHorizonLosesToFreeGround()
+    {
+        // 400 m of walking for them, 300 m for us, i.e. one flag away on the real map.
+        float garrison = StrategicValue.Marginal(
+            Us, Flag(Us, enemySeconds: 100f), 0, travelSeconds: 75f);
+        float freeGround = StrategicValue.Marginal(
+            Us, Flag(FlagConfig.NeutralTeam, id: 2), 0, travelSeconds: 75f);
+
+        Assert.True(
+            freeGround > garrison,
+            $"free ground {freeGround} must outbid a garrison nobody is threatening {garrison}");
+    }
+
+    /// <summary>The other side of it, so the correction above cannot be bought by making defence
+    /// worthless: a threat inside the horizon still outranks the same free ground.</summary>
+    [Fact]
+    public void AFlagUnderImminentThreatStillOutbidsFreeGround()
+    {
+        float defend = StrategicValue.Marginal(
+            Us, Flag(Us, enemySeconds: 15f), 0, travelSeconds: 20f);
+        float freeGround = StrategicValue.Marginal(
+            Us, Flag(FlagConfig.NeutralTeam, id: 2), 0, travelSeconds: 20f);
+
+        Assert.True(
+            defend > freeGround,
+            $"a flag about to be taken {defend} must outbid free ground {freeGround}");
+    }
+
+    /// <summary>
     /// The other half of the pile-up, and the half a per-plan counter could never see. Every plan
     /// starts with nothing assigned, so a flag six of our men were standing on looked exactly as free
     /// as an empty one to the next squad. Men present and squads assigned are the same thing to the

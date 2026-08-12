@@ -8,14 +8,10 @@ namespace Demiurge.GameServer;
 /// </summary>
 internal sealed class CombatBehavior
 {
-    private const float AimedFireThreshold = 0.55f;
     private const float AimToleranceDegrees = 7f;
     private const float AimTurnDegreesPerSecond = 180f;
-    private const int SuppressionBurstShots = 3;
     private const int ReactionTicks = (55 * NetworkConfig.TickRate + 99) / 100;
     private const int LostContactHoldTicks = 3 * NetworkConfig.TickRate / 2;
-    private const int BurstPauseTicks = 3 * NetworkConfig.TickRate / 4;
-    private const int PrecisionShotIntervalTicks = 6 * NetworkConfig.TickRate / 5;
 
     /// <summary>
     /// Beyond this the shot is treated as deliberate: the actor must have its aim settled far more
@@ -140,6 +136,23 @@ internal sealed class CombatBehavior
             brain.SkillFactor).DamagePerSecond <= 0f;
         brain.ShouldCloseDistance = holdingForEffectiveRange;
 
+        // How to shoot, as opposed to whether the weapon reaches, is asked WITH the shooter's own
+        // state in it — his stance, whether he is walking, and what is landing near him — so the
+        // burst he chooses is scored the way the shot will actually be taken. Spread.StateMoa is
+        // precisely the terms Best does not model for itself.
+        //
+        // Deliberately NOT fed into the reach test above. Suppression adds 145 MOA, which is enough
+        // to zero a firing solution outright, and a zero solution IS the decision to close — so a
+        // man being shot at would conclude his rifle had stopped working and charge the gun that was
+        // suppressing him. Being suppressed does not shorten a weapon's reach; it spoils the shot,
+        // which is what this is for.
+        var solution = WeaponEffectiveness.Best(
+            weapon.Item.Type,
+            range,
+            TargetExposure.Full,
+            mob.Spread.StateMoa(mob.State),
+            brain.SkillFactor);
+
         // Compensate only for projectile drop. Contact memory intentionally carries no live target
         // velocity, so this does not grant server-side omniscient leading.
         float flightSeconds = range / ballistics.ProjectileSpeed;
@@ -189,40 +202,35 @@ internal sealed class CombatBehavior
         // swamped every weapon's dispersion — Spread.Combine(720, 4) = 720.01, which is why weapon
         // character previously had to be reintroduced by hand as ItemType branches.
         float aiAimMoa = ballistics.SightingMoa * MathF.Max(brain.SkillFactor, 0.01f);
-        float moa = Spread.Combine(
-            mob.Spread.TotalMoa(mob.State, ballistics),
-            aiAimMoa);
-        float probability = HitEstimate.Probability(
-            Spread.SigmaRadians(moa),
-            range,
-            GunConfig.HitRadius);
 
         bool requestShot;
         if (suppressing)
         {
+            // Suppression is not killing and is deliberately not on the burst cadence. Its product is
+            // rounds landing near a man CONTINUOUSLY so a squadmate can move, and a burst-and-settle
+            // pattern would hand him the gap.
             brain.BurstShotsRemaining = 0;
             if (tick < brain.NextSuppressionShotTick) return new CombatOutcome(true, yaw, pitch, flags);
             brain.NextSuppressionShotTick = tick + SuppressionShotIntervalTicks;
             requestShot = true;
         }
-        else if (precisionShot)
-        {
-            brain.BurstShotsRemaining = 0;
-            if (tick < brain.NextPrecisionShotTick)
-                return new CombatOutcome(true, yaw, pitch, flags);
-            requestShot = true;
-        }
-        else if (probability >= AimedFireThreshold)
-        {
-            brain.BurstShotsRemaining = 0;
-            requestShot = true;
-        }
         else
         {
-            if (brain.BurstShotsRemaining == 0)
+            // Fire the burst the firing solution asked for, then let the sights come back down for
+            // as long as it said. Both numbers are derived per weapon per range — see
+            // WeaponEffectiveness — so a machine gun sends two rounds at ten metres and three at a
+            // hundred, and a bolt gun sends one, without any of those being written down here.
+            //
+            // The burst is latched when it STARTS. A target that steps behind cover mid-burst does
+            // not retroactively change how many rounds were worth sending, and re-solving every tick
+            // would let a shot-to-shot flicker in range restart the cadence forever.
+            if (brain.BurstShotsRemaining <= 0)
             {
                 if (tick < brain.NextBurstTick) return new CombatOutcome(true, yaw, pitch, flags);
-                brain.BurstShotsRemaining = SuppressionBurstShots;
+                brain.BurstShotsRemaining = Math.Max(1, solution.BurstRounds);
+                brain.BurstSettleTicks = (uint)MathF.Max(
+                    1f,
+                    MathF.Round(solution.SettleSeconds * NetworkConfig.TickRate));
             }
             requestShot = true;
         }
@@ -246,11 +254,8 @@ internal sealed class CombatBehavior
                 aiAimMoa))
         {
             flags |= PlayerStateFlags.Shooting;
-            if (precisionShot)
-                brain.NextPrecisionShotTick = tick + PrecisionShotIntervalTicks;
-            else if (brain.BurstShotsRemaining > 0
-                && --brain.BurstShotsRemaining == 0)
-                brain.NextBurstTick = tick + BurstPauseTicks;
+            if (brain.BurstShotsRemaining > 0 && --brain.BurstShotsRemaining == 0)
+                brain.NextBurstTick = tick + brain.BurstSettleTicks;
         }
         return new CombatOutcome(true, yaw, pitch, flags);
     }

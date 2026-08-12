@@ -124,16 +124,39 @@ public class WeaponEffectivenessTests
         return 1f - suppressed / calm;
     }
 
+    /// <summary>
+    /// Fire discipline, restated for the burst model. It used to be asserted as a RATE that falls
+    /// with range, and that property is gone on purpose — see the note below.
+    ///
+    /// What a burst is for is putting one man down, so at ten metres, where nearly every round
+    /// lands, the only thing that can end a burst is that he is already down. The burst is therefore
+    /// a property of the CARTRIDGE: two rounds of the machine gun's 50, six of the submachine gun's
+    /// 18, and one from a bolt gun that cannot cycle a second before the first has landed anyway.
+    /// </summary>
     [Fact]
-    public void FireDisciplineEmerges_SlowAtRange_FastUpClose()
+    public void ACloseRangeBurstIsAsLongAsItTakesToPutAManDown()
     {
-        float far = Best(ItemType.Sks, 150f).ShotsPerSecond;
-        float near = Best(ItemType.Sks, 10f).ShotsPerSecond;
+        foreach (var weapon in new[] { ItemType.Ppsh, ItemType.Sks, ItemType.Mosin, ItemType.Dp27 })
+        {
+            int damage = WeaponConfig.Require(weapon).Damage;
+            int needed = (int)MathF.Ceiling(ThreatResponse.NominalHealth / (float)damage);
+            int burst = Best(weapon, 10f).BurstRounds;
 
-        Assert.True(
-            far < near,
-            $"chose {far:0.00}/s at 150 m and {near:0.00}/s at 10 m — rate should drop with range");
+            Assert.InRange(burst, needed - 1, needed + 1);
+        }
     }
+
+    // FireDisciplineEmerges_SlowAtRange_FastUpClose is gone, and what it was pinning turned out not
+    // to be real. It asserted that the chosen RATE falls with range, which the old model produced
+    // because it scored each rung of its rate ladder with recoil averaged over a whole MAGAZINE — a
+    // window whose length is itself a function of the rate being scored, so fast rungs were charged
+    // for dispersion the slow ones escaped. Remove that and the value model does not produce
+    // deliberate long-range fire at all: firing at twice the dispersion and eight times the rate
+    // wins on expected damage per second whenever ammunition is nearly free, which under
+    // MinimumExpectedDamagePerRound = 1 HP it is. The brake that remains is real and is tested
+    // above and below — a burst stops when the man is down, and a weapon stops firing entirely once
+    // no round returns its cost. If deliberate fire at range is wanted back it belongs in the price
+    // of a round, not in a recoil-averaging window.
 
     [Fact]
     public void AShotNotWorthTheRoundIsNotTaken()

@@ -140,6 +140,32 @@ namespace Demiurge
         public void Suppress()
             => SuppressionMoa = BallisticsConfig.SuppressedMoa;
 
+        /// <summary>
+        /// Everything the SHOOTER contributes — his stance, whether he is moving, his breathing, and
+        /// what is being fired at him — with nothing about the weapon in it.
+        ///
+        /// It exists so the AI can score a shot with the same terms it will be taken with.
+        /// <see cref="WeaponEffectiveness.Best"/> models the weapon's own group and its recoil
+        /// itself, so handing it <see cref="TotalMoa"/> would count both twice; this is exactly the
+        /// remainder, and it is what its extraMoa parameter is for.
+        /// </summary>
+        public readonly float StateMoa(PlayerStateFlags state)
+        {
+            float stance = state.HasFlag(PlayerStateFlags.Crouching)
+                           || state.HasFlag(PlayerStateFlags.Prone)
+                ? BallisticsConfig.CrouchedMoa
+                : BallisticsConfig.StandingMoa;
+            bool sprinting = state.HasFlag(PlayerStateFlags.Sprinting);
+            return Spread.Combine(
+                stance,
+                state.HasFlag(PlayerStateFlags.Aiming) ? 0f : BallisticsConfig.HipFireMoa,
+                state.HasFlag(PlayerStateFlags.Moving) && !sprinting ? BallisticsConfig.WalkingMoa : 0f,
+                sprinting ? BallisticsConfig.SprintingMoa : 0f,
+                BreathingMoa,
+                SuppressionMoa,
+                StanceChangeMoa);
+        }
+
         public readonly float TotalMoa(PlayerStateFlags state, BallisticsStats weapon)
         {
             float stance = state.HasFlag(PlayerStateFlags.Crouching)

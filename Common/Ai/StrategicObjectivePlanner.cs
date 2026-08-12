@@ -123,14 +123,22 @@ public static class StrategicObjectivePlanner
     }
 
     /// <summary>
-    /// What a squad gives up by changing its mind, in tickets per second.
+    /// What a squad gives up by changing its mind: a tenth of a flag, in tickets per second.
     ///
     /// Hysteresis has to be in the SAME unit as the value or it cannot hold against a change in it.
     /// The old bias was 15 metres applied to a distance that only broke ties between equal priority
     /// classes — so a flag flipping class reassigned the squad regardless, and the two flipped back
-    /// and forth. A tenth of a flag is small enough that a genuinely better objective still wins.
+    /// and forth.
+    ///
+    /// It then spent a while as a bare 0.1, which reads as a tenth of a flag and is not one. A flag
+    /// is worth <see cref="StrategicValue.TicketsPerSecondPerFlag"/> — a third of a ticket per
+    /// second — before any discount, so 0.1 was between half and all of what a real objective scored
+    /// on the conquest map, i.e. wider than the entire spread between the best and worst of them. It
+    /// did not damp the choice, it made it: whatever a squad was assigned in the opening thirty
+    /// seconds it kept for the rest of the match, including a home flag with the nearest enemy 630 m
+    /// away. Hysteresis must be a fraction of the value it damps, so it is written as one.
     /// </summary>
-    public const float CommitmentBonus = 0.1f;
+    public static float CommitmentBonus => StrategicValue.TicketsPerSecondPerFlag * 0.1f;
 
     /// <summary>Rough seconds for this squad to reach this flag, at the movement solver's walk speed
     /// — the same time axis navigation prices routes in.</summary>

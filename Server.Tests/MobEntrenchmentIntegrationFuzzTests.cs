@@ -5,16 +5,19 @@ namespace Demiurge.ServerTests;
 
 public sealed class MobEntrenchmentIntegrationFuzzTests(ITestOutputHelper output)
 {
-    [Fact]
+    [Theory]
+    [InlineData(ItemType.Ppsh)]
+    [InlineData(ItemType.Mosin)]
     [Trait("Category", "Integration")]
-    public void EntrenchingNpcEntersProtectedFoxholeBeforeEngagingAcrossVariedTerrain()
+    public void EntrenchingNpcEntersProtectedFoxholeBeforeEngagingAcrossVariedTerrain(
+        ItemType primary)
     {
         const int scenarios = 8;
         for (int seed = 0; seed < scenarios; seed++)
-            Run(seed);
+            Run(seed, primary);
     }
 
-    private void Run(int seed)
+    private void Run(int seed, ItemType primary)
     {
         var random = new Random(seed * 7919 + 17);
         float slopeX = (float)(random.NextDouble() * 0.16 - 0.08);
@@ -31,7 +34,7 @@ public sealed class MobEntrenchmentIntegrationFuzzTests(ITestOutputHelper output
             terrain,
             mobSpawn.X + toward.X * 34f,
             mobSpawn.Z + toward.Z * 34f);
-        var mob = world.AddMob(60_000, mobSpawn, primary: ItemType.Ppsh);
+        var mob = world.AddMob(60_000, mobSpawn, primary: primary);
         var enemy = world.AddEnemy(1, enemySpawn);
         mob.Yaw = MathF.Atan2(toward.X, toward.Z);
 
@@ -72,7 +75,7 @@ public sealed class MobEntrenchmentIntegrationFuzzTests(ITestOutputHelper output
         }
 
         output.WriteLine(
-            $"seed {seed}: slope ({slopeX:0.000},{slopeZ:0.000}), "
+            $"{primary} seed {seed}: slope ({slopeX:0.000},{slopeZ:0.000}), "
           + $"protected {protectedTick}, first fire {firstFireTick}, final {mob.Position}, "
           + $"enemy {enemy.Position}, edits {terrain.EditVersion}, wrong tool {editsWithWrongTool}");
         Assert.True(terrain.EditVersion > 0, $"seed {seed}: never excavated");

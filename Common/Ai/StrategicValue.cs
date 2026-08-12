@@ -68,8 +68,9 @@ public static class StrategicValue
     /// every squad on the map was drawn to whichever one or two flags the enemy happened to hold,
     /// the rear went unwatched, and it flipped the moment anybody wandered onto it — at which point
     /// it became worth two and the whole force turned round. Defence is not a special case and does
-    /// not need one; it needs to be priced. WHEN a flag's fate is decided is a discount, and it now
-    /// lives in <see cref="SecondsUntilDecided"/> where the rest of the timing does.
+    /// not need one; it needs to be priced. WHETHER a flag's fate is in question belongs to
+    /// <see cref="InPlay"/> and WHEN it is settled to <see cref="SecondsUntilDecided"/>, where the
+    /// rest of the timing does.
     /// </summary>
     public static float Swing(int team, in StrategicFlag flag)
         => flag.OwnerTeam == FlagConfig.NeutralTeam ? 1f : 2f;
@@ -78,16 +79,14 @@ public static class StrategicValue
         => flag.CapturingTeam != FlagConfig.NeutralTeam && flag.CapturingTeam != team;
 
     /// <summary>
-    /// Seconds until this flag's fate is settled if nobody new intervenes — the delay before the
-    /// swing above is actually collected.
+    /// Seconds of work between committing a squad here and collecting the swing above — the capture
+    /// itself, plus whoever has to be shot off it first.
     ///
-    /// The two cases are the same question asked from opposite ends. A flag we do not hold is
-    /// decided when WE arrive and turn the clock, so it costs the capture plus whoever is standing
-    /// on it. A flag we do hold is decided when THEY arrive to take it, so a rear flag with the
-    /// nearest enemy two hundred metres away discounts almost to nothing all by itself, and one with
-    /// an enemy squad walking up is worth as much as an attack. That is what makes garrisoning the
-    /// rear unattractive without a rule forbidding it, and reinforcing a threatened flag attractive
-    /// without a priority class ranking defence above attack.
+    /// This is the DURATION of the job, not when it comes up. A flag we do not hold is decided when
+    /// we arrive and turn the clock, so it costs the capture plus its defenders. One of ours already
+    /// being taken costs whatever is left of its clock. One of ours nobody has reached yet costs a
+    /// capture whenever they do get to it — WHEN that is belongs to <see cref="InPlay"/>, because it
+    /// is a question about whether the job exists rather than about how long it takes.
     /// </summary>
     public static float SecondsUntilDecided(int team, in StrategicFlag flag)
     {
@@ -99,7 +98,36 @@ public static class StrategicValue
         if (flag.EnemyPresence > 0 || IsEnemyCapturing(team, flag))
             return FlagConfig.CaptureSeconds * (1f - Math.Clamp(flag.Progress, 0f, 1f));
 
-        return MathF.Max(0f, flag.EnemyApproachSeconds) + FlagConfig.CaptureSeconds;
+        return FlagConfig.CaptureSeconds;
+    }
+
+    /// <summary>
+    /// The chance a flag we hold is contested while this plan is still the plan. One for anything we
+    /// do not hold — free ground is in play by definition.
+    ///
+    /// The commander replans every second, so a threat two minutes out will be planned against a
+    /// hundred times before it lands and standing on the flag now buys nothing that standing on it
+    /// in ninety seconds would not. That is the whole argument for this factor, and it is why the
+    /// approach time cannot simply be another delay inside the discount below: a delay merely makes
+    /// a payoff worth less, and <see cref="PlanningHorizonSeconds"/> over the delay has a fat enough
+    /// tail that an enemy 630 m from our rear flag — the actual distance measured on the conquest
+    /// map — still kept 26% of the swing. Doubled for being ours, that outbid free ground next door
+    /// and parked a squad on an untouchable flag for a whole match.
+    ///
+    /// Exponential rather than hyperbolic because this one is a probability and has to be able to
+    /// reach nothing. It is deliberately NOT applied to travel: a long walk is a cost we pay, not an
+    /// event that may fail to happen, and steepening that would concentrate the force on whichever
+    /// objective is nearest — the pile-up this model was written to remove.
+    /// </summary>
+    public static float InPlay(int team, in StrategicFlag flag)
+    {
+        if (flag.OwnerTeam != team) return 1f;
+
+        // Contact made is the contest happening, whatever the approach measure says about the
+        // nearest enemy — the same case SecondsUntilDecided splits out, and for the same reason.
+        if (flag.EnemyPresence > 0 || IsEnemyCapturing(team, flag)) return 1f;
+
+        return MathF.Exp(-MathF.Max(0f, flag.EnemyApproachSeconds) / PlanningHorizonSeconds);
     }
 
     /// <summary>
@@ -116,7 +144,7 @@ public static class StrategicValue
         int squadsAlreadyAssigned,
         float travelSeconds)
     {
-        float swing = Swing(team, flag);
+        float swing = Swing(team, flag) * InPlay(team, flag);
         if (swing <= 0f) return 0f;
 
         float seconds = MathF.Max(0f, travelSeconds) + SecondsUntilDecided(team, flag);

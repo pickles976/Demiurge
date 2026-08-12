@@ -141,6 +141,32 @@ public class StrategicObjectivePlannerTests
         Assert.Equal(10u, AssignmentFor(assignments, 1));
     }
 
+    /// <summary>
+    /// Hysteresis damps a coin toss; it must not overrule a decision. The bonus is in tickets per
+    /// second, the same unit as the value, and a whole flag is only worth
+    /// <see cref="StrategicValue.TicketsPerSecondPerFlag"/> of them — so a bonus sized as though a
+    /// flag were worth 1.0 outweighs the entire spread between the best and worst objective on the
+    /// map and freezes the opening plan for the rest of the match.
+    ///
+    /// Distances here are map scale on purpose: every other case in this file is 20-30 m across,
+    /// which is a third of the closest pair of flags on the conquest map and a twentieth of the
+    /// longest walk between two of them.
+    /// </summary>
+    [Fact]
+    public void CommitmentDoesNotPinASquadToAClearlyWorseObjective()
+    {
+        var squads = new[] { new StrategicSquad(0, Vector3.Zero, CurrentFlagId: 20) };
+        var flags = new[]
+        {
+            NeutralFlag(10, 100f),
+            NeutralFlag(20, 250f),
+        };
+
+        var assignments = StrategicObjectivePlanner.Plan(1, squads, flags);
+
+        Assert.Equal(10u, AssignmentFor(assignments, 0));
+    }
+
     private static StrategicFlag NeutralFlag(uint id, float x)
         => new(
             id,

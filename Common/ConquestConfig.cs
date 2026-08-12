@@ -6,7 +6,7 @@ namespace Demiurge;
 /// </summary>
 public static class ConquestConfig
 {
-    public const int StartingTickets = 300;
+    public const int StartingTickets = 500;
 
     /// <summary>How often the map's flag balance is charged against the losing side's tickets.</summary>
     public const float TicketBleedSeconds = 3f;

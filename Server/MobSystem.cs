@@ -146,6 +146,9 @@ namespace Demiurge.GameServer
         private readonly GrenadeBehavior grenadeCombat;
         private readonly CoverBehavior cover;
         private readonly Random random;
+
+        /// <summary>Kept beside the RNG rather than taken from it: see Marksmanship.SkillFactorFor.</summary>
+        private readonly int mobSeed;
         private readonly Dictionary<ushort, Vector3> homes = new();
         private readonly Dictionary<ushort, MobBrain> brains = new();
         private readonly Dictionary<(int Team, int Squad), SquadBlackboard> squads = new();
@@ -288,6 +291,7 @@ namespace Demiurge.GameServer
             grenadeCombat = new GrenadeBehavior(terrain, grenades);
             cover = new CoverBehavior(terrain);
             random = new Random(seed);
+            mobSeed = seed;
         }
 
         public Vector3 RandomSpawnPoint() => RandomSurfacePoint(Vector3.Zero);
@@ -328,7 +332,7 @@ namespace Demiurge.GameServer
                     : PlayerMovement.SpawnAt(terrain, position.X, position.Z),
             };
             homes[mob.Id] = mob.Position;
-            brains[mob.Id] = CreateBrain(team, mob.Position);
+            brains[mob.Id] = CreateBrain(team, mob.Position, mob.Id);
             brains[mob.Id].Navigation.SetDestination(
                 RandomSurfacePoint(mob.Position),
                 clearPath: false);
@@ -460,7 +464,7 @@ namespace Demiurge.GameServer
             ICollection<ServerPlayer> actors)
         {
             if (!brains.TryGetValue(mob.Id, out var brain))
-                brains[mob.Id] = brain = CreateBrain(mob.Team, mob.Position);
+                brains[mob.Id] = brain = CreateBrain(mob.Team, mob.Position, mob.Id);
             var squad = BoardFor(mob, brain);
 
             // Before everything, including the squad's manoeuvre. Nothing this man was doing is worth
@@ -813,6 +817,7 @@ namespace Demiurge.GameServer
                         brain.ShouldCloseDistance,
                         underFire,
                         hasOrder && order.Role == SquadRole.BaseOfFire,
+                        decision is ActorIntent.Entrench,
                         closesToFight,
                         tick,
                         out combatIntent,
@@ -1318,7 +1323,7 @@ namespace Demiurge.GameServer
                 BoardFor(previous).Release(mob.Id);
                 previous.Navigation.Clear();
             }
-            brains[mob.Id] = CreateBrain(mob.Team, mob.Position);
+            brains[mob.Id] = CreateBrain(mob.Team, mob.Position, mob.Id);
             brains[mob.Id].Navigation.SetDestination(RandomSurfacePoint(mob.Position));
         }
 
@@ -1685,6 +1690,7 @@ namespace Demiurge.GameServer
             bool closingDistance,
             bool underFire,
             bool baseOfFire,
+            bool startEntrenchment,
             bool closesToFight,
             uint tick,
             out Vector3 intent,
@@ -1698,13 +1704,16 @@ namespace Demiurge.GameServer
             if (!brain.Contacts.TryGet(brain.CombatTargetId, tick, out var primaryThreat))
                 return;
 
-            // Assault base-of-fire units finish one position and physically occupy it before they
-            // engage. The origin and grade are fixed when digging begins; deriving either from the
-            // falling actor made the excavation migrate downward with him.
-            if (((closesToFight
-                        && !brain.HasCompletedInitialEntrenchment
-                        && !brain.Entrenched)
-                    || brain.Entrenching)
+            // Execute the decision made above, independent of weapon category. This was still
+            // gated on closesToFight after mustEntrench was generalized to every exposed base-of-fire
+            // actor. A rifleman could therefore be labelled ENTRENCH (and have firing withheld) while
+            // this method ran ordinary cover movement instead, producing the observed crouch/peek
+            // deadlock without a single shovel bite.
+            //
+            // Once begun, finish the fixed plan even if direct sight expires. The origin and grade
+            // are fixed when digging begins; deriving either from the falling actor makes the
+            // excavation migrate downward with him.
+            if ((startEntrenchment || brain.Entrenching)
                 && UpdateEntrenchment(
                     mob,
                     brain,
@@ -2477,11 +2486,16 @@ namespace Demiurge.GameServer
         /// A new NPC starts unsquadded. The next <see cref="ReformSquads"/> pass puts it with whoever it
         /// is actually standing next to, which is what a monotonic per-team counter could never do.
         /// </summary>
-        private MobBrain CreateBrain(int team, Vector3 home)
+        private MobBrain CreateBrain(int team, Vector3 home, ushort actorId)
         {
             int squadIndex = 0;
             _ = squads.TryAdd((team, squadIndex), new SquadBlackboard());
-            return new MobBrain { Team = team, SquadIndex = squadIndex };
+            return new MobBrain
+            {
+                Team = team,
+                SquadIndex = squadIndex,
+                SkillFactor = Marksmanship.SkillFactorFor(mobSeed, actorId),
+            };
         }
 
         private SquadBlackboard BoardFor(ServerPlayer mob, MobBrain brain)

@@ -198,7 +198,40 @@ sweep would set up the next adoption to be a surprise.
 Claimed since: the combat currency is **net health points per second** (`Common/Ai/CombatValue.cs`),
 which is the second worked example of this method — and note that the design work was again finding
 the unit, not the algorithm that compares in it. Weapon identity is gone from the AI, fire discipline
-is a rate choice, and squad roles are a joint score.
+is a **burst length**, and squad roles are a joint score.
+
+That used to read "fire discipline is a rate choice", and the rate ladder it referred to is gone
+(2026-08-11). Two things were wrong with it. The dispersion each rung was scored with averaged recoil
+over a whole MAGAZINE — a window whose length depends on the rung being scored and on the weapon's
+capacity — so the rungs were not comparable and the DP-27's 47-round pan, the one thing that makes it
+a machine gun, was priced as its largest handicap. And a rate executed as evenly spaced single shots
+is not how an automatic weapon kills. Burst length is now maximised directly: another round lands
+with more recoil on it than the last and delays the moment the shooter can look at what he did
+(`WeaponEffectiveness.BurstAssessmentSeconds`), so damage per second over fire-plus-assessment has an
+interior maximum, and the cap is that a burst is aimed at a MAN and `ThreatResponse.NominalHealth` is
+all he has. Two rounds of the DP's 50 is a man; six of the PPSh's 18 is a man. Nobody writes down
+which weapons burst.
+
+**What did NOT survive the rewrite is worth knowing before trying to restore it.** "Deliberate at
+range, spray up close" was an artifact of that magazine-averaging bug, not a property the value model
+produces: firing at twice the dispersion and eight times the rate wins on expected damage per second
+whenever a round costs 1 HP and a hit is worth 30. If it is wanted back it belongs in the PRICE of a
+round (`MinimumExpectedDamagePerRound`), which is the model's ammunition-cost dial, and not in a
+recoil-averaging window.
+
+Two calibration facts from the same session, both measured rather than assumed:
+
+- **Stance is worth nothing to a firing solution here, and prone is worth 0–1.6%.** `StandingMoa` 30
+  against `CrouchedMoa` 14 vanishes in quadrature next to a sighting error of 150–400 MOA. Suppression
+  (145) costs 13–32% by the same arithmetic, which is why it works and stance does not. Making a
+  supported position matter needs a term on `SightingMoa` — the hold is what a bipod steadies — not a
+  bigger stance constant.
+- **Every NPC used to shoot exactly alike**: `MobBrain.SkillFactor` defaulted to 1 and nothing ever
+  assigned it. It is now hashed per man from his id (`Common/Ai/Marksmanship.cs`) over a band
+  averaging 1.3, which roughly halves measured hit rates — 47% to 24% per round at 40 m for the
+  standard rifle. Note the emergent consequence, which the code was already written for: `MobSystem`'s
+  "does this man close the distance?" test reads `PreferredRange` AT HIS SKILL, so a poor shot with a
+  rifle wants to fight nearer and closes. The SKS crosses `ClosesToFightRange` at about skill 1.45.
 
 Also claimed: indirect fire, in `Common/Ai/MortarTargeting.cs`. The unit is expected blast coverage
 weighted by what each man is worth, summed over a candidate impact POINT rather than picked for a
@@ -308,6 +341,28 @@ never moved once, after two plausible fixes to the first two changed nothing. No
 stall rate swings 6% to 12% on identical code because the fight happens somewhere different — which is
 why the only thing it ASSERTS is path requests per actor-second, the one measure that separated the
 loop cleanly (1.9–2.5 broken against 0.5–0.9 fixed).
+
+**Everything compared in tickets per second has to be SCALED to tickets per second**, and two things
+that were not parked a squad on its own home flag, with the nearest enemy 633 m away, for a whole
+match (2026-08-11). The planner's `CommitmentBonus` was a bare `0.1` documented as "a tenth of a
+flag" — but a flag is `TicketsPerSecondPerFlag`, a third of a ticket per second, and a real objective
+on the conquest map scores 0.05–0.2, so the hysteresis was wider than the entire spread between the
+best and worst objective and froze the opening plan for the rest of the round. And "when will this
+flag be contested" was folded into the same hyperbolic discount as travel, whose tail left an enemy
+160 s out still holding 26% of the swing — doubled again for the flag being ours. Two rules fall out:
+hysteresis is written as a fraction of the value it damps, never as an absolute; and a term meaning
+"this may not happen at all" must be able to reach zero, which `H / (H + t)` cannot, so it is now an
+exponential (`StrategicValue.InPlay`) applied to the threat and deliberately NOT to travel — a long
+walk is a cost we pay, not an event that may fail to happen, and steepening it would re-create the
+pile-up on the nearest objective.
+
+**A model played at 600 m was tested at 30 m.** Every case in `StrategicValueTests` and
+`StrategicObjectivePlannerTests` is 20–30 m across; the conquest map's flags are 140–450 m apart and
+its spawns 95–650 m from them, so the whole defect lived above the scale the unit tests could see and
+they all passed. The instrument that found it is `Server.Tests/ObjectiveDefenceProbe.cs`, which
+measures what the complaint is about — how far the assigned flag is from the nearest living enemy, on
+the real map — and the fix shows up in the churn diagnostic as path requests 0.76 → 0.43 per
+actor-second, stalled windows 17% → 4%, and four of five flags captured instead of two.
 
 **`MobIntegrationHarness` did not tick weapons, grenades, or items until 2026-08-10**, so no NPC in any
 integration scenario could ever be shot. Every fight measured before that date was a fight that could
