@@ -166,7 +166,7 @@ public sealed class ConquestTickBenchmarkTests(ITestOutputHelper output)
         public static ContactScenario Pose(RuntimeMap map)
         {
             var flags = map.Placements
-                .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
+                .Where(placement => placement.Kind == RuntimePlacementKind.ConquestFlag)
                 .Select(placement => placement.Position)
                 .ToArray();
             var teams = map.Placements

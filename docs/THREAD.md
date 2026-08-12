@@ -39,7 +39,7 @@
 > The pre-threading numbers overstated `follow` and `cover` by roughly 2x for that reason.
 >
 > **What remains.** Navigation is now the binding constraint, and it is queue-bound rather than
-> frame-bound: `queue p50/p95` climbed to 362/488 ms per path against BARITONE.md's 500 ms ceiling,
+> frame-bound: `queue p50/p95` climbed to 362/488 ms per path against navigation's 500 ms ceiling,
 > with `0 full / 39 partial` routes and `shared routes 0`. Every NPC gets a partial answer, re-requests,
 > and keeps eight workers saturated at ~34 ms each per tick. `search p50/p95` of 153/342 ms also sits
 > well past the 25 ms prefix and 100 ms failure budgets those searches are supposed to respect — a

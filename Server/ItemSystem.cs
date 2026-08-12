@@ -2,12 +2,8 @@ using System.Numerics;
 
 namespace Demiurge.GameServer
 {
-    /// <summary>Pickups, equipping, swapping, dropping — for every item kind.
-    /// Owns no storage: items live in ObjectReplication as Item-masked objects,
-    /// slot occupancy lives on ServerPlayer.Equipped, and what an item IS comes
-    /// from ItemConfig. Transitions only move mask bits around:
-    /// pickup = Item|Transform(+traits), equipped = Item|Owner(+traits) — every
-    /// trait bit (Weapon, Armor, future ones) carries across untouched.</summary>
+    /// <summary>Handles item transitions without owning storage. Pickups use Item|Transform; equipped
+    /// items use Item|Owner, preserving all trait bits across transitions.</summary>
     public class ItemSystem
     {
         private readonly ObjectReplication objects;
@@ -20,20 +16,12 @@ namespace Demiurge.GameServer
         public ItemSystem(ObjectReplication objects) => this.objects = objects;
 
         /// <summary>
-        /// The server's clock, as of the last <see cref="Tick"/>.
-        ///
-        /// Held rather than passed because dropping is reachable from six places — E, a swap, a
-        /// put-down, a death, an admin equip, a consumed stack — and only two of them are anywhere
-        /// near a tick counter. Threading one through all six to stamp a deadline would put the
-        /// parameter in signatures that have no other use for it, and a drop that read the clock a
-        /// tick late would still expire at the right second.
+        /// Server tick captured by <see cref="Tick"/> for drop-expiry deadlines.
         /// </summary>
         private uint now;
 
         /// <summary>
-        /// Sweeps away expired litter. Every dropped item carries its own deadline, so this is one
-        /// pass over the object table rather than a timer per object, and an item placed by a map or
-        /// set down deliberately has no deadline at all and is never considered.
+        /// Removes expired dropped items. Map items and deliberate placements have no deadline.
         /// </summary>
         public void Tick(uint tick)
         {
@@ -55,10 +43,7 @@ namespace Demiurge.GameServer
             => SpawnPickup(type, position, ObjectType.Item);
 
         /// <summary>
-        /// A map-authored weapon crate: the same pickup, presented as a container until somebody
-        /// takes it. Only the ObjectType differs, and it lives exactly as long as the world pickup
-        /// does — picking up and dropping both respawn the object as <see cref="ObjectType.Item"/>,
-        /// so a crated weapon is a crate on the ground and a weapon everywhere else.
+        /// Spawns a map-authored pickup displayed as a crate until first taken.
         /// </summary>
         public ServerObject SpawnSupplyCrate(ItemType type, Vector3 position)
             => SpawnPickup(type, position, ObjectType.Crate);
@@ -87,12 +72,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// The spare rounds a weapon is issued with: <see cref="ItemConfig.SpareMagazines"/> on top
-        /// of the full magazine already in it.
-        ///
-        /// A grenade stack is the exception, and by rule rather than by name: its magazine IS the
-        /// number of grenades a man carries and there is no reload that could spend a reserve, so a
-        /// non-empty one would be rounds that exist and can never be reached.
+        /// Initial reserve rounds. Non-reloadable stacks keep all ammunition in the magazine.
         /// </summary>
         private static int ReserveFor(ItemType type, in WeaponStats weapon)
             => ItemCatalog.HasBehavior(type, ItemBehavior.Grenade)
@@ -112,10 +92,8 @@ namespace Demiurge.GameServer
             => SpawnOwned(player, type, HotbarConfig.StorageSlot(hotbar), ammo, dropReplaced);
 
         /// <summary>
-        /// Standard infantry inventory shared by every NPC. Slot 2 is a real shovel object now: it
-        /// has no WeaponConfig row, so it carries no WeaponState and fire/reload skip it, but it
-        /// gives the slot something to render — on the hip when stowed, in hand when selected.
-        /// Selecting the slot is still what authorizes digging.
+        /// Standard infantry inventory. The shovel is renderable but has no WeaponState; selecting
+        /// its slot authorizes digging.
         /// </summary>
         internal void SpawnInfantryLoadout(ServerPlayer actor, ItemType? primaryWeapon = null)
         {
@@ -127,9 +105,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// The gun a man is issued when he has none: a mob's from the standard NPC primary, a
-        /// player's from the class he picked. One function, so the first spawn and every respawn
-        /// cannot disagree about what a class means.
+        /// Default primary for initial spawn and respawn.
         /// </summary>
         private static ItemType DefaultPrimary(ServerPlayer actor)
             => actor.IsMob
@@ -137,14 +113,7 @@ namespace Demiurge.GameServer
                 : PlayerClasses.Weapon(actor.Class);
 
         /// <summary>
-        /// Who is issued a grenade stack: every player, and the NPCs carrying the assault gun.
-        ///
-        /// One predicate for both loadout paths. They are the same rule and were the same three
-        /// lines twice, which is exactly the shape that lets a spawn and a respawn quietly disagree
-        /// about what a man is carrying.
-        ///
-        /// Players are unconditional because a player is not a squad role — nobody assigns him a
-        /// weapon, and stripping his grenades for picking up a rifle would read as a bug.
+        /// Shared spawn/respawn grenade issue rule. Players always qualify; NPC issue follows primary role.
         /// </summary>
         private static bool CarriesGrenades(ServerPlayer actor, ItemType primary)
             => !actor.IsMob || NpcSquadLoadout.CarriesGrenades(primary);
@@ -160,12 +129,8 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Restores every equipped weapon to a full magazine and a full reserve after a death, and
-        /// recreates the default slots that are gone.
-        ///
-        /// The primary is now always one of those: <see cref="DropOnDeath"/> leaves it on the ground,
-        /// so a man who had picked a PPSH up respawns with the standard issue rather than with the
-        /// gun he died holding — that gun is lying where he died, and somebody else may have it.
+        /// Refills retained weapons and recreates missing default slots after death. The dropped primary
+        /// is replaced with standard issue.
         /// </summary>
         internal void RefillRespawnLoadout(ServerPlayer actor)
         {
@@ -255,16 +220,10 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// E pressed: equip the nearest pickup in radius, swapping out whatever occupies its slot.
-        /// Server-authoritative — the client sends no target, so there is nothing to validate beyond
-        /// proximity and who is using what.
+        /// Equips the nearest valid pickup, swapping the occupied slot. Target selection is authoritative.
         /// </summary>
         /// <param name="actors">
-        /// Everyone, so a thing somebody is WORKING can be excluded. A mortar with a gunner on it is
-        /// not a pickup: taking it out from under him would leave him operating an object that no
-        /// longer exists where he is standing. Passed in rather than tracked here because who is
-        /// operating what lives on <see cref="ServerPlayer.OperatingObjectId"/>, and a second copy of
-        /// that here could disagree with it.
+        /// All actors, used to exclude objects currently operated by another actor.
         /// </param>
         public void ApplyInteract(ServerPlayer player, IEnumerable<ServerPlayer> actors)
         {
@@ -316,9 +275,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Sets down what the player is hauling, where he stands and facing where he faces. That
-        /// heading is the whole point for a mortar — it is the line the tube then traverses around —
-        /// so putting one down is an act of aiming, not of tidying up.
+        /// Places the carried item at the player with their yaw, which sets an emplacement's traverse axis.
         /// </summary>
         public void PutDown(ServerPlayer player)
         {
@@ -352,18 +309,12 @@ namespace Demiurge.GameServer
             player.Equipped[slot] = equipped.NetworkId;
         }
 
-        /// <summary>
-        /// Puts an equipped item back in the world at <paramref name="yaw"/> — the direction its
-        /// owner was facing as they let go of it.
-        ///
-        /// For most items that is decoration. For a mortar it is the emplacement: the tube traverses
-        /// a sector either side of this heading and cannot be re-laid without picking the thing up,
-        /// so which way a man was looking when he set it down is a lasting fact about the world and
-        /// has to survive the equipped-to-pickup transition rather than being reset to zero.
-        /// </summary>
         /// <summary>When something dropped right now stops being worth walking to.</summary>
         private uint LitterDeadline() => now + (uint)ItemConfig.DroppedLifetimeTicks;
 
+        /// <summary>
+        /// Returns an equipped item to the world, preserving <paramref name="yaw"/> for emplacement traverse.
+        /// </summary>
         private void Drop(ServerObject equipped, Vector3 position, float yaw, uint despawnAtTick)
         {
             // equipped -> pickup: the mirror image of Equip's transition. The
@@ -399,11 +350,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// What the actor has in a hotbar slot, or null when the slot is empty.
-        ///
-        /// The Hand fallback is the same one WeaponSystem.TryGetActiveWeapon applies, and it is not
-        /// optional here: an administrative `give` predates the hotbar and lands in Hand, where slot
-        /// 1 still selects it — and the client's own per-slot map files those under Primary too.
+        /// Item selected by a hotbar slot. Primary falls back to Hand for legacy administrative items.
         /// </summary>
         public ItemType? HeldItem(ServerPlayer player, HotbarSlot hotbar)
         {
@@ -439,13 +386,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// The emplaced carryable within reach of this player, or null — what F operates. Uses the
-        /// same PickupTargeting rule E does, filtered to things that are set down rather than
-        /// merely lying about, so the two keys always agree on which object is meant.
-        ///
-        /// A tube somebody else is already on is excluded for the same reason E excludes it: one
-        /// gunner per weapon, and two men laying the same mortar on different bearings is not a
-        /// state the firing code has any answer for.
+        /// Nearest unoccupied emplacement in reach, using the same targeting rule as pickup interaction.
         /// </summary>
         public ServerObject? EmplacedInReach(ServerPlayer player, IEnumerable<ServerPlayer> actors)
         {
@@ -466,10 +407,7 @@ namespace Demiurge.GameServer
                 : null;
 
         /// <summary>
-        /// Applies a requested hotbar selection, or refuses it because the man's hands are full.
-        /// Every path that honours a client's slot choice goes through here, so "you cannot switch
-        /// while carrying" is one rule in one place rather than a condition three call sites have to
-        /// remember.
+        /// Applies a hotbar selection unless the actor is carrying an item.
         /// </summary>
         public void SelectHotbar(ServerPlayer player, HotbarSlot hotbar)
         {
@@ -478,16 +416,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Leaves a dead man's weapon where he fell, for whoever walks past it.
-        ///
-        /// His GUN and nothing else. The rest of the kit is deliberately untouched — his shovel,
-        /// his armour and his grenades stay equipped and are refilled at the respawn wave, exactly
-        /// as they were before, because a shovel on the ground is litter nobody crosses a field for
-        /// and stripping a man's armour on death is a separate decision nobody has made.
-        ///
-        /// What lands is the weapon he ACTUALLY had, not a fresh issue: the magazine and the reserve
-        /// ride the object through <see cref="Drop"/> on the same CopyComponents line, so a man
-        /// killed mid-reload leaves a nearly empty rifle and taking it is a real gamble.
+        /// Drops the dead actor's current gun with its live ammunition state. Other kit remains equipped.
         /// </summary>
         public void DropOnDeath(ServerPlayer player)
         {

@@ -14,7 +14,7 @@ namespace Demiurge;
 /// here" for every cell at once, in O(1) per actor per tick.
 ///
 /// It also fixes route SHARING rather than working around it. Sharing unproved A* prefixes was tried
-/// and abandoned because it marched whole squads into the same local minimum (see BARITONE.md). A
+/// and abandoned because it marched whole squads into the same local minimum (see NAVIGATION.md). A
 /// field cannot do that: it is a global optimum from every cell simultaneously, so there is no
 /// unproved trunk to agree on wrongly.
 ///

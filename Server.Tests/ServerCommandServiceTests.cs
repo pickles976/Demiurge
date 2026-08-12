@@ -154,8 +154,7 @@ public class ServerCommandServiceTests
         Assert.Equal(2, mob.Team);
     }
 
-    /// <summary>@s is the issuer, so a player can put himself on the other side without knowing his
-    /// own actor id.</summary>
+    /// <summary>@s lets the issuer switch sides without knowing their actor id.</summary>
     [Fact]
     public void TeamCommandAcceptsSelf()
     {
@@ -170,9 +169,7 @@ public class ServerCommandServiceTests
     }
 
     /// <summary>
-    /// A team the map does not have is refused by the WORLD rather than by the grammar, and the
-    /// failure has to reach the issuer: which sides exist is a property of what is loaded, so a
-    /// parser that knew them would be a parser that goes stale when the map changes.
+    /// Unknown teams are rejected by the loaded world, not the grammar, and reported to the issuer.
     /// </summary>
     [Fact]
     public void TeamCommandRefusesASideTheMapDoesNotHave()
@@ -248,8 +245,7 @@ public class ServerCommandServiceTests
             return new ServerObject { NetworkId = nextObjectId++, Type = ObjectType.Item };
         }
 
-        /// <summary>Two playable sides, which is what the real world's map placements usually
-        /// amount to; anything else is rejected so the "not playable" path is reachable here.</summary>
+        /// <summary>Two playable sides; other teams exercise the world-level rejection path.</summary>
         public bool TrySetTeam(ServerPlayer actor, int team, out string message)
         {
             if (team is not (1 or 2))

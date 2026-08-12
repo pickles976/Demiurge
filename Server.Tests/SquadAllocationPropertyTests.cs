@@ -4,15 +4,8 @@ using Demiurge.GameServer;
 namespace Demiurge.ServerTests;
 
 /// <summary>
-/// Invariants of the squad allocation, fuzzed rather than exampled.
-///
-/// Every bug this file exists for was an unintended COMBINATION rather than a wrong value: a guard
-/// that also skipped a roster insertion, a permit that overrode an order, an entrench flag that
-/// overrode a bound. None of them is visible in any single hand-written scenario, because each one
-/// needs a particular mix of ranges, weapons and prior state to show up.
-///
-/// So these assert properties over randomised squads instead. `SquadTactics.Plan` is pure, which is
-/// what makes fuzzing it cheap — a thousand squads cost milliseconds and no server.
+/// Fuzzes allocation invariants across combinations of ranges, weapons, and prior state.
+/// <c>SquadTactics.Plan</c> is pure, so thousands of squads run without a server.
 /// </summary>
 public class SquadAllocationPropertyTests
 {

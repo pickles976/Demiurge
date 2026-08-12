@@ -175,16 +175,16 @@ shelf.
 It shapes tests too: assert a **property of the model** ("crossed without excavation when the bridge
 is cheaper", "stone never produces a dig route"), not a trace through an implementation. A test
 written against a heuristic encodes that heuristic's special cases and then obstructs the general
-system that would have replaced it. The stage-4 list in `docs/BARITONE.md` is written this way
-deliberately.
+system that would have replaced it. The behavior coverage in `docs/NAVIGATION.md` is written this
+way deliberately.
 
 Two limits, because the method has its own failure mode:
 
 - **Generality cannot be bought with compute here.** Sutton's bitter lesson bets on search and
   learning scaling as compute gets cheaper; the SER5 and the 16.6 ms singleplayer frame mean we do
   not get that bet. Generality has to come from the model being right, not from being allowed to
-  think longer — which is why `docs/BARITONE.md` is full of node ceilings and p95 gates. A general
-  system that wins by starving the tick is not a win.
+  think longer — which is why navigation has expansion ceilings and a p95 gate. A general system
+  that wins by starving the tick is not a win.
 - **A complete search over the wrong state space is worse than a pile of heuristics**, because it
   generalizes confidently in the wrong direction and leaves no single branch to point at. Baritone
   had already done the modelling for us; the next problem will not arrive with that done. Derive the
@@ -499,7 +499,7 @@ positive, one layer up.
 
 ## Terrain / chunks (in progress)
 
-The current work is tracked in `docs/TODO.md`. Code sits in `Common/Voxel/`, with no Stride dependency,
+The current work is tracked in `TODO.md`. Code sits in `Common/Voxel/`, with no Stride dependency,
 so both ends share it.
 
 **The server owns terrain and streams it; the client never generates any.** `WorldGen.Generate`
@@ -769,6 +769,5 @@ failure modes to actively avoid are **cognitive overload** and **premature optim
 - Don't answer a concept question with a system design. ("What chunk size and data structure?"
   wants a concept, not sections + cache analysis + a meshing strategy.)
 - Don't optimize a step he has scoped as scaffolding or throwaway.
-- When design must run ahead of code, mark plainly which parts belong to a later step. `docs/TODO.md`
-  does this by ending each step with what is *deliberately not* in it; that marking is what lets
-  a blueprint run ahead without reading as a to-do list.
+- When design must run ahead of code, mark plainly which parts belong to a later step so a blueprint
+  does not read as completed behavior.

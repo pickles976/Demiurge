@@ -33,10 +33,6 @@ namespace Demiurge
         /// <summary>Text that belongs to nobody — connecting words, coordinates, reasons.</summary>
         public static readonly Color NeutralColor = new(235, 238, 242, 245);
 
-        /// <summary>
-        /// The colour a team is drawn in anywhere on the HUD: the ticket bar, the activity feed.
-        /// Team 1 is orange and team 2 grey, matching the cat models the two sides wear.
-        /// </summary>
         /// <summary>Loadout cards: the plate colour of the class you are not taking, and of the
         /// one you are.</summary>
         public static readonly Color UnselectedClassColor = new(14, 14, 17, 205);
@@ -46,6 +42,7 @@ namespace Demiurge
         /// the button — see the note where it is used.</summary>
         private const float ClassCardWidth = 152f;
 
+        /// <summary>HUD colour for a team, used by ticket bars and the activity feed.</summary>
         public static Color TeamColor(int team) => team switch
         {
             1 => Team1Color,

@@ -80,6 +80,9 @@ internal sealed class SquadBlackboard
 
     public int MemberCount => roster.Count;
     public IReadOnlyList<ushort> Roster => roster;
+    /// <summary>The oldest live actor id leads. Stable across dictionary order and ordinary
+    /// formation movement, while still replacing a leader automatically when that actor leaves.</summary>
+    public ushort? LeaderId => roster.Count == 0 ? null : roster.Min();
     public uint ObjectiveRevision { get; private set; }
     public uint ResourceRevision { get; private set; }
 

@@ -188,7 +188,7 @@ public sealed class MinimapScript : SyncScript
         int used = 0;
         foreach (var obj in Objects.Objects)
         {
-            if (obj.Type != ObjectType.Flag || used >= icons.Count) continue;
+            if (obj.Type != ObjectType.ConquestFlag || used >= icons.Count) continue;
             if (!TryPlot(obj.Transform.Position, local.Position, sin, cos, centre, out var point))
                 continue;
 

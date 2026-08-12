@@ -30,8 +30,7 @@ namespace Demiurge.GameServer
         private ServerTickBreakdown serverBreakdown;
 
         /// <summary>
-        /// Where a server tick goes, once a second. In singleplayer this whole thing runs inside the
-        /// client's frame, so every millisecond here is a millisecond off the frame budget.
+        /// One-second aggregate of server tick phase timings.
         /// </summary>
         private struct ServerTickBreakdown
         {
@@ -42,19 +41,11 @@ namespace Demiurge.GameServer
             private double worstMs;
 
             /// <summary>
-            /// Rolling tick durations, for the "30 TPS 99% of the time" target.
+            /// Rolling tick durations for the 30 TPS p99 target.
             /// </summary>
             /// <remarks>
-            /// Reported on a slower cadence than the breakdown above, because a one-second window holds
-            /// about 30 samples and a 99th percentile drawn from 30 samples is just the maximum.
-            /// <para>
-            /// This measures tick DURATION against the 33.3 ms budget, which is a necessary condition
-            /// for sustaining 30 TPS rather than a direct measurement of it: the loop cannot run 30
-            /// ticks in a second if a tick costs more than a thirtieth of one. The achieved rate is the
-            /// `N ticks` count on the line above, and the two should be read together — duration inside
-            /// budget with a rate below 30 would mean something is stalling the loop rather than the
-            /// tick being too expensive.
-            /// </para>
+            /// Uses a longer window because 30 one-second samples make p99 equivalent to the maximum.
+            /// Read duration with achieved tick count: duration diagnoses cost; count also exposes stalls.
             /// </remarks>
             private PercentileWindow? tickDurations;
             private long percentileWindowStart;
@@ -124,8 +115,7 @@ namespace Demiurge.GameServer
         public string MapName { get; }
 
         /// <summary>
-        /// The server's terrain, and the only authority on it. Clients receive it via
-        /// <see cref="ChunkTcpServer"/> and never generate any themselves.
+        /// Authoritative terrain streamed to clients by <see cref="ChunkTcpServer"/>.
         /// </summary>
         private readonly ChunkMap terrain;
 
@@ -167,7 +157,7 @@ namespace Demiurge.GameServer
             score = new MatchScoreSystem(server);
             activityFeed = new ActivityFeedSystem(server, score);
             weapons = new WeaponSystem(server, objects, terrain, activityFeed);
-            flags = new FlagSystem(objects, activityFeed);
+            flags = new FlagSystem(objects, terrain, activityFeed);
             tickets = new TicketSystem(server, flags, playableTeams);
             terrainEdits = new TerrainSystem(server, terrain);
             mortars = new MortarSystem(objects, terrain, terrainEdits, activityFeed);
@@ -244,7 +234,7 @@ namespace Demiurge.GameServer
                         var mob = SpawnMob(placement.Position, placement.Team, placement.Item);
                         mob.Yaw = placement.Yaw;
                         break;
-                    case RuntimePlacementKind.Flag:
+                    case RuntimePlacementKind.ConquestFlag:
                         flags.Spawn(placement.Position);
                         break;
                 }
@@ -338,9 +328,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Reserves this client's terrain stream and returns the token it must present on it. Must happen
-        /// before the client is welcomed, since the token rides in the Welcome message, and before
-        /// <see cref="AddPlayer"/>, which queues the world into the stream this creates.
+        /// Reserves a terrain stream and returns its token. Call before Welcome and <see cref="AddPlayer"/>.
         /// </summary>
         public Guid RegisterChunkStream(ushort clientId) => chunks.Register(clientId);
 
@@ -432,13 +420,8 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Records the kit this player wants issued next time he is given one.
-        ///
-        /// Deliberately not gated on being dead. The class is a preference the server keeps, and
-        /// the loadout is issued at spawn by <see cref="ItemSystem.RefillRespawnLoadout"/> — so
-        /// "you may only choose while waiting to respawn" is a rule about what the CLIENT offers,
-        /// not a second place for the server to decide who is allowed a rifle. Accepting it at any
-        /// time also makes the message idempotent, which at-least-once delivery requires.
+        /// Records the next-spawn class preference. Accepting it at any time keeps delivery idempotent;
+        /// the client decides when to offer the choice.
         /// </summary>
         public void ApplySelectClass(ushort clientId, byte playerClass)
         {
@@ -474,12 +457,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// F: get on, or off, the emplaced thing in reach. Resolving WHAT is in reach is shared with
-        /// E — same PickupTargeting rule, so the two keys can never disagree about which object the
-        /// player means, only about what to do with it.
-        ///
-        /// A toggle rather than a hold, because operating a mortar is a posture and not an action:
-        /// the gunner is on it for as long as it takes to lay and fire, and F is how he steps away.
+        /// Toggles operation of the emplacement selected by the shared pickup-targeting rule.
         /// </summary>
         public void ApplyUse(ushort clientId)
         {
@@ -499,9 +477,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Drops a bomb on a point. The request carries the point and nothing else — which mortar,
-        /// where it is and which way it was laid all come from the server's own state, so a client
-        /// can choose WHERE inside the sector and nothing about the sector itself.
+        /// Fires at a requested point using server-owned emplacement position and traverse limits.
         /// </summary>
         public void ApplyMortarFire(ushort clientId, MortarFireData request)
         {
@@ -581,13 +557,8 @@ namespace Demiurge.GameServer
 
                 for (int i = 0; i < toProcess && player.PendingMoves.TryDequeue(out var move); i++)
                 {
-                    // The MOVE's hotbar, not the player's: the field is written when input arrives
-                    // and the queue can be a tick or two behind, so stepping against it would apply
-                    // a weight the client had not yet applied to that move — a correction on every
-                    // weapon switch. The client replays from the same field.
-                    // A gunner on an emplacement stands where the emplacement is. Zeroed here as
-                    // well as on the client so prediction and truth agree about a man who is holding
-                    // W with his hands on a mortar.
+                    // Use the move's hotbar so queued prediction applies the same weight. Operating
+                    // actors have zero intent on both client and server.
                     var intent = player.IsOperating ? Vector3.Zero : move.Intent;
                     PlayerMovement.Step(
                         terrain, ref player.Move, intent, move.State, dt,
@@ -688,12 +659,8 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Everything it takes to put a body back on its feet at its own team's spawn, healed,
-        /// re-kitted and with every per-life counter cleared.
-        ///
-        /// Extracted from the respawn loop so switching sides can use it. It deliberately does NOT
-        /// charge a ticket or clear RespawnTick — those belong to the wave clock, and a man moved to
-        /// the other team has not respawned in the sense the economy means.
+        /// Restores an actor at its team spawn with health, kit, and per-life state. Does not charge
+        /// tickets or alter the respawn-wave clock, so team switching can reuse it.
         /// </summary>
         private void PutBackInTheFight(ServerPlayer player, ServerObject status)
         {
@@ -715,17 +682,8 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Moves an actor to another side, and puts him where that side starts.
-        ///
-        /// The relocation is not a courtesy. Team decides who shoots at you, which flags you can
-        /// take, and where you respawn, so leaving a switched actor standing in what is now the
-        /// enemy line hands the other team a free kill and, for an NPC, a squad-mate its own
-        /// commander is planning around. He arrives at his new team's spawn, whole and re-kitted,
-        /// exactly as if he had walked in with them.
-        ///
-        /// An NPC additionally gets a NEW BRAIN rather than an edited one — MobBrain.Team is
-        /// init-only and that is the right shape, because a brain carries squad membership, cover
-        /// leases and a bound in progress, every one of which belongs to the side it was formed on.
+        /// Moves an actor to the new team's spawn and resets team-specific state. NPCs receive a new
+        /// brain so squad membership, cover leases, and bounds cannot cross teams.
         /// </summary>
         public bool TrySetTeam(ServerPlayer actor, int team, out string message)
         {
@@ -751,12 +709,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Kills an actor by taking his health to zero and leaving the rest to the tick.
-        ///
-        /// Deliberately not a second death path: the death branch in <see cref="Tick"/> already
-        /// drops the kit, counts the death and books the respawn wave, and it runs off health being
-        /// zero rather than off whatever caused it. A command that dropped the kit itself would be
-        /// a second answer to "what happens when a man dies" and would drift from the first.
+        /// Sets health to zero; <see cref="Tick"/> remains the single death-processing path.
         /// </summary>
         public bool TryKill(ServerPlayer actor, out string message)
         {
@@ -858,15 +811,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Moves a wedged actor back to a spawn instead of removing it.
-        ///
-        /// Being stuck used to be fatal — permanently, since deletion does not respawn — so every
-        /// piece of geometry an NPC could wedge itself in slowly drained the teams for the rest of
-        /// the round. Getting stuck is a navigation failure, not a death: the fix is to pick the man
-        /// up and put him somewhere he can walk from.
-        ///
-        /// Health is deliberately NOT restored. This is a relocation, not a respawn, and a wounded
-        /// man who wedges himself should not come away healed.
+        /// Moves a wedged actor to a valid spawn without healing; navigation failure is not death.
         /// </summary>
         private void Relocate(ServerPlayer actor)
         {
@@ -882,12 +827,7 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Closes wounds once an actor has been left alone long enough. Server-authoritative like
-        /// every other health change, so the client's red-out and heartbeat follow the same number
-        /// rather than predicting one of their own.
-        ///
-        /// The carry is what makes it work at all: the rate is 0.67 health per tick against a ushort
-        /// field, so rounding each tick independently would heal precisely nothing.
+        /// Server-authoritative delayed regeneration. Fractional carry preserves sub-ushort healing per tick.
         /// </summary>
         private void RegenerateHealth(float dt)
         {
@@ -931,7 +871,8 @@ namespace Demiurge.GameServer
                         // reflects cannot disagree: there is nowhere to forget to clear it.
                         State = player.State
                             .With(PlayerStateFlags.Carrying, player.IsCarrying)
-                            .With(PlayerStateFlags.Operating, player.IsOperating),
+                            .With(PlayerStateFlags.Operating, player.IsOperating)
+                            .With(PlayerStateFlags.SquadLeader, mobs.IsSquadLeader(player)),
                         LastProcessedSequence = player.LastProcessedSequence,
                         Velocity = player.Move.Velocity,
                         Grounded = player.Move.Grounded,

@@ -340,15 +340,8 @@ public class ItemAttachScript : SyncScript
     }
 
     /// <summary>
-    /// True for anything the local player is holding, weapon or not. The shovel has no WeaponState
-    /// — it is a tool, not a gun — but it still has to be drawn in front of the camera rather than
-    /// on a body the first-person view does not render.
-    /// </summary>
-    /// <summary>
-    /// Whether this is the local player's own item, drawn as a view model rather than on a body he
-    /// cannot see. Carried counts: something hauled in both hands is the most first-person thing
-    /// there is, and leaving it out is what made a picked-up mortar invisible to its own carrier —
-    /// it was being seated on the torso bone of a disabled model.
+    /// True for the local player's held, carried, or hotbar item, which must render as a view model
+    /// because the first-person body is hidden.
     /// </summary>
     private bool IsLocalViewModel()
         => Registry.LocalPlayer is { } local

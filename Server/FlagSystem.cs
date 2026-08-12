@@ -11,8 +11,10 @@ public sealed class FlagSystem
     private sealed class Flag
     {
         public required ServerObject Object { get; init; }
-        public required Vector3 Position { get; init; }
+        public Vector3 Position => Object.Transform.Position;
         public int LastReplicatedBucket { get; set; }
+        public float GroundY { get; set; }
+        public float VerticalVelocity { get; set; }
 
         /// <summary>
         /// Teams with a living player inside the capture radius, refreshed every tick. Kept as
@@ -23,6 +25,7 @@ public sealed class FlagSystem
     }
 
     private readonly ObjectReplication objects;
+    private readonly ChunkMap? terrain;
     private readonly ActivityFeedSystem? activityFeed;
     private readonly List<Flag> flags = [];
     private readonly Dictionary<int, int> nextSpawnByTeam = [];
@@ -35,10 +38,24 @@ public sealed class FlagSystem
         this.activityFeed = activityFeed;
     }
 
+    public FlagSystem(
+        ObjectReplication objects,
+        ChunkMap terrain,
+        ActivityFeedSystem? activityFeed = null)
+        : this(objects, activityFeed)
+    {
+        this.terrain = terrain;
+    }
+
+    private long observedTerrainVersion = long.MinValue;
+
     public ServerObject Spawn(Vector3 position)
     {
+        // A flag may be spawned after the system has already observed this terrain revision.
+        // Force the next tick to resolve its floor rather than inheriting the other flags' answer.
+        observedTerrainVersion = long.MinValue;
         var obj = objects.Spawn(
-            ObjectType.Flag,
+            ObjectType.ConquestFlag,
             NetComponents.Transform | NetComponents.Team,
             position,
             flag => flag.Team = new TeamState
@@ -49,7 +66,7 @@ public sealed class FlagSystem
         flags.Add(new Flag
         {
             Object = obj,
-            Position = position,
+            GroundY = position.Y,
             LastReplicatedBucket = ProgressBucket(obj.Team.Progress),
         });
         return obj;
@@ -58,6 +75,8 @@ public sealed class FlagSystem
     public void Tick(float dt, IEnumerable<ServerPlayer> players)
     {
         if (!float.IsFinite(dt) || dt <= 0f) return;
+
+        UpdateGravity(dt);
 
         float radiusSq = FlagConfig.CaptureRadius * FlagConfig.CaptureRadius;
         foreach (var flag in flags)
@@ -152,6 +171,51 @@ public sealed class FlagSystem
                 else
                     activityFeed?.ReportFlagCaptured(state.Value, flag.Position);
             }
+        }
+    }
+
+    private void UpdateGravity(float dt)
+    {
+        if (terrain is null) return;
+
+        long version = terrain.EditVersion;
+        if (version != observedTerrainVersion)
+        {
+            observedTerrainVersion = version;
+            foreach (var flag in flags)
+            {
+                var position = flag.Position;
+                var origin = position + Vector3.UnitY * 0.2f;
+                float maxDistance = ChunkConstants.WorldMaxY - ChunkConstants.WorldMinY;
+                float floor = TerrainRaycast.Cast(
+                        terrain,
+                        origin,
+                        -Vector3.UnitY,
+                        maxDistance)?.Point.Y
+                    ?? ChunkConstants.WorldMinY + ChunkConstants.BedrockThickness;
+
+                // Gravity never raises a pole when terrain is built into or under it.
+                flag.GroundY = MathF.Min(position.Y, floor);
+            }
+        }
+
+        foreach (var flag in flags)
+        {
+            var position = flag.Position;
+            if (position.Y <= flag.GroundY + 0.001f)
+            {
+                flag.VerticalVelocity = 0f;
+                continue;
+            }
+
+            flag.VerticalVelocity -= 9.81f * dt;
+            float nextY = MathF.Max(flag.GroundY, position.Y + flag.VerticalVelocity * dt);
+            if (nextY == position.Y) continue;
+
+            flag.Object.Transform.Position = new Vector3(position.X, nextY, position.Z);
+            flag.Object.Dirty |= NetComponents.Transform;
+            if (nextY <= flag.GroundY + 0.001f)
+                flag.VerticalVelocity = 0f;
         }
     }
 

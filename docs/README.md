@@ -6,9 +6,8 @@ Start with:
 - [CLAUDE](../CLAUDE.md): architecture invariants, performance targets, design method, and
   implementation guidance
 - [Architecture](ARCHITECTURE.md): runtime boundaries, authority, AI layers, and threading
+- [AI roadmap](../AI_TODO.md): authoritative remaining AI and navigation work
 - [NPC navigation](NAVIGATION.md): traversal, path workers, reuse, recovery, and diagnostics
-- [Time-costed pathfinding](BARITONE.md): A* traversal design, performance budgets, rollout plan, and
-  the retrospective on why a single cost currency generalized where heuristics did not
 - [Recipes](RECIPES.md): append-only checklists for extending gameplay and replication
 - [Editor](EDITOR.md): source/runtime map formats and editor lifecycle
 - [Commands](COMMANDS.md): developer, server, map, and editor commands
@@ -29,7 +28,7 @@ Plans and work tracking:
 
 - [Threading plan](THREAD.md): process and simulation threading analysis
 - [Weapons plan](WEAPONS.md): weapon-system requirements and implementation notes
-- [Current work](TODO.md): active voxel-terrain milestones and deliberately deferred work
+- [General project work](../TODO.md): non-AI project milestones
 
 Useful Stride vocabulary:
 

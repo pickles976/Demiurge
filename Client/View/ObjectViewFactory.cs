@@ -47,7 +47,7 @@ public class ObjectViewFactory : IDisposable
                   new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/dummy.gltf")) },
             [ObjectType.Grenade] = _ => CreateThrownGrenade(),
             [ObjectType.MortarRound] = _ => CreateMortarRound(),
-            [ObjectType.Flag] = obj => new Entity
+            [ObjectType.ConquestFlag] = obj => new Entity
             {
                 new ModelComponent(GLTFLoader.LoadModel(game, "assets/models/flag.gltf")),
                 new FlagViewScript

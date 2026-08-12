@@ -16,6 +16,13 @@ public static class FlagConfig
     /// </summary>
     public static int FlyingTeam(int ownerTeam, int capturingTeam)
         => ownerTeam != NeutralTeam ? ownerTeam : capturingTeam;
+
+    /// <summary>The cloth's pole height. A pristine neutral point flies white at the top while its
+    /// capture progress still correctly begins at zero.</summary>
+    public static float FlyingProgress(int ownerTeam, int capturingTeam, float captureProgress)
+        => ownerTeam == NeutralTeam && capturingTeam == NeutralTeam
+            ? 1f
+            : captureProgress;
     public const float CaptureRadius = 4f;
     public const float SpawnRadius = 2.5f;
     public const float CaptureSeconds = 10f;

@@ -110,11 +110,11 @@ public static class EditorValidation
                     if (placement.Team <= 0)
                         errors.Add($"Placement {placement.Id} must use a positive team");
                     break;
-                case EditorPlacementKind.Flag:
-                    if (placement.ArchetypeId != "demiurge:flag")
-                        errors.Add($"Placement {placement.Id} has unknown flag {placement.ArchetypeId}");
+                case EditorPlacementKind.ConquestFlag:
+                    if (placement.ArchetypeId != "demiurge:conquest-flag")
+                        errors.Add($"Placement {placement.Id} has unknown conquest flag {placement.ArchetypeId}");
                     if (placement.Team != 0)
-                        errors.Add($"Flag placement {placement.Id} must start neutral");
+                        errors.Add($"Conquest flag placement {placement.Id} must start neutral");
                     break;
                 default:
                     errors.Add($"Placement {placement.Id} has unknown kind {placement.Kind}");

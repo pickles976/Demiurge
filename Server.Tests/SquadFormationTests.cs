@@ -135,4 +135,16 @@ public class SquadFormationTests
         SquadFormation.Plan([], Assignments);
         Assert.Empty(Assignments);
     }
+
+    [Fact]
+    public void LowestLiveActorIdLeadsRegardlessOfRosterOrder()
+    {
+        var squad = new SquadBlackboard();
+        squad.SetRoster([60004, 60001, 60003], Vector3.Zero);
+
+        Assert.Equal((ushort)60001, squad.LeaderId);
+
+        squad.SetRoster([60004, 60003], Vector3.Zero);
+        Assert.Equal((ushort)60003, squad.LeaderId);
+    }
 }

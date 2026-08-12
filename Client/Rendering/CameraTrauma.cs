@@ -12,8 +12,9 @@ namespace Demiurge
     ///   scalar, and the result is a single coherent shake rather than the last writer winning.
     /// - Small things stay small. Squaring means a rifle shot at 0.40 trauma shakes at 16% of full
     ///   while a grenade in your lap shakes at 100% — one constant gives both without a separate
-    ///   curve. Worth stating the trap plainly: the same squaring makes it very easy to pick a
-    ///   per-source value that rounds to nothing, so the amounts and MaxRoll must be read together.
+    ///   curve. Heavy impacts may deliberately exceed that ordinary 1.0 ceiling for a short time.
+    ///   Worth stating the trap plainly: the same squaring makes it very easy to pick a per-source
+    ///   value that rounds to nothing, so the amounts and MaxRoll must be read together.
     /// - It decays in TIME, not per frame, so the feel does not change with the frame rate.
     ///
     /// The displacement itself comes from sampling smooth noise at three unrelated offsets, so the
@@ -46,17 +47,20 @@ namespace Demiurge
         private static float trauma;
         private static float time;
 
-        /// <summary>0..1. Squared before use — see the class summary.</summary>
+        /// <summary>Squared before use. Ordinary sources cap at 1; heavy impacts may exceed it.</summary>
         public static float Trauma => trauma;
 
         /// <summary>
-        /// Adds to the pool, clamped. Additive because two sources at once should be worse than
-        /// either alone, and clamped because "worse than the worst" has nothing left to express.
+        /// Adds to the pool, clamped to this source's ceiling. The default keeps ordinary sources
+        /// at the established full-shake level; heavier impacts can opt into a higher ceiling. A
+        /// lower-ceiling source never reduces trauma left by a heavier one.
         /// </summary>
-        public static void Add(float amount)
+        public static void Add(float amount, float ceiling = 1f)
         {
-            if (!float.IsFinite(amount) || amount <= 0f) return;
-            trauma = MathUtil.Clamp(trauma + amount, 0f, 1f);
+            if (!float.IsFinite(amount) || amount <= 0f
+                || !float.IsFinite(ceiling) || ceiling < 1f)
+                return;
+            trauma = MathF.Max(trauma, MathF.Min(trauma + amount, ceiling));
         }
 
         public static void Reset()

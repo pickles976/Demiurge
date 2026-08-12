@@ -1,87 +1,26 @@
 namespace Demiurge;
 
 /// <summary>
-/// What a weapon is worth against one target at one range, in health points per second.
-///
-/// This is the half of the combat currency that depends only on the weapon and the geometry — no
-/// squad, no objective, no terrain. <see cref="CombatValue"/> composes it over believed enemies.
-///
-/// Nothing here invents a range curve. <see cref="HitEstimate.Probability"/> is already the standard
-/// dispersion model (Rayleigh CDF over a bivariate-normal aim error against a circular target), and
-/// <see cref="Spread"/> already sums error sources in quadrature the way independent errors add. The
-/// only thing that was missing is that the AI drowned all of it in a flat 720 MOA aim constant —
-/// see BallisticsStats.SightingMoa.
+/// Weapon value against one target at one range, in HP/s. Uses the shared hit-probability and
+/// quadrature spread models; <see cref="CombatValue"/> composes results across believed enemies.
 /// </summary>
 public static class WeaponEffectiveness
 {
     /// <summary>
-    /// Fire discipline is a BURST LENGTH, and the length is chosen rather than written down.
-    ///
-    /// This used to be a ladder of rate fractions of cyclic — [1, 0.5, 0.25, 0.1] — executed as
-    /// evenly spaced single shots. Two things were wrong with it. Evenly spaced fire is not how an
-    /// automatic weapon kills: the rounds that do the killing are the two or three that arrive
-    /// before the sights have moved, and a model with no burst in it cannot express that. And the
-    /// dispersion each rung was scored with came from averaging recoil over a whole MAGAZINE, a
-    /// window whose length depends on the rung being evaluated and on the weapon's capacity — so the
-    /// rungs were not comparable to each other, and the DP-27's 47-round pan, the one thing that
-    /// makes it a machine gun, was priced as its largest handicap (182 MOA against 66 for a
-    /// five-round burst).
-    ///
-    /// What replaces it is one maximisation. Another round is always more damage and never free: it
-    /// lands with more recoil on it than the last, and it delays the moment the shooter can look at
-    /// what he did (<see cref="BurstAssessmentSeconds"/>) and fire again. Damage per second over
-    /// FIRE PLUS ASSESSMENT therefore has an interior maximum, and where that maximum sits IS the
-    /// burst — two rounds from a machine gun at ten metres because two rounds is a man, longer at
-    /// distance where fewer of them land, and one from a bolt gun that cannot cycle faster anyway.
-    /// Nobody writes down a burst timer and nobody writes down which weapons burst.
+    /// Maximum burst candidates. Burst length maximizes damage over fire plus assessment time, with
+    /// each additional round paying recoil, time, and the target-health cap.
     /// </summary>
     private const int MaximumBurstRounds = 256;
 
     /// <summary>
-    /// The pause between bursts: how long a man takes to see what his last one did.
-    ///
-    /// This is what prices the burst. Another round is more damage and never free, but the thing it
-    /// costs is not the ballistics — it is that you fire a burst at a man and then have to LOOK, and
-    /// a burst long enough to kill him twice spent that time twice.
-    ///
-    /// It is the same half-second the shooter already takes to react to a target appearing
-    /// (<c>CombatBehavior.ReactionTicks</c> derives from this constant, so there is one number), for
-    /// the same reason: it is one man's observe-and-decide latency, and pointing his weapon at a
-    /// fresh problem or at the same one again does not change how long he needs to see it.
-    ///
-    /// A settle-to-zero rule was tried here first and is wrong. It made the pause a function of how
-    /// much recoil the burst had built, which reads plausible and produces a submachine gunner who
-    /// fires six rounds at a man fifteen metres away and then waits four and a half seconds — at
-    /// which point his weapon deals 20 health per second at knife range and
-    /// ThreatResponseTests.AThreatInsideItsOwnKillingRangeIsAlwaysWorthAnswering fails, correctly.
-    /// Recoil already limits the burst through the falling value of each round in it; charging for
-    /// it a second time as dead time is what broke.
+    /// Observe-and-decide pause after each burst. CombatBehavior derives reaction time from the same
+    /// value. Recoil is already priced per round and must not extend this pause.
     /// </summary>
     public const float BurstAssessmentSeconds = 0.55f;
 
     /// <summary>
-    /// What one round has to be expected to achieve before it is worth firing, in health points.
-    ///
-    /// Without it, maximising damage per second always picks the fastest rate available, at every
-    /// range, for every weapon — and that is not a tuning artefact but arithmetic: rate enters the
-    /// product linearly while hit probability enters sub-linearly, so halving the rate always halves
-    /// the damage and never doubles the chance. Measured on the AK at 150 m, dropping from 6.67 to
-    /// 0.95 rounds/second bought 1.44x the hit probability and cost 7x the volume.
-    ///
-    /// A per-round cost fixes it, and does so more sharply than a weighting would. Because rate
-    /// multiplies the whole expression —
-    ///
-    ///     rate * (Phit * damage - MinimumExpectedDamagePerRound)
-    ///
-    /// — this is a THRESHOLD on expected damage per round, not a graduated preference. Rates whose
-    /// expected return per round falls below it are rejected outright, and the fastest surviving rate
-    /// wins. So a rifleman sprays a man at ten metres, fires deliberately at one at a hundred and
-    /// fifty, and declines the shot entirely past the range where no rate pays — at which point
-    /// dealt is zero and closing the distance wins in <see cref="CombatValue"/> without anybody
-    /// writing a rule about when to advance.
-    ///
-    /// One health point is a 3.3% hit chance for a 30-damage carbine, which is roughly where a real
-    /// soldier stops shooting and starts moving.
+    /// Minimum expected HP per round. This rejects wasteful rates and returns no firing solution when
+    /// every rate falls below the threshold, allowing movement to win through <see cref="CombatValue"/>.
     /// </summary>
     public const float MinimumExpectedDamagePerRound = 1f;
 
@@ -101,30 +40,13 @@ public static class WeaponEffectiveness
     private const float PreferredRangeMaximumMetres = 400f;
 
     /// <summary>
-    /// The range at which this weapon is worth the most, in metres.
-    ///
-    /// Sampled off the same curve everything else uses rather than written down per weapon, which is
-    /// the point: "the SMG man closes and the rifleman holds" stops being doctrine anybody
-    /// implements and becomes where two numbers peak. Damage per second is rate times hit
-    /// probability, rate is flat in range and hit probability falls — so the maximum would sit at the
-    /// sampling floor for everything, were it not for the rate CHOICE inside <see cref="Best"/>:
-    /// <see cref="MinimumExpectedDamagePerRound"/> forces a slower, tighter rate as range grows, and
-    /// how gracefully a weapon makes that trade is exactly what separates a submachine gun from a
-    /// bolt gun. Hence the fraction-of-peak form below rather than the peak itself.
-    ///
-    /// Sampled rather than solved because that rate choice is discrete, so the curve is piecewise
-    /// and has no closed form worth deriving. Called per squad plan at 2 Hz, not per actor per tick.
+    /// Furthest range retaining <see cref="PreferredRangeFractionOfPeak"/> of peak damage. Sampled from
+    /// <see cref="Best"/> because its discrete rate choice makes the curve piecewise.
     /// </summary>
     public static float PreferredRange(ItemType weapon, float skillFactor)
     {
-        // Memoized because the sampling is 400 calls into Best() and the callers are hot: MobSystem
-        // asks per actor per tick, which at 32 NPCs and 30 Hz would be hundreds of thousands of
-        // firing solutions a second for an answer that only changes when the weapon table does.
-        // Measured before caching: the server test project went from 0.5 s to 5 s.
-        //
-        // Skill is quantized into tenths because it scales the sighting term smoothly — two men a
-        // hundredth apart do not want to fight at different ranges, and an unquantized key would
-        // make the cache a memory leak with one entry per actor.
+        // Sampling calls Best 200 times. Cache by weapon and skill tenth; finer skill differences do
+        // not justify distinct ranges and would create one entry per actor.
         var key = (weapon, (int)MathF.Round(Math.Clamp(skillFactor, 0.01f, 10f) * 10f));
         if (preferredRanges.TryGetValue(key, out float cached)) return cached;
 

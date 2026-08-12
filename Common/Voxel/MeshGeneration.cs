@@ -8,11 +8,8 @@ namespace Demiurge
     public readonly record struct Submesh(BlockType Material, int Start, int Count);
 
     /// <summary>
-    /// Chunk-local geometry. System.Numerics, not Stride: Common has no engine dependency, so the
-    /// Client converts this into a vertex buffer.
-    ///
-    /// Indices are grouped by material and <see cref="Submeshes"/> names the ranges, so one vertex
-    /// buffer plus one index buffer can be drawn as several meshes with different textures.
+    /// Engine-independent chunk-local geometry. Indices are grouped into material ranges named by
+    /// <see cref="Submeshes"/>.
     /// </summary>
     public class MeshData
     {
@@ -28,12 +25,7 @@ namespace Demiurge
     {
 
         /// <summary>
-        /// Extra sample layers past the corners needed for positioning.
-        ///
-        /// 2, not 1. A chunk has to build vertices for the cell layer at local -1 as well as its
-        /// own, or the quad straddling a chunk border has no fourth corner and every border comes
-        /// out as a one-cell gap. Those cells use corner -1, and a central difference there reaches
-        /// sample -2. A cell-corner gradient would allow 1.
+        /// Extra sample layers. Border cells start at -1 and their central-difference gradients read -2.
         /// </summary>
         const int Apron = 2;
 
@@ -44,13 +36,7 @@ namespace Demiurge
         public const int MeshDependencyRadius = Apron;
 
         /// <summary>
-        /// Every section whose mesh depends on a changed world-voxel box — more than the sections the
-        /// box sits in, because meshing reads an apron past a section's own bounds.
-        ///
-        /// Exact rather than conservative, and that's the point of having sections at all: a
-        /// shovel-sized dig should invalidate two or three sections, not a 3x3 of 128-tall columns.
-        /// Overlap is tested per candidate rather than derived in closed form because an interval test
-        /// is much easier to confirm correct than the equivalent floor arithmetic.
+        /// Collects sections whose bounds plus meshing apron overlap a changed voxel box.
         /// </summary>
         public static void CollectDependentSections(
             int minX, int minY, int minZ, int maxX, int maxY, int maxZ, ICollection<SectionIndex> into)
@@ -87,12 +73,7 @@ namespace Demiurge
         public const int ScratchVolume = ScratchWidth * ScratchWidth * ScratchWidth;
 
         /// <summary>
-        /// Cells start one BEFORE the section. A section emits the quads for grid edges leaving its
-        /// own points 0..15, and those quads reach back to cell -1 — so cell -1 needs a vertex, even
-        /// though it duplicates one the neighbouring section also builds. Both compute it from the
-        /// same samples, so the duplicate lands in the same place and the seam is watertight. That
-        /// now applies to the VERTICAL seam between sections exactly as it does to the horizontal
-        /// seam between chunks; the two cases are the same case.
+        /// Cells begin at -1 so quads leaving owned grid points have all four vertices at seams.
         /// </summary>
         const int CellMin = -1;
 
@@ -122,13 +103,7 @@ namespace Demiurge
         /// One step along axis 0/1/2. Indexed the same way as QuadCellOffsets.
         static readonly (int x, int y, int z)[] AxisSteps = [(1,0,0), (0,1,0), (0,0,1)];
 
-        /// For an edge leaving a cell's minimum corner along axis 0/1/2, the 4 cells sharing it as
-        /// offsets from that cell. Cyclic order — hopping diagonally gives two bowtie triangles.
-        ///
-        /// All three rows must turn the same way or that axis's faces come out inside-out. The
-        /// order is the right-handed succession of the two axes that aren't the edge's:
-        /// x -> (y,z), y -> (z,x), z -> (x,y). Writing y's as (x,z) reversed it and inverted every
-        /// horizontal face, which is most of a heightmap.
+        /// Four cells around an edge on each axis, in right-handed cyclic order. Reordering reverses faces.
         static readonly (int x, int y, int z)[][] QuadCellOffsets =
         [
             [ (0,-1,-1), (0,0,-1), (0,0,0), (0,-1,0) ],   // edge along x, varying (y,z)
@@ -157,23 +132,15 @@ namespace Demiurge
                 DensityAt(scratch, lx, ly, lz + 1) - DensityAt(scratch, lx, ly, lz - 1)) * 0.5f;
 
         /// <summary>
-        /// Scratch coords -> flat index; the fill and the mesher must both go through it. Same
-        /// y-major layout as <see cref="ChunkTransforms.LocalVoxelIndex"/>
-        /// with ScratchWidth as the stride. ScratchHeight is absent because the y stride is one
-        /// horizontal slab, W*W.
+        /// Scratch coordinates in the y-major layout used by <see cref="ChunkTransforms.LocalVoxelIndex"/>.
         /// </summary>
         static int ScratchIndex(int sx, int sy, int sz)
             => (sy * ScratchWidth * ScratchWidth) + (sz * ScratchWidth) + sx;
 
 
         /// <summary>
-        /// Copies the chunk plus its apron into a flat buffer. False if a needed neighbour chunk
-        /// isn't loaded, in which case nothing is written — the buffer still holds whatever chunk it
-        /// held before, so don't read it unless this returned true.
-        ///
-        /// <see cref="ChunkMap.TryGetVoxel"/> is the reference for a single world lookup; this is the
-        /// bulk path and deliberately hoists the per-voxel work out of the inner loop. Both still go
-        /// through <see cref="ChunkTransforms"/> for the actual arithmetic.
+        /// Copies a section and its apron into a flat buffer. Returns false without writing if a
+        /// required neighbour is missing; callers must ignore the previous buffer contents.
         /// </summary>
         public static bool TryFillScratch(ChunkMap map, SectionIndex section, Sample[] scratch)
         {
@@ -183,14 +150,10 @@ namespace Demiurge
             var originX = chunkOriginX - Apron;
             var originZ = chunkOriginZ - Apron;
 
-            // Vertically the apron reaches into the section above and below, which live in the SAME
-            // chunk array — so unlike the horizontal case it needs no extra lookup, just a world Y.
+            // Vertical neighbour sections share the same chunk column.
             var originY = section.BaseY - Apron;
 
-            // Resolve the owning chunk once per (x,z) column rather than once per voxel: ChunkIndex
-            // is 2D, so a vertical column cannot cross into another chunk. ~441 dictionary lookups
-            // instead of ~58k. Doubles as the presence check, so a missing neighbour bails out
-            // before anything is written.
+            // Resolve each 2D chunk column once and fail before writing if any is absent.
             var columns = new TerrainChunk[ScratchWidth * ScratchWidth];
 
             for (int sz = 0; sz < ScratchWidth; sz++)
@@ -233,17 +196,8 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Fills the scratch buffer for a box at any level of detail. Level 0 delegates to the fast path
-        /// above; coarser levels sample every Stride-th voxel and BOX FILTER the block between samples.
-        ///
-        /// Filtering rather than point sampling is not optional. Taking every 4th voxel lets a thin ridge
-        /// fall between samples and flip sign against the level below it, which puts a hole through the
-        /// terrain that the finer level does not have. Averaging the signed distance keeps the surface
-        /// roughly where the fine one had it.
-        ///
-        /// The absolute scale of the averaged distance does not matter: the mesher only reads it for edge
-        /// crossings (a ratio) and gradients (normalized), both scale-invariant. So world-voxel distances
-        /// go in unscaled even though a cell is now several voxels wide.
+        /// Fills an LOD scratch buffer. Coarse levels box-filter signed distance instead of point
+        /// sampling, preserving thin features and sign consistency between levels.
         /// </summary>
         public static bool TryFillScratch(ChunkMap map, LodSection section, Sample[] scratch)
         {
@@ -274,27 +228,9 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// One coarse sample: mean signed distance over the block, and the material of its SHALLOWEST
-        /// SOLID voxel — the one nearest the isosurface from below.
-        ///
-        /// Not a most-common vote, which was the first thing tried and produced visible banding.
-        /// DensityToMaterial gives a column exactly one voxel of grass over about three of dirt, so any
-        /// block big enough to matter contains three times as much dirt as grass and the vote returns
-        /// dirt. Worse, whether it does depends on where the surface happens to fall inside the block, so
-        /// the error lands in stripes aligned to the level-of-detail grid rather than uniformly.
-        ///
-        /// The shallowest solid voxel is the right answer because it is the one the isosurface actually
-        /// touches: it is the voxel a viewer sees.
-        ///
-        /// The material search reaches one STRIDE ABOVE the block, and that is the part that is easy to
-        /// get wrong. When the surface sits just above a block boundary, that block averages to air —
-        /// three air voxels against one solid — so the solid end of the crossing edge is the block BELOW,
-        /// whose own shallowest voxel is already more than a voxel down and therefore dirt. Searching up
-        /// a stride lets that block find the grass layer that is visually its surface. Without it, dirt
-        /// appears in bands wherever terrain height happens to land just above a coarse boundary.
-        ///
-        /// Distance still averages over the block alone; only the material search is widened. Extremes
-        /// stay right either way: deep underground is all clamped stone, and nothing solid is air.
+        /// Coarse sample: mean block distance plus the shallowest solid material. The material search
+        /// extends one stride upward to preserve surface layers across coarse block boundaries; distance
+        /// still averages only the block itself.
         /// </summary>
         static bool TryDownsample(ChunkMap map, int x0, int y0, int z0, int stride, out Sample sample)
         {
@@ -332,17 +268,8 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Extends the mesh's outer boundary downward into a vertical curtain, so a gap at a level-of-
-        /// detail seam shows skirt instead of sky.
-        ///
-        /// Two boxes at different levels contour from differently-filtered fields, so their surfaces do
-        /// not meet along the shared edge — that mismatch is THE hard problem in chunked LOD, and the
-        /// honest options are stitching (correct, complex) or hiding it. This hides it. Ugly if you stand
-        /// on the seam, invisible at the distance where levels actually change, and it ships.
-        ///
-        /// A boundary edge is one used by a single triangle whose endpoints both sit on a side face of the
-        /// box. Interior open edges — which dual contouring can produce around a hole — are left alone,
-        /// since a curtain there would be a wall in mid-air.
+        /// Adds downward skirts to open outer edges, hiding gaps between differently filtered LODs.
+        /// Interior open edges are excluded to avoid curtains around holes.
         /// </summary>
         public static MeshData AddSkirt(MeshData mesh, float depth)
         {
@@ -405,13 +332,7 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Whether a position sits in the outermost RING OF CELLS, which is what a boundary vertex means
-        /// for a dual method. Not "on the box's face" — dual contouring puts its vertex inside the cell,
-        /// so a boundary vertex lands around half a cell in and never touches the plane. Testing the
-        /// plane finds nothing at all, which is a skirt that silently does not exist.
-        ///
-        /// Cells run CellMin..CellMin+CellsPerAxis-1, so a vertex of the first cell lies in [-1, 0] and
-        /// one of the last lies in [15, 16].
+        /// True for the outer cell ring. Dual-method vertices lie inside boundary cells, not on box planes.
         /// </summary>
         static bool OnBoxSide(Vector3 position)
         {
@@ -440,14 +361,7 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// How strongly the solve is pulled toward the mass point. This is what keeps the
-        /// RANK-DEFICIENT case sane: on flat ground every normal is parallel, AtA has rank 1, and the
-        /// true minimizer is an entire plane of equally good answers. Biasing toward the mass point
-        /// pins the unconstrained directions to the surface-nets answer, which is right there.
-        ///
-        /// Each crossing adds an outer product of trace 1, so AtA's trace is roughly the crossing
-        /// count (3-12). At this size the bias is negligible where the system is well conditioned and
-        /// decisive where it isn't — which is the whole trick, and why no SVD is needed.
+        /// Mass-point bias that stabilizes rank-deficient QEFs while remaining small for conditioned solves.
         /// </summary>
         const float QefBias = 0.05f;
 
@@ -495,19 +409,8 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// THE mesher the game renders with. One choice point, called by everything that has to
-        /// agree about where the surface is — the section meshers and the dig outline both go
-        /// through here.
-        ///
-        /// That indirection is not ceremony. The outline is only useful because it traces the exact
-        /// triangles on screen, and it once called surface nets while the renderer called dual
-        /// contouring: an outline permanently a little off the surface, worst at the sharp creases
-        /// that are the most likely thing to be inspected closely. Nothing about either call site
-        /// looked wrong. Switching placement is a one-line edit HERE, and cannot be done by halves.
-        ///
-        /// Currently SURFACE NETS. Its averaged placement keeps repeated digging edits smooth. Unit
-        /// editor blocks are represented by sample-centred box fields, so they have a real interior
-        /// sample and do not depend on dual contouring to appear.
+        /// Canonical mesher used by rendering and dig outlines. Keep the placement choice centralized
+        /// so both surfaces agree. Surface nets currently give smoother repeated digging edits.
         /// </summary>
         public static MeshData GenerateMesh(Sample[] scratch)
             => GenerateMeshFromSurfaceNet(scratch);
@@ -517,13 +420,8 @@ namespace Demiurge
             => Generate(scratch, Placement.SurfaceNets);
 
         /// <summary>
-        /// Dual contouring over a filled scratch buffer. Same topology as surface nets; the vertex
-        /// is the point that best fits the tangent planes at the crossings instead of their average,
-        /// so a concave crease lands on the corner rather than half a voxel inside it.
-        ///
-        /// Sharper geometry does NOT mean sharper shading: a cell still has one vertex with one
-        /// normal, shared by every quad touching it. A crisp edge needs two normals at the same
-        /// position, i.e. splitting vertices by crease angle, which is a separate step.
+        /// Dual contouring with surface-nets topology and QEF vertex placement. Sharp shading still
+        /// requires vertex splitting by crease angle.
         /// </summary>
         public static MeshData GenerateMeshDualContouring(Sample[] scratch)
             => Generate(scratch, Placement.DualContouring);

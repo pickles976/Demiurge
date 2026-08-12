@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "mapId": "4c07263c-a5dc-4173-a79e-ec521d709cf4",
   "name": "untitled",
   "baseTerrain": {
@@ -39649,8 +39649,8 @@
     },
     {
       "id": "d4fa0a9c-2711-403e-9681-4ba8c9bf9b45",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": -3,
         "y": 31,

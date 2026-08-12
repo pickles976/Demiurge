@@ -97,7 +97,7 @@ public enum EditorPlacementKind
     Pickup,
     Mob,
     PlayerSpawn,
-    Flag,
+    ConquestFlag,
 
     /// <summary>A weapon pickup crated as map supply. The archetype is the item it hands out.</summary>
     SupplyCrate,
@@ -118,7 +118,7 @@ public sealed record EditorPlacement
 
 public sealed record EditorDocument
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public Guid MapId { get; init; } = Guid.NewGuid();

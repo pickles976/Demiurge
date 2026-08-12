@@ -27,24 +27,8 @@ namespace Demiurge
     public static class TerrainShape
     {
         /// <summary>
-        /// Base height from erosion. Three regimes, and the MIDDLE one is easy to lose.
-        ///
-        /// - Mountains, below about -0.45: high, and the drop off them is steep so the rise is dramatic.
-        /// - Foothills, -0.45 to 0.05: a graded ramp from 42 down to 23. This band is the whole reason
-        ///   mountains look like they belong to the landscape. Compressing the transition and widening
-        ///   the plains shelf at the same time deletes it, and mountains become blobs sitting on flat
-        ///   ground — which is exactly what happened once and is why this curve has four control points
-        ///   in the middle rather than one.
-        /// - Plains, above 0.30: a flat shelf at 20.
-        ///
-        /// Plains sit LOW, around a fifth of the way up the column, so the world does not float far
-        /// above y = 0.
-        /// </summary>
-        /// <summary>
-        /// The floor: plains, and the valley bottoms inside mountain country. Deliberately modest even at
-        /// low erosion, because mountain HEIGHT now comes from peaks-and-valleys rather than from here —
-        /// if this carried it, ranges would be blob-shaped plateaus again.
-        /// </summary>
+        /// <summary>Plains and mountain-valley floor. The graded foothill band avoids plateau-like ranges;
+        /// peak height comes from peaks-and-valleys rather than this spline.</summary>
         static readonly Spline BaseHeight = new(
             (-1.00f, 32f),      // valley floor in mountain country
             (-0.45f, 30f),

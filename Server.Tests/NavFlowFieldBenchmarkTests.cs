@@ -25,7 +25,7 @@ public sealed class NavFlowFieldBenchmarkTests(ITestOutputHelper output)
         var map = RuntimeMapSerializer.Load(
             Path.Combine(root, "maps", "conquest", "runtime.dmap"));
         var flags = map.Placements
-            .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
+            .Where(placement => placement.Kind == RuntimePlacementKind.ConquestFlag)
             .ToArray();
         Assert.NotEmpty(flags);
 

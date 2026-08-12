@@ -9,7 +9,7 @@ namespace Demiurge.Editor;
 /// so "block mode" already meant two different tools depending on a field somewhere else.
 /// </summary>
 public enum EditorToolMode { Terrain, Block, Object, Structure }
-public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, Flag, Crate }
+public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, ConquestFlag, Crate }
 
 public sealed record EditorToolSettings
 {
@@ -155,7 +155,7 @@ public static class EditorCommandParser
     {
         if (tokens.Length < 2)
             return EditorCommandResult.Fail(
-                "Usage: editor object <pickup|crate|mob|spawn|flag|team|clear> ...");
+                "Usage: editor object <pickup|crate|mob|spawn|conquest-flag|team|clear> ...");
         switch (tokens[1].ToLowerInvariant())
         {
             case "pickup":
@@ -178,11 +178,11 @@ public static class EditorCommandParser
                 settings.ObjectKind = EditorObjectChoiceKind.Spawn;
                 settings.ObjectId = $"demiurge:spawn/{(tokens.Length > 2 ? tokens[2] : "default")}";
                 break;
-            case "flag":
+            case "conquest-flag":
                 if (tokens.Length != 2)
-                    return EditorCommandResult.Fail("Usage: editor object flag");
-                settings.ObjectKind = EditorObjectChoiceKind.Flag;
-                settings.ObjectId = "demiurge:flag";
+                    return EditorCommandResult.Fail("Usage: editor object conquest-flag");
+                settings.ObjectKind = EditorObjectChoiceKind.ConquestFlag;
+                settings.ObjectId = "demiurge:conquest-flag";
                 break;
             case "team":
                 if (tokens.Length != 3

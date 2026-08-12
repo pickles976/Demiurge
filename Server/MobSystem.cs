@@ -4,40 +4,25 @@ using System.Numerics;
 namespace Demiurge.GameServer
 {
     /// <summary>
-    /// Minimal server-side mob driver. Mobs are still ServerPlayers: this class only chooses intent,
-    /// while movement, replication, health, equipped items, and weapon hit detection stay on the
-    /// existing player/object systems.
-    ///
-    /// <para><b>Who decides what.</b> Every bug in this system so far has had one shape: a decision
-    /// made in one place and silently overridden in another. Eight of them in a single pass —
-    /// a cover gate vetoing the squad's movement order, two blackboard permits vetoing the squad's
-    /// firing and movement orders, an entrenchment flag vetoing a bound, an individual's own contact
-    /// state vetoing a squad manoeuvre, a roster loop discarding the allocation's members, a replan
-    /// overriding its own previous bearing, and a five-second individual memory overriding the
-    /// squad's belief.</para>
-    ///
-    /// <para>So each decision has exactly ONE owner, and code that is not the owner may read the
-    /// answer but never recompute or override it:</para>
+    /// Chooses mob intent; existing player and object systems execute it.
+    /// Each decision has one owner and may not be recomputed downstream:
     ///
     /// <list type="table">
-    /// <item><term>Which squad a man is in</term><description><see cref="SquadFormation"/>, by live
-    /// proximity — except while he is committed to a move, when he keeps the squad he has.</description></item>
-    /// <item><term>What the squad believes about the enemy</term><description><see cref="SquadBlackboard"/>.
-    /// Its belief deliberately outlives any individual's, because a flanker cannot see behind
-    /// himself.</description></item>
+    /// <item><term>Squad membership</term><description><see cref="SquadFormation"/> from live proximity,
+    /// retained while committed to a move.</description></item>
+    /// <item><term>Squad knowledge</term><description><see cref="SquadBlackboard"/>, whose contacts
+    /// outlive individual perception.</description></item>
     /// <item><term>Which objective a squad is on</term><description><see cref="CommanderAi"/>.</description></item>
-    /// <item><term>Who moves, who shoots, and on what bearing</term><description><see cref="SquadTactics"/>,
-    /// priced in <see cref="CombatValue"/>. Nothing else may gate movement or fire. The engagement
-    /// and advance permits that used to live on the blackboard were exactly this mistake.</description></item>
-    /// <item><term>Whether a shot is worth taking</term><description><see cref="WeaponEffectiveness"/>.
-    /// A zero firing solution IS the decision to hold fire; there is no separate range table.</description></item>
+    /// <item><term>Movement, fire, and bearing</term><description><see cref="SquadTactics"/>, priced in
+    /// <see cref="CombatValue"/>. Nothing else gates movement or fire.</description></item>
+    /// <item><term>Shot value</term><description><see cref="WeaponEffectiveness"/>; a zero solution means
+    /// hold fire.</description></item>
     /// <item><term>Where a man physically goes</term><description><see cref="NavigationSystem"/> and
     /// <see cref="PathFollower"/>, given a destination they do not choose.</description></item>
-    /// <item><term>How a decision survives a replan</term><description><see cref="Commitment{T}"/>.
-    /// Sticky bearings and sticky squad membership are the same problem and use the same type.</description></item>
+    /// <item><term>Replan persistence</term><description><see cref="Commitment{T}"/>.</description></item>
     /// </list>
     ///
-    /// <para>This class owns none of those. It orchestrates them and executes their output.</para>
+    /// This class only orchestrates those owners and applies their output.
     /// </summary>
     internal sealed class MobSystem : IDisposable
     {
@@ -51,23 +36,12 @@ namespace Demiurge.GameServer
         private const int CoverCrouchTicks = 3 * NetworkConfig.TickRate / 4;
         private const int CoverStandTicks = NetworkConfig.TickRate;
         /// <summary>
-        /// Cover searches allowed per tick, server-wide.
-        ///
-        /// This was 1, which measured at 0-3 searches per SECOND across every NPC — cover cost
-        /// 0-400 us/tick inside a tick running 3.9 ms p50 against a 33 ms budget. It was not
-        /// protecting the budget; it was starving the behaviour, and NPCs that could not get a cover
-        /// query stood in the open and dug instead.
-        ///
-        /// Raised deliberately, and the tick percentile line is the gate: if [ServerTick] p99 moves
-        /// materially, lower this rather than making the query cheaper.
+        /// Server-wide cover searches per tick. One starved cover selection without protecting the
+        /// tick budget; use [ServerTick] p99 when tuning this limit.
         /// </summary>
         private const int CoverQueriesPerTick = 8;
 
-        /// <summary>
-        /// How far up and down a spawn column a body is looked for before deciding the caller gave a
-        /// column rather than a point. A storey and a half: enough to find the floor a marker sits
-        /// on, short enough that "spawn at the origin" with no height still means the ground there.
-        /// </summary>
+        /// <summary>Vertical search around an explicit spawn point before falling back to the column surface.</summary>
         private const int SpawnColumnSearchCells = 6;
         private const float CoverThreatRequeryDistance = 5f;
         private const float TurnRadiansPerSecond = 180f * MathF.PI / 180f;
@@ -78,32 +52,16 @@ namespace Demiurge.GameServer
         private const float GoldenAngle = 2.39996323f;
 
         /// <summary>Far enough behind the digger to sample untouched ground rather than its own hole.</summary>
-        /// <summary>
-        /// A weapon whose own damage curve wants to be fought inside this range is one whose carrier
-        /// closes rather than holds. A threshold on a DERIVED quantity, not on an item id: it is the
-        /// one place the difference between an assaulter and a rifleman is still expressed, and it
-        /// moves correctly when a weapon is retuned or a new one is added.
-        /// </summary>
+        /// <summary>Carriers close when their weapon's derived preferred range is below this threshold.</summary>
         private const float ClosesToFightRange = 25f;
 
-        /// <summary>
-        /// Prone is a deliberate long-range firing stance, not the generic response to suppression.
-        /// Matches the range at which CombatBehavior switches to precision fire.
-        /// </summary>
+        /// <summary>Minimum range for deliberate prone fire; matches CombatBehavior's precision-fire range.</summary>
         internal const float ProneMinimumEngagementRange = 30f;
 
-        /// <summary>
-        /// Standing up commits the actor to staying up for a few seconds. This is the stance-change
-        /// penalty that prevents suppression flicker from producing prone/stand/prone spam.
-        /// </summary>
+        /// <summary>Minimum time standing after rising, preventing suppression-driven stance flicker.</summary>
         internal const int ProneReentryPenaltyTicks = 4 * NetworkConfig.TickRate;
 
-        /// <summary>
-        /// How much of a man's health a blast has to threaten before he abandons what he was doing.
-        ///
-        /// A tenth: enough that a grenade landing at the edge of its damage radius does not scatter a
-        /// squad that was winning, and low enough that anything genuinely dangerous moves everybody.
-        /// </summary>
+        /// <summary>Fraction of health a blast must threaten before interrupting the current action.</summary>
         private const float GrenadeEvadeThreshold = 0.1f;
 
         private const float FoxholeGradeProbeDistance = 2.5f;
@@ -111,11 +69,7 @@ namespace Demiurge.GameServer
 
         private const float IdleScanRadiansPerSecond = 45f * MathF.PI / 180f;
 
-        /// <summary>
-        /// Squad membership and the tactical plan both run well under the tick rate. Roles that flip
-        /// every tick read as noise rather than as a plan, and re-forming squads mid-bound would throw
-        /// away the very plan that spread them out.
-        /// </summary>
+        /// <summary>Squad reform interval; avoids role churn and preserves in-progress bounds.</summary>
         private const uint SquadReformTicks = NetworkConfig.TickRate;
         private const uint TacticsReplanTicks = NetworkConfig.TickRate / 2;
 
@@ -136,10 +90,7 @@ namespace Demiurge.GameServer
         private readonly MortarSystem? mortars;
         private readonly TeamIntelSystem? intel;
 
-        /// <summary>
-        /// Live grenades, rebuilt once in BeginTick and read by every actor's Decide. Per actor it
-        /// would be 32 allocations a tick for one answer that is the same for all of them.
-        /// </summary>
+        /// <summary>Live grenades, rebuilt once per tick and shared by all actors.</summary>
         private List<LiveBlast> liveBlasts = [];
 
         private readonly CombatBehavior combat;
@@ -161,34 +112,15 @@ namespace Demiurge.GameServer
         private readonly List<SquadMemberState> tacticalInputs = [];
         private readonly List<SquadTacticalOrder> tacticalOrders = [];
 
-        /// <summary>
-        /// Bounds begun since the server started. Exposed because "did anybody actually manoeuvre"
-        /// cannot be observed from outside the AI — unlike stationary time and digging, which can be
-        /// read from actor positions and ChunkMap.EditVersion and therefore cannot be satisfied by an
-        /// AI that merely reports itself busy.
-        /// </summary>
+        /// <summary>Bounds begun since startup; exposes otherwise-unobservable manoeuvre activity.</summary>
         public int BoundsStarted { get; private set; }
 
-        /// <summary>
-        /// Who is in which squad and what that squad is chasing, right now. Diagnostic only — the
-        /// churn questions ("did this man change squad", "did his squad change flag") cannot be
-        /// answered from actor positions, so they cannot be answered from outside the AI at all.
-        /// </summary>
-        /// <summary>
-        /// What this NPC personally believes, or null if it has no brain. The one way out of here for
-        /// perception: <see cref="TeamIntelSystem"/> folds these into a team picture, and nothing
-        /// else may read them, because a second consumer of an actor's beliefs is a second opinion
-        /// about what it can see.
-        /// </summary>
+        /// <summary>Current squad membership and objectives, exposed for churn diagnostics.</summary>
+        /// <summary>Personal contact memory; only <see cref="TeamIntelSystem"/> may aggregate it.</summary>
         internal ContactMemory? BeliefOf(ushort actorId)
             => brains.TryGetValue(actorId, out var brain) ? brain.Contacts : null;
 
-        /// <summary>
-        /// Path searches asked for since the server started. Diagnostic, and a sharper instrument
-        /// than it looks: an actor that has arrived and cannot tell should be asking for nothing, so
-        /// this counts one specific failure — walking a metre, arriving, and asking again — that no
-        /// position or timing measurement distinguishes from ordinary movement.
-        /// </summary>
+        /// <summary>Path requests since startup; repeated requests reveal arrival/replan churn.</summary>
         internal long DebugPathRequests => navigation.SnapshotMetrics().Requested;
 
         internal IEnumerable<(ushort ActorId, int Team, int Squad, uint FlagId, Vector3 Destination)>
@@ -295,6 +227,13 @@ namespace Demiurge.GameServer
         }
 
         public Vector3 RandomSpawnPoint() => RandomSurfacePoint(Vector3.Zero);
+
+        /// <summary>Whether this actor currently leads its live squad roster.</summary>
+        internal bool IsSquadLeader(ServerPlayer actor)
+            => actor.IsMob
+               && brains.TryGetValue(actor.Id, out var brain)
+               && squads.TryGetValue((actor.Team, brain.SquadIndex), out var squad)
+               && squad.LeaderId == actor.Id;
 
         /// <summary>
         /// Puts the NPC at the free space nearest the height it was ASKED for, and only falls back
@@ -2658,20 +2597,8 @@ namespace Demiurge.GameServer
         }
 
         /// <summary>
-        /// Where one man walks on the way to his squad's objective — his slot in the wedge, not the
-        /// objective itself.
-        ///
-        /// This used to be a golden-angle ring around the destination, which spread the squad only
-        /// once it had ARRIVED: for the whole approach every man steered at the same point and they
-        /// travelled as a clump, which is one grenade for the squad. The wedge is oriented on the
-        /// approach, so it spreads them for the journey as well as the arrival.
-        /// </summary>
-        /// <summary>
-        /// This man's lane, relative to the squad's line of march, as a world-space offset.
-        ///
-        /// Perpendicular to the direction of travel rather than a fixed compass offset, so the wedge
-        /// turns with the squad. Zero for the point man and for anyone not on a roster — a lone man
-        /// has no formation to keep, and somebody has to be on the route itself.
+        /// This member's wedge lane relative to the squad's objective. The offset rotates with the
+        /// approach; point and unrostered actors stay on the route.
         /// </summary>
         private static Vector3 WedgeLateralOffset(
             ServerPlayer mob,

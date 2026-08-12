@@ -297,13 +297,15 @@ namespace Demiurge.GameClient
         ///
         /// Falls back to the player's centre height for a weapon with no barrel locator, which is
         /// wrong but visible rather than putting shots underground.</summary>
-        public Vector3 Muzzle(ItemType type, float pitch = 0f)
+        public Vector3 Muzzle(ItemType type, float pitch = 0f, float weaponScale = 1f)
         {
             var model = modelOf(type);
             if (locators.Get(model, "grip") is not { } grip || locators.Get(model, "barrel") is not { } barrel)
                 return new Vector3(0f, GunConfig.PlayerCenterHeight, 0f);
 
-            var gripToBarrel = Vector3.Transform(barrel.Translation - grip.Translation, HandRotationFor(type));
+            var gripToBarrel = Vector3.Transform(
+                (barrel.Translation - grip.Translation) * weaponScale,
+                HandRotationFor(type));
             var unpitched = firingHand.Translation + Vector3.Transform(gripToBarrel, firingHand.Rotation);
 
             return aimPivot + Vector3.Transform(unpitched - aimPivot, PitchRotation(pitch));

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "mapId": "5202a1ca-a01c-46b6-9a88-df11e8ae2cbd",
   "name": "conquest",
   "baseTerrain": {
@@ -292861,8 +292861,8 @@
     },
     {
       "id": "1bb469e9-bf29-4dcc-a9d2-48e6335cee33",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": 231,
         "y": 22,
@@ -292877,8 +292877,8 @@
     },
     {
       "id": "2194b7bb-4d36-4452-ba32-4507531e3c73",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": 30,
         "y": 22,
@@ -292893,8 +292893,8 @@
     },
     {
       "id": "427e7f31-8560-44c5-b77d-4212a4de3b3f",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": -38,
         "y": 45,
@@ -292909,8 +292909,8 @@
     },
     {
       "id": "b6605420-4bb2-440c-91b9-a0591df74449",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": 174,
         "y": 28,
@@ -292925,8 +292925,8 @@
     },
     {
       "id": "d2b3ab20-542a-4406-8c96-bd9ec7ad622c",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": -152,
         "y": 24,

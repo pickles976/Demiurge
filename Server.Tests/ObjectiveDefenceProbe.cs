@@ -25,7 +25,7 @@ public class ObjectiveDefenceProbe
         using var harness = new MobIntegrationHarness(map.Terrain, seed: 4242);
 
         foreach (var placement in map.Placements)
-            if (placement.Kind == RuntimePlacementKind.Flag)
+            if (placement.Kind == RuntimePlacementKind.ConquestFlag)
                 harness.Flags.Spawn(placement.Position);
 
         var spawnsByTeam = map.Placements

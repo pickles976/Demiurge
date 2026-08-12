@@ -50,7 +50,13 @@ public sealed class FlagViewScript : SyncScript
     {
         int flying = FlagConfig.FlyingTeam(Object.Team.Value, Object.Team.CapturingTeam);
 
-        RaiseTo(MathUtil.Clamp(Object.Team.Progress, 0f, 1f));
+        RaiseTo(MathUtil.Clamp(
+            FlagConfig.FlyingProgress(
+                Object.Team.Value,
+                Object.Team.CapturingTeam,
+                Object.Team.Progress),
+            0f,
+            1f));
         Recolor(flying);
         DrawCaptureRing(flying);
     }

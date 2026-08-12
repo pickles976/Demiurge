@@ -167,9 +167,9 @@ public sealed class EditorTerrainEvaluator
                 RuntimePlacementKind.PlayerSpawn, position, placement.Yaw,
                 SpawnId: placement.ArchetypeId["demiurge:spawn/".Length..],
                 Team: placement.Team),
-            EditorPlacementKind.Flag => new RuntimePlacement(
-                RuntimePlacementKind.Flag, position, placement.Yaw,
-                SpawnId: "flag",
+            EditorPlacementKind.ConquestFlag => new RuntimePlacement(
+                RuntimePlacementKind.ConquestFlag, position, placement.Yaw,
+                SpawnId: "conquest-flag",
                 Team: 0),
             _ => throw new InvalidDataException($"Unknown placement kind {placement.Kind}"),
         };

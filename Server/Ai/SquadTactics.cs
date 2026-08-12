@@ -50,25 +50,8 @@ internal readonly record struct SquadTacticalOrder(
     int BoundIndex);
 
 /// <summary>
-/// Who does which, priced in the same currency as everything else.
-///
-/// This is an ALLOCATION, not a doctrine. It does not decide that squads bound, or that riflemen
-/// hold and SMGs close; it computes what each member is worth in each role and picks the assignment
-/// with the highest squad total. Those behaviours then appear because the numbers say so.
-///
-/// The reason it must be joint rather than per-member: a base of fire's value is mostly the damage
-/// it PREVENTS to a mover, by inflating the threat's dispersion (BallisticsConfig.SuppressedMoa).
-/// Scored individually, suppressing an enemy you cannot reliably hit looks worthless, every man
-/// independently concludes that moving is dangerous, and the whole squad stands still — which is
-/// precisely the behaviour this replaces.
-///
-/// There is deliberately NO precondition on movement. The previous version refused to issue a bound
-/// unless somebody was already at cover, so a squad that could not reach cover was forbidden from
-/// moving and stood in the open digging. The allocation here always returns an assignment; its worst
-/// case is that everybody shoots.
-///
-/// Pure and deterministic, so the doctrine can be tested headlessly. Terrain is absent by design:
-/// this produces intent, and navigation and cover selection resolve it against the real field.
+/// Pure joint role allocation in combat-value units. Joint scoring captures the suppressor's value
+/// to movers; terrain-specific navigation and cover selection execute the resulting intent.
 /// </summary>
 internal static class SquadTactics
 {
@@ -76,13 +59,8 @@ internal static class SquadTactics
     public const float OpeningStandoff = 45f;
     public const float BoundLength = 12f;
     /// <summary>
-    /// Closest a plan will deliberately place a man, whatever his weapon prefers. Below this the
-    /// movement solver and the cover query fight over the same metre of ground.
-    ///
-    /// It used to be the standoff itself — one number for every weapon — which priced a bolt gun's
-    /// assault at a range it does not want and a submachine gun's at one it has already won at.
-    /// Where a man actually wants to be now comes from his own damage curve, via
-    /// <see cref="WeaponEffectiveness.PreferredRange"/>; this is only the floor under it.
+    /// Minimum planned standoff; weapon-specific preference comes from
+    /// <see cref="WeaponEffectiveness.PreferredRange"/>.
     /// </summary>
     public const float ClosestPlannedStandoff = 4f;
 
@@ -94,12 +72,7 @@ internal static class SquadTactics
         [-1.05f, 1.05f, -0.52f, 0.52f, -1.57f, 1.57f];
 
     /// <summary>
-    /// How long a man may be moving before the rotation stops waiting for him.
-    ///
-    /// Self-clocking rotation — the next man goes when the last one arrives — deadlocks whenever a
-    /// mover cannot arrive, and "cannot arrive" is common: pinned, blocked, or sent somewhere that
-    /// turned out unreachable. This is the escape hatch, and it is why the ungated allocation above
-    /// is not enough on its own.
+    /// Maximum bound duration before rotation stops waiting for a blocked or pinned mover.
     /// </summary>
     public const uint MoverTimeoutTicks = 5 * NetworkConfig.TickRate;
 
@@ -108,40 +81,17 @@ internal static class SquadTactics
     public const uint BearingCommitmentTicks = MoverTimeoutTicks;
 
     /// <summary>
-    /// Men who must stay on the gun while the rest move. One — and the constraint really is only
-    /// one, because everything else about who moves is already decided by the score.
-    ///
-    /// There used to be a flat `MaxMovers = 2` here, which quietly overrode the allocation: four of a
-    /// six-man squad were held static regardless of what they were worth, so the squad's average
-    /// advance was bounded by a constant rather than by the fight. Measured against a lone rifleman,
-    /// lifting the cap took a thirty-second assault from 5.1 m of closing to 13.8 m — and DROPPED
-    /// excavation from 50 bites to 24, because men who are moving are not digging.
+    /// Minimum suppressors retained while the score allows the remaining members to move.
     /// </summary>
     private const int SuppressorsRequired = 1;
 
     /// <summary>
-    /// How much better the destination must be, in net health per second, before a man gives up his
-    /// firing position for it.
-    ///
-    /// Leaving the line costs things the score does not model: seconds in transit dealing nothing,
-    /// a settled aim thrown away, a position already known to work. So a marginal improvement is not
-    /// enough. Without this bar, a bolt gun in a mirror match scored a gain of about 0.1 HP/s from
-    /// closing and duly charged — the exact opposite of the range doctrine, and invisible until
-    /// squads were allowed more than two movers.
+    /// Required net HP/s gain before abandoning an established firing position.
     /// </summary>
     private const float MinimumGainToLeaveTheFiringLine = 1f;
 
     /// <summary>
-    /// How much of a sprinting man a shooter can actually reach, against a static one.
-    ///
-    /// Crossing open ground has two opposed effects and they very nearly cancel, which is the whole
-    /// reason a bound is a tactic rather than suicide. A mover is the OBVIOUS target — his targeting
-    /// likelihood goes to 1 rather than being shared one-over-squad with everyone still in the
-    /// firing line — but he is also a MOVING target, and a shooter's aim lags a runner.
-    ///
-    /// Pricing only the first makes every assault look fatal; pricing only the second makes every
-    /// assault look free, which is what the model did before this and why closing was systematically
-    /// underpriced.
+    /// Reachable silhouette fraction for a sprinting target; balances target selection against aim lag.
     /// </summary>
     private static readonly SelfExposure SprintingExposure = SelfExposure.Of(0.45f);
 

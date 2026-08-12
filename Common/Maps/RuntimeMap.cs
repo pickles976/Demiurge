@@ -7,7 +7,7 @@ public enum RuntimePlacementKind : byte
     Pickup = 1,
     Mob = 2,
     PlayerSpawn = 3,
-    Flag = 4,
+    ConquestFlag = 4,
 
     /// <summary>
     /// A weapon pickup presented as a supply crate rather than as the weapon itself. Same item and
@@ -37,7 +37,7 @@ public sealed class RuntimeMap
     /// instead of the nearest surface, and until this number moved, every session went on loading a
     /// bake that still had the spawn markers sitting on a roof.
     /// </summary>
-    public const int CurrentFormatVersion = 4;
+    public const int CurrentFormatVersion = 5;
 
     /// <summary>The version this map was read at; <see cref="CurrentFormatVersion"/> for a fresh
     /// bake. Older means the file predates the current baker, not that it failed to load.</summary>

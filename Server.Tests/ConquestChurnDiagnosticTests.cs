@@ -44,7 +44,7 @@ public class ConquestChurnDiagnosticTests
 
         var flagPositions = new List<Vector3>();
         foreach (var placement in map.Placements)
-            if (placement.Kind == RuntimePlacementKind.Flag)
+            if (placement.Kind == RuntimePlacementKind.ConquestFlag)
             {
                 flagPositions.Add(placement.Position);
                 harness.Flags.Spawn(placement.Position);
@@ -307,7 +307,7 @@ public class ConquestChurnDiagnosticTests
             + string.Join(
                 " ",
                 harness.Objects.All
-                    .Where(o => o.Type == ObjectType.Flag)
+                    .Where(o => o.Type == ObjectType.ConquestFlag)
                     .Select(o => $"#{o.NetworkId}=t{o.Team.Value}")));
 
         // The one number this scenario asserts, and it is deliberately the least noisy thing in it.

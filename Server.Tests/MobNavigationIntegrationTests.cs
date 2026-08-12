@@ -19,7 +19,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
             playerTeam: 1,
             npcsPerTeam: 16);
         using var world = new MobIntegrationHarness(map.Terrain, seed: 0xC0A9);
-        foreach (var flag in map.Placements.Where(p => p.Kind == RuntimePlacementKind.Flag))
+        foreach (var flag in map.Placements.Where(p => p.Kind == RuntimePlacementKind.ConquestFlag))
             world.Flags.Spawn(flag.Position);
 
         var starts = new Dictionary<ushort, Vector3>();
@@ -53,9 +53,8 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Team 1's base wall is a receding-horizon trap: bounded searches used to alternate tiny
-    /// prefixes through the same handful of cells. The nearest squad could still capture and hide
-    /// that failure, so every actor must leave the spawn basin as well as securing the near flag.
+    /// Team 1's base wall can trap bounded searches in alternating short prefixes. Require every
+    /// actor to leave the basin so a successful nearest squad cannot hide the failure.
     /// </summary>
     [Fact]
     [Trait("Category", "Integration")]
@@ -77,7 +76,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
 
         using var world = new MobIntegrationHarness(map.Terrain, seed: 0x71A1);
         var flags = map.Placements
-            .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
+            .Where(placement => placement.Kind == RuntimePlacementKind.ConquestFlag)
             .Select(placement => (Placement: placement, Object: world.Flags.Spawn(placement.Position)))
             .ToArray();
         var nearest = flags.MinBy(flag => HorizontalDistanceSquared(spawnCentre, flag.Placement.Position));
@@ -158,7 +157,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
             playerTeam: 1,
             npcsPerTeam: 16);
         var flags = map.Placements
-            .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
+            .Where(placement => placement.Kind == RuntimePlacementKind.ConquestFlag)
             .ToArray();
         Assert.Equal(4, flags.Length);
         using var world = new MobIntegrationHarness(map.Terrain, seed: 0xD17C + team);
@@ -191,9 +190,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
         for (uint tick = 0; tick < maximumTicks; tick++)
         {
             world.Step(tick, wallClockDelayMs: 2);
-            // Match GameWorld's ordering: actors move, stuck actors would be relocated, then flags
-            // capture. This test deliberately replaces relocation with an immediate failure so a
-            // teleport can never satisfy the central-objective assertion.
+            // Match GameWorld ordering, but fail instead of relocating so teleportation cannot satisfy it.
             while (world.Mobs.TryDequeueStuckMob(out ushort stuckMobId))
             {
                 var stuck = world.Actors.Single(actor => actor.Id == stuckMobId);

@@ -354,21 +354,6 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Labels a voxel. Material is DERIVED from density, never sampled independently — that
-        /// one-way dependency is what stops the two fields disagreeing about whether a voxel exists.
-        ///
-        /// Takes BOTH the stored distance and the one the generator computed, because the two bands
-        /// need different authorities and using either alone produces wrong surface materials:
-        ///
-        /// - Existence and the grass band come from the STORED value, since that's the field the
-        ///   mesher reads. Deriving them from the true distance disagrees with the mesher in a
-        ///   quantization-wide band around every whole-number height, which is what put stray patches
-        ///   of Dirt on the surface.
-        /// - The deep bands come from the TRUE distance, because stored distance clamps at about
-        ///   -2.54 voxels — deriving Dirt/Stone from it would make everything below that Dirt and
-        ///   Stone would never appear at all.
-        /// </summary>
-        /// <summary>
         /// Slope-free overload, for fields whose surface gradient is zero or unknown — synthetic test
         /// fields and player edits, where the column's slope says nothing about the cut face.
         /// </summary>
@@ -383,7 +368,8 @@ namespace Demiurge
         /// </summary>
         public const float SoilDepth = 9f;
 
-        /// <inheritdoc cref="DensityToMaterial(float, float)"/>
+        /// <summary>Derives material from density. Stored distance controls existence and surface
+        /// material; unclamped true distance controls deeper bands.</summary>
         /// <param name="slope">tan of the surface angle at this column, from <see cref="ColumnSlopes"/>.</param>
         public static BlockType DensityToMaterial(float storedDistance, float trueDistance, float slope)
         {

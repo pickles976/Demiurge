@@ -18,7 +18,7 @@ public sealed class ConquestNavigationBenchmarkTests(ITestOutputHelper output)
             playerTeam: 1,
             npcsPerTeam: 16);
         var flags = map.Placements
-            .Where(placement => placement.Kind == RuntimePlacementKind.Flag)
+            .Where(placement => placement.Kind == RuntimePlacementKind.ConquestFlag)
             .ToArray();
         Assert.Equal(32, spawnPlan.NpcSpawns.Count);
         Assert.NotEmpty(flags);

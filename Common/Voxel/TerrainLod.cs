@@ -33,7 +33,7 @@ namespace Demiurge
     /// for the whole aim cone at LOD 0 out to 600 m, and an estimate of how many boxes that is is not
     /// a frame budget. Splitting through a priority queue means the ceiling costs detail in the places
     /// that needed it least, instead of costing frame time — which is the same argument node ceilings
-    /// carry in docs/BARITONE.md, for the same reason.
+    /// carry in docs/NAVIGATION.md, for the same reason.
     /// </summary>
     public sealed class TerrainLod
     {

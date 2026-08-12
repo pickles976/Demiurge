@@ -13,7 +13,7 @@ public static class EditorPlacementBounds
     public static (Vector3 Min, Vector3 Max) Local(EditorPlacementKind kind) => kind switch
     {
         // The flag pole is thin; a pole-width box would be near impossible to click.
-        EditorPlacementKind.Flag =>
+        EditorPlacementKind.ConquestFlag =>
             (new Vector3(-0.35f, 0f, -0.35f), new Vector3(0.35f, 2.4f, 0.35f)),
         // The crate model is about 1 m long, 0.6 wide and 0.42 tall, resting on the placement.
         EditorPlacementKind.SupplyCrate =>

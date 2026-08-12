@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "mapId": "383c67ee-5f92-4976-84d4-a0838a5cb084",
   "name": "npc-test",
   "baseTerrain": {
@@ -44379,8 +44379,8 @@
     },
     {
       "id": "d4fa0a9c-2711-403e-9681-4ba8c9bf9b45",
-      "kind": "flag",
-      "archetypeId": "demiurge:flag",
+      "kind": "conquestFlag",
+      "archetypeId": "demiurge:conquest-flag",
       "cell": {
         "x": -3,
         "y": 31,

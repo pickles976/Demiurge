@@ -5,79 +5,21 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 Use Codex for actual engineering work, Claude for just adding tiny features.
 
-1. Finish up AI
+1. Finish up AI with Codex
 2. Finish PVP MVP
 3. Make the environment richer
 4. Refactor commands
 5. Multiplayer test
 
-- [ ] Have Claude finish the AI-side stuff
+# NPC AI
 
-# NPC AI Overhaul
+The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
 
-`
-Fatal error.
-System.AccessViolationException: Attempted to read or write protected memory. This is often an indication that other memory is corrupt.
-   at Stride.Rendering.TransformRenderFeature.Prepare(Stride.Rendering.RenderDrawContext)
-   at Stride.Rendering.MeshRenderFeature.Prepare(Stride.Rendering.RenderDrawContext)
-   at Stride.Rendering.RenderSystem.Prepare(Stride.Rendering.RenderDrawContext)
-   at Stride.Rendering.Compositing.GraphicsCompositor.DrawCore(Stride.Rendering.RenderDrawContext)
-   at Stride.Engine.SceneSystem.Draw(Stride.Games.GameTime)
-   at Stride.Games.GameSystemCollection.Draw(Stride.Games.GameTime)
-   at Stride.Games.GameBase.RawTick(System.TimeSpan, Int32, Single, Boolean)
-   at Stride.Games.GameBase.RawTickProducer()
-   at Stride.Games.GamePlatform.OnRunCallback()
-   at Stride.Games.SDLMessageLoop.Run(Stride.Graphics.SDL.Window, RenderCallback)
-   at Stride.Games.GameWindowSDL.Run()
-   at Stride.Games.GamePlatform.Run(Stride.Games.GameContext)
-   at Stride.Games.GameBase.Run(Stride.Games.GameContext)
-   at Stride.CommunityToolkit.Engine.GameExtensions.Run(Stride.Engine.Game, Stride.Games.GameContext, System.Action`1<Stride.Engine.Scene>, System.Action`2<Stride.Engine.Scene,Stride.Games.GameTime>)
-   at Demiurge.ClientApplication.Run(System.String[])
-   at Program.<Main>$(System.String[])`
+# Gameplay Polish
 
-- Performance issues
-- Flags need to fall with gravity
+We want to allow users to place sandbags, but to keep players from
+spamming sandbags, they should be resource-constrained.
 
-Design: [docs/superpowers/specs/2026-08-04-ai-overhaul-design.md](docs/superpowers/specs/2026-08-04-ai-overhaul-design.md)
-
-Rebuilds per-unit arbitration and squad tactics on one currency — net HP/second — so role falls out
-of the range matchup instead of `ItemType` branches. Replaces `MobSystem` arbitration and
-`SquadTactics` outright. Staged; each stage gets its own plan.
-
-- [ ] Stage 1 — scoring core: currency, three actions, threat pruning, squad allocation.
-      Fixes standing at the flagpost, aimless digging, digging inside cover.
-      Plan: [docs/superpowers/plans/2026-08-04-ai-stage-1-scoring-core.md](docs/superpowers/plans/2026-08-04-ai-stage-1-scoring-core.md)
-- [ ] Stage 2 — squad movement: one shared trunk path per squad out of combat, wedge slots as
-      steering offsets, shared-route key rekeyed on (team, squad, objective).
-- [ ] Stage 3 — excavation: commit the whole cut, lazy local path validation, excavation leases,
-      0.5 brush radius for cuts, minimum-volume planning (1-wide trenches and staircases).
-- [ ] Stage 4 — strategy: game-mode-agnostic objective set (CTF/KOTH), force ratio, stalemate
-      concentration, combat zones.
-- [ ] Stage 5 — enrichment: grenades, elevation term, target-selection scoring, skill dial.
-
-Bugs found during design, each explaining part of the observed behaviour:
-
-- [ ] `SquadTactics` forbids movement unless someone is `IsSet`; a squad that cannot reach cover
-      deadlocks standing up, then digs, and is still not set.
-- [ ] `CoverQueriesPerTick = 1` throttles the whole server to 0–3 cover searches per *second*.
-      Measured at 0–400 µs/tick inside a 3.9 ms tick — starving behaviour, not protecting the budget.
-- [ ] Path sharing is structurally dead: the shared-route key needs the destination within 4 m of the
-      objective, but `WedgeFormation` offsets members 14 m. `shared routes 0` for entire runs.
-- [ ] `NavPath.IsValid` invalidates on whole-chunk revisions, so one man's shovel bite invalidates
-      every squadmate's path — a squad fits inside one 16×16 m chunk.
-- [ ] `MobBrain`'s single heard-gunshot slot is last-write-wins, so a distant shot erases a
-      point-blank one.
-- [ ] `ai stats` reports `follow` as a residual containing the collision solver, making path
-      following look 55× more expensive than its actual 51 µs/tick.
-- [ ] `docs/BARITONE.md` cites `StaircaseDigTargetsStayInsideOneMetreCorridor`, which does not exist.
-
-## AI Final Cleanup
-
-- [ ] NPCs sometimes digging down to cross a big trench rather than just jumping in
-- [ ] Get heightmap texture around flags from voxel data. Apply a sobel filter to extract edges. If insufficient edges are found, plan a simple trench design, concentric squares where the edge of each square is a 1-wide, 2-deep trench. one at 10m, one at 17m. Connect these concentric trenches in 4 directions. Strategic AI should plan the design, and NPCs can pick it up and *ONLY* dig out voxels from the plan.
-
-
-Here are some more features. We want to allow users to place sandbags, but to keep players from spamming sandbags, they should be resource-constrained.
 - [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
 
 - [ ] add trees
@@ -89,7 +31,9 @@ Here are some more features. We want to allow users to place sandbags, but to ke
       - [ ] add trees to map
 
 ## Refactoring and Cleanup
-- Codex clean up all comments
+- Finish AI
+- Finish PVP features
+
 - Codex refactor certain parts of the code
 - Codex event queue implementation
 

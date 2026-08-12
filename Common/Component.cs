@@ -13,11 +13,11 @@ namespace Demiurge
         PlayerStatus,
         Item,
         Tree,
-        Grenade,
-        Flag,
+        Grenade = 6,
+        ConquestFlag = 7,
         /// <summary>A mortar bomb in the air. Distinct from Grenade so the client can tell the two
         /// apart — they fly differently and only one of them draws a tracer.</summary>
-        MortarRound,
+        MortarRound = 8,
     }
 
     /// <summary>Which item an ItemState describes — every pickup/wearable/weapon
@@ -142,8 +142,8 @@ namespace Demiurge
     }
 
     /// <summary>
-    /// Zero is neutral; positive values identify playable teams. Flag objects additionally use
-    /// CapturingTeam and normalized Progress for their timed capture state.
+    /// Zero is neutral; positive values identify playable teams. Conquest flag objects additionally
+    /// use CapturingTeam and normalized Progress for their timed capture state.
     /// </summary>
     public struct TeamState : IMessageSerializable
     {

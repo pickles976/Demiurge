@@ -23,7 +23,10 @@ public class AimLineScript : SyncScript
 
         // Same muzzle the sim fires from, so the line starts where the bullets do.
         var muzzle = (local.Position + System.Numerics.Vector3.Transform(
-            Mount.Muzzle(local.Weapon!.Item.Type),
+            Mount.Muzzle(
+                local.Weapon!.Item.Type,
+                local.Pitch,
+                ItemCosmetics.WorldScale(local.Weapon.Item.Type)),
             System.Numerics.Quaternion.CreateFromYawPitchRoll(local.Yaw, 0f, 0f))).ToStride();
         var muzzleScreen = MathExtensions.WorldToScreen(muzzle, camera.ViewProjectionMatrix, Game.Window.ClientBounds);
         var cursor = MathExtensions.MousePosToScreenCoords(Input.MousePosition, Game.Window.ClientBounds);

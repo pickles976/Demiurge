@@ -99,9 +99,9 @@ public static class RuntimeMapValidation
                     }
                     WarnIfUnsupported(map, placement, warnings);
                     break;
-                case RuntimePlacementKind.Flag:
+                case RuntimePlacementKind.ConquestFlag:
                     if (placement.Team != 0)
-                        errors.Add("Flags must start neutral");
+                        errors.Add("Conquest flags must start neutral");
                     WarnIfUnsupported(map, placement, warnings);
                     break;
                 default:

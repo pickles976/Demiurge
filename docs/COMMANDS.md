@@ -233,6 +233,7 @@ editor object pickup <item>
 editor object crate <item>
 editor object mob
 editor object spawn <spawn-id>
+editor object conquest-flag
 editor object clear
 editor object list
 editor object select <placement-id>
@@ -257,6 +258,9 @@ placement ID. `editor object list` prints every placement, and Tab completes IDs
 crate instead of as the weapon and resting still on the ground rather than hovering and spinning.
 Taking one gives the item inside, and from that moment it looks like an ordinary weapon — carried or
 dropped.
+
+`editor object conquest-flag` places the neutral capture objective used by Conquest. It is not a
+generic flag placement, so other game modes can define their own objective types independently.
 
 Canonical blocks are `demiurge:grass`, `demiurge:dirt`, and `demiurge:stone`.
 The default terrain fill is `demiurge:grass`, which enables automatic surface classification:

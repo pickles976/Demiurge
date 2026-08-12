@@ -3,18 +3,13 @@ using System.Numerics;
 namespace Demiurge
 {
     /// <summary>
-    /// A body's contact with the field at one point: how far away the surface is, and which way is
-    /// out of it. Distance is CORRECTED (see <see cref="TerrainCollision.TrySample"/>) — negative
-    /// means the point is inside terrain. <see cref="Normal"/> is smoothed across cells for stable
-    /// pushout; <see cref="SurfaceNormal"/> is the exact containing-cell derivative used to classify
-    /// steep slopes without neighboring density saturation biasing the result.
+    /// Corrected signed surface distance and normals. <see cref="Normal"/> is smoothed for pushout;
+    /// <see cref="SurfaceNormal"/> is the cell derivative used for slope classification.
     /// </summary>
     public readonly record struct FieldPoint(float Distance, Vector3 Normal, Vector3 SurfaceNormal);
 
     /// <summary>
-    /// The player's body, as collision sees it: a vertical capsule, tested as a small stack of
-    /// spheres up its axis. Positions are the FEET, matching <see cref="SurfaceQuery.SurfacePosition"/>
-    /// and what the view renders from.
+    /// Vertical capsule sampled by overlapping spheres. Positions refer to the feet.
     /// </summary>
     public readonly record struct CapsuleBody(float Radius, float Height)
     {
@@ -40,13 +35,8 @@ namespace Demiurge
     }
 
     /// <summary>
-    /// Collision against the voxel field. Engine-free and in Common because the server is
-    /// authoritative over movement and the client has to predict it with exactly the same maths.
-    ///
-    /// Reads the field on the SAME grid the mesher does: voxel (x, y, z) is the sample at world
-    /// position exactly (x, y, z), never a cell centre. See the edge crossings in
-    /// <see cref="ChunkMesher"/> — they are built at integer positions. Offsetting this by half a
-    /// voxel would put collision half a voxel away from the surface you can see.
+    /// Shared authoritative/predicted voxel collision. Samples use the mesher's integer world grid,
+    /// not voxel centres.
     /// </summary>
     public static class TerrainCollision
     {
@@ -55,9 +45,7 @@ namespace Demiurge
         const float GradientStep = 0.5f;
 
         /// <summary>
-        /// Below this the gradient carries no usable direction. Happens for real: stored distance
-        /// saturates around +/-2.54 voxels (<see cref="Voxel.Scale"/>), so deep inside terrain every
-        /// sample in the stencil reads the same clamped value and the difference is exactly zero.
+        /// Gradients below this have no direction, typically because stored distance saturated.
         /// </summary>
         const float MinGradientLength = 1e-4f;
 
@@ -72,10 +60,7 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// <see cref="TrySampleRaw(ChunkMap, Vector3, out float)"/> for a caller that is already
-        /// walking a small region and can keep the chunk memo alive across its whole sweep. The
-        /// per-call overload above starts cold every time, which for something like a navigation
-        /// column — dozens of samples inside one chunk — throws the memo away between each one.
+        /// Cursor-sharing raw sample for sweeps through a small region.
         /// </summary>
         public static bool TrySampleRaw(ref VoxelCursor cursor, Vector3 p, out float distance)
             => TrySampleCellValue(ref cursor, p, out distance);
@@ -84,11 +69,8 @@ namespace Demiurge
         /// The trilinear value alone, without the analytic cell gradient.
         /// </summary>
         /// <remarks>
-        /// Same eight corners and the same seven lerps as <see cref="TrySampleCell"/>, minus the nine
-        /// further lerps and the Vector3 that build the gradient. That matters because the gradient was
-        /// being computed and thrown away on the hot path: one <see cref="TrySample"/> makes six
-        /// <see cref="TrySampleRaw"/> calls for its central-difference stencil, and every one of them
-        /// discarded a gradient. Identical output, strictly less arithmetic.
+        /// Uses the same eight corners and value lerps as <see cref="TrySampleCell"/> without computing
+        /// the unused analytical gradient.
         /// </remarks>
         static bool TrySampleCellValue(ref VoxelCursor cursor, Vector3 p, out float distance)
         {
@@ -167,28 +149,11 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// Raw value and a corrected distance, both derived from the SAME eight corners.
+        /// Raw value and corrected distance from the same eight corners.
         /// </summary>
         /// <remarks>
-        /// For a caller that needs to know how far it may safely advance but does NOT need a surface
-        /// normal — a ray march, whose normal is only wanted once, at the hit it finally reports.
-        /// <para>
-        /// <see cref="TrySample(ref VoxelCursor, Vector3, out FieldPoint, out float)"/> costs 56 voxel
-        /// reads: eight for the cell, plus 48 more for the smoothed central-difference gradient it
-        /// divides by. This costs eight. The correction uses the analytic gradient of the trilinear
-        /// interpolant, which <see cref="TrySampleCell"/> already computed from those same eight corners
-        /// and previously threw away.
-        /// </para>
-        /// <para>
-        /// It is a legitimate substitute for the marching decision specifically, because
-        /// <c>TerrainRaycast.SafeStep</c> takes the MINIMUM of raw and corrected, and that minimum stays
-        /// safe under either gradient for the same reason it did before: where the field saturates the
-        /// cell gradient collapses toward zero and inflates the corrected value, but raw is clamped
-        /// there and understates the gap, so the minimum is the clamped one; where it does not
-        /// saturate, the corrected value is the true distance. Do NOT reach for this where a normal is
-        /// wanted — the smoothed gradient exists because the per-cell one is discontinuous at cell
-        /// boundaries, which is invisible in a step length and very visible in shading and pushout.
-        /// </para>
+        /// Eight-read path for ray-march step length. Do not use where a normal is needed: the cell
+        /// gradient is discontinuous, while pushout requires the smoothed gradient.
         /// </remarks>
         public static bool TrySampleCellCorrected(
             ref VoxelCursor cursor, Vector3 p, out float raw, out float corrected)
@@ -205,18 +170,8 @@ namespace Demiurge
         }
 
         /// <summary>
-        /// The field at a point as collision needs it.
-        ///
-        /// The stored value is NOT a distance: <see cref="ChunkGenerator"/> writes `y - heightAt`,
-        /// the VERTICAL gap to the terrain height in that column. A true signed distance field has
-        /// |grad d| = 1 everywhere; this one has |grad d| = 1/cos(slope), so on a slope it overstates
-        /// how far the surface is by exactly that factor. Dividing by the gradient length recovers a
-        /// true distance — without it, resolving a sphere until the stored value equals its radius
-        /// leaves it sunk into the slope by radius * (1 - cos(slope)): 29% of the radius at 45
-        /// degrees, half at 60.
-        ///
-        /// The gradient DIRECTION needs no correction; for `y - h(x,z)` it is already the true
-        /// surface normal. Only its length was ever wrong.
+        /// Collision sample with distance corrected by gradient length. Generated height fields store
+        /// vertical gap, which overstates surface distance on slopes; gradient direction remains valid.
         /// </summary>
         public static bool TrySample(ChunkMap map, Vector3 p, out FieldPoint point)
         {

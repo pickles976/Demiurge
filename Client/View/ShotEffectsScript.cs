@@ -17,6 +17,7 @@ public class ShotEffectsScript : SyncScript
     public required ObjectRegistry Objects { get; init; }
     public required NetworkManager Network { get; init; }
     public required TerrainState Terrain { get; init; }
+    public required WeaponMount Mount { get; init; }
 
     private sealed class VisualProjectile
     {
@@ -182,7 +183,26 @@ public class ShotEffectsScript : SyncScript
         if (ItemCatalog.HasBehavior(data.Weapon, ItemBehavior.Grenade)) return;
         // Unknown off-the-wire weapon types cannot provide a meaningful projectile speed.
         if (WeaponConfig.Get(data.Weapon) is null) return;
-        PlayEffects(data.Origin, data.Direction, data.Weapon, data.PlayerId);
+        PlayEffects(TracerOrigin(data), data.Direction, data.Weapon, data.PlayerId);
+    }
+
+    /// <summary>
+    /// The tracer belongs to this client's interpolated weapon view. Start it at that model's barrel;
+    /// the authoritative wire origin remains the fallback when fire arrives before the actor spawn.
+    /// </summary>
+    private System.Numerics.Vector3 TracerOrigin(PlayerFiredData data)
+    {
+        if (!Registry.TryGet(data.PlayerId, out var shooter)) return data.Origin;
+
+        var feet = shooter is RemotePlayer remote
+            ? remote.Snapshots.GetInterpolated(Registry.RenderTick, remote.Position)
+            : shooter.Position;
+        var localMuzzle = Mount.Muzzle(
+            data.Weapon,
+            shooter.Pitch,
+            ItemCosmetics.WorldScale(data.Weapon));
+        var yaw = System.Numerics.Quaternion.CreateFromYawPitchRoll(shooter.Yaw, 0f, 0f);
+        return feet + System.Numerics.Vector3.Transform(localMuzzle, yaw);
     }
 
     private void OnHitConfirmed(HitConfirmData confirm)

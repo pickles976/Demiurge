@@ -165,10 +165,12 @@ public sealed class EditorCoreTests
         Assert.True(EditorCommandParser.Execute(
             "editor object team 3", settings, session).Success);
         Assert.True(EditorCommandParser.Execute(
-            "editor object flag", settings, session).Success);
+            "editor object conquest-flag", settings, session).Success);
         Assert.Equal(3, settings.ObjectTeam);
-        Assert.Equal(EditorObjectChoiceKind.Flag, settings.ObjectKind);
-        Assert.Equal("demiurge:flag", settings.ObjectId);
+        Assert.Equal(EditorObjectChoiceKind.ConquestFlag, settings.ObjectKind);
+        Assert.Equal("demiurge:conquest-flag", settings.ObjectId);
+        Assert.False(EditorCommandParser.Execute(
+            "editor object flag", settings, session).Success);
     }
 
     [Fact]
@@ -220,7 +222,7 @@ public sealed class EditorCoreTests
         Assert.Equal(0f, min.Y);
         Assert.Equal(PlayerMovement.Body.Height, max.Y);
 
-        var (flagMin, flagMax) = EditorPlacementBounds.Local(EditorPlacementKind.Flag);
+        var (flagMin, flagMax) = EditorPlacementBounds.Local(EditorPlacementKind.ConquestFlag);
         Assert.Equal(0f, flagMin.Y);
         Assert.True(flagMax.Y > max.Y, "the flag pole is taller than a man");
     }
@@ -261,6 +263,14 @@ public sealed class EditorCoreTests
             WeaponId = "demiurge:ppsh",
             Team = 2,
         });
+        document.Placements.Add(new EditorPlacement
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000004"),
+            Kind = EditorPlacementKind.ConquestFlag,
+            ArchetypeId = "demiurge:conquest-flag",
+            Cell = new Int3(4, 50, 4),
+            Team = 0,
+        });
 
         string directory = Path.Combine(Path.GetTempPath(), "demiurge-editor-tests", Guid.NewGuid().ToString("N"));
         string path = Path.Combine(directory, "source.json");
@@ -268,7 +278,11 @@ public sealed class EditorCoreTests
         {
             SourceMapSerializer.Save(path, document);
             var loaded = SourceMapSerializer.Load(path);
+            string source = File.ReadAllText(path);
             Assert.Equal(SourceMapSerializer.Hash(document), SourceMapSerializer.Hash(loaded));
+            Assert.Contains("\"kind\": \"conquestFlag\"", source);
+            Assert.Contains("\"archetypeId\": \"demiurge:conquest-flag\"", source);
+            Assert.DoesNotContain("\"kind\": \"flag\"", source);
             Assert.Equal([1L, 2L], loaded.Blocks.Select(block => block.Sequence));
             Assert.Equal(
                 "demiurge:ppsh",
@@ -381,8 +395,8 @@ public sealed class EditorCoreTests
         document.Placements.Add(new EditorPlacement
         {
             Id = Guid.NewGuid(),
-            Kind = EditorPlacementKind.Flag,
-            ArchetypeId = "demiurge:flag",
+            Kind = EditorPlacementKind.ConquestFlag,
+            ArchetypeId = "demiurge:conquest-flag",
             Cell = document.Placements[0].Cell with { X = 4 },
             Team = 0,
         });
@@ -411,7 +425,7 @@ public sealed class EditorCoreTests
             Assert.Equal(
                 0,
                 Assert.Single(loaded.Placements, placement =>
-                    placement.Kind == RuntimePlacementKind.Flag).Team);
+                    placement.Kind == RuntimePlacementKind.ConquestFlag).Team);
 
             foreach (var expected in runtime.Terrain.Snapshot())
             {

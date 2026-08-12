@@ -267,8 +267,8 @@ logic remains headless and testable.
 - [docs/README.md](docs/README.md): complete documentation index
 - [CLAUDE.md](CLAUDE.md): architecture invariants and implementation guidance
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): current process, authority, AI, and data-flow boundaries
+- [AI_TODO.md](AI_TODO.md): authoritative remaining AI and navigation work
 - [docs/NAVIGATION.md](docs/NAVIGATION.md): navigation model, workers, recovery, diagnostics, and tests
-- [docs/BARITONE.md](docs/BARITONE.md): time-costed pathfinding plan and performance constraints
 - [docs/RECIPES.md](docs/RECIPES.md): checklists for adding replicated gameplay features
 - [docs/EDITOR.md](docs/EDITOR.md): editor design, formats, lifecycle, and acceptance criteria
 - [docs/COMMANDS.md](docs/COMMANDS.md): terminal command reference

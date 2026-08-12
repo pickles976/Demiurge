@@ -319,7 +319,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
                 "  editor object crate <item-id>",
                 "  editor object mob",
                 "  editor object spawn [spawn-id]",
-                "  editor object flag",
+                "  editor object conquest-flag",
                 "  editor object team <positive-integer>",
                 "  editor object clear",
                 "  editor object list",
@@ -951,7 +951,7 @@ public sealed class ClientSessionCoordinator : ITerminalCommandDispatcher, IDisp
             EditorPlacementKind.Mob =>
                 $" weapon={placement.WeaponId ?? "squad-default"} team={placement.Team}",
             EditorPlacementKind.PlayerSpawn => $" team={placement.Team}",
-            EditorPlacementKind.Flag => " neutral",
+            EditorPlacementKind.ConquestFlag => " neutral",
             _ => string.Empty,
         };
         return $"{EditorPlacementIds.Display(placement.Id)} " +

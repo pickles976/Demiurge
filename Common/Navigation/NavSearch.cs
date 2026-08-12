@@ -5,15 +5,8 @@ using System.Numerics;
 namespace Demiurge;
 
 /// <param name="MinimumPartialDistance">
-/// How much closer to the goal a partial answer has to get, in metres, before the search is allowed
-/// to stop at <paramref name="PrimaryBudget"/> instead of running on to
-/// <paramref name="FailureBudget"/>.
-///
-/// PROGRESS, not travel. It used to measure how far the best node had got from the START, which a
-/// search can satisfy while going nowhere useful: pacing sideways along a trench lip covers the
-/// distance without ever getting closer to the far bank, so the search declared a useful partial
-/// answer and stopped — pointing the actor at the lip it had been pacing. Measuring the reduction in
-/// the goal's own heuristic instead means "useful" means what it says.
+/// Required reduction in the goal heuristic before a partial result may stop at
+/// <paramref name="PrimaryBudget"/>. This measures goalward progress, not distance from the start.
 /// </param>
 public readonly record struct NavSearchOptions(
     TimeSpan PrimaryBudget,
@@ -24,36 +17,19 @@ public readonly record struct NavSearchOptions(
     bool AllowDig = false)
 {
     /// <summary>
-    /// Production search budgets. Expansion counts, not wall clock — see
-    /// <see cref="PrimaryExpansionBudget"/> for why, and read the calibration below before changing
-    /// the numbers, because they are not free parameters.
+    /// Production expansion budgets; see <see cref="PrimaryExpansionBudget"/>.
     /// </summary>
     /// <remarks>
-    /// The TimeSpans are retained and IGNORED while the expansion budgets are set. They stay because
-    /// they record what the budget was originally meant to buy, and because any options built without
-    /// expansion counts still fall back to them.
+    /// Time budgets are fallbacks and are ignored when expansion budgets are set.
     /// <para>
-    /// Calibrated from measurement rather than picked. On the conquest scenario the pool spends about
-    /// 3.5 cores of CPU per tick to complete ~102 searches per second averaging ~45 expansions, which
-    /// is roughly 0.8 ms of CPU PER EXPANSION — dominated by walk and jump validation, which run the
-    /// real movement solver 15 and 40 times respectively. The original deterministic 64/256 limits
-    /// reproduced the old wall-clock ceilings, but stopped one of the 32 initial conquest routes
-    /// before it returned a useful prefix and left Team 1 repeatedly searching inside its spawn.
-    /// 128/320 remains the ordinary look-ahead. On Team 1's authored spawn wall, 320, 512 and 1,024
-    /// expansions all returned one- or two-cell lateral stumps; returning those stumps made the next
-    /// search choose the opposite adjacent cell and a whole squad oscillated forever. Production
-    /// therefore escalates only that actor's hard ceiling after repeated partial-prefix attempts;
-    /// see NavigationSystem. Making 2,048 the unconditional default pushed the 32-route conquest
-    /// benchmark from ~440 ms to ~2,034 ms p95, so exceptional recovery must remain exceptional.
+    /// Measured conquest defaults are 128/320. Larger limits are reserved for per-actor recovery in
+    /// NavigationSystem: making 2,048 unconditional raised the 32-route p95 from ~440 ms to ~2,034 ms.
     /// </para>
     /// <para>
-    /// Both are multiples of 64 on purpose: the budget is only observed at
-    /// <c>(expanded &amp; 63) == 0</c>, so a budget that is not a multiple of the check interval is
-    /// rounded up to one anyway, and writing it down honestly beats discovering it later.
+    /// Budgets are multiples of 64 because cancellation is checked every 64 expansions.
     /// </para>
     /// <para>
-    /// This does NOT make navigation cheaper — it makes the cost predictable, and route quality stop
-    /// depending on how busy the machine was. Cheaper needs the expansion itself to cost less.
+    /// Expansion limits make cost and route quality deterministic; they do not make expansion cheaper.
     /// </para>
     /// </remarks>
     public static NavSearchOptions Default => new(
@@ -67,19 +43,13 @@ public readonly record struct NavSearchOptions(
     };
 
     /// <summary>
-    /// Expansion counts that REPLACE the wall-clock budgets when set.
+    /// Expansion counts that replace wall-clock budgets when set.
     /// </summary>
     /// <remarks>
-    /// A wall-clock budget makes the search's answer depend on how busy the machine is. Eight workers
-    /// on six cores means a descheduled thread blows straight through 25 ms and only notices at its
-    /// next 64-expansion check — so the same request returns a complete route on an idle box and a
-    /// partial one under load. That is a real production problem (see the note at the top of
-    /// docs/TODO.md) and it makes navigation TESTS non-deterministic, which is worse than it sounds: a
-    /// suite that fails one run in five cannot tell a regression from noise.
+    /// Wall-clock limits make results depend on scheduler load. Expansion limits make production and
+    /// test results deterministic across machines.
     /// <para>
-    /// Counting expansions instead removes the machine from the answer entirely, which is why
-    /// <see cref="Default"/> now sets them and production no longer reads the clock at all. Tests that
-    /// want a different ceiling than production's use <see cref="Deterministic"/>.
+    /// <see cref="Default"/> sets production limits; tests can use <see cref="Deterministic"/>.
     /// </para>
     /// </remarks>
     public int? PrimaryExpansionBudget { get; init; }
@@ -88,20 +58,13 @@ public readonly record struct NavSearchOptions(
     public int? FailureExpansionBudget { get; init; }
 
     /// <summary>
-    /// How greedy the search is: the frontier is ordered by <c>g + w*h</c>.
+    /// Heuristic weight in frontier ordering: <c>g + w*h</c>.
     /// </summary>
     /// <remarks>
-    /// 1 is ordinary A* and returns the cheapest route the graph allows. Above 1 the search commits
-    /// toward the goal sooner and expands fewer nodes, at the price of a route up to w times the
-    /// optimal cost — the standard weighted-A* trade, and an attractive one here because the budget
-    /// is 256 expansions and an expansion costs about 0.8 ms, so a search that wanders is a search
-    /// that returns a stump.
+    /// One is ordinary A*. Values above one expand fewer nodes but may return routes up to
+    /// <c>w</c> times optimal.
     /// <para>
-    /// Kept at 1 by default. The heuristic was quietly deflated by 1.5x until recently (it divided
-    /// distance by sprint speed while every edge is priced at walk speed, see
-    /// <see cref="NavCosts.HeuristicSpeed"/>), so the search has only just started behaving like real
-    /// A*; inflating on top of that is a second change and wants its own measurement rather than
-    /// being bundled into this one.
+    /// Keep the default at one unless weighted A* is measured independently.
     /// </para>
     /// </remarks>
     public float HeuristicWeight { get; init; } = 1f;
@@ -127,10 +90,7 @@ public readonly record struct NavSearchOptions(
 /// </summary>
 public sealed class NavTraversalCache
 {
-    // One production search expands at most 256 nodes and normally touches several answers per
-    // node. Starting at ConcurrentDictionary's tiny default table made every cold generation grow
-    // all five tables while eight workers were trying to publish the same neighbouring edges. A
-    // 4k table covers the usual between-edit working set without reserving session-scale storage.
+    // Covers the usual between-edit working set and avoids concurrent dictionary growth on cold runs.
     private const int InitialCapacity = 4_096;
     private const int FillGateCount = 1_024;
     private const int MaximumEntries = 600_000;

@@ -5,6 +5,13 @@ namespace Demiurge.Tests;
 public sealed class RuntimeMapTests
 {
     [Fact]
+    public void ConquestFlagRenamePreservesPersistedAndWireValues()
+    {
+        Assert.Equal(4, (byte)RuntimePlacementKind.ConquestFlag);
+        Assert.Equal(7, (ushort)ObjectType.ConquestFlag);
+    }
+
+    [Fact]
     public void SaveLoadRoundTripPreservesChunksPlacementsAndHashes()
     {
         var map = CreateMap();
@@ -120,7 +127,7 @@ public sealed class RuntimeMapTests
                     Item: ItemType.Ppsh,
                     Team: 2),
                 new RuntimePlacement(
-                    RuntimePlacementKind.Flag,
+                    RuntimePlacementKind.ConquestFlag,
                     new Vector3(4, 1, 4),
                     Team: 0),
             ],

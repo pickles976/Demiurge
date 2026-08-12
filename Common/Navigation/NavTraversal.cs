@@ -3,49 +3,32 @@ using System.Numerics;
 namespace Demiurge;
 
 /// <summary>
-/// The shared terrain-to-navigation contract. Search and path following must never invent their
-/// own definition of walkable terrain; every query comes through these collision-derived checks.
+/// Collision-derived traversal rules shared by search and path following.
 /// </summary>
 public static class NavTraversal
 {
     public const int MaximumTraverseCellDelta = 2;
 
     /// <summary>
-    /// The deepest drop <see cref="TryFall"/> will price, in cells, and the one number protecting
-    /// the search from its own honesty about falling.
-    ///
-    /// Not about survivability — there is no fall damage — but about a fall being ONE WAY. Nothing
-    /// in the graph prices being stuck at the bottom, and a search with 256 expansions cannot prove
-    /// there is a way back up, so the graph only offers drops a man would step off on purpose: two
-    /// storeys, the height of the buildings on this map. At sixteen an NPC asked to cross a
-    /// ten-metre trench by an offset bridge stepped into the trench instead — honestly priced at a
-    /// second, genuinely closer to the flag, and unable to get out.
-    ///
-    /// Because the bound is what makes a fall reasonable, nothing downstream second-guesses one:
-    /// see the deep-descent rule in <c>NavSearch.Relax</c>. That rule uses the same threshold for
-    /// simulated jumps, which can discover a landing independently of this bounded fall scan.
+    /// Deepest priced drop, in cells. This bounds one-way moves the search cannot prove escapable;
+    /// <c>NavSearch.Relax</c> applies the same limit to jump landings.
     /// </summary>
     public const int MaximumFallCells = 8;
 
     private const float SurfaceEpsilon = 1e-5f;
     private const float ContactTolerance = 0.015f;
     /// <summary>
-    /// Below this a drop is not a fall, it is the ground snap doing its job. Keeps a zero-height
-    /// "fall" out of the graph, where it would compete with the walk edge it duplicates.
+    /// Drops below ground snap duplicate a walk edge and are not falls.
     /// </summary>
     private const float MinimumFallDrop = PlayerMovement.GroundSnapDistance;
 
     /// <summary>
-    /// How far up and down a column an actor's own position is looked for. A storey and a half:
-    /// enough to find the floor under a man resolved against a wall, short enough that "near" still
-    /// means near.
+    /// Vertical range used to resolve a nearby standable cell.
     /// </summary>
     private const int VerticalSearchCells = 6;
 
     /// <summary>
-    /// How far out from a ledge a landing is looked for. Three metres is about what a man covers
-    /// while falling four, and it is the difference between a roof whose rim column happens to take
-    /// the capsule and one whose does not — which is chance, not design.
+    /// Maximum horizontal landing search from a ledge.
     /// </summary>
     private const int MaximumFallRunCells = 3;
     private const float WalkValidationRise =
@@ -56,9 +39,7 @@ public static class NavTraversal
     private static readonly float MaximumRisePerMetre =
         MathF.Tan(PlayerMovement.MaxSlopeDegrees * MathF.PI / 180f);
     /// <summary>
-    /// Simulated ticks a jump gets to leave the ground. The impulse is applied on the first step, so
-    /// a jump that is still grounded after this never happened — it was blocked by headroom — and
-    /// the remaining ticks can only re-confirm that.
+    /// Simulated ticks allowed to leave the ground; failure indicates blocked headroom.
     /// </summary>
     private const int MaximumJumpLaunchTicks = 3;
 
@@ -83,11 +64,7 @@ public static class NavTraversal
     }
 
     /// <summary>
-    /// The cursor-sharing form. Every one of these checks resolves the player capsule against the
-    /// field several times over, and a caller that asks about a handful of neighbouring cells —
-    /// A* expanding a node, cover counting escape routes — is reading the same one or two chunks
-    /// throughout. Handing the memo down instead of starting cold per sample is the difference,
-    /// and the arithmetic is untouched.
+    /// Cursor-sharing overload for callers probing neighbouring cells.
     /// </summary>
     public static bool Standable(
         ref VoxelCursor cursor,
@@ -98,9 +75,7 @@ public static class NavTraversal
         => StandableAt(ref cursor, x + 0.5f, y, z + 0.5f, out surfaceY);
 
     /// <summary>
-    /// The memoized form. Same answer as the others — this is the one worth reaching for, because
-    /// a caller that probes a neighbourhood asks about the same cells many times over and this is
-    /// the only overload that notices.
+    /// Memoized overload for repeated neighbourhood probes.
     /// </summary>
     public static bool Standable(
         NavProbeCache cache,
@@ -226,7 +201,7 @@ public static class NavTraversal
     }
 
     /// <summary>Cursor-sharing <see cref="TryFindStandable(ChunkMap, int, int, int, int, int, out NavCell, out float)"/>.
-    /// The vertical scan stays inside one column, so every probe after the first is a memo hit.</summary>
+    /// The vertical scan stays in one column, so later probes reuse the cursor.</summary>
     public static bool TryFindStandable(
         ref VoxelCursor cursor,
         int x,
@@ -252,8 +227,7 @@ public static class NavTraversal
         }
         return false;
 
-        // Static with everything passed explicitly: a local function cannot close over a ref
-        // parameter, and the memo has to reach the standability check to be worth anything.
+        // A local function cannot capture a ref parameter, so pass the cursor explicitly.
         static bool TryAt(
             ref VoxelCursor cursor, int x, int z, int y, out NavCell found, out float height)
         {
@@ -682,7 +656,7 @@ public static class NavTraversal
         //
         // The deeper problem is that this cannot be landed safely while the navigation suite is
         // flaky, because a change that deletes walkable edges from the graph and a bad run look
-        // identical. Deterministic budgets first (docs/TODO.md), then this.
+        // identical. Deterministic budgets first (AI_TODO.md), then this.
         for (int tick = 0; tick < MaximumWalkValidationTicks; tick++)
         {
             PlayerMovement.Step(
@@ -869,25 +843,8 @@ public static class NavTraversal
     }
 
     /// <summary>
-    /// Whether the capsule fits down the column it is about to drop through, from the step off the
-    /// ledge to the landing. One probe per metre of drop: the body's three sample spheres overlap
-    /// across its 1.8 m, so metre spacing leaves no gap for an overhang to hide in.
-    /// </summary>
-    /// <summary>
-    /// Where a body dropped down this column stops: the first solid field sample under the ledge,
-    /// then one capsule check to see whether that is somewhere he can stand.
-    ///
-    /// The cheapness is the point, and it took a measurement to learn it. This was a capsule
-    /// standability scan of every cell in the column plus a capsule clearance probe per metre of
-    /// shaft — around two hundred capsule resolves per probe, five times what simulating a whole
-    /// jump costs, spent at EVERY neighbour an ordinary walk edge rejected, which on a map with
-    /// walls is most of them. Searches stopped finishing inside their tick allowance and NPCs paced
-    /// where they used to walk. A raw field sample per metre and one capsule check at the end is the
-    /// same answer for a fiftieth of the work.
-    ///
-    /// It is also more honest than the standability scan was: that one skipped solid ground it did
-    /// not like the look of and kept searching underneath it, which is falling through rock. The
-    /// first solid sample ends the drop whatever it turns out to be.
+    /// Finds the first solid sample below the ledge, then validates one capsule landing. Invalid
+    /// solid ground ends the search rather than allowing a route through rock.
     /// </summary>
     private static bool TryLandingBelow(
         NavProbeCache cache,

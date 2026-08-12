@@ -153,6 +153,13 @@ public sealed class BlastEffectScript : SyncScript
     /// </summary>
     private readonly record struct Detonation(
         BlastProfile Blast,
+        /// <summary>
+        /// Additional camera impulse for heavier ordnance. It multiplies trauma rather than visual
+        /// or damage radius, so mortar gameplay stays authoritative on the server while its impact
+        /// feels substantially heavier on the client.
+        /// </summary>
+        float TraumaMultiplier,
+        float TraumaCeiling,
         string Sound,
         string DistantSound);
 
@@ -182,10 +189,14 @@ public sealed class BlastEffectScript : SyncScript
     {
         ObjectType.Grenade => new Detonation(
             GrenadeConfig.Blast,
+            1f,
+            1f,
             "assets/sfx/grenade_explosion.wav",
             "assets/sfx/grenade_explosion_far.wav"),
         ObjectType.MortarRound => new Detonation(
             MortarConfig.Blast,
+            1.75f,
+            1.25f,
             "assets/sfx/mortar_explosion.wav",
             "assets/sfx/mortar_impact_far_off.wav"),
         _ => null,
@@ -246,6 +257,8 @@ public sealed class BlastEffectScript : SyncScript
         // out at two hundredths of a degree, which is nothing. Distance is to the eye rather than
         // the feet, because that is where the camera being shaken actually is.
         float closeness = 1f - MathUtil.Clamp(range / (blast.DamageRadius * ShakeRadiusScale), 0f, 1f);
-        CameraTrauma.Add(MaximumTrauma * closeness);
+        CameraTrauma.Add(
+            MaximumTrauma * detonation.TraumaMultiplier * closeness,
+            detonation.TraumaCeiling);
     }
 }

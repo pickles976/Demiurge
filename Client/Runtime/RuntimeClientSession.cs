@@ -228,6 +228,7 @@ public sealed class RuntimeClientSession : IClientSession
             new TracerSystem(),
             new BlastEffectScript { Objects = objectRegistry, Players = registry },
             new NpcTrackerScript { Registry = registry },
+            new FriendlyMarkerScript { Registry = registry },
             new DamageFeedbackScript { Registry = registry },
             new ActionSoundsScript
             {
@@ -292,6 +293,7 @@ public sealed class RuntimeClientSession : IClientSession
             Objects = objectRegistry,
             Network = network,
             Terrain = terrainState,
+            Mount = weaponMount,
         });
 
         playerViews = new PlayerViewFactory(game, scene, registry);

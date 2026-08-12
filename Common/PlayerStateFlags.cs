@@ -22,6 +22,9 @@ namespace Demiurge
         /// <summary>Lying flat. Unlike crouching this is a toggled stance, and sprinting always
         /// clears it before movement is simulated.</summary>
         Prone     = 1 << 9,
+        /// <summary>The deterministic leader of an NPC squad. Server-authored presentation state;
+        /// clients use it only to choose the friendly marker shape.</summary>
+        SquadLeader = 1 << 10,
     }
 
     /// <summary>
@@ -35,7 +38,9 @@ namespace Demiurge
     /// </summary>
     public static class ServerAuthoredState
     {
-        public const PlayerStateFlags Mask = PlayerStateFlags.Carrying | PlayerStateFlags.Operating;
+        public const PlayerStateFlags Mask = PlayerStateFlags.Carrying
+                                           | PlayerStateFlags.Operating
+                                           | PlayerStateFlags.SquadLeader;
 
         /// <summary>Local input state with the server's own bits laid back over it.</summary>
         public static PlayerStateFlags Merge(PlayerStateFlags local, PlayerStateFlags fromServer)

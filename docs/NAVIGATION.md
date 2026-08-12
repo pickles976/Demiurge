@@ -26,14 +26,19 @@ values allow a bridge, cave floor, and terrain above it to coexist at the same X
 - stone is never diggable.
 
 `NavSearch` is deterministic bounded A*. It supports `GoalPosition`, `GoalNear`, and `GoalAwayFrom`,
-caps expansion/time work, checks cancellation every 64 expansions, and returns a useful partial
+caps expansion work, checks cancellation every 64 expansions, and returns a useful partial
 prefix when a full goal cannot be reached within the request budget. Collinear walk runs are
 conservatively reduced without smoothing across jump, fall, or dig actions.
 
 A result also reports `NavPath.ExhaustedReachable`: whether the open set emptied on its own rather
-than the search stopping on a node or time budget. When the goal was not reached, that distinguishes
+than the search stopping on an expansion budget. When the goal was not reached, that distinguishes
 **"cannot get there"** from **"did not have time to"**, and it is the signal the dig escalation below
 is built on.
+
+Every edge is priced in estimated execution seconds: walking uses authoritative movement speed,
+jumps use fixed-timestep simulation, falls use ballistic time plus horizontal travel, and excavation
+adds approach and shovel time plus a conservation penalty. This common unit lets the search compare
+a bridge, jump, detour, or cut without a terrain-shape classifier owning the decision.
 
 ## Server lifecycle
 
@@ -66,14 +71,17 @@ search observes cancellation at its amortized budget check.
 Objective movement uses a shared key composed from team, squad, and flag. One worker owns a given
 shared route at a time so multiple workers do not duplicate the same long search.
 
-A nearby squad member:
+A nearby squad member can reuse a completed, dig-free trunk by:
 
 1. solves a short connector to the nearest usable point within 24 m of the shared trunk;
-2. follows the shared complete or partial trunk;
+2. following the shared trunk;
 3. solves a short exit to its own formation slot.
 
-Partial trunks are useful immediately and can be extended by a later prefetch. Jump, dig, cover,
-blocked-cell recovery, and final formation placement remain per NPC.
+Bounded partial paths are currently actor-local because sharing an unproved prefix made whole squads
+reconnect to the same local minimum. Traversal geometry is still cached across searches. Making
+long-route squad reuse effective without restoring that failure is tracked in
+[`AI_TODO.md`](../AI_TODO.md). Jump, dig, cover, blocked-cell recovery, and final formation placement
+remain per NPC.
 
 ## Terrain edits and stale results
 
@@ -108,27 +116,23 @@ request origin.
 
 ## Digging
 
-Navigation is air-only first. A second, dig-allowed search runs only when
-`NavSearch.NeedsDigEscalation` reports that the first one failed to reach the goal *and* exhausted
-every cell ordinary movement could reach. The NPC then equips its shovel, performs the same
-authoritative two-bite dirt/grass edit as a player, invalidates the local corridor, and searches the
-changed terrain again. Pit escape chooses rising dirt targets.
+Dig-enabled requests use one bounded search. It continues ordinary expansion while collecting local
+excavation frontiers, then compares the best executable dig macro against a reached goal or useful
+air prefix. The NPC follows the selected prefix, equips its shovel at the dig waypoint, performs one
+authoritative dirt/grass bite, and replans from the changed terrain. Stone is never considered
+diggable.
 
 Three things about that gate are worth knowing before touching it.
 
-**Exhaustion is the signal, not distance covered.** The escalation used to be gated on the air-only
-pass returning zero waypoints, which happens only for an actor sealed in on every side. A trench with
-steep walls returns a *pacing* path — the NPC can walk the floor and cannot climb out — so the dig
-pass never ran and `AllowDig` was effectively dead code. Progress-toward-goal thresholds were tried
-and rejected: a bounded prefix of a good long route legitimately closes only a few metres and would
-have escalated, doubling search cost on every long route.
+**Exhaustion is the strongest dig signal.** A trench with steep walls can return a pacing path along
+the floor even though ordinary movement cannot reach the goal. `ExhaustedReachable` distinguishes
+that closed reachable set from a useful route whose search merely hit its expansion budget.
 
-**A dig does not compete on `f = g + h`.** One frontier bite costs about 4 s — sixteen metres of
-walking — while buying at most a metre of heuristic, so no cost comparison would ever choose one. The
-escalation gate alone decides whether digging is on the table; inside a dig-allowed search the score
-only ranks bites against each other, cheapest to reach and closest to the goal once cut. This is why
-the dig cell is never relaxed onto the open set: it is not standable until the server has taken a real
-bite, so it has no successors to expand.
+**A dig is a lazy macro, not a hypothetical node.** The search prices approach, the local clearance
+work, and the remaining heuristic against reached goals and useful air prefixes. If ordinary
+movement exhausts its reachable set, the best executable excavation frontier wins. The dig cell is
+never relaxed onto the open set because it is not standable until the server takes the real bite, so
+it has no truthful successors yet.
 
 **Consecutive bites commit to a site, not a cell.** The frontier cell moves as the cut advances, so
 commitment is positional: a candidate within `NavSearch.DigSiteRadius` (3 m) of the last bite gets a
@@ -137,11 +141,9 @@ every bite invalidated the path, the replan recomputed its best frontier from sc
 better cut elsewhere won, and the NPC took one or two voxels before wandering off to start a fresh
 hole somewhere else.
 
-Digging is still disabled for combat and cover paths. `MobSystem.RequestPath` lets the caller decide
-rather than forcing it off, but no combat caller opts in yet: the cover follower discards the dig
-target and has no `PathFollowState.Digging` case, so a dig waypoint would stall the NPC on it forever.
-Emergency fighting positions are dug separately by `MobSystem.DigEmergencyCover`, capped at 1 m below
-the surrounding grade so an NPC can always jump back out of a hole it made itself.
+Objective, combat, and cover callers may opt into digging. `PathFollower` returns
+`PathFollowState.Digging`, and `MobSystem` executes the bite through the authoritative terrain-edit
+path. Emergency fighting positions remain a separate local behavior.
 
 ## Diagnostics and tests
 
@@ -161,21 +163,10 @@ Coverage is split across:
 - `Common.Tests/NavigationTests.cs`: cells, goals, deterministic A*, partial paths, slopes, bridges,
   jumps, digging, dig escalation (a trench escalates, a bounded prefix does not), terrain-edit
   reconstruction, and corridor revisions;
-- `Server.Tests/NavigationSystemTests.cs`: shared complete/partial trunks and extension;
+- `Server.Tests/NavigationSystemTests.cs`: shared-route connectors, reuse, and invalidation;
 - `Server.Tests/PathFollowerTests.cs`: jump continuity, digging, stall recovery, and uphill jumps;
 - `Server.Tests/NavigationProgressWatchTests.cs`: travel-only stuck deletion;
 - `Server.Tests/ConquestNavigationBenchmarkTests.cs`: the saved 32-NPC scale benchmark.
 
-Current benchmark on the 16-core development host: initial long-route queue p95 fell from 639 ms to
-about 232 ms, and all 32 conquest actors received useful paths in about 447 ms.
-
-## Measurement-gated work
-
-Do not add these until conquest telemetry shows shared trunks and spatial invalidation are still
-insufficient:
-
-- reverse objective flow fields;
-- an 8–16 m coarse portal/chunk hierarchy;
-- pooled search-node storage;
-- capsule-checked string pulling beyond current collinear walk reduction;
-- detailed fall edges.
+Current failures, performance gates, and proposed long-route work are tracked only in
+[`AI_TODO.md`](../AI_TODO.md).

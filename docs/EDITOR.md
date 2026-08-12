@@ -180,6 +180,7 @@ editor object pickup demiurge:sks
 editor object pickup demiurge:body_armor
 editor object mob
 editor object spawn default
+editor object conquest-flag
 editor object clear
 editor object list
 editor object select <placement-id>

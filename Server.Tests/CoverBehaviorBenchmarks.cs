@@ -6,18 +6,14 @@ using Xunit.Abstractions;
 namespace Demiurge.ServerTests;
 
 /// <summary>
-/// What one cover query costs. The live profile made this the single worst spike in the game: a
-/// 1-second combat window spent 4.2 ms per tick on FIVE queries, which is about 25 ms each — more
-/// than a whole 33 ms server tick, and in singleplayer that tick sits inside the client's frame.
+/// Measures one cover query on representative trenched terrain.
 ///
 ///     dotnet test --filter CoverBehaviorBenchmarks --logger "console;verbosity=detailed"
 /// </summary>
 [Trait("Category", "Benchmark")]
 public class CoverBehaviorBenchmarks(ITestOutputHelper output)
 {
-    /// <summary>The map the profile was taken on — dug, trenched terrain rather than clean
-    /// generated ground, which is the whole point: a raycast through a trench is not the same
-    /// raycast as one over a hillside.</summary>
+    /// <summary>Uses the profiled trenched map because raycast cost depends on terrain shape.</summary>
     static readonly Lazy<RuntimeMap> Map = new(() =>
         RuntimeMapSerializer.Load(Path.Combine(FindRepositoryRoot(), "maps", "npc-test", "runtime.dmap")));
 
@@ -40,11 +36,9 @@ public class CoverBehaviorBenchmarks(ITestOutputHelper output)
         var cover = new CoverBehavior(map);
         var squad = new SquadBlackboard();
 
-        // Spread the sample over the playable area rather than trusting one spot: cost varies
-        // enormously with what the raycasts hit, and one lucky patch of open ground would report a
-        // number the game never sees.
+        // Sample across the playable area because raycast cost depends strongly on what it hits.
         var centre = Map.Value.Placements
-            .Where(p => p.Kind == RuntimePlacementKind.Mob || p.Kind == RuntimePlacementKind.Flag)
+            .Where(p => p.Kind == RuntimePlacementKind.Mob || p.Kind == RuntimePlacementKind.ConquestFlag)
             .Select(p => p.Position)
             .DefaultIfEmpty(Vector3.Zero)
             .First();

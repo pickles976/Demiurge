@@ -7,6 +7,34 @@ namespace Demiurge.ServerTests;
 public class FlagSystemTests
 {
     [Fact]
+    public void NeutralFlagFliesWhiteAtTheTopWithoutStartingCaptured()
+    {
+        Assert.Equal(1f, FlagConfig.FlyingProgress(0, 0, 0f));
+        Assert.Equal(0.4f, FlagConfig.FlyingProgress(0, 2, 0.4f));
+    }
+
+    [Fact]
+    public void UnsupportedFlagFallsAndItsCaptureAreaFollowsIt()
+    {
+        var terrain = FlatWorld(surfaceY: 0f);
+        var objects = new ObjectReplication(new NullNetServer());
+        var flags = new FlagSystem(objects, terrain);
+        var flag = flags.Spawn(new Vector3(8f, 10f, 8f));
+        flag.Dirty = NetComponents.None;
+
+        for (int i = 0; i < 90; i++)
+            flags.Tick(1f / 30f, []);
+
+        Assert.InRange(flag.Transform.Position.Y, -0.1f, 0.1f);
+        Assert.True(flag.Dirty.HasFlag(NetComponents.Transform));
+
+        flags.Tick(
+            FlagConfig.CaptureSeconds / 2f,
+            [PlayerAt(1, team: 2, flag.Transform.Position)]);
+        Assert.Equal(0.5f, flag.Team.Progress, 3);
+    }
+
+    [Fact]
     public void FlagStartsNeutralCapturesOnTimerAndBecomesTeamSpawn()
     {
         var objects = new ObjectReplication(new NullNetServer());
@@ -262,4 +290,21 @@ public class FlagSystemTests
                 Health = new HealthState { Current = 100, Max = 100 },
             },
         };
+
+    private static ChunkMap FlatWorld(float surfaceY)
+    {
+        var map = new ChunkMap();
+        var chunk = new TerrainChunk(new ChunkIndex { x = 0, z = 0 });
+        for (int i = 0; i < ChunkConstants.ChunkVolume; i++)
+        {
+            float distance = ChunkTransforms.LocalYOf(i)
+                + ChunkConstants.WorldMinY
+                - surfaceY;
+            var voxel = new Voxel { Distance = distance };
+            voxel.Material = ChunkGenerator.DensityToMaterial(voxel.Distance, distance);
+            chunk[i] = voxel;
+        }
+        map.Insert(chunk);
+        return map;
+    }
 }

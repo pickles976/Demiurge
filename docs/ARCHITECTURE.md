@@ -84,7 +84,7 @@ The tactical stack is deliberately split by decision rate and scope:
 SquadFormation (team, 1 Hz, pure)      -- who is in which squad, from live proximity
 CommanderAi (team, 1 Hz)
   -> StrategicObjectivePlanner (pure flag ranking/allocation)
-  -> SquadBlackboard (<=4 NPCs, roster/centre/contacts/claims/permits/objective/orders)
+  -> SquadBlackboard (<=6 NPCs, roster/centre/contacts/claims/objective/orders)
   -> SquadTactics (squad, 2 Hz, pure)  -- base-of-fire vs bound, flank sides, envelope positions
   -> MobSystem + MobBrain (per-unit arbitration and memory)
   -> Perception / CombatBehavior / CoverBehavior / GrenadeBehavior
@@ -93,8 +93,8 @@ CommanderAi (team, 1 Hz)
 
 Common/Ai (pure, headlessly testable) -- the currency the layers above decide in:
   CombatValue        -- net health points per second: dealt minus taken/aggression
-  WeaponEffectiveness-- what a weapon is worth at a range, rate chosen rather than fixed
-  ThreatRanking      -- sound upper bound per enemy, so a skipped ray is provably cheap
+  WeaponEffectiveness-- what a weapon is worth at a range, including burst length
+  ThreatRanking      -- tested threat upper bound; runtime wiring remains in AI_TODO.md
   Exposure           -- SelfExposure vs TargetExposure as distinct types
   CoverScore, WedgeFormation, StrategicObjectivePlanner, ContactMemory
 ```
@@ -109,12 +109,12 @@ Common/Ai (pure, headlessly testable) -- the currency the layers above decide in
   Squads execute capture, defense, and reinforcement locally while the selected operator acquires or
   works the resource.
   It costs travel from `SquadBlackboard.Centre`, which is recomputed from live member positions.
-- `SquadBlackboard` delays shared contacts, leases cover locations, rotates engagement/advance
-  permits, reserves grenade throws, and carries the squad objective, roster, centre, and tactical
-  orders. Leases are released on the granting board when a member changes squad.
-- `SquadTactics` maps the squad's primary believed threat onto a role per member: one man per flank
-  bounds while the rest form the base of fire, and nobody moves until somebody is set. Leapfrog is
-  emergent — the man farthest from the threat bounds next — rather than a hand-off state machine.
+- `SquadBlackboard` delays shared contacts, leases cover locations, reserves grenade throws, and
+  carries the squad objective, roster, centre, and tactical orders. Leases are released on the
+  granting board when a member changes squad.
+- `SquadTactics` jointly scores holding and moving against the squad's primary believed threat.
+  Movers commit to distinct bearings while at least one base-of-fire member suppresses; a timed-out
+  mover releases the rotation rather than freezing it.
 - `MobBrain` owns only private decision state: contact memory, aim/reaction state, incoming-fire
   response, cover state, gunshot investigation, flank side, bound progress, and one `NavigationAgent`.
 - `MobSystem` supplies the global budgets and tick orchestration, and clears a brain on respawn. Cover
@@ -149,16 +149,16 @@ What the currency has already replaced:
   `ItemType.Ppsh`. `CombatBehavior` asks `WeaponEffectiveness.Best(...).DamagePerSecond <= 0f`, so a
   man whose weapon cannot pay at this range sets `ShouldCloseDistance` — the SMG closing and the
   rifle holding is now arithmetic rather than two written behaviours.
-- **Fire discipline is a rate choice, not a burst timer.** `WeaponEffectiveness` scores several
-  fractions of cyclic rate and takes the fastest whose expected damage per round clears
-  `MinimumExpectedDamagePerRound`. Spraying up close and firing deliberately at distance fall out of
-  the same expression.
+- **Fire discipline is a scored burst length.** `WeaponEffectiveness` prices the extra damage,
+  recoil, ammunition, and assessment delay of each additional round. No AI branch names a weapon to
+  choose its burst.
 - **Squad allocation is joint.** `SquadTactics` scores each member holding versus assaulting — the
   latter averaged over destination and transit, with the threat suppressed because the base of fire
   will be shooting — and picks the assignment maximising the squad total. Covering fire paying for
   the bound it enables is what stops every man independently concluding that moving is dangerous.
-- **Perception is budgeted soundly.** `ThreatRanking` bounds each believed enemy's contribution with
-  exposure pinned at 1, so an enemy left unexamined provably could not have changed the decision.
+- **The sound perception bound is not wired yet.** `ThreatRanking` is pure and tested, but runtime
+  perception still advances round-robin and combat selects the nearest remembered contact. This is
+  tracked in [`AI_TODO.md`](../AI_TODO.md).
 
 ### What is still an ordered chain
 
@@ -166,9 +166,11 @@ Per-unit action selection in `MobSystem` has NOT been converted. It is a priorit
 `ActorIntent`:
 
 ```csharp
-bounding && !mustEntrench ? Bound : !combatOwnsTick ? PursueObjective
-                                  : mustEntrench    ? Entrench
-                                  :                   SeekCover
+bounding && !mustEntrench         ? Bound
+  : combatOwnsTick && mustEntrench ? Entrench
+  : combatOwnsTick                 ? SeekCover
+  : entrenching || entrenched      ? HoldFightingPosition
+  :                                  PursueObjective
 ```
 
 `mustEntrench` is priced in `CombatValue.Taken`, but against a fixed threshold rather than against
@@ -176,10 +178,8 @@ the alternatives, so nothing here compares candidates. The tell is that **`Actor
 is declared and never constructed anywhere** — it is one of the three actions the scored form wants
 (`HoldAndFire`, `RepositionTo(p)`, `Entrench`) and there is nothing to construct it from.
 
-This is now a wiring job rather than a design one: the currency exists, is pure, is tested headlessly,
-and is already used a layer up in `SquadTactics`. See the design-method section in
-[../CLAUDE.md](../CLAUDE.md) and the staging list in
-`superpowers/specs/2026-08-04-ai-overhaul-design.md`.
+The currency exists, is pure, is tested headlessly, and is already used a layer up in
+`SquadTactics`. The remaining integration work is tracked in [`AI_TODO.md`](../AI_TODO.md).
 
 ## Navigation boundary
 

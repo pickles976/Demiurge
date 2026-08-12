@@ -36,22 +36,8 @@ public static class WeaponFx
         public float TotalSeconds => DelaySeconds + TravelSeconds + HoldSeconds + ReturnSeconds;
     }
 
-    /// <summary>
-    /// <paramref name="ShotSoundPaths"/> is a list because one sample repeated at ten rounds a
-    /// second turns into a machine-gun buzz that stops reading as separate shots. Pick one per
-    /// shot via <see cref="ShotSound"/>; a single-entry list behaves exactly as before.
-    /// </summary>
-    /// <summary>
-    /// <paramref name="ReloadVolume"/> trims one weapon's reload against the others. It is per
-    /// weapon rather than a constant on the reload path because the samples are recordings at
-    /// whatever level they were captured at, and evening them out is a property of the recording,
-    /// not of what a reload should sound like.
-    /// </summary>
-    /// <summary>
-    /// <paramref name="Bolt"/> is null for the ordinary case — a self-loading action, whose cycle
-    /// is <see cref="BoltCycle.SelfLoading"/>. Only a weapon whose bolt is worked by hand needs its
-    /// own row. Read it through <see cref="Cycle"/> rather than the field.
-    /// </summary>
+    /// <summary>Weapon presentation settings. Shot samples vary per shot; reload volume normalizes
+    /// source recordings. Null <paramref name="Bolt"/> uses <see cref="BoltCycle.SelfLoading"/>.</summary>
     public readonly record struct Entry(
         IReadOnlyList<string> ShotSoundPaths,
         Color TracerColor,

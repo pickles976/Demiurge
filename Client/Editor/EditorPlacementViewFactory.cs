@@ -55,7 +55,7 @@ public sealed class EditorPlacementViewFactory : IDisposable
             }
             entity.Transform.Position = EditorPlacementPosition.Resolve(
                 session.Terrain, placement).ToStride()
-                + (placement.Kind == EditorPlacementKind.Flag
+                + (placement.Kind == EditorPlacementKind.ConquestFlag
                     ? Stride.Core.Mathematics.Vector3.UnitY * 1.2f
                     : Stride.Core.Mathematics.Vector3.Zero);
             entity.Transform.Rotation = Stride.Core.Mathematics.Quaternion.RotationY(placement.Yaw);
@@ -64,7 +64,7 @@ public sealed class EditorPlacementViewFactory : IDisposable
 
     private Entity Create(EditorPlacement placement)
     {
-        if (placement.Kind == EditorPlacementKind.Flag)
+        if (placement.Kind == EditorPlacementKind.ConquestFlag)
         {
             var flag = game.Create3DPrimitive(
                 PrimitiveModelType.Cube,
