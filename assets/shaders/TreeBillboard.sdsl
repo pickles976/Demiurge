@@ -1,0 +1,29 @@
+// Camera-facing leaf cards, expanded in the vertex stage.
+//
+// Every vertex of a quad sits at the SAME object-space point — the card's centre on the leaf
+// blob's shell — and the texture coordinate is what says which corner this vertex is. Offsetting
+// by that corner in VIEW space means the card is rebuilt facing the camera every frame, on the
+// GPU, for nothing: no per-frame CPU work, no rebuilt vertex buffer, and the mesh stays one
+// shared immutable model across every tree in the map.
+//
+// WorldViewInverse takes the view-space offset back into object space, so it survives the
+// ordinary World * View * Projection that runs afterwards and lands as an exact view-space
+// offset. This is the Godot "simple cheap stylized tree" trick.
+//
+// The NORMAL is deliberately left alone. It was authored pointing outward from the blob's centre
+// — the Airborn "steal the normals off an inner bubble" technique — and that is what makes a
+// canopy light as one soft volume instead of as fifty separately-lit cards. Recomputing a normal
+// from the billboarded geometry would face every card at the camera and throw all of it away.
+namespace Demiurge
+{
+    shader TreeBillboard<float TSize> : IMaterialSurface, PositionStream, Texturing, Transformation
+    {
+        override void Compute()
+        {
+            float2 corner = (streams.TexCoord - 0.5f) * TSize;
+            float3 offset = mul(float4(corner, 0.0f, 0.0f), WorldViewInverse).xyz;
+
+            streams.Position = float4(streams.Position.xyz + offset, streams.Position.w);
+        }
+    };
+}

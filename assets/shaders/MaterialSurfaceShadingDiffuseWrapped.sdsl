@@ -2,16 +2,22 @@
 // shadowing, projected textures, and direct AO into lightColorNdotL, so replace only its NdotL.
 namespace Demiurge
 {
-    shader MaterialSurfaceShadingDiffuseWrapped<float TWrap> : IMaterialSurfaceShading, Math
+    shader MaterialSurfaceShadingDiffuseWrapped<float TWrap, float TTranslucency> : IMaterialSurfaceShading, Math
     {
         override float3 ComputeDirectLightContribution()
         {
             float ndotl = dot(streams.normalWS, streams.lightDirectionWS);
             float wrappedNdotL = saturate((ndotl + TWrap) / (1.0 + TWrap));
 
+            // Wrapping moves the terminator but cannot lift the far side: at ndotl = -1 it is still
+            // exactly zero. A leaf is thin, so light does not stop at the surface — it passes
+            // THROUGH, and the darkest a leaf gets is lit from behind rather than black. This term
+            // is that transmission, strongest where the wrap has nothing left to give.
+            float transmitted = TTranslucency * saturate(-ndotl);
+
             // DirectLightGroup clamps NdotL to 0.0001 before building lightColorNdotL. Dividing by
             // that stored value preserves every other light factor and remains finite on the dark side.
-            float3 wrappedLight = streams.lightColorNdotL * (wrappedNdotL / streams.NdotL);
+            float3 wrappedLight = streams.lightColorNdotL * ((wrappedNdotL + transmitted) / streams.NdotL);
 
             return streams.matDiffuseVisible / PI
                  * wrappedLight

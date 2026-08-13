@@ -18,6 +18,8 @@ The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
 
 # Gameplay Polish
 
+- NPCs don't realize that bullets originate from their gun barrel
+
 We want to allow users to place sandbags, but to keep players from
 spamming sandbags, they should be resource-constrained.
 
@@ -31,11 +33,12 @@ spamming sandbags, they should be resource-constrained.
   - [x] spawn 10 random billboard quads 1m around each anchor point
 
   - [x] apply the alpha texture in /assets/textures
-  - [ ] add geometry for volume
+  - [x] add geometry for volume
 
   - [ ] Implement the shader 
   https://godotshaders.com/shader/simple-cheap-stylized-tree-shader/
   https://simonschreibt.de/gat/airborn-trees/
+
   
   - [ ] tune the appearance
 

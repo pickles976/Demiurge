@@ -25,6 +25,7 @@ RootAssets:
     - 847e8e50-23aa-5b39-28a7-54d0b358e796:models/cat_anim_Prone
     - 9f09e514-4c4b-0122-0d03-c91095253693:models/cat_anim_ProneCrawl
     - aa09233d-4762-44f7-a82e-1d2968738d31:models/crate
+    - 33c6aeb3-0725-47f3-4b45-108fff451e43:models/dead_tree
     - 5e701637-223b-4073-e81f-43aa55ad113a:models/dp_27
     - b6431852-c82a-4e9e-2134-1365f0b24e8f:models/dp_27_skeleton
     - b5161cb9-fa9d-4264-e5df-b483a6e166a4:models/dummy
