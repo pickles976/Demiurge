@@ -91,7 +91,7 @@ public static class PlayerCosmetics
 
     // Keyed by team and never evicted: two textures and two materials, on a device that outlives
     // every session, against re-decoding the PNGs on each map load. Same shape as
-    // TreeViewFactory's leaf material.
+    // GpuGrassRenderer's blade material.
     private static readonly Dictionary<int, Material> coats = [];
 
     /// <summary>

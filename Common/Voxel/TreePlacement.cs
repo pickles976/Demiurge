@@ -16,17 +16,24 @@ namespace Demiurge
         public const float DensityThreshold = 0.34f;
         private const int DensitySeed = NoiseGen.Seed + 500;
 
-        public static IReadOnlyList<TreeSpawn> Generate(ChunkMap map)
-        {
-            int minX = WorldGen.MeshableMin.x * ChunkConstants.ChunkWidth;
-            int maxX = (WorldGen.MeshableMax.x + 1) * ChunkConstants.ChunkWidth - 1;
-            int minZ = WorldGen.MeshableMin.z * ChunkConstants.ChunkWidth;
-            int maxZ = (WorldGen.MeshableMax.z + 1) * ChunkConstants.ChunkWidth - 1;
+        /// <summary>
+        /// How far the trunk base is buried. The model ends in a flat quad and the surface it stands
+        /// on is smoothed and rarely level, so sitting it exactly on the sample leaves a visible gap
+        /// under one side of the trunk.
+        /// </summary>
+        public const float SinkDepth = 0.5f;
 
-            int gx0 = (int)MathF.Floor(minX / CellSize);
-            int gx1 = (int)MathF.Floor(maxX / CellSize);
-            int gz0 = (int)MathF.Floor(minZ / CellSize);
-            int gz1 = (int)MathF.Floor(maxZ / CellSize);
+        /// <summary>
+        /// The trees of one patch. The placement grid is fixed to the world rather than to the
+        /// centre, so a patch holds exactly the trees a whole-map pass would have put there and
+        /// growing the radius adds trees without moving the ones already standing.
+        /// </summary>
+        public static IReadOnlyList<TreeSpawn> Generate(ChunkMap map, Vector3 centre, float radius)
+        {
+            int gx0 = (int)MathF.Floor((centre.X - radius) / CellSize);
+            int gx1 = (int)MathF.Floor((centre.X + radius) / CellSize);
+            int gz0 = (int)MathF.Floor((centre.Z - radius) / CellSize);
+            int gz1 = (int)MathF.Floor((centre.Z + radius) / CellSize);
 
             int count = (gx1 - gx0 + 1) * (gz1 - gz0 + 1);
             var xs = new float[count];
@@ -57,6 +64,10 @@ namespace Demiurge
             var trees = new List<TreeSpawn>();
             for (i = 0; i < count; i++)
             {
+                float dx = xs[i] - centre.X;
+                float dz = zs[i] - centre.Z;
+                if (dx * dx + dz * dz > radius * radius) continue;
+
                 float n = Math.Clamp(density[i] / 0.70f, -1f, 1f);
                 if (n < DensityThreshold) continue;
                 if (Hash01(grid[i].X, grid[i].Z, 2) > n) continue;
@@ -66,7 +77,7 @@ namespace Demiurge
                 if (!IsTreeEligible(map, worldX, worldZ, out var surface)) continue;
 
                 float yaw = Hash01(grid[i].X, grid[i].Z, 3) * MathF.Tau;
-                trees.Add(new TreeSpawn(new Vector3(xs[i], surface.Y, zs[i]), yaw));
+                trees.Add(new TreeSpawn(new Vector3(xs[i], surface.Y - SinkDepth, zs[i]), yaw));
             }
 
             return trees;

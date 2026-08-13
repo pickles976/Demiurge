@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Demiurge.GameServer
 {
     internal sealed class TreeSystem
@@ -11,9 +13,9 @@ namespace Demiurge.GameServer
             this.terrain = terrain;
         }
 
-        public void SpawnInitialTrees()
+        public void SpawnTreesAround(Vector3 centre, float radius)
         {
-            var trees = TreePlacement.Generate(terrain);
+            var trees = TreePlacement.Generate(terrain, centre, radius);
             Console.WriteLine($"[Vegetation]: spawning {trees.Count} server trees");
 
             foreach (var tree in trees)

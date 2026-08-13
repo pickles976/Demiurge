@@ -14,7 +14,6 @@ public class ObjectViewFactory : IDisposable
     private readonly PlayerRegistry players;
     private readonly Entity cameraEntity;
     private readonly LocalWeaponView weaponView;
-    private readonly TreeViewFactory.Manager treeViews;
     private readonly ObjectRegistry registry;
     private readonly ModelLocators modelLocators;
 
@@ -36,9 +35,9 @@ public class ObjectViewFactory : IDisposable
         this.cameraEntity = cameraEntity;
         this.weaponView = weaponView;
         this.modelLocators = modelLocators;
-        treeViews = new TreeViewFactory.Manager(game, scene, players, modelLocators);
         builders = new()
         {
+            [ObjectType.Tree] = _ => TreeViewFactory.Create(game, modelLocators),
             [ObjectType.Crate] = _ => new Entity
             {
                 new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.SupplyCrateModel)),
@@ -73,11 +72,6 @@ public class ObjectViewFactory : IDisposable
     private void CreateView(NetObject obj)
     {
         bool isItem = obj.Has.HasFlag(NetComponents.Item);
-        if (!isItem && obj.Type == ObjectType.Tree)
-        {
-            treeViews.Add(obj);
-            return;
-        }
 
         // The type's own view first, so a crated pickup draws as its crate.
         bool typedView = builders.TryGetValue(obj.Type, out var build);
@@ -145,12 +139,6 @@ public class ObjectViewFactory : IDisposable
 
     private void DestroyView(NetObject obj)
     {
-        if (obj.Type == ObjectType.Tree)
-        {
-            treeViews.Remove(obj.NetworkId);
-            return;
-        }
-
         if (weaponView.NetworkId == obj.NetworkId) weaponView.Clear();
 
         if (scene.Entities.FirstOrDefault(e => e.Name == $"NetObject_{obj.NetworkId}") is { } entity)

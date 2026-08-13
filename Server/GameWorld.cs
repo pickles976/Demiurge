@@ -104,6 +104,7 @@ namespace Demiurge.GameServer
         /// <summary>Spawn column. Y comes off the terrain, never guessed.</summary>
         private const float SpawnX = 0f;
         private const float SpawnZ = 0f;
+        private const float TreeRadius = 60f;
         private readonly RuntimePlacement[] playerSpawns;
         private readonly int[] playableTeams;
         private readonly Vector3? spawnOverride;
@@ -175,8 +176,10 @@ namespace Demiurge.GameServer
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
 
-            // Trees are temporarily disabled. TreeSystem and its client views remain available.
-            // new TreeSystem(objects, terrain).SpawnInitialTrees();
+            // A patch around the opening spawn rather than the whole map, which is thousands of
+            // objects and has no LOD behind it yet.
+            if (initialPlayerSpawn is { } treeCentre)
+                new TreeSystem(objects, terrain).SpawnTreesAround(treeCentre.Position, TreeRadius);
 
             if (runtimeMap is null)
             {

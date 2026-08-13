@@ -13,6 +13,7 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 
 # NPC AI
 
+Claude is too stuoid for AI behavioral stuff. Just use it for simple stuff.
 The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
 
 # Gameplay Polish
@@ -22,13 +23,48 @@ spamming sandbags, they should be resource-constrained.
 
 - [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
 
+
 - [ ] add trees
-      - [ ] tree 3D model
-      - [ ] low LOD tree
-      - [ ] trees have health and take damage and change models to a broken version
-      - [ ] trees delete if the terrain beneath them goes away
-      - [ ] tree brush in map editor
-      - [ ] add trees to map
+
+  - [x] tree 3D model
+  - [x] move half a meter down
+  - [x] spawn 10 random billboard quads 1m around each anchor point
+
+  - [x] apply the alpha texture in /assets/textures
+  - [ ] add geometry for volume
+
+  - [ ] Implement the shader 
+  https://godotshaders.com/shader/simple-cheap-stylized-tree-shader/
+  https://simonschreibt.de/gat/airborn-trees/
+  
+  - [ ] tune the appearance
+
+  - [ ] stress test
+  - [ ] Low-LOD tree
+
+  - [ ] trees have health and take damage and change models to a broken version
+  - [ ] trees delete if the terrain beneath them goes away
+  - [ ] tree brush in map editor
+  - [ ] add trees to map
+
+# Map Editor
+
+- [ ] improve ergonomics of terminal
+  - [ ] autocomplete
+  - [ ] better grouping
+  - [ ] man page type documentation
+- [ ] add map editor and structure editor UI block select, object select
+- [ ] Draw chunk borders in debug mode
+
+# PVP Demo
+- [ ] add screen where you enter a server IP and port
+- [ ] "test" to launch into conquest right away
+- [ ] test over VPN
+
+- [ ] Host a server and run external multiplayer playtests
+  - [ ] Provision a DigitalOcean host
+  - [ ] Configure the scrungy.com domain
+- [ ] Track and fix issues found by the Demo
 
 ## Refactoring and Cleanup
 - Finish AI
@@ -42,25 +78,8 @@ spamming sandbags, they should be resource-constrained.
 Try to upgrade Stride version and get particle system working
 https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/code-only/Example12_Particles
 
-# PVP Demo
-
-- [ ] add 4 more NPCs to each team
-- [ ] add screen where you enter a server IP and port
-- [ ] "test" to launch into conquest right away
-- [ ] test over VPN
-
-- [ ] Host a server and run external multiplayer playtests
-  - [ ] Provision a DigitalOcean host
-  - [ ] Configure the scrungy.com domain
-- [ ] Track and fix issues found by the Demo
-
-# Map Editor
-
-- [ ] add map editor and structure editor UI block select, object select
 
 # Debugging And Known Issues
-
-- [ ] Draw chunk borders in debug mode
 - [ ] Revisit the particle system after Stride issue 2496 is resolved:
   https://github.com/stride3d/stride/issues/2496
 

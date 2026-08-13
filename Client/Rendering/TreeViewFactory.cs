@@ -1,6 +1,5 @@
 using Demiurge.GameClient;
-using NoiseDotNet;
-using System.Collections.Concurrent;
+using StbImageSharp;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Graphics;
@@ -11,195 +10,114 @@ using Buffer = Stride.Graphics.Buffer;
 
 namespace Demiurge
 {
+    /// <summary>
+    /// The tree view. Foliage is the model's own leaves_1..leaves_5 geometry, which the glTF puts
+    /// on its own untextured material — so it arrives as material slot 1 and gets a flat colour and
+    /// cel shading here without touching the textured trunk in slot 0.
+    ///
+    /// The scattered quads that used to be the foliage are still below and currently unused; see
+    /// <see cref="ScatterQuads"/>.
+    /// </summary>
     public static class TreeViewFactory
     {
         private const string ModelPath = "assets/models/tree.gltf";
+        private const string LeafTexturePath = "assets/textures/leaf_alpha_texture.png";
+        private const int LeafMaterialSlot = 1;
         private const int AnchorCount = 5;
-        private const float TreeScale = 2f;
-        private const float LeafWidth = 1.25f;
-        private const float LeafHeight = 1.0f;
+        private const int QuadsPerAnchor = 10;
+        private const float ScatterRadius = 2f;
+        private const float QuadSize = 3f;
 
-        private static Model? treeModel;
-        private static Model? leafModel;
+        private static readonly Color4 LeafColor = new(0.23f, 0.47f, 0.19f, 1f);
+
+        private static Model? quadModel;
+        private static Material? quadMaterial;
         private static Material? leafMaterial;
 
         public static Entity Create(Game game, ModelLocators locators)
         {
-            var root = new Entity
-            {
-                new ModelComponent(TreeModel(game))
-            };
+            var model = new ModelComponent(GLTFLoader.LoadModel(game, ModelPath));
 
-            var leaves = CreateLeaves(game, locators);
-            root.Transform.Children.Add(leaves.Transform);
-            root.Transform.Scale = new Vector3(TreeScale);
+            // A per-component override, not an edit to the Model: Content.Load caches, so every
+            // tree in the map shares that instance and mutating its materials would reach all of
+            // them — and the editor's preview besides.
+            model.Materials[LeafMaterialSlot] = LeafMaterial(game);
 
-            return root;
+            return new Entity { model };
         }
 
         /// <summary>
-        /// Keeps all authoritative tree objects but only instantiates nearby views. The GLTF contains
-        /// five mesh primitives, so rendering all 1 km of trees would cost thousands of draw calls.
+        /// Flat colour under Stride's cel ramp: the leaves are a solid mass, and the whole point of
+        /// the banding is that it reads as shape without any texture on it.
         /// </summary>
-        public sealed class Manager
+        private static Material LeafMaterial(Game game)
+            => leafMaterial ??= Material.New(game.GraphicsDevice, new MaterialDescriptor
+            {
+                Attributes =
+                {
+                    Diffuse = new MaterialDiffuseMapFeature(new ComputeColor(LeafColor)),
+                    DiffuseModel = new MaterialDiffuseCelShadingModelFeature(),
+                },
+            });
+
+        /// <summary>
+        /// PARKED. Ten alpha-masked quads scattered around each of the five anchor locators, all
+        /// fifty in one shared mesh. It was the foliage before the model carried its own, and is
+        /// kept because the solid geometry may yet want quads on top of it. To put it back, hang
+        /// the returned model on a child entity of the root in <see cref="Create"/>.
+        /// </summary>
+        private static Model ScatterQuads(Game game, ModelLocators locators)
         {
-            private const float SpawnRadius = 140f;
-            private const float DespawnRadius = 165f;
-            private const float RefreshDistance = 8f;
+            if (quadModel != null) return quadModel;
 
-            private readonly Game game;
-            private readonly Scene scene;
-            private readonly PlayerRegistry players;
-            private readonly ModelLocators locators;
-            private readonly ConcurrentDictionary<uint, NetObject> objects = new();
-            private readonly ConcurrentQueue<uint> removed = new();
-            private readonly Dictionary<uint, Entity> views = new();
+            const int quads = AnchorCount * QuadsPerAnchor;
+            var vertices = new VertexPositionNormalTexture[quads * 4];
+            var indices = new int[quads * 6];
 
-            private Vector3 lastPosition;
-            private bool hasLastPosition;
-            private bool loggedFirstRefresh;
-            private volatile bool dirty;
-
-            public Manager(Game game, Scene scene, PlayerRegistry players, ModelLocators locators)
+            for (int anchor = 0; anchor < AnchorCount; anchor++)
             {
-                this.game = game;
-                this.scene = scene;
-                this.players = players;
-                this.locators = locators;
+                var origin = locators.Require(ModelPath, $"node_{anchor + 1}").Translation.ToStride();
 
-                new Entity("TreeViewManager")
+                for (int q = 0; q < QuadsPerAnchor; q++)
                 {
-                    new TreeViewManagerScript { Manager = this },
-                }.Scene = scene;
-            }
+                    int quad = anchor * QuadsPerAnchor + q;
+                    var centre = origin + InSphere(quad) * ScatterRadius;
 
-            public void Add(NetObject tree)
-            {
-                objects[tree.NetworkId] = tree;
-                dirty = true;
-            }
+                    // Each quad faces its own way. A camera-facing billboard needs per-frame work
+                    // or a shader; a fixed random orientation reads as a foliage cluster and needs
+                    // neither.
+                    var normal = OnSphere(quad, salt: 3);
+                    var right = Vector3.Cross(Vector3.UnitY, normal);
+                    if (right.LengthSquared() < 1e-6f) right = Vector3.UnitX;
+                    right.Normalize();
+                    var up = Vector3.Cross(normal, right);
 
-            public void Remove(uint networkId)
-            {
-                objects.TryRemove(networkId, out _);
-                removed.Enqueue(networkId);
-                dirty = true;
-            }
+                    float half = QuadSize * 0.5f;
+                    right *= half;
+                    up *= half;
 
-            public void Update()
-            {
-                while (removed.TryDequeue(out uint networkId))
-                    RemoveView(networkId);
+                    int v = quad * 4;
+                    vertices[v + 0] = new VertexPositionNormalTexture(centre - right - up, normal, new Vector2(0f, 1f));
+                    vertices[v + 1] = new VertexPositionNormalTexture(centre + right - up, normal, new Vector2(1f, 1f));
+                    vertices[v + 2] = new VertexPositionNormalTexture(centre + right + up, normal, new Vector2(1f, 0f));
+                    vertices[v + 3] = new VertexPositionNormalTexture(centre - right + up, normal, new Vector2(0f, 0f));
 
-                if (players.LocalPlayer is not { } local) return;
-
-                var position = local.Position.ToStride();
-                float moveX = position.X - lastPosition.X;
-                float moveZ = position.Z - lastPosition.Z;
-                if (!dirty && hasLastPosition &&
-                    moveX * moveX + moveZ * moveZ < RefreshDistance * RefreshDistance) return;
-
-                dirty = false;
-                hasLastPosition = true;
-                lastPosition = position;
-
-                float spawnSq = SpawnRadius * SpawnRadius;
-                float despawnSq = DespawnRadius * DespawnRadius;
-
-                foreach (var (networkId, tree) in objects)
-                {
-                    float dx = tree.Transform.Position.X - position.X;
-                    float dz = tree.Transform.Position.Z - position.Z;
-                    float distanceSq = dx * dx + dz * dz;
-
-                    if (views.ContainsKey(networkId))
-                    {
-                        if (distanceSq > despawnSq) RemoveView(networkId);
-                        continue;
-                    }
-
-                    if (distanceSq > spawnSq) continue;
-
-                    var view = Create(game, locators);
-                    view.Name = $"NetObject_{networkId}";
-                    view.Transform.Position = tree.Transform.Position.ToStride();
-                    view.Transform.Rotation = Quaternion.RotationY(tree.Transform.Yaw);
-                    view.Scene = scene;
-                    views.Add(networkId, view);
+                    int ix = quad * 6;
+                    indices[ix + 0] = v + 0;
+                    indices[ix + 1] = v + 2;
+                    indices[ix + 2] = v + 1;
+                    indices[ix + 3] = v + 0;
+                    indices[ix + 4] = v + 3;
+                    indices[ix + 5] = v + 2;
                 }
-
-                if (!loggedFirstRefresh && objects.Count > 0)
-                {
-                    Stride.Core.Diagnostics.GlobalLogger.GetLogger("Vegetation")
-                        .Info($"trees: {views.Count} nearby views from {objects.Count} replicated trees");
-                    loggedFirstRefresh = true;
-                }
-            }
-
-            private void RemoveView(uint networkId)
-            {
-                if (!views.Remove(networkId, out var view)) return;
-                view.Scene = null;
-            }
-        }
-
-        public sealed class TreeViewManagerScript : SyncScript
-        {
-            public required Manager Manager { get; init; }
-            public override void Update() => Manager.Update();
-        }
-
-        private static Model TreeModel(Game game)
-            => treeModel ??= GLTFLoader.LoadModel(game, ModelPath);
-
-        private static Entity CreateLeaves(Game game, ModelLocators locators)
-            => new("TreeLeaves") { new ModelComponent(LeafModel(game, locators)) };
-
-        private static Model LeafModel(Game game, ModelLocators locators)
-        {
-            if (leafModel != null) return leafModel;
-
-            var anchors = Anchors(locators);
-            var vertices = new VertexPositionNormalTexture[anchors.Count * 4];
-            var indices = new int[anchors.Count * 6];
-
-            for (int i = 0; i < anchors.Count; i++)
-            {
-                var center = anchors[i].ToStride();
-                var normal = new Vector3(center.X, 0f, center.Z);
-                if (normal.LengthSquared() < 1e-6f)
-                {
-                    float angle = i / (float)anchors.Count * MathUtil.TwoPi;
-                    normal = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));
-                }
-                normal.Normalize();
-
-                var right = Vector3.Cross(Vector3.UnitY, normal);
-                right.Normalize();
-                float scale = 0.9f + Hash01(i, 0) * 0.3f;
-                float halfW = LeafWidth * scale * 0.5f;
-                float halfH = LeafHeight * scale * 0.5f;
-
-                int v = i * 4;
-                vertices[v + 0] = new VertexPositionNormalTexture(center - right * halfW - Vector3.UnitY * halfH, normal, new Vector2(0f, 1f));
-                vertices[v + 1] = new VertexPositionNormalTexture(center + right * halfW - Vector3.UnitY * halfH, normal, new Vector2(1f, 1f));
-                vertices[v + 2] = new VertexPositionNormalTexture(center + right * halfW + Vector3.UnitY * halfH, normal, new Vector2(1f, 0f));
-                vertices[v + 3] = new VertexPositionNormalTexture(center - right * halfW + Vector3.UnitY * halfH, normal, new Vector2(0f, 0f));
-
-                int ix = i * 6;
-                indices[ix + 0] = v + 0;
-                indices[ix + 1] = v + 2;
-                indices[ix + 2] = v + 1;
-                indices[ix + 3] = v + 0;
-                indices[ix + 4] = v + 3;
-                indices[ix + 5] = v + 2;
             }
 
             var vertexBuffer = Buffer.Vertex.New(game.GraphicsDevice, vertices, GraphicsResourceUsage.Default);
             var indexBuffer = Buffer.Index.New(game.GraphicsDevice, indices);
             var bounds = BoundingBox.FromPoints(Array.ConvertAll(vertices, v => v.Position));
-            leafModel = new Model();
-            leafModel.Add(new Mesh
+
+            quadModel = new Model();
+            quadModel.Add(new Mesh
             {
                 Draw = new MeshDraw
                 {
@@ -215,76 +133,73 @@ namespace Demiurge
                 BoundingBox = bounds,
                 BoundingSphere = BoundingSphere.FromBox(bounds),
             });
-            leafModel.Add(new MaterialInstance(LeafMaterial(game)));
+            quadModel.Add(new MaterialInstance(QuadMaterial(game)));
 
-            return leafModel;
+            return quadModel;
         }
 
-        private static List<System.Numerics.Vector3> Anchors(ModelLocators locators)
-        {
-            var anchors = new List<System.Numerics.Vector3>(AnchorCount);
-            for (int i = 1; i <= AnchorCount; i++)
-                anchors.Add(locators.Require(ModelPath, $"node_{i}").Translation);
-            return anchors;
-        }
-
-        private static Material LeafMaterial(Game game)
-            => leafMaterial ??= Material.New(game.GraphicsDevice, new MaterialDescriptor
+        private static Material QuadMaterial(Game game)
+            => quadMaterial ??= Material.New(game.GraphicsDevice, new MaterialDescriptor
             {
                 Attributes =
                 {
+                    // A quad is one-sided geometry and its orientation is random, so half of them
+                    // would otherwise be invisible from any given side.
                     CullMode = CullMode.None,
                     Diffuse = new MaterialDiffuseMapFeature(
-                        new ComputeTextureColor(CreateLeafTexture(game)) { Filtering = TextureFilter.Point }),
+                        new ComputeTextureColor(QuadTexture(game))),
+                    // Wrapped rather than Lambert, for the same reason the grass uses it: with the
+                    // quads pointing every way, the ones facing away from the sun go black under a
+                    // plain N.L and the canopy reads as holes.
                     DiffuseModel = new MaterialDiffuseWrappedModelFeature(wrap: 0.3f),
+                    // Cutoff, not blend: the mask's edges are antialiased but its interior is hard,
+                    // and alpha blending would need these fifty quads depth-sorted against each other.
                     Transparency = new MaterialTransparencyCutoffFeature
                     {
-                        Alpha = new ComputeFloat(0.08f),
+                        Alpha = new ComputeFloat(0.5f),
                     },
                 },
             });
 
-        private static Texture CreateLeafTexture(Game game)
+        /// <summary>
+        /// The PNG is a greyscale shape mask with no alpha channel of its own, so its luminance
+        /// becomes the alpha and <see cref="LeafColor"/> fills in the RGB. Decoded through
+        /// StbImageSharp because Texture.Load pulls in Windows-only System.Drawing.Common.
+        /// </summary>
+        private static Texture QuadTexture(Game game)
         {
-            const int size = 128;
-            var xs = new float[size * size];
-            var ys = new float[size * size];
-            for (int y = 0, i = 0; y < size; y++)
-                for (int x = 0; x < size; x++, i++)
-                {
-                    xs[i] = x;
-                    ys[i] = y;
-                }
+            using var stream = File.OpenRead(LeafTexturePath);
+            var mask = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
 
-            var noise = new float[xs.Length];
-            Noise.GradientNoise2DFractal(xs, ys, noise, new NoiseSettings
+            var pixels = new byte[mask.Width * mask.Height * 4];
+            byte r = (byte)(LeafColor.R * 255f);
+            byte g = (byte)(LeafColor.G * 255f);
+            byte b = (byte)(LeafColor.B * 255f);
+
+            for (int i = 0; i < mask.Width * mask.Height; i++)
             {
-                XFrequency = 1f / 34f,
-                YFrequency = 1f / 34f,
-                Amplitude = 1f,
-                Seed = NoiseGen.Seed + 800,
-            }, new FractalSettings(octaves: 4, persistence: 0.55f, lacunarity: 2f));
+                int p = i * 4;
+                pixels[p + 0] = r;
+                pixels[p + 1] = g;
+                pixels[p + 2] = b;
+                pixels[p + 3] = mask.Data[p];
+            }
 
-            var pixels = new byte[size * size * 4];
-            for (int y = 0, i = 0; y < size; y++)
-                for (int x = 0; x < size; x++, i++)
-                {
-                    float u = (x + 0.5f) / size * 2f - 1f;
-                    float v = (y + 0.5f) / size * 2f - 1f;
-                    float radius = MathF.Sqrt(u * u + v * v);
-                    float n = Math.Clamp(noise[i] / 1.5f / 0.70f, -1f, 1f);
-                    float shape = 1f - SmoothStep(0.55f + n * 0.08f, 0.95f + n * 0.08f, radius);
-                    float holes = n > -0.25f ? 1f : 0f;
-                    byte alpha = (byte)(255f * Math.Clamp(shape * holes, 0f, 1f));
+            return Texture.New2D(
+                game.GraphicsDevice, mask.Width, mask.Height, PixelFormat.R8G8B8A8_UNorm_SRgb, pixels);
+        }
 
-                    int p = i * 4;
-                    pixels[p + 0] = (byte)(34 + Math.Clamp((n + 1f) * 0.5f, 0f, 1f) * 36f);
-                    pixels[p + 1] = (byte)(104 + Math.Clamp((n + 1f) * 0.5f, 0f, 1f) * 80f);
-                    pixels[p + 2] = (byte)(39 + Math.Clamp((n + 1f) * 0.5f, 0f, 1f) * 24f);
-                    pixels[p + 3] = alpha;
-                }
+        /// <summary>A point inside the unit sphere. Cube-rooting the radius keeps the scatter
+        /// even instead of piling every quad up against the outside.</summary>
+        private static Vector3 InSphere(int index)
+            => OnSphere(index, salt: 2) * MathF.Cbrt(Hash01(index, 4));
 
-            return Texture.New2D(game.GraphicsDevice, size, size, PixelFormat.R8G8B8A8_UNorm_SRgb, pixels);
+        private static Vector3 OnSphere(int index, int salt)
+        {
+            float y = Hash01(index, salt) * 2f - 1f;
+            float phi = Hash01(index, salt + 8) * MathUtil.TwoPi;
+            float r = MathF.Sqrt(MathF.Max(0f, 1f - y * y));
+            return new Vector3(r * MathF.Cos(phi), y, r * MathF.Sin(phi));
         }
 
         private static float Hash01(int x, int salt)
@@ -297,12 +212,6 @@ namespace Demiurge
                 h ^= h >> 16;
                 return (h & 0xFFFFFF) / (float)0x1000000;
             }
-        }
-
-        private static float SmoothStep(float edge0, float edge1, float x)
-        {
-            float t = Math.Clamp((x - edge0) / (edge1 - edge0), 0f, 1f);
-            return t * t * (3f - 2f * t);
         }
     }
 }
