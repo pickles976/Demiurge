@@ -43,5 +43,6 @@ RootAssets:
     - 0d15c1eb-9e34-a972-e091-f2f524af60c7:models/shovel
     - 898107ad-0fcb-75f5-57cb-bbd3ce64873e:models/sks
     - f52e82d5-ad52-47d8-cc6f-891fe13d672a:models/sks_skeleton
+    - 98486861-3742-1105-cd5b-5469da24ebaa:models/tree_low_lod
     - 69f81542-a178-1823-fa87-59125b72178f:models/tree
     - fc0085aa-e7b4-0602-dedf-70978cbde59a:models/tree_skeleton

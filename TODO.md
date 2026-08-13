@@ -19,6 +19,7 @@ The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
 # Gameplay Polish
 
 - NPCs don't realize that bullets originate from their gun barrel
+- NPCs need to know when they can kill with one shot and become more aggro
 
 We want to allow users to place sandbags, but to keep players from
 spamming sandbags, they should be resource-constrained.
@@ -35,20 +36,25 @@ spamming sandbags, they should be resource-constrained.
   - [x] apply the alpha texture in /assets/textures
   - [x] add geometry for volume
 
-  - [ ] Implement the shader 
+  - [x] Implement the shader 
   https://godotshaders.com/shader/simple-cheap-stylized-tree-shader/
   https://simonschreibt.de/gat/airborn-trees/
 
-  
-  - [ ] tune the appearance
+  - [x] tune the appearance
+
+  - [ ] tree brush in map editor
+    - [ ] minimum distance between trees
+    - [ ] random rotation to trees
+    - [ ] place single tree as an object
+  - [ ] add trees to map
 
   - [ ] stress test
   - [ ] Low-LOD tree
+    - [ ] no quads, just use the blob geometry
+    - [ ] low LOD tree, add a billboard for the leaves
 
   - [ ] trees have health and take damage and change models to a broken version
   - [ ] trees delete if the terrain beneath them goes away
-  - [ ] tree brush in map editor
-  - [ ] add trees to map
 
 # Map Editor
 

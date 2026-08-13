@@ -1,5 +1,7 @@
 using Demiurge.GameClient;
+using NoiseDotNet;
 using StbImageSharp;
+using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Graphics;
@@ -28,14 +30,30 @@ namespace Demiurge
         private const int AnchorCount = 5;
         // A billboard always shows its whole area, where a fixed card mostly showed a foreshortened
         // sliver of it, so this wants fewer and smaller cards than the tangent version did.
-        private const int ShellQuadsPerAnchor = 7;
+        private const int ShellQuadsPerAnchor = 14;
 
         /// <summary>Cards filling each cluster's interior, standing in for the hidden blob's volume,
         /// and how far out of the shell's radius they reach.</summary>
-        private const int InnerQuadsPerAnchor = 4;
+        private const int InnerQuadsPerAnchor = 8;
         private const float InnerReach = 0.7f;
 
         private const int QuadsPerAnchor = ShellQuadsPerAnchor + InnerQuadsPerAnchor;
+        /// <summary>Reach of each cluster's contribution to the canopy density that drives per-card
+        /// occlusion. It has to be wide enough that neighbouring clusters overlap near the trunk —
+        /// that overlap IS the middle of the tree.</summary>
+        private const float CanopyRadius = 5f;
+
+        /// <summary>How dark the most buried card gets, and how much darker the underside of the
+        /// canopy is than its crown.</summary>
+        private const float CardAoDepth = 0.45f;
+        private const float CardAoUnderside = 0.25f;
+
+        /// <summary>Scale of the patchiness across the canopy, and how far it swings the brightness
+        /// and the colour. The wavelength wants to be a fraction of the canopy — much larger and the
+        /// whole tree shifts together, much smaller and it turns back into per-card static.</summary>
+        private const float FoliageNoiseWavelength = 3.5f;
+        private const float FoliageValueNoise = 0.18f;
+        private const float FoliageHueNoise = 0.10f;
 
         /// <summary>How far light wraps past the terminator on a leaf card. At 0.6 a card edge-on to
         /// the sun still keeps 37% of full diffuse, where an unwrapped one would be black.</summary>
@@ -50,14 +68,29 @@ namespace Demiurge
         private const float SurfaceJitter = 0.15f;
         private const float QuadSize = 2.4f;
 
+        /// <summary>The unit square in cyclic order, so stepping through it turns a card.</summary>
+        private static readonly Vector2[] CardCorners =
+            [new(0f, 1f), new(1f, 1f), new(1f, 0f), new(0f, 0f)];
+
+        /// <summary>Where the mask's soft edge is made hard. The material cuts at the same value, so
+        /// the texture and the test agree on exactly which texels are leaf.</summary>
+        private const float AlphaCutoff = 0.5f;
+
         /// <summary>How many mask tiles the blobs get. Their UVs span about 0.4, so this repeats the
         /// leaves roughly twice across a face.</summary>
         private const float BlobUvScale = 5f;
 
-        /// <summary>The two ends the mask shades between: the leaves it draws are the darker green,
-        /// and the surface they sit on is the lighter one.</summary>
-        private static readonly Color4 LeafColor = new(0.15f, 0.32f, 0.13f, 1f);
-        private static readonly Color4 BackingColor = new(0.31f, 0.60f, 0.25f, 1f);
+        /// <summary>How dark a texel gets when it is completely enclosed by leaf, and how far out
+        /// "enclosed" is measured — the blur reaching further makes the occlusion broader and
+        /// softer, less a shadow around each leaf and more a gradient across a clump.</summary>
+        private const float AoStrength = 0.32f;
+        private const int AoBlurRadius = 10;
+        private const int AoBlurPasses = 3;
+
+        /// <summary>The colour of a leaf under full light, before occlusion and shading. It is the
+        /// only colour in the texture now — see <see cref="LeafTexture"/> on why the transparent
+        /// region cannot hold a different one.</summary>
+        private static readonly Color4 LeafColor = new(0.225f, 0.48f, 0.195f, 1f);
 
         private static Model? trunkModel;
         private static Model? quadModel;
@@ -163,13 +196,16 @@ namespace Demiurge
             if (quadModel != null) return quadModel;
 
             const int quads = AnchorCount * QuadsPerAnchor;
-            var vertices = new VertexPositionNormalTexture[quads * 4];
-            var indices = new int[quads * 6];
+
+            var clusters = new Vector3[AnchorCount];
+            for (int anchor = 0; anchor < AnchorCount; anchor++)
+                clusters[anchor] = locators.Require(ModelPath, $"node_{anchor + 1}").Translation.ToStride();
+
+            var centres = new Vector3[quads];
+            var normals = new Vector3[quads];
 
             for (int anchor = 0; anchor < AnchorCount; anchor++)
             {
-                var origin = locators.Require(ModelPath, $"node_{anchor + 1}").Translation.ToStride();
-
                 for (int q = 0; q < QuadsPerAnchor; q++)
                 {
                     int quad = anchor * QuadsPerAnchor + q;
@@ -177,7 +213,7 @@ namespace Demiurge
                     // One direction does both jobs: where the card sits, and the normal it lights
                     // with. Interior cards keep the radial normal too — they are standing in for
                     // the blob's volume, so they should light as part of the same bubble.
-                    var normal = OnSphere(quad, salt: 2);
+                    normals[quad] = OnSphere(quad, salt: 2);
 
                     // The first cards of each cluster line its surface; the rest fill the volume the
                     // hidden blob used to occupy, so the canopy is not a hollow shell seen through
@@ -187,30 +223,53 @@ namespace Demiurge
                         ? SurfaceRadius * RadiusJitter(quad)
                         : SurfaceRadius * InnerReach * MathF.Cbrt(Hash01(quad, 5));
 
-                    var centre = origin + normal * radius;
-
-                    // All four at the centre. The texture coordinate is the only thing telling the
-                    // vertex shader which corner this is, so it has to span the full 0..1 square.
-                    int v = quad * 4;
-                    vertices[v + 0] = new VertexPositionNormalTexture(centre, normal, new Vector2(0f, 1f));
-                    vertices[v + 1] = new VertexPositionNormalTexture(centre, normal, new Vector2(1f, 1f));
-                    vertices[v + 2] = new VertexPositionNormalTexture(centre, normal, new Vector2(1f, 0f));
-                    vertices[v + 3] = new VertexPositionNormalTexture(centre, normal, new Vector2(0f, 0f));
-
-                    // TexCoord V runs down while the shader's offset runs up, so the winding that
-                    // was front-facing for the tangent quads is reversed once expanded.
-                    int ix = quad * 6;
-                    indices[ix + 0] = v + 0;
-                    indices[ix + 1] = v + 1;
-                    indices[ix + 2] = v + 2;
-                    indices[ix + 3] = v + 0;
-                    indices[ix + 4] = v + 2;
-                    indices[ix + 5] = v + 3;
+                    centres[quad] = clusters[anchor] + normals[quad] * radius;
                 }
+            }
+
+            var occlusion = BakeOcclusion(centres, clusters);
+            var variation = BakeVariation(centres);
+            var vertices = new LeafCardVertex[quads * 4];
+            var indices = new int[quads * 6];
+
+            for (int quad = 0; quad < quads; quad++)
+            {
+                // All four vertices sit at the centre; the corner channel is what the vertex shader
+                // pulls them apart by. Turning those corners spins the card in the plane it faces —
+                // and since the texture coordinate stays put on the unit square, the image turns
+                // with the card and never samples past the texture's edge.
+                float angle = Hash01(quad, 6) * MathF.Tau;
+                float sin = MathF.Sin(angle);
+                float cos = MathF.Cos(angle);
+                var shade = Shade(occlusion[quad], variation[quad]);
+
+                int v = quad * 4;
+                for (int corner = 0; corner < 4; corner++)
+                {
+                    var uv = CardCorners[corner];
+                    float x = uv.X - 0.5f;
+                    float y = uv.Y - 0.5f;
+
+                    vertices[v + corner] = new LeafCardVertex(
+                        centres[quad],
+                        normals[quad],
+                        shade,
+                        uv,
+                        new Vector2(x * cos - y * sin, x * sin + y * cos));
+                }
+
+                int ix = quad * 6;
+                indices[ix + 0] = v + 0;
+                indices[ix + 1] = v + 1;
+                indices[ix + 2] = v + 2;
+                indices[ix + 3] = v + 0;
+                indices[ix + 4] = v + 2;
+                indices[ix + 5] = v + 3;
             }
 
             var vertexBuffer = Buffer.Vertex.New(game.GraphicsDevice, vertices, GraphicsResourceUsage.Default);
             var indexBuffer = Buffer.Index.New(game.GraphicsDevice, indices);
+
             // Every vertex is at a card centre, so the raw bounds describe the shell and nothing
             // else. The billboard grows each card by up to half its diagonal in whatever direction
             // the camera happens to be, and a box that does not allow for it culls the whole mesh
@@ -231,7 +290,7 @@ namespace Demiurge
                     IndexBuffer = new IndexBufferBinding(indexBuffer, is32Bit: true, indices.Length),
                     VertexBuffers =
                     [
-                        new VertexBufferBinding(vertexBuffer, VertexPositionNormalTexture.Layout, vertices.Length)
+                        new VertexBufferBinding(vertexBuffer, LeafCardVertex.Layout, vertices.Length)
                     ],
                 },
                 MaterialIndex = 0,
@@ -243,6 +302,153 @@ namespace Demiurge
             return quadModel;
         }
 
+        /// <summary>
+        /// Per-card colour variation, sampled from gradient noise at the card's own position rather
+        /// than hashed from its index. That is the whole point: noise is CONTINUOUS, so neighbouring
+        /// cards land on similar values and the canopy breaks into patches of lighter and darker
+        /// foliage. A per-card hash would be white noise and read as static — every card different
+        /// from its neighbour, which is uniform in its own way.
+        ///
+        /// Two-dimensional noise folded over height, because the only generator in the codebase is
+        /// 2D and a canopy is wide rather than tall; sampling it in a plane through the tree gives
+        /// enough variety without pretending to a 3D field we do not have.
+        /// </summary>
+        private static float[] BakeVariation(Vector3[] centres)
+        {
+            var xs = new float[centres.Length];
+            var ys = new float[centres.Length];
+
+            for (int i = 0; i < centres.Length; i++)
+            {
+                xs[i] = centres[i].X + centres[i].Y * 0.7f;
+                ys[i] = centres[i].Z + centres[i].Y * 0.4f;
+            }
+
+            var noise = new float[centres.Length];
+            Noise.GradientNoise2D(xs, ys, noise, new NoiseSettings
+            {
+                XFrequency = 1f / FoliageNoiseWavelength,
+                YFrequency = 1f / FoliageNoiseWavelength,
+                Amplitude = 1f,
+                Seed = NoiseGen.Seed + 900,
+            });
+
+            // The generator's practical range, the same normalisation the terrain and the tree
+            // placement apply to it.
+            for (int i = 0; i < noise.Length; i++)
+                noise[i] = Math.Clamp(noise[i] / 0.70f, -1f, 1f);
+
+            return noise;
+        }
+
+        /// <summary>
+        /// One card's entry in the colour stream: its occlusion, modulated by the foliage noise in
+        /// both value and hue. The hue term pushes opposite ways in red and blue, which turns a
+        /// single noise value into a yellow-green to blue-green axis — the way real foliage varies —
+        /// rather than just making patches lighter and darker.
+        /// </summary>
+        private static Color Shade(float occlusion, float noise)
+        {
+            float value = occlusion * (1f + noise * FoliageValueNoise);
+            float hue = noise * FoliageHueNoise;
+
+            return new Color(
+                Math.Clamp(value * (1f + hue), 0f, 1f),
+                Math.Clamp(value, 0f, 1f),
+                Math.Clamp(value * (1f - hue), 0f, 1f),
+                1f);
+        }
+
+        /// <summary>
+        /// Per-card ambient occlusion, baked once into the mesh. Neither reference technique does
+        /// this — Airborn's bubble gives soft NORMALS and then hides the inner cards by being opaque,
+        /// and the Godot shader has no occlusion at all — but with the blobs hidden, nothing is
+        /// hiding the inner cards, so the darkening has to be shaded rather than culled.
+        ///
+        /// The measure is how much canopy surrounds a card, as a sum of soft falloffs from every
+        /// cluster centre. That gets "closer to the middle of the tree is darker" for free and for
+        /// the right reason: the middle is where several clusters' influence overlaps. Measuring
+        /// depth within each cluster SEPARATELY, which is what the two-band version did, cannot see
+        /// this at all — a card on the trunk side of a cluster is on that cluster's surface and
+        /// buried in the tree, and those are the ones that were wrongly bright.
+        ///
+        /// The range is normalised against the cards actually built rather than against a tuned
+        /// constant, so re-exporting the model with clusters somewhere else re-fits by itself.
+        /// </summary>
+        private static float[] BakeOcclusion(Vector3[] centres, Vector3[] clusters)
+        {
+            var density = new float[centres.Length];
+            float lowest = float.MaxValue;
+            float highest = float.MinValue;
+
+            for (int i = 0; i < centres.Length; i++)
+            {
+                foreach (var cluster in clusters)
+                {
+                    float distance = (centres[i] - cluster).Length();
+                    density[i] += Math.Max(0f, 1f - distance / CanopyRadius);
+                }
+
+                lowest = Math.Min(lowest, density[i]);
+                highest = Math.Max(highest, density[i]);
+            }
+
+            // Height within the canopy, so the underside is darker than the crown. A leaf's sky is
+            // mostly straight up, and no amount of surrounding-density says which way is up.
+            float floor = float.MaxValue;
+            float ceiling = float.MinValue;
+            foreach (var centre in centres)
+            {
+                floor = Math.Min(floor, centre.Y);
+                ceiling = Math.Max(ceiling, centre.Y);
+            }
+
+            var occlusion = new float[centres.Length];
+            float spread = Math.Max(1e-4f, highest - lowest);
+            float rise = Math.Max(1e-4f, ceiling - floor);
+
+            for (int i = 0; i < centres.Length; i++)
+            {
+                float buried = (density[i] - lowest) / spread;
+                float sky = (centres[i].Y - floor) / rise;
+
+                occlusion[i] = Math.Clamp(
+                    (1f - CardAoDepth * buried) * (1f - CardAoUnderside * (1f - sky)), 0f, 1f);
+            }
+
+            return occlusion;
+        }
+
+        /// <summary>
+        /// Position, the bubble normal, baked occlusion, the texture coordinate, and the billboard
+        /// corner. No stock vertex type carries all five.
+        ///
+        /// The corner is its OWN channel rather than being read back out of the texture coordinate,
+        /// and that separation is what allows a card to be rotated or resized at all. While one
+        /// number served as both, the image was nailed to the quad: any transform applied to it
+        /// moved the card and the picture on it together, which is no transform at all.
+        ///
+        /// Occlusion goes in the COLOR slot because that is the one the material graph can read
+        /// back without a shader of its own.
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private readonly struct LeafCardVertex(
+            Vector3 position, Vector3 normal, Color occlusion, Vector2 texCoord, Vector2 corner)
+        {
+            public readonly Vector3 Position = position;
+            public readonly Vector3 Normal = normal;
+            public readonly Color Occlusion = occlusion;
+            public readonly Vector2 TexCoord = texCoord;
+            public readonly Vector2 Corner = corner;
+
+            public static readonly VertexDeclaration Layout = new(
+                VertexElement.Position<Vector3>(),
+                VertexElement.Normal<Vector3>(),
+                VertexElement.Color<Color>(),
+                VertexElement.TextureCoordinate<Vector2>(0),
+                VertexElement.TextureCoordinate<Vector2>(1));
+        }
+
         private static Material QuadMaterial(Game game)
             => quadMaterial ??= Material.New(game.GraphicsDevice, new MaterialDescriptor
             {
@@ -252,8 +458,15 @@ namespace Demiurge
                     // its two sides are the same surface and either may be the one you see.
                     CullMode = CullMode.None,
                     Displacement = new MaterialTreeBillboardFeature(QuadSize),
+                    // Two occlusions multiply here and they answer different questions. The texture
+                    // carries per-TEXEL occlusion — which parts of a leaf clump are buried in the
+                    // clump — and the vertex stream carries per-CARD occlusion, which cards are
+                    // buried in the tree. Neither can see what the other sees.
                     Diffuse = new MaterialDiffuseMapFeature(
-                        new ComputeTextureColor(LeafTexture(game))),
+                        new ComputeBinaryColor(
+                            new ComputeTextureColor(LeafTexture(game)),
+                            new ComputeVertexStreamColor(),
+                            BinaryOperator.Multiply)),
                     // A leaf is thin enough to pass light, so its shaded side is nowhere near as
                     // dark as a plain N.L makes it. Wrapping the terminator is the cheap stand-in
                     // for that transmission — the same feature the grass uses, but much further
@@ -265,19 +478,23 @@ namespace Demiurge
                     // and alpha blending would need every card depth-sorted against every other.
                     Transparency = new MaterialTransparencyCutoffFeature
                     {
-                        Alpha = new ComputeFloat(0.5f),
+                        Alpha = new ComputeFloat(AlphaCutoff),
                     },
                 },
             });
 
         /// <summary>
-        /// The PNG is a greyscale shape mask with no colour of its own, so it gets read twice: its
-        /// luminance shades the RGB from <see cref="BackingColor"/> where the mask is black to
-        /// <see cref="LeafColor"/> where it is white, and the same luminance goes into the alpha.
+        /// The PNG is a greyscale shape mask with no colour of its own. It becomes a hard cut-out:
+        /// <see cref="LeafColor"/> everywhere, and an alpha thresholded to 0 or 255.
         ///
-        /// One texture then serves both users. The blobs are opaque and take only the colour, which
-        /// is what turns the mask into leaf-shaped light and shade on a solid surface. The quads
-        /// need the shape cut out and take the alpha as well.
+        /// The colour also carries AMBIENT OCCLUSION, per texel. The mask is the only description
+        /// of the foliage's shape we have, and it is enough: blurring it answers "how much leaf
+        /// surrounds this point", which is what occlusion means. A texel in the middle of a leaf
+        /// mass darkens; one on an outer edge, with sky behind it, does not. Baked once at load, so
+        /// it costs nothing per frame and needs no second texture.
+        ///
+        /// The blur wraps, because the material tiles this texture — sampling it clamped would draw
+        /// a bright seam along every tile boundary.
         ///
         /// Decoded through StbImageSharp because Texture.Load pulls in Windows-only
         /// System.Drawing.Common.
@@ -289,24 +506,83 @@ namespace Demiurge
             using var stream = File.OpenRead(LeafTexturePath);
             var mask = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
 
-            var pixels = new byte[mask.Width * mask.Height * 4];
+            int width = mask.Width;
+            int height = mask.Height;
 
-            for (int i = 0; i < mask.Width * mask.Height; i++)
+            var coverage = new float[width * height];
+            for (int i = 0; i < coverage.Length; i++)
+                coverage[i] = mask.Data[i * 4] / 255f;
+
+            var enclosure = Blurred(coverage, width, height);
+            var pixels = new byte[width * height * 4];
+
+            for (int i = 0; i < coverage.Length; i++)
             {
                 int p = i * 4;
-                float t = mask.Data[p] / 255f;
+                float ao = 1f - AoStrength * enclosure[i];
 
-                pixels[p + 0] = Channel(BackingColor.R, LeafColor.R, t);
-                pixels[p + 1] = Channel(BackingColor.G, LeafColor.G, t);
-                pixels[p + 2] = Channel(BackingColor.B, LeafColor.B, t);
-                pixels[p + 3] = mask.Data[p];
+                // The leaf colour is written EVERYWHERE, including under the texels that are about
+                // to be made transparent. The sampler filters across the cutout boundary whatever
+                // the alpha says, so any other colour parked in the transparent region gets dragged
+                // out into a fringe around every leaf. Bleeding the colour outwards is what stops
+                // that, and it is why the cards cannot also carry a second colour for the blobs.
+                pixels[p + 0] = Channel(LeafColor.R, ao);
+                pixels[p + 1] = Channel(LeafColor.G, ao);
+                pixels[p + 2] = Channel(LeafColor.B, ao);
+
+                // Binary, not the PNG's antialiased edge. A cutoff turns a soft edge into a hard
+                // one anyway, but it does it at whatever width the source fades over — so the
+                // silhouette wandered around inside that band. Thresholding at the same value the
+                // material cuts at makes the two agree.
+                pixels[p + 3] = coverage[i] >= AlphaCutoff ? (byte)255 : (byte)0;
             }
 
             return leafTexture = Texture.New2D(
-                game.GraphicsDevice, mask.Width, mask.Height, PixelFormat.R8G8B8A8_UNorm_SRgb, pixels);
+                game.GraphicsDevice, width, height, PixelFormat.R8G8B8A8_UNorm_SRgb, pixels);
 
-            static byte Channel(float dark, float light, float t)
-                => (byte)(Math.Clamp(dark + (light - dark) * t, 0f, 1f) * 255f);
+            static byte Channel(float color, float ao)
+                => (byte)(Math.Clamp(color * ao, 0f, 1f) * 255f);
+        }
+
+        /// <summary>
+        /// Repeated box blurs, which approach a gaussian and cost a fixed number of passes rather
+        /// than a wide kernel. Separable and wrapping on both axes.
+        /// </summary>
+        private static float[] Blurred(float[] source, int width, int height)
+        {
+            var front = (float[])source.Clone();
+            var back = new float[source.Length];
+
+            for (int pass = 0; pass < AoBlurPasses; pass++)
+            {
+                Box(front, back, width, height, horizontal: true);
+                Box(back, front, width, height, horizontal: false);
+            }
+
+            return front;
+
+            static void Box(float[] src, float[] dst, int width, int height, bool horizontal)
+            {
+                float norm = 1f / (AoBlurRadius * 2 + 1);
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        float sum = 0f;
+                        for (int k = -AoBlurRadius; k <= AoBlurRadius; k++)
+                        {
+                            int sx = horizontal ? Repeat(x + k, width) : x;
+                            int sy = horizontal ? y : Repeat(y + k, height);
+                            sum += src[sy * width + sx];
+                        }
+
+                        dst[y * width + x] = sum * norm;
+                    }
+                }
+            }
+
+            static int Repeat(int value, int size) => (value % size + size) % size;
         }
 
         /// <summary>A little in or out of the shell, so the quads read as a rough surface rather

@@ -20,8 +20,11 @@ namespace Demiurge
     {
         override void Compute()
         {
-            float2 corner = (streams.TexCoord - 0.5f) * TSize;
-            float3 offset = mul(float4(corner, 0.0f, 0.0f), WorldViewInverse).xyz;
+            // TEXCOORD1 is the corner, already centred on zero and already turned to this card's
+            // own angle. It is deliberately NOT TexCoord: while the offset was derived from the
+            // texture coordinate, rotating one rotated the other and the picture stayed nailed to
+            // the quad.
+            float3 offset = mul(float4(streams.TexCoord1 * TSize, 0.0f, 0.0f), WorldViewInverse).xyz;
 
             streams.Position = float4(streams.Position.xyz + offset, streams.Position.w);
         }
