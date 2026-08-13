@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Demiurge.GameClient;
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -186,6 +187,9 @@ namespace Demiurge
         private readonly Scene scene;
         private readonly List<Puff> puffs = [];
         private readonly List<Emitter> emitters = [];
+
+        /// <summary>Arrivals from the network thread, drained on the main one — see <see cref="Emit"/>.</summary>
+        private readonly ConcurrentQueue<Emitter> pendingEmitters = new();
         private readonly Random random = new();
 
         public SmokeManager(Game game, Scene scene)
@@ -194,10 +198,19 @@ namespace Demiurge
             this.scene = scene;
         }
 
-        /// <summary>Starts a column at a point. Purely local: smoke is something the client draws,
-        /// not something the world has to agree about, so none of this touches the wire.</summary>
+        /// <summary>
+        /// Starts a column at a point. Purely local: smoke is something the client draws, not
+        /// something the world has to agree about, so none of this touches the wire.
+        ///
+        /// QUEUED, not added. The callers are object-registry events, and those run on the NETWORK
+        /// thread whenever latency simulation is off — so writing straight into the emitter list
+        /// races the main thread iterating it in Update. A List that grows during a foreach on
+        /// another thread does not throw here; it hands back torn state, which becomes a NaN
+        /// position, which becomes an access violation inside Stride's transform processor a frame
+        /// later, a long way from the cause.
+        /// </summary>
         public void Emit(Vector3 position, float seconds = DefaultEmitterSeconds)
-            => emitters.Add(new Emitter { Position = position, Remaining = seconds });
+            => pendingEmitters.Enqueue(new Emitter { Position = position, Remaining = seconds });
 
         public int LivePuffs
         {
@@ -246,6 +259,7 @@ namespace Demiurge
         public void Clear()
         {
             emitters.Clear();
+            pendingEmitters.Clear();
             foreach (var puff in puffs)
             {
                 puff.Live = false;
@@ -266,6 +280,7 @@ namespace Demiurge
             if (warmFrames > 0) Warm();
 
             retireCooldown -= dt;
+            while (pendingEmitters.TryDequeue(out var arrived)) emitters.Add(arrived);
 
             for (int i = emitters.Count - 1; i >= 0; i--)
             {
@@ -298,7 +313,9 @@ namespace Demiurge
                     break;
                 }
 
-                if (emitter.Remaining <= 0f && emitters.Contains(emitter)) emitters.Remove(emitter);
+                // By index, since that is what this loop is walking. Retirement only ever expires an
+                // emitter now, so this is the single place one leaves the list.
+                if (emitter.Remaining <= 0f) emitters.RemoveAt(i);
             }
 
             foreach (var puff in puffs)
@@ -405,9 +422,12 @@ namespace Demiurge
         {
             if (emitters.Count == 0) return;
 
+            // Marked rather than removed: this is called from inside the loop that is indexing the
+            // list, and pulling an arbitrary element out from under it skips or repeats a neighbour.
+            // Expiring it lets the ordinary removal below take it on its own terms.
             var oldest = emitters[0];
             foreach (var emitter in emitters) if (emitter.Age > oldest.Age) oldest = emitter;
-            emitters.Remove(oldest);
+            oldest.Remaining = 0f;
         }
 
         /// <summary>A free puff, or null when the pool is spent. Never recycles a live one — see
