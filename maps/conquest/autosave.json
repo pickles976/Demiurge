@@ -329740,6 +329740,86 @@
   ],
   "placements": [
     {
+      "id": "0eea4982-88aa-4f0d-9a35-40fa27b46838",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": -147,
+        "y": 24,
+        "z": 3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "6adcda1c-ce65-4695-ad79-af40c6b10158",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 177,
+        "y": 28,
+        "z": -58,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "8670bf39-e978-485d-9ed5-180597f4de9b",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 64,
+        "y": 20,
+        "z": -268,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "cd1b1da6-b8d1-41c5-8580-78d642856cf9",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": -52,
+        "y": 41,
+        "z": -158,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "d0160205-e6dd-4293-875d-601cec92f0e1",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 233,
+        "y": 34,
+        "z": -186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
       "id": "15203dd9-fc0b-4c86-ba25-3d1ec94efb04",
       "kind": "playerSpawn",
       "archetypeId": "demiurge:spawn/default",
@@ -330106,6 +330186,7286 @@
       "weaponId": null,
       "team": 0,
       "groupId": null
+    },
+    {
+      "id": "002bcfc4-94a5-42c3-b263-24b5df1ba503",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -9,
+        "y": 23,
+        "z": 171,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.538901,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "00558628-2901-4815-b11d-ab8b478a5d29",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 152,
+        "y": 27,
+        "z": -32,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.0156713,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "00714585-e9fe-4ee2-a4a4-575842954461",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -6,
+        "y": 21,
+        "z": 64,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0023527,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "00798c1a-82d4-4605-a625-21d292a36cbe",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -67,
+        "y": 27,
+        "z": 42,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.235308,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2f63ba2e-f36d-4105-bc92-298423fd5f96"
+    },
+    {
+      "id": "009b273b-6d43-4a29-883b-962af9d05db0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -69,
+        "y": 24,
+        "z": 139,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.9267253,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "00c0ee59-2d56-4e39-96b7-7597e18e8817",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -176,
+        "y": 25,
+        "z": -90,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7156591,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "01ea51a2-54df-4d5a-8e10-97648b931b17",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 113,
+        "y": 26,
+        "z": -126,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.80106,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "0296c5f5-a32f-4532-8ae0-36f9746b7f19",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 92,
+        "y": 26,
+        "z": -140,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.3000484,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "02cfaa20-a67f-452b-a809-00ed197d6505",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -43,
+        "y": 23,
+        "z": 151,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5023477,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "0318327c-f538-4377-8415-8c951a48d869",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -56,
+        "y": 36,
+        "z": -52,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.5762105,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "03aceb5c-8086-4c93-8082-6d9ee5dffef2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -116,
+        "y": 29,
+        "z": -66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.9250953,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "04bd2944-8fbd-4ce8-a437-a5aa5bb458af",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 90,
+        "y": 21,
+        "z": 162,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.5931756,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "0541f34d-4d18-4681-bd24-440e22f12885",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 68,
+        "y": 20,
+        "z": 125,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.582475,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "05957ccb-ab11-404a-aaee-9c7750fac621",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 210,
+        "y": 25,
+        "z": -282,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.671326,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "05f87326-c045-4665-93b1-9471b09e26fc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 27,
+        "y": 20,
+        "z": 139,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.104132,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "0666d032-77fe-4168-8ca1-a808aaa767db",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 136,
+        "y": 22,
+        "z": 187,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.1210318,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "068ddeb4-d2c6-497e-beb0-a9403142043f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -20,
+        "y": 22,
+        "z": 52,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.8894647,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "069c13e0-e062-439b-abb6-95f0ecac8c58",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 77,
+        "y": 21,
+        "z": 164,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.21052651,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "06c193d0-7a2d-4611-82a1-4495deb34d53",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 66,
+        "y": 19,
+        "z": 135,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.4443688,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "08a0d500-ad3e-4600-879e-728cf2d71c20",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 75,
+        "y": 20,
+        "z": -390,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.10231233,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "08aa003e-8ea8-49c2-b30d-bec512aaf404",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 234,
+        "y": 21,
+        "z": -127,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5187162,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d6c09740-6510-497f-8311-7b3a9b98d8ae"
+    },
+    {
+      "id": "09ab56c5-f063-4424-bc85-2170d2b6826c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -55,
+        "y": 36,
+        "z": -40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.241998,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "835cf475-26dc-4463-8a15-bbf0414f6f22"
+    },
+    {
+      "id": "0a6d76bf-3870-4bb3-8b47-4d24d447f36a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -136,
+        "y": 28,
+        "z": -116,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.0997905,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "0af0b447-01df-4924-89d7-b11b7424b35c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 54,
+        "y": 26,
+        "z": -201,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.7529209,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "0b3463b9-2982-4819-bf0a-3d80db24930c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -100,
+        "y": 32,
+        "z": -55,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.9326477,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "0b9ba6dc-2c43-44b5-9a29-ad81fbf15d1a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -65,
+        "y": 35,
+        "z": -245,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.31884143,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "0bd715aa-5e32-4d5a-8916-669dc3d4c04f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 199,
+        "y": 25,
+        "z": -309,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.764623,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "0bd78dcc-4ea1-4277-a1d6-febcca448d13",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 18,
+        "y": 27,
+        "z": -220,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.8840206,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "0bf7b672-2072-4b1e-89be-9aba2eb61794",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 39,
+        "y": 20,
+        "z": 63,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.319041,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "185ddfd8-e0d2-46db-a202-5441752ca097"
+    },
+    {
+      "id": "0cbe211c-a2c6-48a4-b1a4-ec864e6ad8be",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 140,
+        "y": 24,
+        "z": -117,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.9054275,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "0cd7153c-55f1-46b8-be62-d6ddc766e96d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 63,
+        "y": 21,
+        "z": 176,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.2751257,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "0eba2b87-1a0c-4e45-b91e-f7f853e3ea90",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -43,
+        "y": 21,
+        "z": -341,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.155032,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "0ed787a5-e14e-49f5-baa1-a7061f43e5e6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 32,
+        "y": 22,
+        "z": -257,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.1435075,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "3a73cc56-b464-486d-bc8b-df5bc785816b"
+    },
+    {
+      "id": "0fa6ecc3-f5ed-42ad-83dd-6f3f3e2257d4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -150,
+        "y": 29,
+        "z": -196,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.3674245,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1051ceea-e68a-4050-a290-b83be5eafca7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -18,
+        "y": 23,
+        "z": 209,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.73541,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "10f9564d-b007-4057-bb17-dfc010ef6aba",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -16,
+        "y": 35,
+        "z": -30,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.1491172,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "6caa46d3-5111-4eb0-be32-2679e9f6c5bc"
+    },
+    {
+      "id": "1200274c-1d2e-4a89-9151-9c9373fb27f9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 163,
+        "y": 20,
+        "z": -164,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.7335643,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "176dc1bf-f350-44a3-aa7b-ffcbe4ff0837"
+    },
+    {
+      "id": "122be332-732f-4eb6-bfaf-0be35d20ac14",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 79,
+        "y": 29,
+        "z": -138,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.8696904,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d1fbab91-f723-4e79-bcad-63668b8b6bb3"
+    },
+    {
+      "id": "12b4eb1d-d6ec-4a20-b9ec-f83fa4fd06d8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -115,
+        "y": 27,
+        "z": 55,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.1912885,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "13248a6c-d9d2-4f77-b98a-a6975494b160",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -8,
+        "y": 20,
+        "z": -357,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.337699,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "1348303d-ea32-4318-ab5a-c2114bd7ab77",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -101,
+        "y": 32,
+        "z": -89,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.0444065,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1391566e-9140-4043-ad6c-9d7c12fe2261",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 19,
+        "y": 24,
+        "z": 31,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.537772,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "1404d83d-91cd-4f36-b079-db51139cd67a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 29,
+        "y": 26,
+        "z": -220,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.131013,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "1623e40d-ce63-4eb0-bb43-d86a3d0e2a57",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 66,
+        "y": 34,
+        "z": -104,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.642964,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "1627dcc8-b1f4-42cc-8ba6-d740a7001aa9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 257,
+        "y": 24,
+        "z": -246,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.31325,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "173b337d-96f9-43c4-a12b-5fd6cc974798",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -53,
+        "y": 22,
+        "z": -356,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.2900593,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "174dc344-86b0-4121-93be-c0d594a0600e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -19,
+        "y": 20,
+        "z": 126,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0525904,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "1823520f-0e3a-4758-a7de-381ba2684343",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -7,
+        "y": 24,
+        "z": -256,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.044306,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "182b84bd-4dcf-43e3-86eb-b70d0207378b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 148,
+        "y": 22,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.195212,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "18ec832f-63b2-437b-ac30-f0dacbb49fba",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 18,
+        "y": 21,
+        "z": 152,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.2235953,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "190c7a11-2433-4acb-9adb-ac48ca2e3531",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -32,
+        "y": 31,
+        "z": -236,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.6364299,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "1928c11f-70ca-4b81-9f04-5d6a489cb58a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 243,
+        "y": 22,
+        "z": -125,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.2772173,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d6c09740-6510-497f-8311-7b3a9b98d8ae"
+    },
+    {
+      "id": "195fbac6-e0d0-4ab7-b6b8-99906984ed7a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 173,
+        "y": 22,
+        "z": 175,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.191371,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "19946fb1-1c58-4bbb-a88d-fc85b2c07d6d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 53,
+        "y": 28,
+        "z": -6,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.4988275,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "49ebf7dc-1c74-4b7a-904f-a7bd9f1a5d13"
+    },
+    {
+      "id": "19fa9bd1-cc63-490c-8171-043ae9a33fba",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 232,
+        "y": 21,
+        "z": -115,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.9599216,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d6c09740-6510-497f-8311-7b3a9b98d8ae"
+    },
+    {
+      "id": "1a2ec7c6-78dd-42a7-b82e-2817f2a6e4d0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 104,
+        "y": 22,
+        "z": -176,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.727866,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "1b6a0b45-03d6-419d-b2db-f40518f1be26",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 17,
+        "y": 24,
+        "z": -244,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.7107706,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "1b8de2c5-bacc-401e-b51e-4996f91aad2e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -28,
+        "y": 20,
+        "z": -340,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.280707,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "1cff3a3a-4ca4-4b5b-a44f-173da16550b4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 113,
+        "y": 21,
+        "z": 175,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.538746,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "1d3f8a2f-8628-4c05-a1a4-431d6b0bd25c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -33,
+        "y": 38,
+        "z": -57,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.319041,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1d7b36c1-d60b-4208-864b-471371fceef6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -102,
+        "y": 32,
+        "z": -69,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.12601824,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1d86da47-f55c-4d3c-b732-44a26e6fda26",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 75,
+        "y": 32,
+        "z": -114,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.4804286,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "1d88d13d-ae96-433d-8320-7f372a464b47",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -88,
+        "y": 44,
+        "z": -237,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.0221133,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1db6b9be-2dad-40ea-8713-b200987c7faf",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -150,
+        "y": 29,
+        "z": -187,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.8034253,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1e0ae28f-c9b1-4fd7-9ca4-03e46fbe0c3a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 136,
+        "y": 21,
+        "z": 173,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.096308,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "1e4c31e7-4536-48d9-99a1-50a3e2510d54",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 54,
+        "y": 20,
+        "z": 54,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8603978,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "1f1ca810-dce6-433e-834e-43160619cb58",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -102,
+        "y": 44,
+        "z": -232,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.2189193,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "1f99062f-18c2-4d68-80a7-70cdd65966ee",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 36,
+        "z": -92,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.0383515,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "20127672-1207-4a08-9213-a701825bb92f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 186,
+        "y": 26,
+        "z": -8,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.8050537,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "206a90f1-554c-4a12-96de-6f28a23c9aec",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 267,
+        "y": 27,
+        "z": -280,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.6464908,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "20a86836-404f-4bbd-ab62-7c0238645abb",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -54,
+        "y": 36,
+        "z": -29,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.4076972,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "4616701d-0264-488b-b481-335205294c3c"
+    },
+    {
+      "id": "218e5ebe-06a0-4d2f-ae47-93ff2c017ede",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 267,
+        "y": 26,
+        "z": -273,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.54735255,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "222b2561-b3fc-488a-96b6-ad58bc2b1393",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 114,
+        "y": 27,
+        "z": -112,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.3924217,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "247d49b5-17ba-4c24-bd1c-b200d28974c2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 235,
+        "y": 24,
+        "z": -244,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.73847544,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "248e2b01-9396-4248-b002-68660f572a5a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 197,
+        "y": 24,
+        "z": -357,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.880121,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "250ee34e-5791-4981-820e-ab7ab17a7441",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 17,
+        "y": 20,
+        "z": 114,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.070789695,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f4d55cee-e940-4aa1-9751-a85aa6960241"
+    },
+    {
+      "id": "25a37f7c-e336-44b6-b629-2090aa94c76b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 65,
+        "y": 23,
+        "z": -223,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.3113587,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d6036efb-df82-42c4-913d-01c38d0cd328"
+    },
+    {
+      "id": "261f348a-1cfd-4a57-b7bf-5efd46695a4d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -17,
+        "y": 24,
+        "z": -257,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.1763293,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "26dda2f0-0736-4746-b6cc-fee5b9c57d56",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 77,
+        "y": 25,
+        "z": -173,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8127217,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "295ea972-8def-4c8a-8ff9-b7085150a72e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 32,
+        "y": 21,
+        "z": 152,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.0973845,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "2a158f07-cbb5-4926-aeb0-6b12aa3bb366",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 76,
+        "y": 30,
+        "z": -126,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.91973233,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "2c0b795b-aa1a-479a-a140-55d633ca2aec",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -20,
+        "y": 20,
+        "z": -342,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0989149,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "2c60d367-82db-48f2-8619-b8b54443427e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 56,
+        "y": 32,
+        "z": -33,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.6769571,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "2cec8494-b5c2-4a72-ba21-5a2730fdae2a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -139,
+        "y": 25,
+        "z": -66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.3699713,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "2d056579-872a-4ade-bf53-72c5674b7867",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 3,
+        "y": 36,
+        "z": -53,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.1683931,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "2da499a4-2700-48ef-a223-ab68cfdc31c7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -43,
+        "y": 38,
+        "z": -65,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.4592834,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "2e503d39-0acd-4ffd-9598-8c754a9fbce3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -57,
+        "y": 37,
+        "z": -66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.553485,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "2e8b6ac8-7123-468a-a264-38b7470e4798",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 149,
+        "y": 21,
+        "z": -163,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.4540968,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "2eab6238-c0c2-4bde-96ba-2c9ba9d6cff8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 64,
+        "y": 26,
+        "z": -186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.213396,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "2f4677bd-809e-42c0-976f-b4faaa25bff1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 125,
+        "y": 21,
+        "z": 162,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.4182525,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "310a8e9b-4471-4109-ab45-b8c222d1d6f8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -42,
+        "y": 33,
+        "z": -237,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.417758,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "322108ad-0d5a-445c-acfa-f3ecc3225ed2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 20,
+        "y": 32,
+        "z": -18,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.3235314,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "49ebf7dc-1c74-4b7a-904f-a7bd9f1a5d13"
+    },
+    {
+      "id": "3241c940-ebba-4ddd-8a57-0b71b35a6746",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 114,
+        "y": 28,
+        "z": -42,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.960193,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "3279a396-94f6-4280-9ce7-3241bd9bf537",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 28,
+        "y": 19,
+        "z": 114,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.48956198,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f4d55cee-e940-4aa1-9751-a85aa6960241"
+    },
+    {
+      "id": "3443d331-b143-4064-88a5-016ee383d396",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -113,
+        "y": 30,
+        "z": -81,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.0798316,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "3512e51c-f9ca-4efa-ade2-bb8c6537ef3b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 21,
+        "z": -390,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.5308995,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "357c14c5-0a4c-41f8-a15b-9b064ff1afed",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 28,
+        "z": -211,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.9339395,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "382b9ce7-cc29-4702-8619-cff32b2e97f6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -53,
+        "y": 35,
+        "z": -9,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.4497247,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "1a6a1599-0aeb-4e34-a092-12b2cadceedc"
+    },
+    {
+      "id": "38894beb-fca2-4cd9-958f-069d273fef73",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 149,
+        "y": 19,
+        "z": -345,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.1930428,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "3904d8c8-d6ea-46fd-adc9-8e9a6d74e4db",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -57,
+        "y": 25,
+        "z": 51,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.40769285,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "3921668c-d8bb-4651-9395-b9efd0a0179d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 18,
+        "y": 20,
+        "z": -366,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.2167645,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "3a0ca57b-0459-40c0-85e2-ea4ed74b5c8b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 102,
+        "y": 20,
+        "z": 66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.1881924,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "3a5614df-f290-4df5-8da1-8eb040263ced",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -9,
+        "y": 39,
+        "z": -91,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.518104,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "3a655ea5-2cea-47a6-98e4-42cee014cd8e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 140,
+        "y": 20,
+        "z": -354,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.2523646,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "3bc99f5a-98a3-4a39-8050-63d52434876a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 42,
+        "y": 35,
+        "z": -81,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.4557961,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "3bce9a6c-3766-4fe0-817d-dd0271146a31",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 67,
+        "y": 29,
+        "z": -21,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.97340184,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "3ca83395-fedd-4078-b0a5-c416c8159a65",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 4,
+        "y": 21,
+        "z": 54,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.6745386,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "3cb8202b-f254-41ad-8916-321c3fd27a8a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 54,
+        "y": 26,
+        "z": 5,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.353326,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "49ebf7dc-1c74-4b7a-904f-a7bd9f1a5d13"
+    },
+    {
+      "id": "3d12279f-142d-4de5-b2bc-9ace3636975b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 124,
+        "y": 23,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.025106,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b2600454-86bc-4622-8fe2-46e3f176a055"
+    },
+    {
+      "id": "3d460af6-f64d-4908-9048-bf4f5f21b358",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -140,
+        "y": 32,
+        "z": -212,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.1021314,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "3ecf9fe4-ae69-42d4-b241-d01aa3d38690",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 39,
+        "y": 25,
+        "z": 17,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.9151428,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "0a518596-b474-4b19-bbb8-57ce598dd7d4"
+    },
+    {
+      "id": "3f399e12-dd70-416d-b564-4fce0744baca",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 88,
+        "y": 19,
+        "z": -367,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.1214718,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "4006780c-e004-43f8-98ec-8e07143e1ee0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -54,
+        "y": 23,
+        "z": 66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.95390236,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "406c3465-9e22-4923-a488-6e1425c81491",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 63,
+        "y": 31,
+        "z": -160,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.4924808,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "4123befa-1656-4bdf-9472-73df840b504c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 160,
+        "y": 20,
+        "z": -319,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.570702,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "417b2df6-c778-4e38-8a06-c1696446524e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 53,
+        "y": 21,
+        "z": -247,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.730163,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "3a73cc56-b464-486d-bc8b-df5bc785816b"
+    },
+    {
+      "id": "41d6450f-66e0-4d74-b420-bb77a5ee83e3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 212,
+        "y": 20,
+        "z": -153,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.3241963,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2b50d2f8-5b23-43a8-99f8-519657dfa574"
+    },
+    {
+      "id": "4284ad99-77ac-4898-8f90-13d35d781aac",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -77,
+        "y": 37,
+        "z": -56,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.7578286,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "4352d87c-aa15-4671-9337-acc528ddc802",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 127,
+        "y": 28,
+        "z": -30,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.3590183,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "437e70ab-a0a5-41c0-bbbd-c74fd7643e0a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 79,
+        "y": 33,
+        "z": -54,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.306743,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "43a57cab-1a1e-45aa-a0e3-7495d583f389",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 65,
+        "y": 21,
+        "z": 164,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.4262202,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "4439432d-b706-4cdb-8077-50fbc1dd6f11",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 102,
+        "y": 21,
+        "z": 199,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.9722037,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "44f46f6c-1179-4d1b-a989-245eb782ee52",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -20,
+        "y": 21,
+        "z": 137,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8629485,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "45e08e3d-0a09-49e6-9806-458c643729d5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 42,
+        "y": 20,
+        "z": -377,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.045571,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "45f4ad66-d61b-4098-8ad3-8f4ba41bb741",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 91,
+        "y": 19,
+        "z": -354,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.0470243,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "46518bcf-6f4f-473b-9eea-88d2ee1f7079",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -105,
+        "y": 26,
+        "z": 64,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.6851034,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "47bd2efc-e62d-4cff-859c-7d81c415f34c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 224,
+        "y": 27,
+        "z": -295,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.1498303,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "49219ce3-31cb-44d1-8f3a-c62e604ab023",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 139,
+        "y": 21,
+        "z": -175,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.6864452,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "49a360fb-e649-40a9-84e4-9ac9c6708e8b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 56,
+        "y": 34,
+        "z": -153,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.64643,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d1fbab91-f723-4e79-bcad-63668b8b6bb3"
+    },
+    {
+      "id": "49d730e0-5792-49b0-9f65-1938149186ca",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 87,
+        "y": 32,
+        "z": -64,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.765381,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "4a8b23d6-a75b-4f82-a1ca-058493073b3a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 126,
+        "y": 20,
+        "z": -356,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.4695286,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "4b43248b-e354-41f4-a016-b7309f8d50e1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 104,
+        "y": 20,
+        "z": 128,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.677108,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "4be1df68-e2a8-40b7-a776-d700ea213993",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 137,
+        "y": 20,
+        "z": -188,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.696545,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "4de40cbe-f2df-470d-9736-677fd3a4daad",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -44,
+        "y": 22,
+        "z": 138,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.2970486,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "4e7a7b0e-6e81-4e38-8ad9-f0af72f57516",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -148,
+        "y": 28,
+        "z": -138,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.906697,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "4ea54e8e-cb52-4e83-8734-fecf992332e6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -20,
+        "y": 23,
+        "z": 171,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.3701408,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "4f23e7c4-2335-4b8f-9b67-cb749909abdd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 31,
+        "y": 34,
+        "z": -185,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.8831964,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d6036efb-df82-42c4-913d-01c38d0cd328"
+    },
+    {
+      "id": "4f6d7fcf-59ff-4c10-b6fb-fd13660dccf0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 171,
+        "y": 21,
+        "z": -332,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.076221,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "5027d885-9a85-44f6-8464-c5fe7776da51",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 41,
+        "y": 20,
+        "z": -353,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9524055,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "505dbdf7-4462-4da9-822c-1896d6390671",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 101,
+        "y": 20,
+        "z": -377,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8518808,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "508fef3a-721b-4b71-a5e3-1c56f5e200e5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 42,
+        "y": 33,
+        "z": -30,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8717484,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "519d7b85-df78-4a8d-9b93-bd3d1adf4e7f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 116,
+        "y": 30,
+        "z": -65,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.7293406,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "5d568d4c-d27a-4ec6-b7df-905c95b881e4"
+    },
+    {
+      "id": "535285d7-6799-47ed-b4c9-7cba260eb52e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -6,
+        "y": 28,
+        "z": -232,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8193806,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "53c6f5d3-bc38-45aa-98fb-ff09ccc9db32",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -150,
+        "y": 24,
+        "z": -68,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5403395,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "53fbaee1-4580-484e-8bcf-5fb10a58d3da",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 66,
+        "y": 35,
+        "z": -93,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.277359,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "54a64719-c908-4489-9025-f44c100d1c84",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -102,
+        "y": 38,
+        "z": -210,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.9060985,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "5547935c-bd86-476a-92e5-abb25198402e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -139,
+        "y": 31,
+        "z": -165,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.5931141,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "5610a623-3b1c-41f3-b62c-10745d225e85",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 187,
+        "y": 27,
+        "z": -29,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.56551987,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "579acb75-ead6-4cf1-b298-610387ae1a33",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 123,
+        "y": 25,
+        "z": -126,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.9923065,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b2600454-86bc-4622-8fe2-46e3f176a055"
+    },
+    {
+      "id": "58dd98de-1de1-4b5b-b805-87c2f8017ca8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -5,
+        "y": 20,
+        "z": 113,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.8855174,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f4d55cee-e940-4aa1-9751-a85aa6960241"
+    },
+    {
+      "id": "596c200d-9f0d-4f0e-b412-9785ee7a353d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 21,
+        "z": 51,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.698217,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "597a1848-24c5-483a-b5a5-476f951f9d75",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -153,
+        "y": 24,
+        "z": -57,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.9978294,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "59a4cb06-b721-43aa-a2bd-3675b8db7c4a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 7,
+        "y": 26,
+        "z": -233,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.4403403,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "5a04eb4d-bef5-41ff-a683-aa47c1221f0c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 40,
+        "y": 21,
+        "z": -257,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.8045898,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "3a73cc56-b464-486d-bc8b-df5bc785816b"
+    },
+    {
+      "id": "5a583ba1-a4c8-4c68-a730-7d60994d50f5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -43,
+        "y": 27,
+        "z": -256,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.1405168,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "5ae90d07-0f62-422a-a58c-655d7b09e8b0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -91,
+        "y": 35,
+        "z": -88,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.663719,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "5bc2476f-7918-4535-b015-753feaf0442c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 111,
+        "y": 22,
+        "z": -173,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.620753,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b93501dc-2b26-414a-a900-23005799500f"
+    },
+    {
+      "id": "5f25de12-0883-4084-9395-aa3a31d67043",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -44,
+        "y": 26,
+        "z": 174,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8084655,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "5f50fe0f-9d4c-4e41-8616-38805e68564f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 66,
+        "y": 34,
+        "z": -54,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.95390236,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "5fc2c733-4064-421a-975b-f9bf914f6127",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -41,
+        "y": 22,
+        "z": 66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.9834476,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "60ab2348-2a8e-4866-a8e1-a34189204b72",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 126,
+        "y": 25,
+        "z": -113,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.849545,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b2600454-86bc-4622-8fe2-46e3f176a055"
+    },
+    {
+      "id": "60c43cf3-8a51-4f8c-9077-9802d740a910",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 87,
+        "y": 20,
+        "z": -391,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.22889195,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "616446da-a38e-43dc-9985-efa4bbf67df8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 259,
+        "y": 27,
+        "z": -284,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.614859,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "622b0a61-8638-40fb-bfa4-99dd197ed990",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 99,
+        "y": 28,
+        "z": -41,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.97671,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "622ed0e1-8615-4e24-a060-a0d68c2208d2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 199,
+        "y": 28,
+        "z": -20,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.38282296,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "62312d0c-4bcf-477d-90d5-191c798daf9e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 172,
+        "y": 20,
+        "z": -176,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8578477,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "176dc1bf-f350-44a3-aa7b-ffcbe4ff0837"
+    },
+    {
+      "id": "623563c0-08df-45e9-a956-44f75c76db1f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 183,
+        "y": 26,
+        "z": -17,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.0359135,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "629a1f46-4e79-40f5-82c4-bb2006fa13f3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 64,
+        "y": 27,
+        "z": -7,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8072376,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e4ad5132-4939-4d08-b9a9-1555e94982db"
+    },
+    {
+      "id": "62b4542c-639c-4293-b18d-bc35580a7c2e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 101,
+        "y": 21,
+        "z": 176,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.4848001,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "6326bb50-2652-454b-a7ed-a5b31267653a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 76,
+        "y": 20,
+        "z": 68,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.207689,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "65255335-63b1-4813-ab22-250bc758b801",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -93,
+        "y": 34,
+        "z": -76,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.4398828,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "654d04d9-39eb-4ad4-ba5b-1bfbb3bbf1fd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 41,
+        "y": 25,
+        "z": -225,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5844213,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "65a93175-5398-48cf-b031-d35c504cbd4e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -141,
+        "y": 29,
+        "z": -153,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2498727,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "65c640d5-11b9-47ad-a62c-816a2c318b8a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 112,
+        "y": 21,
+        "z": -198,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.5624316,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e5eaa30a-7454-4e0d-885d-5166a02555de"
+    },
+    {
+      "id": "660297db-09a3-4688-ac87-231a53fe1699",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -18,
+        "y": 38,
+        "z": -80,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.7037687,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "663a6d65-c8f8-47bd-b997-26e851065b32",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 68,
+        "y": 24,
+        "z": 8,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2673893,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e4ad5132-4939-4d08-b9a9-1555e94982db"
+    },
+    {
+      "id": "6673a783-c845-47dd-8025-4c75c8cd539c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 91,
+        "y": 28,
+        "z": -33,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7582204,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "669d7ef3-29d6-419a-8999-a16dba3764e9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -115,
+        "y": 30,
+        "z": -127,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.06997,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "67312fe6-7e70-4e8e-8e35-a511fa5b2770",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 140,
+        "y": 20,
+        "z": -366,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.1856694,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "67c8e17d-b231-4bf5-9b10-826058d170f3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 222,
+        "y": 21,
+        "z": -162,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.4025447,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2b50d2f8-5b23-43a8-99f8-519657dfa574"
+    },
+    {
+      "id": "67e7d93a-c140-4e93-9b01-1651c24df7b9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -100,
+        "y": 32,
+        "z": -129,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.1388048,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "6827e0b4-257d-4f4b-8273-2ec7c50ae2cc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 147,
+        "y": 20,
+        "z": -197,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9218035,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "6838cf58-82dc-4c74-93c9-f8890fd96261",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 39,
+        "y": 21,
+        "z": 151,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9559827,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "6994bf79-aada-483f-a1fb-9033bacc0de9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -114,
+        "y": 29,
+        "z": -105,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.1765044,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "6a056aa4-7acb-4b94-9062-9c27fbdb5506",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -44,
+        "y": 22,
+        "z": -354,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.384615,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "6a503a98-3bb7-4abb-bfaf-3da2bd52ace8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 103,
+        "y": 19,
+        "z": -345,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.1125283,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "6a6bb4cf-e17e-4d7a-80f7-bad7b9ffec7e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 197,
+        "y": 26,
+        "z": -7,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.0462623,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "6b017eed-8d2a-4fc1-a4be-d7e58bcc6a4d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -17,
+        "y": 21,
+        "z": 64,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5561175,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "6b31a88b-d614-4767-9e46-e25a3cecd8fe",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 100,
+        "y": 19,
+        "z": -368,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.203565,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "6b9d9a38-c1c8-4333-9bb4-08a9f596fdd1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -19,
+        "y": 38,
+        "z": -66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.878392,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "6be84f36-c1b3-434d-969b-10847ba3ea7e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -163,
+        "y": 26,
+        "z": -161,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.191371,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "6c66e371-a2fb-4add-b1d0-8863305fd673",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -91,
+        "y": 33,
+        "z": -31,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.5472748,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "4616701d-0264-488b-b481-335205294c3c"
+    },
+    {
+      "id": "6c6f595e-f0f1-4f78-bcf7-36d120d3996e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 136,
+        "y": 20,
+        "z": -196,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.6037877,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "6d83ed71-0543-4886-9d74-af74c5cf823e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -88,
+        "y": 40,
+        "z": -208,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.231146,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "6f458759-689d-458e-b595-6eabea424fb9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -77,
+        "y": 25,
+        "z": 56,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.6242689,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "6f45d272-dd62-4742-993d-b0befbf06ef2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -89,
+        "y": 35,
+        "z": -56,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.2220447,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "6fbdfd1b-16b9-4e8c-9314-d97ce4b557db",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 149,
+        "y": 20,
+        "z": -356,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.82407725,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "70190dd3-3007-46df-9fcf-a5b0b21a36f8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 231,
+        "y": 26,
+        "z": -283,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.0734696,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "716cf05c-f315-432c-ae2f-2ed63c8a5812",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -64,
+        "y": 36,
+        "z": -17,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.066991,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "1a6a1599-0aeb-4e34-a092-12b2cadceedc"
+    },
+    {
+      "id": "72209d0a-5f84-490c-99e0-b8ef743dd325",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 68,
+        "y": 31,
+        "z": -139,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.9852767,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d1fbab91-f723-4e79-bcad-63668b8b6bb3"
+    },
+    {
+      "id": "72461947-a1e8-456a-89e0-db8b58c04170",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 25,
+        "z": 18,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.0548494,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "0a518596-b474-4b19-bbb8-57ce598dd7d4"
+    },
+    {
+      "id": "72b8ae18-b289-4e06-b085-f033018585d1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 257,
+        "y": 25,
+        "z": -256,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.0314903,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "73e804e9-33f1-4151-b2b2-4e011595ed89",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 64,
+        "y": 20,
+        "z": 68,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.5762105,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "7408e12f-2240-4d94-ada9-c8f688b492d5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 16,
+        "y": 21,
+        "z": 160,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5586289,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "749a7938-335f-4ecd-b044-c626ead0da64",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 79,
+        "y": 21,
+        "z": 195,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.86558,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "74cd4eff-a4a5-437a-8130-6a9e05b8ac56",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 137,
+        "y": 21,
+        "z": 163,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.193959,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "7701c60a-84c8-43c4-8974-275f560bd118",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -7,
+        "y": 36,
+        "z": -42,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.685858,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "77159917-5fa2-4d5a-987d-68a8f6ad72e0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -105,
+        "y": 27,
+        "z": 51,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.9676874,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "771b84a9-e84d-4943-a1ac-d0fa1e466b03",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -175,
+        "y": 24,
+        "z": -177,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0571313,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "773c2dd0-e6a1-4a3e-9f27-b814a218d79c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 65,
+        "y": 24,
+        "z": -208,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.30668682,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "7793f5b6-8324-4a6d-b23c-f877f74579c7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 103,
+        "y": 30,
+        "z": -57,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.508004,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "5d568d4c-d27a-4ec6-b7df-905c95b881e4"
+    },
+    {
+      "id": "791b8818-7175-46de-a924-7e5f38f48d64",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 5,
+        "y": 22,
+        "z": 161,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7398684,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "793fa87e-4b78-4c3f-8ded-ad178eb8e5b7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 99,
+        "y": 19,
+        "z": 135,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.860023,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "796ca7b5-5d41-4055-8f9a-9e3f830b3dec",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 183,
+        "y": 24,
+        "z": -90,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.6227468,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e329abb8-bdf3-4c11-9239-1689837dd17a"
+    },
+    {
+      "id": "79ce5fc5-2685-46b3-8cda-813216defb7c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 55,
+        "y": 20,
+        "z": -343,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2943687,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "7a1bcc04-5e0d-4d83-9c32-95023eb37ea0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -42,
+        "y": 37,
+        "z": -42,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8603978,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "7a4b08b3-ae9d-4583-a672-c049cb447976",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 100,
+        "y": 20,
+        "z": 150,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.0852597,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "7c6dec65-bc2b-4e90-9c66-a9576f8bd73d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -105,
+        "y": 31,
+        "z": -115,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.292049,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "7ddd77e5-dbbb-4fb4-91a9-6133ad3e6061",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -127,
+        "y": 26,
+        "z": 67,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.4624222,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "7f3b689c-9826-4e95-bff0-bb7cdc91382d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 260,
+        "y": 22,
+        "z": -125,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5270838,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "059b8565-cb88-4d1f-90e2-763cebceec2a"
+    },
+    {
+      "id": "805eee84-c56e-482c-9f64-6358a6d4929a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -32,
+        "y": 21,
+        "z": -328,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.49433768,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "80a278ff-e439-4370-afca-90dd48f85f42",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 31,
+        "y": 30,
+        "z": -8,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.3452604,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "49ebf7dc-1c74-4b7a-904f-a7bd9f1a5d13"
+    },
+    {
+      "id": "814edd96-f6e4-481c-86f9-ab955c085af4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 80,
+        "y": 26,
+        "z": -165,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.3691763,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "815657b3-1e42-44ea-9cf8-3e17940eb890",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 56,
+        "y": 22,
+        "z": -232,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.1376456,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "3a73cc56-b464-486d-bc8b-df5bc785816b"
+    },
+    {
+      "id": "81c226e5-d3b0-4ca4-9a5f-7aa403124cd3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 163,
+        "y": 22,
+        "z": -127,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.621499,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c90c16c1-861a-4901-9324-472926e817d8"
+    },
+    {
+      "id": "8228e969-8879-4d4f-8a34-af887dc3faa2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -52,
+        "y": 26,
+        "z": 171,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.17819494,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "82621ae3-20e9-4156-b5d9-743cbc2e1418",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 78,
+        "y": 21,
+        "z": 174,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0829766,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "82c7f364-fb09-4d20-a93a-20690ce78174",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -129,
+        "y": 26,
+        "z": -41,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.85931,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "835cf475-26dc-4463-8a15-bbf0414f6f22"
+    },
+    {
+      "id": "83cb9cbd-babb-44fc-b7c2-cbbc81298482",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 88,
+        "y": 30,
+        "z": -114,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.33219075,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "853ad2d5-d92d-4187-9b8f-b5bb4d7267a6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 245,
+        "y": 28,
+        "z": -305,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.04456559,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "8572c92e-5940-4978-8a1c-402cc08d429a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -16,
+        "y": 21,
+        "z": -367,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.7881787,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "873b6abc-bd5e-4353-b413-b7ee01924378",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 148,
+        "y": 21,
+        "z": -148,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8640125,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "877b1003-a5b2-4f78-9137-e7992f579c4f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -80,
+        "y": 25,
+        "z": 136,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.7532263,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "87abfe00-51d8-46c8-9f16-700697ecfa4b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 63,
+        "y": 36,
+        "z": -76,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7499828,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "884572cc-c30f-4e2c-933b-235c12926148",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 44,
+        "y": 20,
+        "z": -367,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.7175257,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "88a1fa25-cd8d-4f44-8c13-b232bb91e0f1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -30,
+        "y": 23,
+        "z": 159,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.9435916,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "8ac60cff-adf6-4f4b-917c-9b6d83aea164",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -31,
+        "y": 22,
+        "z": 148,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.52257854,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "8aec0094-88d3-4505-b665-02af01a16e95",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 126,
+        "y": 22,
+        "z": -164,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.3348253,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b2600454-86bc-4622-8fe2-46e3f176a055"
+    },
+    {
+      "id": "8b83bed7-da6d-41ea-b963-8324f01a685e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -105,
+        "y": 30,
+        "z": -40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5522679,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "835cf475-26dc-4463-8a15-bbf0414f6f22"
+    },
+    {
+      "id": "8b86673a-9748-420a-b352-a23d3b9f552f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -128,
+        "y": 26,
+        "z": -52,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.4579134,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "8bfb4031-c0a5-4510-be71-6b17f43b803e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -65,
+        "y": 26,
+        "z": 51,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.388878,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "8c0dc847-24c1-43d2-b758-a33b38589068",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -69,
+        "y": 36,
+        "z": -40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.319179,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "835cf475-26dc-4463-8a15-bbf0414f6f22"
+    },
+    {
+      "id": "8c5c3154-c55b-444b-b7ac-44caec90baad",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -16,
+        "y": 29,
+        "z": 15,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.35093,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2f63ba2e-f36d-4105-bc92-298423fd5f96"
+    },
+    {
+      "id": "8cac7c49-9abe-468b-b216-de859f6b1b7f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -77,
+        "y": 40,
+        "z": -247,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.114943,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "8d676150-bdf3-43b4-b37b-6ffd666faf72",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -41,
+        "y": 24,
+        "z": 160,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.6256394,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "8de45f83-859a-4fd4-b3a3-731255916731",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -52,
+        "y": 27,
+        "z": 32,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.260016,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "8de8e198-b420-4bf5-b76c-9d706c29cba5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -52,
+        "y": 23,
+        "z": 138,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.5033402,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "8e2020dd-ce4d-4c9a-8ed1-a5f1e39b98d1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 113,
+        "y": 22,
+        "z": 198,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.3892354,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "8e445d7e-aae1-474b-8a2e-cf981f98f539",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 31,
+        "y": 20,
+        "z": 125,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.863039,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "8e50cd19-4e69-4cd3-bf56-cdf1b0fd67e3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 99,
+        "y": 22,
+        "z": 15,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.037808,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e4ad5132-4939-4d08-b9a9-1555e94982db"
+    },
+    {
+      "id": "9028c8d9-fc6f-4874-b1b5-3245b50404b6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -153,
+        "y": 29,
+        "z": -213,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7270703,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "90deed2d-8f93-4ff8-b3ce-09492f23ce12",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -40,
+        "y": 30,
+        "z": 15,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.4710917,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2f63ba2e-f36d-4105-bc92-298423fd5f96"
+    },
+    {
+      "id": "910ebef2-c16b-4263-adca-cbb9c142a435",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 78,
+        "y": 20,
+        "z": 40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5572537,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "92523808-2bef-45d5-9775-30a3966dda67",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -89,
+        "y": 34,
+        "z": -65,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.1936793,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "927b7aa3-7931-4294-bc83-4f74a347c6d1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 195,
+        "y": 24,
+        "z": -344,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.0061636,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "929ba819-7ce9-41d3-ae02-327a9a59911b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -41,
+        "y": 35,
+        "z": -9,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.3824906,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "1a6a1599-0aeb-4e34-a092-12b2cadceedc"
+    },
+    {
+      "id": "9344f1fc-b4cb-4940-a9d6-6e1495847f18",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 268,
+        "y": 22,
+        "z": -129,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.3410082,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d6c09740-6510-497f-8311-7b3a9b98d8ae"
+    },
+    {
+      "id": "946db99d-3a6a-4f42-bae8-11ed50a524dd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 222,
+        "y": 25,
+        "z": 4,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8224108,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "947f4b2f-9346-4161-b85f-3d55e6468477",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 29,
+        "y": 20,
+        "z": 78,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.878392,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "185ddfd8-e0d2-46db-a202-5441752ca097"
+    },
+    {
+      "id": "9648fc41-9b61-45b7-b2e8-43fa8890ff46",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -151,
+        "y": 25,
+        "z": -81,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.124995,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "973e89c9-eed2-4b82-82da-7c2ad5cf5a5f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 75,
+        "y": 22,
+        "z": 19,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.3724248,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e4ad5132-4939-4d08-b9a9-1555e94982db"
+    },
+    {
+      "id": "983d6fb4-f8a4-4c08-885f-08c57cb73e63",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 19,
+        "y": 20,
+        "z": 63,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.051063,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "185ddfd8-e0d2-46db-a202-5441752ca097"
+    },
+    {
+      "id": "98a8960e-b3c1-4809-bf97-6d853a9191ce",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -137,
+        "y": 27,
+        "z": -77,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.931918,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "98d72028-94c3-43e7-a56b-18c117e4c5fc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -30,
+        "y": 24,
+        "z": 42,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8717484,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "9a259b26-8be1-4714-a5dc-fd9d6ef2cadc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -175,
+        "y": 25,
+        "z": -188,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.8593772,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "9a5324d6-8cb6-4a9b-a7f0-5c8d7f03966b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 80,
+        "y": 21,
+        "z": 31,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.066991,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "9acd17eb-af30-437c-bf71-9d771cf67e1e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 6,
+        "y": 21,
+        "z": 140,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.40282,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "9c2d66e3-aa8d-4454-8e73-9ec6fe5caf59",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 91,
+        "y": 32,
+        "z": -77,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2475452,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "9c426db8-90dd-4bcb-a8a3-e652feb00fdd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 173,
+        "y": 26,
+        "z": -80,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.734284,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e329abb8-bdf3-4c11-9239-1689837dd17a"
+    },
+    {
+      "id": "9cf34fa8-1851-452f-85f7-f8cfc486200d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 20,
+        "y": 37,
+        "z": -45,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.5384874,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "9d18adf2-bbb4-4d76-af4a-805ec74880c8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 125,
+        "y": 26,
+        "z": -103,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.15698211,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "9d60a218-389c-4fa8-b3d0-d26422550987",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 161,
+        "y": 21,
+        "z": -148,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.220432,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "176dc1bf-f350-44a3-aa7b-ffcbe4ff0837"
+    },
+    {
+      "id": "9da5ca3f-3229-4362-8366-b75115aef6b6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 256,
+        "y": 22,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.94616246,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "059b8565-cb88-4d1f-90e2-763cebceec2a"
+    },
+    {
+      "id": "9dfd7353-5f5d-4a9e-b3c2-f1e89281173c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -116,
+        "y": 30,
+        "z": -115,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.5602226,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "9e8b2fef-a21d-4837-a4b4-71a5879e5c1d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -17,
+        "y": 23,
+        "z": 199,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5503191,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "9ea4ba74-8195-49e6-aa77-575d0fed7ee8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 67,
+        "y": 32,
+        "z": -114,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.7374625,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "9eb2ad82-9280-4cc0-a38e-15a26dbb09fc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 126,
+        "y": 26,
+        "z": -18,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.6552415,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "9ed6ab55-03ed-4ac4-8cc3-81febf74ac5f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 100,
+        "y": 24,
+        "z": -150,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0531323,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "9ee27294-d8b4-40f9-b8ff-6bafda254e6d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -20,
+        "y": 24,
+        "z": 41,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.2246485,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "9efa4278-2ac1-45a1-be6c-2838c987f811",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -65,
+        "y": 35,
+        "z": -33,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.843598,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "4616701d-0264-488b-b481-335205294c3c"
+    },
+    {
+      "id": "9fdb77d2-e039-41b3-a265-8392dfa087ef",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 56,
+        "y": 22,
+        "z": 27,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7779746,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "a0461781-c161-41c5-a5ba-0a0123c931f9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -137,
+        "y": 26,
+        "z": 67,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.0185184,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "a0fb307c-7d63-42f2-acd3-c7b03714a5bb",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 160,
+        "y": 21,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.7692714,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "176dc1bf-f350-44a3-aa7b-ffcbe4ff0837"
+    },
+    {
+      "id": "a123cf5e-dbdc-4630-bdb1-d74fb6aafad1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 88,
+        "y": 20,
+        "z": 54,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.287019,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "a2bda619-20d1-49fb-96fb-1c8c038b5e88",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -45,
+        "y": 31,
+        "z": -246,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.4562373,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "a3de31d1-5f80-4f76-a93c-678775da8838",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 68,
+        "y": 31,
+        "z": -126,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.5033402,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "a3f355fb-5d48-4fa2-898b-455d0cfc5424",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 125,
+        "y": 22,
+        "z": 184,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.9548117,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "a535edff-0cab-47e9-ba55-01c3268960f8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 219,
+        "y": 23,
+        "z": -245,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2309403,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "a54b2350-aadc-4fb0-a69e-9c1d644bf2ba",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 66,
+        "y": 20,
+        "z": 43,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.4076972,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "a59a184a-0ba4-4b5b-ba8f-dc4ce1baac83",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -31,
+        "y": 24,
+        "z": 231,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5844213,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "a5d7f856-6719-45a4-abe4-6396343ae92a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 183,
+        "y": 23,
+        "z": -344,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.41162142,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "a6e6c44c-32af-4290-b524-21fd3bb7663d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 113,
+        "y": 24,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.1862457,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "a6ea2650-5636-4402-aa63-dc197207a6ea",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 173,
+        "y": 20,
+        "z": -184,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.1501591,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "176dc1bf-f350-44a3-aa7b-ffcbe4ff0837"
+    },
+    {
+      "id": "a711e75f-fb4e-43f7-a81e-1568c3292136",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 79,
+        "y": 28,
+        "z": -21,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.0245602,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "a72c1766-d4b5-4aec-81c7-c2f1865485d3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 223,
+        "y": 27,
+        "z": -304,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.8533792,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "a807a92d-3029-4000-aba6-1ecc4f09a033",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 18,
+        "y": 37,
+        "z": -56,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0023527,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "aa95cfb1-6161-4072-af02-7dedcdf89f46",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 56,
+        "y": 21,
+        "z": 40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.37949997,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "ac61804e-3d05-4f62-852c-e858ff55f451",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -4,
+        "y": 24,
+        "z": 40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.42517823,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "ac8756a8-f20e-4ec9-b26e-524159ab28d5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -7,
+        "y": 22,
+        "z": 53,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.2346954,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "ace74c5e-d0d4-4f67-be88-a3c1d1bb8da6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 176,
+        "y": 27,
+        "z": -28,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.4359317,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "ad2fce21-21d5-4437-92c1-c7e989124dc3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 111,
+        "y": 28,
+        "z": -101,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.0457144,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "ae0dc61f-cf78-42bf-9b01-bcb016563acd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 91,
+        "y": 20,
+        "z": 64,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.7578286,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "ae4c49fd-927e-4e7c-8bf8-7c8262bd603a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -69,
+        "y": 23,
+        "z": 126,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.4804286,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "ae8523b2-494c-4fe4-970a-848636e5cd7a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -21,
+        "y": 22,
+        "z": 152,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.3612227,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "afc4f714-fae6-40d0-9a1c-0f6cd14d48ab",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 80,
+        "y": 24,
+        "z": -184,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.6209826,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c2664c7d-179f-47b4-8236-6d54bfd761f6"
+    },
+    {
+      "id": "b018c879-5870-4b09-8226-1a651c85a2f7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 16,
+        "y": 25,
+        "z": -237,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.260214,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "b0de4f46-c997-4561-bcc5-2b6e8b121f18",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 44,
+        "y": 23,
+        "z": -233,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8491178,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "3a73cc56-b464-486d-bc8b-df5bc785816b"
+    },
+    {
+      "id": "b107645f-6f53-42ab-9389-41f3e34d040b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 99,
+        "y": 27,
+        "z": -128,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.1108227,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "b37a1515-02c5-4249-a00b-155bb9e90dd5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -28,
+        "y": 23,
+        "z": 52,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.313361,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "b4c28154-5686-47be-a092-d4eeaf0b06b8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -18,
+        "y": 23,
+        "z": 221,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.9339395,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "b51c3f77-a761-437f-b402-c8a0863c1ead",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -55,
+        "y": 32,
+        "z": -246,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.397638,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "b671f04e-6e31-422e-a7ce-c33e7150fe27",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 151,
+        "y": 22,
+        "z": 175,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5973073,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "b6b1238d-8be6-4e15-8b45-bf1ce8a60a34",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -32,
+        "y": 21,
+        "z": 125,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.2923256,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "b6edc140-2f6a-44c5-a8e6-21a0a7d3fa2e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -112,
+        "y": 31,
+        "z": -89,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.640378,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "b71933e4-0fff-49a5-9f81-b75aa91481d3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -9,
+        "y": 30,
+        "z": -224,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.7675626,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "b887dd07-3478-438e-bd90-4cbf4912e58f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 140,
+        "y": 26,
+        "z": -20,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.161957,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "b9750175-abfa-45df-8d41-032f984ab438",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 245,
+        "y": 24,
+        "z": -248,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.6443126,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "b9ab0bb8-1e60-451c-9230-70f065b8ad5c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -88,
+        "y": 25,
+        "z": 137,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.446189,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "ba9eb5ee-f8d3-4eb0-9710-282e160ef901",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 151,
+        "y": 21,
+        "z": 162,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.9383005,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "bad2c78d-ce4a-4ba0-98c5-96fee6a202d6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -77,
+        "y": 22,
+        "z": 116,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.6614194,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "bb892504-c885-4d6f-9539-0d6e9204297b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 55,
+        "y": 28,
+        "z": -184,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.36975,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d1fbab91-f723-4e79-bcad-63668b8b6bb3"
+    },
+    {
+      "id": "bb8b0ca4-f972-48f8-9a68-4870d4818f34",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -184,
+        "y": 23,
+        "z": -185,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.836511,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "bc07628e-8286-4c2e-8ad7-2e85b7348078",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 79,
+        "y": 20,
+        "z": -368,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7105067,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "bd043b96-d709-4b34-b6f0-340b871c056b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 152,
+        "y": 22,
+        "z": -128,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.030335,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "08f9b5b7-03e3-4278-ba93-9d644e98582e"
+    },
+    {
+      "id": "bd5dff4d-28d8-4de5-a4bc-6aee86b5f443",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 104,
+        "y": 31,
+        "z": -67,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.9379495,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "5d568d4c-d27a-4ec6-b7df-905c95b881e4"
+    },
+    {
+      "id": "bd823b69-a243-4a03-905a-6ff0947c70d3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 55,
+        "y": 20,
+        "z": 66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.0734887,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "185ddfd8-e0d2-46db-a202-5441752ca097"
+    },
+    {
+      "id": "bdbefecf-0273-44f0-af24-d3e92a8beb42",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 78,
+        "y": 19,
+        "z": 138,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.7441607,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "be451f5f-6c16-41ab-b997-181e00f55216",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 280,
+        "y": 27,
+        "z": -285,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.303174,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "be9108d8-0067-49de-8d92-02db998134c2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 52,
+        "y": 19,
+        "z": 124,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.286776,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f4d55cee-e940-4aa1-9751-a85aa6960241"
+    },
+    {
+      "id": "bf1b7b5d-6521-4d5a-93eb-8d4b69a700f4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 269,
+        "y": 24,
+        "z": -245,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.6141932,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "bf8091c1-0c41-4f69-86d7-aa7e64c26ff0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 55,
+        "y": 34,
+        "z": -93,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.03080957,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "bfb41f42-b322-4b8d-9fc7-795c5db9492f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 99,
+        "y": 31,
+        "z": -76,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.7696834,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "5d568d4c-d27a-4ec6-b7df-905c95b881e4"
+    },
+    {
+      "id": "bffeed72-8841-4fbc-8f07-2a73fad7725e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -112,
+        "y": 27,
+        "z": 66,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.6340307,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "c043fc36-4ef4-495f-9871-19fb3a3cddf3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 149,
+        "y": 22,
+        "z": 185,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.65934175,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "c09214e2-677c-4371-a2d5-415c7a45edfd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -136,
+        "y": 32,
+        "z": -173,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.6294107,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "c0c1afc5-57ac-42e8-ab4b-dc96a6242f3d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 5,
+        "y": 20,
+        "z": 111,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.3374505,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f4d55cee-e940-4aa1-9751-a85aa6960241"
+    },
+    {
+      "id": "c20592a2-5182-4e66-b4e9-da7fe295e947",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 88,
+        "y": 24,
+        "z": 3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.9365501,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "c2f8d922-b9f4-4ac8-a416-c0afb7efd15d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 272,
+        "y": 25,
+        "z": -257,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.0047326456,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "c35457ba-6b85-47e0-900f-d28a13c709cc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -172,
+        "y": 25,
+        "z": -101,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.8700386,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "c357b1b3-94cc-4660-acb5-9c0da904d9ae",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 160,
+        "y": 23,
+        "z": 199,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.7697306,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "c466b894-273f-421e-a17e-5dcdd052481a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 219,
+        "y": 27,
+        "z": -17,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.248034,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "c4e618cb-3f3c-44ab-abee-403c62154ae4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -91,
+        "y": 35,
+        "z": -44,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.1405175,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "c5621107-0e5a-4f52-b9c3-01ba81d7d6da",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 79,
+        "y": 19,
+        "z": 123,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.6986485,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "c5d266ba-13b4-4075-a79f-0af432fa1cd9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 15,
+        "y": 22,
+        "z": -260,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.99425,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "3a73cc56-b464-486d-bc8b-df5bc785816b"
+    },
+    {
+      "id": "c6734d02-22bc-4d58-b7b0-4d7d371d942c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 88,
+        "y": 20,
+        "z": -378,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.37948,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "c729f96e-bd06-47df-96bc-158447b8e82a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -152,
+        "y": 26,
+        "z": -100,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.300939,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "c7eb8cf9-d47d-4a21-baad-cc69c986fcdb",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 20,
+        "y": 21,
+        "z": 51,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.3683405,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "c8dc6ae2-85fa-42e8-8bbf-8769d0d27ca9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 123,
+        "y": 20,
+        "z": -365,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.008542,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "c93e423e-f45f-4c45-bb85-351f6332cac0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 15,
+        "y": 38,
+        "z": -78,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.905464,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "c98454e3-c3fb-4cd7-8a6a-5f05ec2405fa",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 114,
+        "y": 19,
+        "z": -321,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.221167,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "c98dfe46-f0ac-4696-bd95-b89a20ab54b1",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -29,
+        "y": 24,
+        "z": 197,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.802629,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "c9cbbb89-6a6b-4746-9e54-658a4d8ae3a3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 54,
+        "y": 36,
+        "z": -53,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9897885,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "c9fc7b10-afd5-4b60-8833-3aa669d12381",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -44,
+        "y": 21,
+        "z": 124,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.558144,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "ca431cda-8d40-4639-b8ff-1bdc6795db14",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -67,
+        "y": 40,
+        "z": -225,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.34030068,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "ca6f3ab2-9d20-46ca-a7cd-5608d4f1960d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 80,
+        "y": 20,
+        "z": 148,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.3563066,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "ca766402-b06e-4700-beaa-7da3547bbdb6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 219,
+        "y": 26,
+        "z": -4,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.2899333,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "cae58573-d8be-4179-b4ad-6ef1554d75df",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 234,
+        "y": 21,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9264064,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "059b8565-cb88-4d1f-90e2-763cebceec2a"
+    },
+    {
+      "id": "cc317aac-46df-4424-a2d2-79d83530e175",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -174,
+        "y": 26,
+        "z": -113,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.56935,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "cc3c5d78-108b-47a1-a6ef-e12a011dc1f3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 41,
+        "y": 35,
+        "z": -41,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.0032204,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "cc81c54e-e70f-4660-8712-2be2b7e37c37",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 139,
+        "y": 29,
+        "z": -40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.77091,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "cdbf4aca-b23d-4d36-a22f-eaa53868f674",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 151,
+        "y": 24,
+        "z": -104,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.09485,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c90c16c1-861a-4901-9324-472926e817d8"
+    },
+    {
+      "id": "cdc1091b-6ac3-4494-8672-6efb4d138b95",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 221,
+        "y": 21,
+        "z": -127,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.948796,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2b50d2f8-5b23-43a8-99f8-519657dfa574"
+    },
+    {
+      "id": "ce642d2d-20d2-423e-abfc-2d96526134a6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 111,
+        "y": 30,
+        "z": -56,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.6851034,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "5d568d4c-d27a-4ec6-b7df-905c95b881e4"
+    },
+    {
+      "id": "ce7b5f5f-a67a-4b74-9cbe-d6f3b7797f21",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 3,
+        "y": 24,
+        "z": -248,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.9043997,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "cf039acc-7393-4e1c-813e-e7a39f406702",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -141,
+        "y": 28,
+        "z": -124,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.3413353,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "cf3b1fc5-2809-49cd-87b6-27edf2aa4aea",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 38,
+        "z": -55,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.5761695,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "cfbefd39-9ed0-4708-b89a-02b3a90f54f7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 211,
+        "y": 21,
+        "z": -174,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.1688387,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2b50d2f8-5b23-43a8-99f8-519657dfa574"
+    },
+    {
+      "id": "d11fd25b-6a98-4c0b-8df0-86124421da0d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 41,
+        "y": 20,
+        "z": 54,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.640688,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "d14dbb83-a44c-4139-8a27-46fd7d33abb7",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 246,
+        "y": 26,
+        "z": -273,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.225778,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "d19fb41e-4999-44d9-b143-52e096e86abc",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -31,
+        "y": 25,
+        "z": -258,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.63225,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "d23174f0-d7ae-424e-ac4b-72cf20dd3029",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 64,
+        "y": 31,
+        "z": -32,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5450771,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "d24dcaf6-4697-4ec7-84e4-d3e395e8b4a4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 171,
+        "y": 23,
+        "z": 197,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.605409,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "d29b673b-db50-4393-a480-fded217085ee",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -33,
+        "y": 21,
+        "z": 135,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.1947453,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "d34942f6-f545-4651-b3de-f7c31fb6c2bb",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 87,
+        "y": 26,
+        "z": -153,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2670135,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "d3ea6e05-4217-48f9-96e4-c76c47e8f311",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 174,
+        "y": 25,
+        "z": -5,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.8673022,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "d4a38615-2778-45af-b941-f4c2b76b4654",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 3,
+        "y": 20,
+        "z": -341,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.4471617,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "d5792d39-f618-42ba-af26-a7d2ae1caa72",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -40,
+        "y": 38,
+        "z": -55,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.0841737,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "d5e1535a-2102-4efc-bd06-68260f2fbcc6",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -129,
+        "y": 29,
+        "z": -112,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.9864304,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "d626afb7-d735-45cf-9019-1dd46dfdae0b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 260,
+        "y": 26,
+        "z": -270,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.271593,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "d7305799-37f6-48e0-bf85-6fe4a4b77f3f",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 212,
+        "y": 28,
+        "z": -20,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.2251213,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "d7c85fd7-c624-4f10-88ec-666a54cf581c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -31,
+        "y": 38,
+        "z": -69,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7294977,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "d7efeb34-2ef1-4419-97e2-3862c5b5aa87",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 4,
+        "y": 23,
+        "z": 43,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9780865,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "d86542ff-7b73-42c7-ba8d-f424b1588295",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 88,
+        "y": 28,
+        "z": -128,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.7532263,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "d9e55d09-410f-462b-926e-b0c90bb09903",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -16,
+        "y": 23,
+        "z": 186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.942249,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "db051540-28df-4903-bde9-c27b1c356751",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 92,
+        "y": 19,
+        "z": 138,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.8881893,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "db8bb337-1be7-45d2-94b9-eccaa55dcd7d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 159,
+        "y": 26,
+        "z": -29,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.2747575,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "dc16901b-0798-41d7-a00b-90c5ddc6c76b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -5,
+        "y": 36,
+        "z": -57,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.051063,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "dc9ec931-cb33-4f49-876b-a715710a2def",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 78,
+        "y": 33,
+        "z": -102,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.11702259,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ca17541b-5265-44d2-ba8c-f739928fb2d3"
+    },
+    {
+      "id": "dcabc589-6957-4936-85c3-ed0abeebb97c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 103,
+        "y": 23,
+        "z": -161,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.5654049,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "11142c0e-5b0a-4816-a6d8-dd46303c6d48"
+    },
+    {
+      "id": "dd03b93e-f9b5-48dc-9280-c62d06c9323b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 5,
+        "y": 20,
+        "z": -364,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.3658195,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "dd4d3b28-e352-42af-966b-27a00820a234",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -164,
+        "y": 25,
+        "z": -93,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.636486,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "32fcfc42-efcc-4939-87ca-4fe3c2be8582"
+    },
+    {
+      "id": "ddbc8681-ab1b-497b-b1d0-88f0ddc6ff41",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -76,
+        "y": 37,
+        "z": -64,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.668085,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "ddc50016-acd2-43e8-89c5-5011dfa68e8a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 188,
+        "y": 23,
+        "z": -352,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.587339,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "de0d3ddd-256a-4f74-a306-13ea87eceb33",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -56,
+        "y": 26,
+        "z": 40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5450771,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2f63ba2e-f36d-4105-bc92-298423fd5f96"
+    },
+    {
+      "id": "de287b67-7720-4d3e-bd88-24c558d93ee8",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 29,
+        "y": 25,
+        "z": -232,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.39090708,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "df318376-31b2-470b-b750-d3da47aeb48a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -164,
+        "y": 26,
+        "z": -150,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.260418,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "df3bd088-e4f2-4315-bd80-42813817dd35",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 115,
+        "y": 21,
+        "z": 164,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.258304,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "02fde342-4c20-41ca-b77d-a18295a56d7d"
+    },
+    {
+      "id": "df75d6cf-845a-4a44-be36-ba12a17d39b4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -150,
+        "y": 29,
+        "z": -174,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.002009,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "e0b65d85-9cd2-4355-85f1-90a1655de01b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 3,
+        "y": 36,
+        "z": -41,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.66310215,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "e0dc76d0-69f2-4211-af34-fbf35b376943",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 113,
+        "y": 23,
+        "z": -160,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.038527038,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b2600454-86bc-4622-8fe2-46e3f176a055"
+    },
+    {
+      "id": "e1c777a0-aa42-4278-97ae-dfc81f5598c3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -5,
+        "y": 21,
+        "z": 136,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.416255,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "e1e91d92-1713-4c2d-9bbb-0dc9e4f9fd4e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 128,
+        "y": 25,
+        "z": -9,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.17727403,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "e25eae58-4b88-41cf-be7b-84f76d816249",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 207,
+        "y": 26,
+        "z": -321,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8269706,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "e291124d-742f-4471-8d21-836420d833c9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -77,
+        "y": 27,
+        "z": 39,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.7582204,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2f63ba2e-f36d-4105-bc92-298423fd5f96"
+    },
+    {
+      "id": "e33b1f66-e500-4b21-8ed8-0d7915b60be2",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -21,
+        "y": 22,
+        "z": 159,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.9922369,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "164be0e7-5a58-4cf5-a4ce-74058727331b"
+    },
+    {
+      "id": "e3ed7db2-793e-496a-a92c-1092a62507cd",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -69,
+        "y": 37,
+        "z": -57,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.168531,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "e42f9474-ff83-499d-89c8-e07c45927c14",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -66,
+        "y": 37,
+        "z": -69,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.7610416,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "e73aa992-34b1-4c46-8788-99383e48e1b5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 162,
+        "y": 26,
+        "z": -88,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.590495,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e329abb8-bdf3-4c11-9239-1689837dd17a"
+    },
+    {
+      "id": "e743fdc9-76f0-4988-821e-f3cb535effc5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -42,
+        "y": 22,
+        "z": -369,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.4764848,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "e7751d12-355b-4ce9-84d1-a0f708ce907b",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -148,
+        "y": 27,
+        "z": -113,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.0343504,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "e784bdef-ea19-479d-b464-955e371d8ea0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -30,
+        "y": 24,
+        "z": 185,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.2187033,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "e7fc4b5e-9283-466f-b61d-54d51ac77c7d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 51,
+        "y": 30,
+        "z": -16,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.8292565,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "e817f898-8cc4-42dd-ab4b-051205df3776",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -42,
+        "y": 23,
+        "z": -376,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.742039,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "ea189655-2481-4426-a505-b48613e0c34e",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -89,
+        "y": 27,
+        "z": 52,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.6538522,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "23394657-c0b7-4c41-8185-522d8590bd13"
+    },
+    {
+      "id": "ea4234eb-cfe4-40b6-8d0d-38645796cd39",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 103,
+        "y": 26,
+        "z": -19,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.4348035,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "eb2b26b8-7fe6-46b8-93b9-0d20387e0a95",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 188,
+        "y": 23,
+        "z": -295,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.781553,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "eb49d831-953e-4b00-8cb1-27502ba205ca",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 104,
+        "y": 25,
+        "z": -7,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.7220726,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "ebe20b42-f9e0-4fe0-b849-7b6945a186b9",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 87,
+        "y": 25,
+        "z": -163,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.7299004,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "ec2eb821-af6c-446e-8f89-8959db4d9842",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -124,
+        "y": 29,
+        "z": -102,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.211973,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "ec4ec754-9dcc-46c1-8524-85c415913456",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 53,
+        "y": 34,
+        "z": -137,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.5023477,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d1fbab91-f723-4e79-bcad-63668b8b6bb3"
+    },
+    {
+      "id": "ed6217f2-eab5-4f45-8be1-14c9d8ea3632",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 140,
+        "y": 25,
+        "z": -101,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.7217752,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c90c16c1-861a-4901-9324-472926e817d8"
+    },
+    {
+      "id": "ee21e47e-b00c-4506-96b6-803cd0eece22",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 208,
+        "y": 26,
+        "z": -333,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.38084295,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "eed53248-1f49-44ec-9802-039ddc52d67d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 75,
+        "y": 29,
+        "z": -151,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.42063,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "ef79de6b-9f60-4453-950b-a89428306cc5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -89,
+        "y": 40,
+        "z": -221,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.042911764,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "f014fb62-b1bb-4eec-a8e7-9f5e0b7e1752",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 171,
+        "y": 22,
+        "z": -127,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.7181563,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c90c16c1-861a-4901-9324-472926e817d8"
+    },
+    {
+      "id": "f03c71f4-d986-4b4d-8b2e-6eb641fedb27",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 162,
+        "y": 23,
+        "z": 186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 6.002009,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "f1857a43-1095-44ed-9ee2-9b1dd03486b4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 78,
+        "y": 33,
+        "z": -68,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.259663,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "f1d0acbd-6213-4912-aacc-61549f7f80c4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 19,
+        "y": 21,
+        "z": -378,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.5578427,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "f23ed9e3-9f54-4998-a1ff-544880c5b24d",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -9,
+        "y": 20,
+        "z": 125,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.911574,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "f26199c8-926a-4f21-b036-572cd41c35b4",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 174,
+        "y": 25,
+        "z": -88,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.972879,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e329abb8-bdf3-4c11-9239-1689837dd17a"
+    },
+    {
+      "id": "f4ee52be-0608-44ee-b8e3-11d2b4fe6372",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -28,
+        "y": 33,
+        "z": -221,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.2351646,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "ba290b5a-e57d-491a-a90a-347dbf841a21"
+    },
+    {
+      "id": "f58b2582-8381-44dd-91ec-75122f8e9043",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 139,
+        "y": 22,
+        "z": -151,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.2634134,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "f59b35ad-c819-4f1d-9328-fe87ab757cfa",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -176,
+        "y": 25,
+        "z": -161,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.9402485,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "770dcf02-a596-424b-bb41-181eb413db14"
+    },
+    {
+      "id": "f5c082ea-2329-4a9c-8ec2-2fba1e453f81",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -9,
+        "y": 26,
+        "z": 29,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.6339984,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2f63ba2e-f36d-4105-bc92-298423fd5f96"
+    },
+    {
+      "id": "f5fa9bd1-2a4b-42af-97ed-48f279804b61",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 103,
+        "y": 25,
+        "z": -141,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.121744,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "77dc8164-da63-40c6-8f4b-13151334d01b"
+    },
+    {
+      "id": "f5fe672d-99f4-4f1f-93a6-f6075c4244ac",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 111,
+        "y": 19,
+        "z": -356,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.0181065,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "f618c01f-eb31-4c01-9d8a-36c472bdaaef",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 207,
+        "y": 26,
+        "z": -309,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.97748137,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "f662ade9-2e43-45b6-b00c-0a4702c19fb0",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 30,
+        "y": 36,
+        "z": -40,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.190721,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c84e0d1a-7709-489e-babf-7faf147396b2"
+    },
+    {
+      "id": "f6981f54-62c8-4fbb-978c-8abc83450c34",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 90,
+        "y": 21,
+        "z": 186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.5088434,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "f720405c-1e33-44dc-ad74-5175829c2c01",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 101,
+        "y": 21,
+        "z": 188,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.8496058,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f272c60c-8e37-4410-ab53-6c5b46e80bac"
+    },
+    {
+      "id": "f7ac92af-0853-4c1e-a0e1-2ffb4a706056",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -164,
+        "y": 26,
+        "z": -114,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.8576736,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "f9ab0caa-5100-47fb-b0db-0404bb6d8626",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 186,
+        "y": 23,
+        "z": -105,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.2804136,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "c90c16c1-861a-4901-9324-472926e817d8"
+    },
+    {
+      "id": "f9c98390-12ca-43f7-86cc-854f0135f141",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 113,
+        "y": 20,
+        "z": -345,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.5092988,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "f9e024b6-3151-4e02-a809-c5728a897b68",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -64,
+        "y": 35,
+        "z": -4,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.3395586,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "1a6a1599-0aeb-4e34-a092-12b2cadceedc"
+    },
+    {
+      "id": "fb0f03e5-e3f3-4cbb-b6d6-4511e6600048",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 125,
+        "y": 23,
+        "z": -148,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.111396,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "b2600454-86bc-4622-8fe2-46e3f176a055"
+    },
+    {
+      "id": "fb63a389-cc37-4620-93f8-d669b7830f28",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -54,
+        "y": 21,
+        "z": 112,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.642964,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "7f3f0c57-f5be-4546-8ce6-7fab127d935a"
+    },
+    {
+      "id": "fbbdb722-383f-451e-b196-c305f8c6595c",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 92,
+        "y": 26,
+        "z": -9,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.185748,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "f7eff165-93e7-4abd-aab4-f11da21a02ac"
+    },
+    {
+      "id": "fbd27b77-209e-49aa-a33e-d3039ab1d4d3",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 184,
+        "y": 25,
+        "z": -80,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 5.6889825,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "e329abb8-bdf3-4c11-9239-1689837dd17a"
+    },
+    {
+      "id": "fc628f13-3d9d-4705-a7ce-e8535f46ed50",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 138,
+        "y": 22,
+        "z": -137,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 3.8834863,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "60eed67b-2ac7-4634-9afb-68c872ca682b"
+    },
+    {
+      "id": "fd27c3da-9b70-4360-b09f-c4afe89b9760",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 42,
+        "y": 31,
+        "z": -186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.4644084,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "d1fbab91-f723-4e79-bcad-63668b8b6bb3"
+    },
+    {
+      "id": "fd89fd55-cf0a-4a1b-88b0-6466c6f7659a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 224,
+        "y": 25,
+        "z": -268,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 2.726317,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
+    },
+    {
+      "id": "fe59ff95-0b6a-4760-8af6-ec911e9e5e9a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 221,
+        "y": 21,
+        "z": -136,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0.010136782,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "2b50d2f8-5b23-43a8-99f8-519657dfa574"
+    },
+    {
+      "id": "feadfa3d-fc1c-47cc-8bbd-18ffd71bc64a",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": -9,
+        "y": 39,
+        "z": -77,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.191241,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "661c3e3b-da3a-44a0-9474-851452633d11"
+    },
+    {
+      "id": "ff1e26ab-752b-4fd8-8b14-5d68fba635ea",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 211,
+        "y": 26,
+        "z": -7,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 1.9528291,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "29b10933-2196-4c38-ba02-6aed97e5dc5a"
+    },
+    {
+      "id": "ffb09285-be38-4331-b2cb-8641e4de25a5",
+      "kind": "tree",
+      "archetypeId": "demiurge:tree",
+      "cell": {
+        "x": 199,
+        "y": 24,
+        "z": -283,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 4.626246,
+      "weaponId": null,
+      "team": 0,
+      "groupId": "cd155590-9009-4cef-bca7-dbac48c8a3b3"
     }
   ],
   "isStructureWorld": false

@@ -25,6 +25,8 @@ public sealed class MortarSystem
 
     private readonly ObjectReplication objects;
     private readonly ChunkMap terrain;
+    /// <summary>Trees take blast damage; null wherever a scenario has no trees to damage.</summary>
+    private readonly TreeSystem? trees;
     private readonly TerrainSystem terrainEdits;
     private readonly ActivityFeedSystem? activityFeed;
     private readonly List<Bomb> inFlight = [];
@@ -38,12 +40,14 @@ public sealed class MortarSystem
         ChunkMap terrain,
         TerrainSystem terrainEdits,
         ActivityFeedSystem? activityFeed = null,
-        int? dispersionSeed = null)
+        int? dispersionSeed = null,
+        TreeSystem? trees = null)
     {
         this.objects = objects;
         this.terrain = terrain;
         this.terrainEdits = terrainEdits;
         this.activityFeed = activityFeed;
+        this.trees = trees;
         dispersion = dispersionSeed is { } seed ? new Random(seed) : new Random();
     }
 
@@ -166,5 +170,7 @@ public sealed class MortarSystem
             tick,
             MortarConfig.Blast,
             victim => activityFeed?.ReportKill(bomb.Owner, victim));
+
+        trees?.ApplyBlast(where, MortarConfig.Blast);
     }
 }

@@ -107,6 +107,7 @@ public class ObjectRegistry : IDisposable
         // WIRE order is still append-only over in ComponentBundle; by the time we are here the whole
         // bundle is already decoded, so the order these land in is ours to choose.
         if (state.Mask.HasFlag(NetComponents.Impulse)) obj.Impulse = state.Impulse;
+        if (state.Mask.HasFlag(NetComponents.Supplies)) obj.Supplies = state.Supplies;
         if (state.Mask.HasFlag(NetComponents.Health))
         {
             var previous = obj.Health;

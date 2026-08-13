@@ -69,9 +69,26 @@ namespace Demiurge
     /// </summary>
     public class TracerSystem : SyncScript
     {
+        /// <summary>
+        /// The one effect system that needs a scene rather than a line: smoke is real geometry, so
+        /// it is an object here instead of another static. Constructed on the first frame, when the
+        /// entity is in a scene and there is something to add puffs to.
+        /// </summary>
+        public static SmokeManager? Smoke { get; private set; }
+
+        public override void Start()
+            => Smoke = new SmokeManager((Game)Game, Entity.Scene);
+
+        public override void Cancel()
+        {
+            Smoke?.Dispose();
+            Smoke = null;
+        }
+
         public override void Update()
         {
             float dt = (float)Game.UpdateTime.Elapsed.TotalSeconds;
+            Smoke?.Update(dt);
             TracerManager.Update(dt);
             ImpactManager.Update(dt);
             ExplosionManager.Update(dt);

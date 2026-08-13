@@ -228,7 +228,12 @@ namespace Demiurge.GameServer
 
                 if (TryHit(step.Start, step.End, projectile, actors, tick, out var hit, out bool headshot))
                 {
-                    if (hit is { } target && target.Has.HasFlag(NetComponents.Health))
+                    // Trees have health but a rifle round is not what spends it. They stop the
+                    // bullet — that is the whole of a trunk's job — and take their damage from
+                    // explosions instead, in TreeSystem.
+                    if (hit is { } target
+                        && target.Has.HasFlag(NetComponents.Health)
+                        && target.Type != ObjectType.Tree)
                         ApplyDamage(
                             projectile.Shooter,
                             target,
@@ -286,6 +291,50 @@ namespace Demiurge.GameServer
             weapon.Dirty |= NetComponents.Weapon;
             player.ReloadDoneTick = tick + (uint)stats.ReloadTicks;
         }
+
+        /// <summary>
+        /// Whether anything that stops a bullet stands in the way, asked BEFORE firing one.
+        ///
+        /// It lives here rather than in the AI so that the man deciding to shoot and the round that
+        /// gets fired consult the same notion of what stops a bullet. They did not, and the gap was
+        /// exactly the size of the feature that had just been added to one of them: trees began
+        /// blocking rounds in <see cref="TryHit"/> while every AI sight line still asked only about
+        /// terrain, so NPCs looked straight through a wood, judged the shot clear, and fired into
+        /// trunks they had no idea were there.
+        ///
+        /// Actors are deliberately not tested. A man between you and your target is a reason to pick
+        /// a different target, not a wall — and the friendly-fire question belongs to whoever chose
+        /// the target, not to the geometry.
+        /// </summary>
+        internal bool IsShotBlocked(Vector3 origin, Vector3 direction, float distance)
+        {
+            if (distance <= 1e-5f) return false;
+
+            // Short of the destination, because a target stands ON the ground and its own footing
+            // must not read as cover.
+            float ceiling = distance - ShotArrivalTolerance;
+
+            if (TerrainRaycast.Cast(terrain, origin, direction, distance) is { } ground
+                && ground.Distance < ceiling)
+                return true;
+
+            foreach (var obj in objects.All)
+            {
+                if (obj.Type != ObjectType.Tree || !obj.Has.HasFlag(NetComponents.Transform))
+                    continue;
+
+                if (GunMath.TrunkHitDistance(
+                        origin, direction, obj.Transform.Position,
+                        TreePlacement.TrunkRadius, TreePlacement.TrunkHeight, distance) is { } trunk
+                    && trunk < ceiling)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>How near the target an obstruction stops counting as one.</summary>
+        private const float ShotArrivalTolerance = 0.1f;
 
         private bool TryHit(
             Vector3 start,

@@ -60,12 +60,38 @@ public class ObjectViewFactory : IDisposable
         };
         registry.ObjectSpawned += CreateView;
         registry.ObjectDespawned += DestroyView;
+        registry.HealthDepleted += OnHealthDepleted;
     }
+
+    /// <summary>
+    /// A tree whose health has run out becomes a dead trunk. It is an event rather than a poll
+    /// because the registry says so: death and the state that follows it can both be drained
+    /// between two rendered frames, so nothing downstream can reliably see it by looking.
+    /// </summary>
+    private void OnHealthDepleted(NetObject obj)
+    {
+        if (obj.Type != ObjectType.Tree) return;
+
+        treeViews.Kill(obj.NetworkId);
+
+        // A killed tree burns. Smoke marks what has been DESTROYED rather than merely what has been
+        // shelled, so a column means a landmark is gone — which is the map deteriorating rather than
+        // a puff of dust every time something goes off.
+        //
+        // Raised here rather than at the object's origin because a tree is sunk half a metre and the
+        // fire is in its crown, not its roots.
+        TracerSystem.Smoke?.Emit(
+            obj.Transform.Position.ToStride() + Stride.Core.Mathematics.Vector3.UnitY * BurningTreeRise);
+    }
+
+    /// <summary>Where up a dead tree the smoke starts — the canopy, not the stump.</summary>
+    private const float BurningTreeRise = 5f;
 
     public void Dispose()
     {
         registry.ObjectSpawned -= CreateView;
         registry.ObjectDespawned -= DestroyView;
+        registry.HealthDepleted -= OnHealthDepleted;
         // Before the sweep below, because the manager owns an entity of its own that the name
         // prefix would not catch.
         treeViews.Dispose();

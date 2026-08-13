@@ -27,6 +27,17 @@ public static class PickupTargeting
     public const float RadiusSquared = Radius * Radius;
 
     /// <summary>
+    /// How far above or below the thing a man may stand and still reach it.
+    ///
+    /// <see cref="Radius"/> is horizontal, which on flat ground is the whole of reach and on a map
+    /// with trenches and parapets is not: a man on a lip ten metres over a mortar was within 1.5 m
+    /// of it by that measure and could work the tube from up there. Reach is a sphere, not a
+    /// cylinder, and this is the half-height of it — about a man, so standing on a sandbag still
+    /// counts and standing on a roof does not.
+    /// </summary>
+    public const float VerticalReach = 1.8f;
+
+    /// <summary>
     /// The facts about an object this decision needs, so that each side can project its own
     /// representation — the server's ServerObject, the client's NetObject — into one shape rather
     /// than this file knowing about either of them.

@@ -210,6 +210,47 @@ internal sealed class MobBrain
     public void ResetEntrenchmentHistory()
         => HasCompletedInitialEntrenchment = false;
 
+    /// <summary>
+    /// The ground level an emergency scrape is cut against, remembered from the first bite.
+    ///
+    /// Planned entrenchment has <see cref="EntrenchGrade"/> for this and emergency cover had
+    /// nothing, so it re-measured the surface on every bite — and a surface measured beside a hole
+    /// that is being dug keeps getting lower. Each bite then went a fixed depth below the last
+    /// answer, which is a hole with no bottom rather than a fighting position.
+    /// </summary>
+    public float? EmergencyGrade { get; private set; }
+    private Vector3 emergencyGradeOrigin;
+
+    /// <summary>How far a man may work from where his grade was taken before it is a new position
+    /// and a new measurement. The foxhole pattern reaches about two cells each way.</summary>
+    private const float ScrapeRadius = 3f;
+
+    /// <summary>
+    /// The grade to cut this scrape against.
+    ///
+    /// Held while the man works one position, so his own digging cannot walk the reference down.
+    /// The highest reading wins for the same reason — undug ground is above dug ground, so a scrape
+    /// beside a neighbour's cannot inherit the bottom of it.
+    ///
+    /// Re-measured once he has moved off, because a grade remembered from a hilltop would otherwise
+    /// follow him into a hollow and have him dig to reach a surface he had already left.
+    /// </summary>
+    public float ObserveEmergencyGrade(Vector3 feet, float probed)
+    {
+        float dx = feet.X - emergencyGradeOrigin.X;
+        float dz = feet.Z - emergencyGradeOrigin.Z;
+        if (EmergencyGrade is not { } known || dx * dx + dz * dz > ScrapeRadius * ScrapeRadius)
+        {
+            emergencyGradeOrigin = feet;
+            EmergencyGrade = probed;
+            return probed;
+        }
+
+        float grade = MathF.Max(known, probed);
+        EmergencyGrade = grade;
+        return grade;
+    }
+
     public void ClearEntrenchment()
     {
         Entrenching = false;

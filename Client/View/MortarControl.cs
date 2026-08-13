@@ -162,8 +162,21 @@ public sealed class MortarControlScript : SyncScript
         }
     }
 
-    /// <summary>Lifted clear of the ground so the symbol is not swallowed by the surface it stands
-    /// on, and by less than a man is tall so it still reads as being AT him.</summary>
+    /// <summary>
+    /// Lifted clear of the ground so the symbol is not swallowed by the surface it stands on.
+    ///
+    /// It used to be 1 m — under a man's head, so it read as being AT him — and that is exactly
+    /// enough to be buried the moment he digs in. <see cref="FoxholePlan.Depth"/> is 2 m, so a
+    /// marker a metre over his feet sits a metre UNDER the ground he is sheltering below, and the
+    /// contact vanishes from an overhead display at the moment he becomes worth shelling.
+    ///
+    /// Lifted clear of the ground so the symbol is not swallowed by the surface it stands on, and by
+    /// less than a man is tall so it still reads as being AT him.
+    ///
+    /// A metre is enough now that a fighting position is bounded to FoxholePlan.Depth below the
+    /// surrounding grade rather than being dug until it swallows people — see MobBrain's emergency
+    /// grade. Flying the symbol high enough to clear an unbounded hole was treating the symptom.
+    /// </summary>
     private const float MarkerHeight = 1f;
 
     /// <summary>A diamond, laid flat on the ground: hostile.</summary>

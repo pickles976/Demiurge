@@ -253,6 +253,21 @@ internal sealed class CommanderAi
         value = 0f;
         if (fireMissionEnemies.Count == 0) return false;
 
+        // The tube is LAID by the crew rather than left on the heading somebody dropped it on. A
+        // gunner who has walked to a mortar can pick it up and turn it, so the sector that decides
+        // which missions are reachable is centred on the enemy he came to shell, not on where the
+        // tube happened to be pointing. MobSystem turns the tube to match before it fires, so the
+        // solution stays legal for the weapon that shoots it.
+        //
+        // Deliberately the centroid rather than a free 360-degree search: it keeps ONE sector solve,
+        // and a tube laid at the middle of the enemy mass reaches the targets worth firing at.
+        var mass = System.Numerics.Vector3.Zero;
+        foreach (var enemy in fireMissionEnemies) mass += enemy.Position;
+        mass /= fireMissionEnemies.Count;
+        float layYaw = MathF.Atan2(
+            mass.X - mortar.Transform.Position.X,
+            mass.Z - mortar.Transform.Position.Z);
+
         // One representative flight, at the middle of the band, rather than re-solving the arc per
         // candidate. The arc varies by a couple of seconds across the whole reachable band and the
         // spread it feeds is already several metres wide; paying for exactness inside that would buy
@@ -261,9 +276,9 @@ internal sealed class CommanderAi
             + System.Numerics.Vector3.UnitY * MortarBallistics.MuzzleHeight;
         var midpoint = muzzle
             + new System.Numerics.Vector3(
-                MathF.Sin(mortar.Transform.Yaw),
+                MathF.Sin(layYaw),
                 0f,
-                MathF.Cos(mortar.Transform.Yaw))
+                MathF.Cos(layYaw))
                 * ((MortarConfig.MinimumRange + MortarConfig.MaximumRange) * 0.5f);
         float flightSeconds =
             MortarBallistics.FlightSeconds(muzzle, midpoint, ProjectileMotion.Gravity)
@@ -271,7 +286,7 @@ internal sealed class CommanderAi
 
         return MortarTargeting.TrySolve(
             mortar.Transform.Position,
-            mortar.Transform.Yaw,
+            layYaw,
             flightSeconds,
             fireMissionEnemies,
             fireMissionFriendlies,

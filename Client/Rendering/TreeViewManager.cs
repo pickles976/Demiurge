@@ -44,6 +44,14 @@ namespace Demiurge
         private readonly ConcurrentQueue<uint> removed = new();
         private readonly Dictionary<uint, Entity> views = [];
         private readonly Dictionary<uint, TreeViewFactory.LeafDetail> details = [];
+
+        /// <summary>
+        /// Killed trees. Kept as a set of ids rather than read off the object each pass because a
+        /// view is built and rebuilt as detail changes, and a tree that died while its view did not
+        /// exist must still come back dead.
+        /// </summary>
+        private readonly HashSet<uint> dead = [];
+        private readonly ConcurrentQueue<uint> killed = new();
         private readonly Entity driver;
 
         private Vector3 lastPosition;
@@ -71,6 +79,17 @@ namespace Demiurge
             dirty = true;
         }
 
+        /// <summary>
+        /// A tree has been killed — by blast, or by the ground being dug out from under it. Queued
+        /// rather than applied here because the kill arrives on the network thread and the scene is
+        /// the main thread's.
+        /// </summary>
+        public void Kill(uint networkId)
+        {
+            killed.Enqueue(networkId);
+            dirty = true;
+        }
+
         public void Remove(uint networkId)
         {
             trees.TryRemove(networkId, out _);
@@ -82,6 +101,8 @@ namespace Demiurge
         {
             foreach (var view in views.Values) view.Scene = null;
             views.Clear();
+            details.Clear();
+            dead.Clear();
             trees.Clear();
             driver.Scene = null;
         }
@@ -89,6 +110,11 @@ namespace Demiurge
         public void Update()
         {
             while (removed.TryDequeue(out uint networkId)) RemoveView(networkId);
+            while (killed.TryDequeue(out uint networkId))
+            {
+                if (!dead.Add(networkId)) continue;
+                if (views.TryGetValue(networkId, out var dying)) MakeDead(dying, networkId);
+            }
 
             if (players.LocalPlayer is not { } local) return;
 
@@ -102,9 +128,6 @@ namespace Demiurge
             dirty = false;
             hasLastPosition = true;
             lastPosition = position;
-
-            float dropSq = DetailDropRadius * DetailDropRadius;
-            float restoreSq = DetailRestoreRadius * DetailRestoreRadius;
 
             // Horizontal distance only: a tree is not further away for being downhill.
             foreach (var (networkId, tree) in trees)
@@ -123,8 +146,20 @@ namespace Demiurge
                     view.Scene = scene;
                     views.Add(networkId, view);
                     details.Add(networkId, detail);
+
+                    // Health is on the object whether or not anybody watched it run out, so a tree
+                    // that died out of sight is dead the moment it is drawn again.
+                    if (dead.Contains(networkId) || tree.Health.Current == 0)
+                    {
+                        dead.Add(networkId);
+                        MakeDead(view, networkId);
+                    }
                     continue;
                 }
+
+                // A dead tree has one model and no cards. Handing it a detail level would put the
+                // living trunk back on it.
+                if (dead.Contains(networkId)) continue;
 
                 var wanted = Detail(distanceSq, details[networkId]);
                 if (wanted == details[networkId]) continue;
@@ -143,6 +178,20 @@ namespace Demiurge
                     return TreeViewFactory.LeafDetail.Far;
                 return current;
             }
+        }
+
+        /// <summary>
+        /// Swaps in the dead model and gives the entity a transform script. A living tree needs no
+        /// script because it never moves; a killed one may be on its way down, and following the
+        /// position the server is replicating is exactly what NetTransformScript is for.
+        /// </summary>
+        private void MakeDead(Entity view, uint networkId)
+        {
+            TreeViewFactory.SetDead(view, game);
+            details.Remove(networkId);
+
+            if (view.Get<NetTransformScript>() is null && trees.TryGetValue(networkId, out var tree))
+                view.Add(new NetTransformScript { Object = tree });
         }
 
         private void RemoveView(uint networkId)

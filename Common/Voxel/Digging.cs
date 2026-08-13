@@ -79,7 +79,24 @@ namespace Demiurge
         /// are offered it. Read by BOTH ends deliberately: the client must not highlight or request
         /// what the server would refuse, or the outline sits on a voxel that never appears.
         /// </summary>
-        public const bool PlacementEnabled = false;
+        public const bool PlacementEnabled = true;
+
+        /// <summary>
+        /// The sandbag economy, in dirt.
+        ///
+        /// A shovel is the only source and a sandbag the only sink, so the whole constraint is these
+        /// three numbers: you dig to earn, you build to spend, and what you can carry is what stops
+        /// a man walling off a flag in one go. Carried as dirt rather than as bags because the
+        /// partial bag toward the next one is then visible without a second counter.
+        /// </summary>
+        public const int DirtPerDig = 1;
+        public const int DirtPerSandbag = 2;
+        public const int MaxSandbags = 4;
+        public const int MaxDirt = DirtPerSandbag * MaxSandbags;
+
+        /// <summary>Whole bags a dirt count is worth — what the readout shows and what a placement
+        /// needs one of.</summary>
+        public static int SandbagsFrom(int dirt) => dirt / DirtPerSandbag;
 
         /// <summary>
         /// What a shovel builds with. Fixed rather than carried on the request: there is no way for

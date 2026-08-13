@@ -844,6 +844,8 @@ namespace Demiurge
                 8L * System.Diagnostics.Stopwatch.Frequency;
 
             private int _lastAmmo = int.MinValue;
+            private int _lastSandbags = int.MinValue;
+            private bool _lastShovel;
             private int _lastReserve = int.MinValue;
             private bool _lastReloading;
             private int _lastHealth = int.MinValue;
@@ -940,17 +942,32 @@ namespace Demiurge
 
                 int ammo = local.IsArmed ? local.Ammo : -1;
                 int reserve = local.IsArmed ? local.Reserve : -1;
+
+                // The shovel borrows the ammo readout, because it is the same question: how many
+                // more times can I do this. Sandbags rather than dirt — the bag is what a placement
+                // costs, and the half-bag in hand is not a thing you can put down.
+                bool shovel = local.Hotbar == HotbarSlot.Shovel;
+                int sandbags = Digging.SandbagsFrom(local.Status?.Supplies.Dirt ?? 0);
                 // Reserve joins the change gate: picking a weapon up can change the pouches without
                 // changing what is loaded, and that must not go unredrawn until the next shot.
-                if (ammo != _lastAmmo || reserve != _lastReserve || local.IsReloading != _lastReloading)
+                if (ammo != _lastAmmo
+                    || reserve != _lastReserve
+                    || local.IsReloading != _lastReloading
+                    || sandbags != _lastSandbags
+                    || shovel != _lastShovel)
                 {
                     _lastAmmo = ammo;
                     _lastReserve = reserve;
                     _lastReloading = local.IsReloading;
-                    AmmoText.Text = !local.IsArmed ? "--"
+                    _lastSandbags = sandbags;
+                    _lastShovel = shovel;
+                    AmmoText.Text = shovel ? $"{sandbags}/{Digging.MaxSandbags}"
+                        : !local.IsArmed ? "--"
                         : local.IsReloading ? "RELOADING"
                         : $"{local.Ammo}/{local.Stats.MagazineCapacity}";
-                    ReserveText.Text = local.IsArmed ? $"+{local.Reserve}" : string.Empty;
+                    ReserveText.Text = shovel ? "BAGS"
+                        : local.IsArmed ? $"+{local.Reserve}"
+                        : string.Empty;
                 }
 
                 RefreshDeploying();

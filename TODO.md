@@ -13,37 +13,32 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 
 # NPC AI
 
-Claude is too stuoid for AI behavioral stuff. Just use it for simple stuff.
+Claude is too stupid for AI behavioral stuff. Just use it for simple stuff.
 The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
 
-# Gameplay Polish
-
-- NPCs don't realize that bullets originate from their gun barrel
-- NPCs need to know when they can kill with one shot and become more aggro
-
-We want to allow users to place sandbags, but to keep players from
-spamming sandbags, they should be resource-constrained.
-
-- [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
-
-
-There is a model for dead trees. Trees should have 50 health and take damage from explosions, but NOT bullets. When they hit zero health, they should be replaced by the dead tree model. If the terrain under a tree is dug, it should become a dead tree, and the trunk should fall, similar to how the flag falls currently.
-
-  - [ ] trees block LOS for NPCs
-
 # Map Editor
-
 - [ ] improve ergonomics of terminal
   - [ ] autocomplete
-  - [ ] better grouping
-  - [ ] man page type documentation
+  - [ ] better grouping of functions
+- [ ] Add a command to debug draw chunk borders
 - [ ] add map editor and structure editor UI block select, object select
-- [ ] Draw chunk borders in debug mode
+  - [ ] hold Q to open menu
+  - [ ] Garry's mod-style object selection. Use the thumbnail textures for item previews.
+  - [ ] UI for saving and stuff
 
 # PVP Demo
-- [ ] add screen where you enter a server IP and port
-- [ ] "test" to launch into conquest right away
-- [ ] test over VPN
+
+1. Minecraft style launch page.
+2. Singleplayer mode. Only 1 map and 1 gamemode for now. Set the number of NPCs. Set number of tickets.
+3. Multiplayer server list, add server and direct connect. Server says map, gamemode, active players, # NPCs, ping, and currently open slots.
+3a. Configure logs that we can use to figure out the best weapon, how many reconciliation events happened, etc. Save one log per game.
+4. Use `dotnet run -- --singleplayer` + a test flag to launch into conquest immediately the way we do today.
+5. Add gameover screen with map voting. Game ends when tickets = 0. Show scoreboard and map vote screen (only one map currently).
+6. Update server executable to let admin run commands from the terminal.
+7. Set fake network latency and jitter from command line for testing
+8. Test over VPN
+9. Host a server on digitalocean and test
+10. Host demo
 
 - [ ] Host a server and run external multiplayer playtests
   - [ ] Provision a DigitalOcean host
@@ -51,10 +46,12 @@ There is a model for dead trees. Trees should have 50 health and take damage fro
 - [ ] Track and fix issues found by the Demo
 
 ## Refactoring and Cleanup
+- Client performance
 - Finish AI
 - Finish PVP features
 
 - Codex refactor certain parts of the code
+- Codex finish AI
 - Codex event queue implementation
 
 ## Stride Upgrade

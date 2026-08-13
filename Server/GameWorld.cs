@@ -18,6 +18,7 @@ namespace Demiurge.GameServer
         private readonly FlagSystem flags;
         private readonly TicketSystem tickets;
         private readonly TerrainSystem terrainEdits;
+        private readonly TreeSystem trees;
         private readonly ActivityFeedSystem activityFeed;
         private readonly MatchScoreSystem score;
         private readonly TeamIntelSystem intel;
@@ -160,13 +161,16 @@ namespace Demiurge.GameServer
             flags = new FlagSystem(objects, terrain, activityFeed);
             tickets = new TicketSystem(server, flags, playableTeams);
             terrainEdits = new TerrainSystem(server, terrain);
-            mortars = new MortarSystem(objects, terrain, terrainEdits, activityFeed);
+            trees = new TreeSystem(objects, terrain);
+            mortars = new MortarSystem(
+                objects, terrain, terrainEdits, activityFeed, dispersionSeed: null, trees: trees);
             grenades = new GrenadeSystem(
                 objects,
                 items,
                 terrainEdits,
                 terrain,
-                activityFeed);
+                activityFeed,
+                trees);
             intel = new TeamIntelSystem(server);
             mobs = new MobSystem(
                 terrain, terrainEdits, weapons, items, flags, grenades,
@@ -235,9 +239,7 @@ namespace Demiurge.GameServer
                         flags.Spawn(placement.Position);
                         break;
                     case RuntimePlacementKind.Tree:
-                        objects.Spawn(
-                            ObjectType.Tree, NetComponents.Transform, placement.Position,
-                            tree => tree.Transform.Yaw = placement.Yaw);
+                        trees.Spawn(placement.Position, placement.Yaw);
                         break;
                 }
             }
@@ -353,8 +355,12 @@ namespace Demiurge.GameServer
             int team = AssignPlayerTeam();
             var player = new ServerPlayer { Id = clientId, Team = team };
             player.Move = SpawnPlayerMove(team, useOverride: true);
+            // Supplies is on the PLAYER's status and not the mob's: NPCs neither earn dirt nor
+            // build with it, so the component that would report their sandbags does not exist.
             player.Status = objects.Spawn(ObjectType.PlayerStatus,
-                NetComponents.Owner | NetComponents.Health | NetComponents.Impulse, player.Position,
+                NetComponents.Owner | NetComponents.Health | NetComponents.Impulse
+                    | NetComponents.Supplies,
+                player.Position,
             obj =>
             {
                 obj.Owner = new OwnerState { PlayerId = clientId};
@@ -608,6 +614,9 @@ namespace Demiurge.GameServer
             long afterWeapons = Stopwatch.GetTimestamp();
             grenades.Tick(dt, _Tick, players.Values);
             mortars.Tick(dt, _Tick, players.Values);
+            // After the blast systems, so a crater dug this tick is the ground the trees standing
+            // in it are judged against on the same tick that made it.
+            trees.Tick(dt);
             RegenerateHealth(dt);
             long afterGrenades = Stopwatch.GetTimestamp();
 

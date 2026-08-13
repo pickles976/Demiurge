@@ -53,6 +53,7 @@ namespace Demiurge
         Attachment = 1 << 6,
         Team = 1 << 7,
         Impulse = 1 << 8,
+        Supplies = 1 << 9,
     }
 
     public struct TransformState : IMessageSerializable
@@ -61,6 +62,21 @@ namespace Demiurge
         public float Yaw;
         public void Serialize (Message m ) {m.AddVector3(Position); m.AddFloat(Yaw);}
         public void Deserialize(Message m) {Position = m.GetVector3(); Yaw = m.GetFloat();}
+    }
+
+    /// <summary>
+    /// What a man is carrying to build with, as DIRT rather than as sandbags.
+    ///
+    /// One number instead of two because sandbags are made of dirt at a fixed rate and nothing else
+    /// is made of either: carrying both would be two counters that can disagree. Dirt is the finer
+    /// unit, so the partial bag toward the next one is visible for free — see
+    /// <see cref="Digging.DirtPerSandbag"/>.
+    /// </summary>
+    public struct SuppliesState : IMessageSerializable
+    {
+        public byte Dirt;
+        public void Serialize(Message m) { m.AddByte(Dirt); }
+        public void Deserialize(Message m) { Dirt = m.GetByte(); }
     }
 
     public struct HealthState : IMessageSerializable
@@ -203,6 +219,7 @@ namespace Demiurge
         public AttachmentState Attachment;
         public TeamState Team;
         public ImpulseState Impulse;
+        public SuppliesState Supplies;
 
         public void Serialize(Message m)
         {
@@ -216,6 +233,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Attachment)) m.AddSerializable(Attachment);
             if (Mask.HasFlag(NetComponents.Team)) m.AddSerializable(Team);
             if (Mask.HasFlag(NetComponents.Impulse)) m.AddSerializable(Impulse);
+            if (Mask.HasFlag(NetComponents.Supplies)) m.AddSerializable(Supplies);
         }
 
         public void Deserialize(Message m)
@@ -230,6 +248,7 @@ namespace Demiurge
             if (Mask.HasFlag(NetComponents.Attachment)) Attachment = m.GetSerializable<AttachmentState>();
             if (Mask.HasFlag(NetComponents.Team)) Team = m.GetSerializable<TeamState>();
             if (Mask.HasFlag(NetComponents.Impulse)) Impulse = m.GetSerializable<ImpulseState>();
+            if (Mask.HasFlag(NetComponents.Supplies)) Supplies = m.GetSerializable<SuppliesState>();
         }
     }
 }

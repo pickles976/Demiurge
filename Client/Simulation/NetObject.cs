@@ -17,6 +17,7 @@ public class NetObject
     public AttachmentState Attachment;
     public TeamState Team;
     public ImpulseState Impulse;
+    public SuppliesState Supplies;
     
     public SnapshotBuffer Snapshots { get; } = new();
 }

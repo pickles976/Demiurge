@@ -541,7 +541,9 @@ namespace Demiurge.GameServer
 
             if (hasResource
                 && HorizontalDistanceSquared(mob.Position, resource.Position)
-                    <= PickupTargeting.RadiusSquared)
+                    <= PickupTargeting.RadiusSquared
+                && MathF.Abs(mob.Position.Y - resource.Position.Y)
+                    <= PickupTargeting.VerticalReach)
             {
                 if (resource.Kind == SquadResourceKind.AcquireWeapon)
                 {
@@ -562,6 +564,21 @@ namespace Demiurge.GameServer
                              || !ItemSystem.IsBeingWorked(resourceObject.NetworkId, actors)))
                 {
                     mob.OperatingObjectId = resourceObject.NetworkId;
+
+                    // He lays the tube before he fires it. A mortar keeps the heading it was set
+                    // down on and will only shoot within a sector of that, so a gunner who could not
+                    // turn one was limited to whatever the man who dropped it happened to be facing.
+                    // Turning it to the mission makes the shot legal and points the model the right
+                    // way; the commander already solves against this same heading.
+                    //
+                    // Instant and free, deliberately: traverse time, crew drills and a tube that
+                    // must be re-laid between missions are a bigger design than "can they turn it".
+                    var tube = resourceObject.Transform.Position;
+                    resourceObject.Transform.Yaw = MathF.Atan2(
+                        resource.Target.X - tube.X,
+                        resource.Target.Z - tube.Z);
+                    resourceObject.Dirty |= NetComponents.Transform;
+
                     _ = mortars.TryFire(mob, resourceObject, resource.Target, tick);
                     brain.DebugIntent = "MORTAR";
                     brain.Navigation.Progress.Reset();
@@ -1110,6 +1127,12 @@ namespace Demiurge.GameServer
                             },
                             tick,
                             plannedExcavation: true,
+                            // Stays narrow, and the reason is worth keeping written down: widening
+                            // this to the soft 0.7 bite makes a staircase that eats its own treads,
+                            // and NpcExcavatesOutOfADeepWidePit fails because the digger cuts the
+                            // ground out from under itself. Navigation corridors want the precise
+                            // brush; the ROUNDED brush belongs to the foxhole, which is shaping a
+                            // hollow rather than following a committed capsule.
                             narrowCorridor: brain.Navigation.PreciseExcavation);
                         terrainProgress = terrain.EditVersion != versionBeforeDig;
                         if (terrainProgress)
@@ -1982,7 +2005,8 @@ namespace Demiurge.GameServer
                     // is exactly "deep enough to peek over, low enough to crouch behind".
                     if (underFire || baseOfFire)
                     {
-                        _ = DigEmergencyCover(mob, primaryThreat.Position, tick, out bool dugCover);
+                        _ = DigEmergencyCover(
+                            mob, brain, primaryThreat.Position, tick, out bool dugCover);
                         digging |= dugCover;
                     }
                 }
@@ -2299,6 +2323,7 @@ namespace Demiurge.GameServer
         /// where nothing moved.</param>
         private bool DigEmergencyCover(
             ServerPlayer mob,
+            MobBrain brain,
             Vector3 threatPosition,
             uint tick,
             out bool swung)
@@ -2315,7 +2340,16 @@ namespace Demiurge.GameServer
             // neither jump out of nor, digging being off for combat paths, excavate its way out of.
             int gradeX = (int)MathF.Floor(mob.Position.X - toward.X * FoxholeGradeProbeDistance);
             int gradeZ = (int)MathF.Floor(mob.Position.Z - toward.Z * FoxholeGradeProbeDistance);
-            if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is not { } grade) return false;
+            if (SurfaceQuery.HighestSurfaceY(terrain, gradeX, gradeZ) is not { } probed) return false;
+
+            // Measured once and then held, which is the whole fix. Probing behind the actor keeps a
+            // man out of his OWN hole, but not out of the one his neighbour is digging a metre away
+            // -- and around a contested flag a squad entrenches shoulder to shoulder. Each man then
+            // read the bottom of somebody else's scrape as his ground level and cut FoxholePlan.Depth
+            // below THAT, the next man below him, and the position walked itself down into the hill.
+            // Holding the first answer bounds every scrape to that same depth under the surface as
+            // it was when the digging started.
+            float grade = brain.ObserveEmergencyGrade(mob.Position, probed);
 
             // The SHAPE of the position lives in FoxholePlan -- hole first, then widen, never the
             // parapet. This used to be a single probe half a metre in front, which cut a post-hole:
@@ -2337,7 +2371,15 @@ namespace Demiurge.GameServer
                     Target = target,
                     Hotbar = HotbarSlot.Shovel,
                 },
-                tick);
+                tick,
+                // A foxhole is shaped, not routed. FoxholePlan lays its bites out on integer cells,
+                // and a sphere repeated on a lattice scallops: every hollow comes out of the same
+                // stencil and the walls meet in the same facets, which is the milled look. The
+                // organic brush is that sphere with its surface pushed about by world-space noise,
+                // so neighbouring bites disagree slightly about where the wall is and the hole reads
+                // as dug. Navigation corridors keep the plain sphere — a noisy edge there would put
+                // bumps in a capsule that has to stay walkable.
+                shape: EditShape.Organic);
             return true;
         }
 

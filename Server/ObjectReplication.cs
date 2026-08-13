@@ -125,6 +125,7 @@ namespace Demiurge.GameServer
             Attachment = obj.Attachment,
             Team = obj.Team,
             Impulse = obj.Impulse,
+            Supplies = obj.Supplies,
         };
 
     }

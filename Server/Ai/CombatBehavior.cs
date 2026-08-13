@@ -9,6 +9,19 @@ namespace Demiurge.GameServer;
 internal sealed class CombatBehavior
 {
     private const float AimToleranceDegrees = 7f;
+    /// <summary>
+    /// How far the barrel sits below the eye. It matches what the PLAYER's muzzle does at the same
+    /// moment: LocalPlayerController takes his origin from the weapon model's own barrel, which
+    /// while aiming is about this far under his camera. The two sides now shoot from comparable
+    /// places rather than the AI shooting from its own eye.
+    ///
+    /// Vertical only, deliberately. A forward offset along the barrel would be more faithful still,
+    /// but it depends on the aim direction that is computed FROM this origin, and it can push the
+    /// muzzle out of the man and into whatever he is standing behind — which would make him
+    /// permanently mute rather than merely lower.
+    /// </summary>
+    private const float MuzzleDropFromEye = 0.22f;
+
     private const float AimTurnDegreesPerSecond = 180f;
     private const int ReactionTicks = (55 * NetworkConfig.TickRate + 99) / 100;
     private const int LostContactHoldTicks = 3 * NetworkConfig.TickRate / 2;
@@ -106,8 +119,13 @@ internal sealed class CombatBehavior
             brain.AimDirection = Facing(mob.Yaw);
         }
 
+        // A man shoots from his weapon, not from his eye. Perception still works off the eye — that
+        // is where seeing happens — but the round leaves the barrel, which sits below it, and the
+        // difference decides every shot taken over a crest or a parapet. Firing from the eye made a
+        // visible target a shootable one BY CONSTRUCTION, which is the shape of an unfair advantage
+        // even when it produced no complaint.
         float eyeHeight = mob.State.EyeHeight();
-        Vector3 origin = mob.Position + Vector3.UnitY * eyeHeight;
+        Vector3 origin = mob.Position + Vector3.UnitY * (eyeHeight - MuzzleDropFromEye);
         // Aim at whatever part of him perception actually had a line to. Centre mass is the fallback
         // for a remembered contact: nothing was seen this tick, and the obstruction check below
         // refuses the shot anyway.
@@ -235,13 +253,10 @@ internal sealed class CombatBehavior
             requestShot = true;
         }
 
+        // Asked of the weapon system, which is what will resolve the round: terrain AND the things
+        // standing in it. Casting terrain here on its own is how NPCs came to fire into tree trunks.
         float shotDistance = Vector3.Distance(origin, target);
-        var obstruction = TerrainRaycast.Cast(
-            terrain,
-            origin,
-            brain.AimDirection,
-            shotDistance);
-        if (obstruction is { } wall && wall.Distance < shotDistance - 0.1f)
+        if (weapons.IsShotBlocked(origin, brain.AimDirection, shotDistance))
             return new CombatOutcome(true, yaw, pitch, flags);
 
         if (requestShot

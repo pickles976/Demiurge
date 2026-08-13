@@ -68,12 +68,33 @@ public sealed class MinimapScript : SyncScript
     public const float CornerFootprint = ScreenRadius * 2f + ScreenMargin;
 
     private const float MarkerRadius = 5f;
+
+    /// <summary>
+    /// How long an enemy stays on the dial after live sight of him is lost, fading out over that
+    /// time rather than vanishing. Long enough to survive a man ducking into cover and standing up
+    /// again; short enough that a contact who has actually withdrawn stops being reported.
+    /// </summary>
+    private const float EnemyMemorySeconds = 6f;
     private const float FlagIconSize = 16f;
     private const int CircleSegments = 12;
 
     /// <summary>Icons in the pool. A conquest map has five flags; ten leaves room for a bigger one
     /// without the pool ever growing mid-frame.</summary>
     private const int MaxFlagIcons = 10;
+
+    /// <summary>Where an enemy was when he was last actually seen, and when that was.</summary>
+    private readonly record struct Sighting(System.Numerics.Vector3 Position, double Seconds);
+
+    private readonly Dictionary<ushort, Sighting> seenEnemies = [];
+
+    private double Now => Game.UpdateTime.Total.TotalSeconds;
+
+    private bool IntelReports(ushort actorId)
+    {
+        foreach (var contact in Intel.Contacts)
+            if (contact.ActorId == actorId) return true;
+        return false;
+    }
 
     private static readonly Color BorderColor = new(225, 230, 238, 130);
     private static readonly Color SelfColor = new(255, 255, 255, 255);
@@ -218,12 +239,40 @@ public sealed class MinimapScript : SyncScript
             foreach (var actor in Registry.Players)
             {
                 if (actor.IsDead || actor.Team == local.Team || actor.Team <= 0) continue;
-                if (!TryPlot(actor.Position, local.Position, sin, cos, centre, out var point))
-                    continue;
-                if (!CanSee(viewCamera, actor)) continue;
 
-                visibleEnemyIds.Add(actor.Id);
-                DrawDiamond(point, EnemyColor);
+                if (CanSee(viewCamera, actor))
+                {
+                    seenEnemies[actor.Id] = new Sighting(actor.Position, Now);
+                    visibleEnemyIds.Add(actor.Id);
+                    if (TryPlot(actor.Position, local.Position, sin, cos, centre, out var live))
+                        DrawDiamond(live, EnemyColor);
+                    continue;
+                }
+
+                // Out of sight, not out of mind. A man who drops into a foxhole was there a moment
+                // ago and almost certainly still is, and erasing him the instant his head goes down
+                // punished the gunner for the target doing the one thing targets do.
+                if (!seenEnemies.TryGetValue(actor.Id, out var sighting)) continue;
+
+                // Somebody else can see him RIGHT NOW. The team's own report is better than this
+                // one's memory, and drawing both would put two diamonds on one man — so yield, and
+                // let the intel pass below place him.
+                if (IntelReports(actor.Id)) continue;
+
+                float age = (float)(Now - sighting.Seconds);
+                if (age >= EnemyMemorySeconds)
+                {
+                    seenEnemies.Remove(actor.Id);
+                    continue;
+                }
+
+                // Drawn where he WAS, never where he is. Following a man you cannot see is the
+                // wallhack this gate exists to prevent — the memory is allowed to be stale, which is
+                // the whole difference between remembering a contact and tracking one.
+                var faded = EnemyColor;
+                faded.A = (byte)(EnemyColor.A * (1f - age / EnemyMemorySeconds));
+                if (TryPlot(sighting.Position, local.Position, sin, cos, centre, out var remembered))
+                    DrawDiamond(remembered, faded);
             }
         }
 

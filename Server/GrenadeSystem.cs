@@ -24,6 +24,8 @@ public sealed class GrenadeSystem
     private readonly ItemSystem items;
     private readonly TerrainSystem terrainEdits;
     private readonly ChunkMap terrain;
+    /// <summary>Trees take blast damage; null wherever a scenario has no trees to damage.</summary>
+    private readonly TreeSystem? trees;
     private readonly ActivityFeedSystem? activityFeed;
     private readonly List<ActiveGrenade> active = [];
 
@@ -32,12 +34,14 @@ public sealed class GrenadeSystem
         ItemSystem items,
         TerrainSystem terrainEdits,
         ChunkMap terrain,
-        ActivityFeedSystem? activityFeed = null)
+        ActivityFeedSystem? activityFeed = null,
+        TreeSystem? trees = null)
     {
         this.objects = objects;
         this.items = items;
         this.terrainEdits = terrainEdits;
         this.terrain = terrain;
+        this.trees = trees;
         this.activityFeed = activityFeed;
     }
 
@@ -260,6 +264,8 @@ public sealed class GrenadeSystem
             tick,
             GrenadeConfig.Blast,
             victim => activityFeed?.ReportKill(grenade.Owner, victim));
+
+        trees?.ApplyBlast(grenade.Position, GrenadeConfig.Blast);
 
         // Same reason as the mortar: the fuse expires mid-tick, so a grenade still in the air has
         // moved since its last broadcast and the burst belongs where it actually went off.

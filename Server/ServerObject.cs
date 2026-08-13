@@ -29,6 +29,7 @@ namespace Demiurge.GameServer
         public AttachmentState Attachment;
         public TeamState Team;
         public ImpulseState Impulse;
+        public SuppliesState Supplies;
 
         /// <summary>THE one place component state moves between server object
         /// instances (ItemSystem's equip/drop transitions). New component = one
@@ -45,6 +46,7 @@ namespace Demiurge.GameServer
             if (mask.HasFlag(NetComponents.Attachment)) dst.Attachment = src.Attachment;
             if (mask.HasFlag(NetComponents.Team)) dst.Team = src.Team;
             if (mask.HasFlag(NetComponents.Impulse)) dst.Impulse = src.Impulse;
+            if (mask.HasFlag(NetComponents.Supplies)) dst.Supplies = src.Supplies;
         }
     }
 }

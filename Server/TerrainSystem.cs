@@ -53,7 +53,8 @@ namespace Demiurge.GameServer
             PlayerDigData dig,
             uint tick,
             bool plannedExcavation = false,
-            bool narrowCorridor = false)
+            bool narrowCorridor = false,
+            EditShape shape = EditShape.Sphere)
         {
             if (!IsFinite(dig.Target)) return;
             if (tick < player.NextDigTick) return;
@@ -79,9 +80,16 @@ namespace Demiurge.GameServer
 
             bool placing = dig.Action == TerrainAction.Place;
 
+
             // The client will not ask while placement is off, so this is the server refusing to take
             // an old or hand-made request's word for it — the same reason reach is re-checked.
             if (placing && !Digging.PlacementEnabled) return;
+
+            // Building is a player's privilege for now. NPCs earn no dirt and carry no Supplies
+            // component, so a mob asking to build is asking to spend something it does not have —
+            // refused here rather than left to fall out of an empty counter, because "NPCs do not
+            // build yet" is a decision and should read as one.
+            if (placing && player.IsMob) return;
 
             // Nothing above the world to build on or into, and the top plane is where a section
             // stops owning grid points.
@@ -91,6 +99,12 @@ namespace Demiurge.GameServer
             // client's refusal is a highlight the player can see and this one is the rule.
             if (placing && Digging.WouldEncasePlayer(player.Position, target)) return;
 
+            // The cost, charged before the edit and refused if it cannot be paid — otherwise a man
+            // with an empty barrow still builds and the constraint is decorative. Digging is where
+            // the dirt comes from, so the two halves of the economy are the two halves of this one
+            // action and cannot drift apart.
+            if (!TrySpendSupplies(player, placing)) return;
+
             player.NextDigTick = tick + TicksPerDig;
 
             Apply(new TerrainEditData
@@ -99,11 +113,46 @@ namespace Demiurge.GameServer
                 HalfExtent = narrowCorridor ? Digging.PlannedBite : Digging.Bite,
                 Mode = placing ? EditMode.Add : EditMode.SubtractSoil,
                 Fill = placing ? Digging.PlacedBlock : BlockType.BlockType_Air,
-                Shape = EditShape.Sphere,
+                Shape = shape,
                 Strength = plannedExcavation
                     ? Digging.PlannedBiteStrength
                     : Digging.BiteStrength,
             });
+        }
+
+        /// <summary>
+        /// Charges a placement or credits a dig, and says whether the action may proceed.
+        ///
+        /// Digging fills up and stops: a full barrow does not refuse the swing, because the hole is
+        /// the point of digging and the dirt is a by-product. Building simply cannot happen without
+        /// the bag, so that one is a refusal.
+        ///
+        /// An actor with no Supplies component — every NPC — earns nothing here, which is the same
+        /// answer the gate above gives for building. It just costs nothing to say twice.
+        /// </summary>
+        private static bool TrySpendSupplies(ServerPlayer player, bool placing)
+        {
+            if (player.Status is not { } status
+                || !status.Has.HasFlag(NetComponents.Supplies))
+                return !placing;
+
+            int dirt = status.Supplies.Dirt;
+
+            if (placing)
+            {
+                if (dirt < Digging.DirtPerSandbag) return false;
+                dirt -= Digging.DirtPerSandbag;
+            }
+            else
+            {
+                dirt = Math.Min(Digging.MaxDirt, dirt + Digging.DirtPerDig);
+            }
+
+            if (dirt == status.Supplies.Dirt) return true;
+
+            status.Supplies = new SuppliesState { Dirt = (byte)dirt };
+            status.Dirty |= NetComponents.Supplies;
+            return true;
         }
 
         /// <summary>Applies an edit to the authoritative field and tells everyone to do the same.</summary>

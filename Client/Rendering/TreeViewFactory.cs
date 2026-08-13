@@ -25,6 +25,13 @@ namespace Demiurge
     public static class TreeViewFactory
     {
         private const string ModelPath = "assets/models/tree.gltf";
+
+        /// <summary>
+        /// A killed tree, as its own model rather than as the living one with the leaves taken off.
+        /// It carries no leaf material at all, so a dead tree is the model and nothing else — no
+        /// cards, no canopy, no detail levels to choose between.
+        /// </summary>
+        private const string DeadModelPath = "assets/models/dead_tree.gltf";
         private const string LeafTexturePath = "assets/textures/leaf_alpha_texture.png";
         private const int LeafMaterialSlot = 1;
         private const int AnchorCount = 5;
@@ -47,7 +54,7 @@ namespace Demiurge
             public int PerAnchor => ShellPerAnchor + InnerPerAnchor;
         }
 
-        private static readonly CardDetail NearCards = new(14, 8, 2.4f);
+        private static readonly CardDetail NearCards = new(28, 16, 2.4f);
         private static readonly CardDetail FarCards = new(3, 0, 5.2f);
 
         private static CardDetail Cards(LeafDetail detail)
@@ -141,6 +148,24 @@ namespace Demiurge
         }
 
         private const string LeafEntityName = "TreeLeafCards";
+
+        /// <summary>
+        /// Kills a tree's view: the dead trunk, and the canopy gone entirely. The leaf entity is
+        /// emptied rather than removed so the same entity can go on being a tree — and because a
+        /// dead tree has no detail levels, nothing will ask it for cards again.
+        /// </summary>
+        public static void SetDead(Entity tree, Game game)
+        {
+            if (tree.Get<ModelComponent>() is { } woody)
+                woody.Model = GLTFLoader.LoadModel(game, DeadModelPath);
+
+            foreach (var child in tree.Transform.Children)
+            {
+                if (child.Entity.Name == LeafEntityName
+                    && child.Entity.Get<ModelComponent>() is { } leaves)
+                    leaves.Model = null;
+            }
+        }
 
         /// <summary>
         /// The solid parts: trunk and branches near, trunk alone far.

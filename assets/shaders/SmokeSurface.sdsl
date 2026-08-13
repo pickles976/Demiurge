@@ -1,0 +1,42 @@
+// A smoke puff's whole surface: shaded as a sphere, faded by discarding pixels.
+//
+// SPHERE NORMAL. The model is a beveled cuboid — cheap geometry with flat faces and hard creases.
+// Lit by its own normals it reads as a box with the corners knocked off, which is what it is and
+// what smoke is not. The direction out from the puff's own centre makes light fall across it as a
+// smooth gradient, so twenty-odd triangles read as a soft round mass. Same idea the tree canopy
+// uses — shade by the volume, not by the facets.
+//
+// DITHER. The fade is a discard against a screen-space pattern rather than alpha blending, and that
+// is a bigger difference than it sounds. A blended puff must be sorted against every other puff,
+// cannot write depth, and costs its full area in fill every time it is overdrawn; a hundred of them
+// stacked up a column is the expensive case, and it is the ordinary case here. Discarding instead
+// makes each puff ORDINARY OPAQUE GEOMETRY: it depth-tests, it occludes, it needs no sorting, and a
+// puff hidden behind another costs nothing. What it buys with is precision — the fade is a stipple
+// rather than a smooth wash, which at these sizes and this distance reads as texture in the smoke.
+//
+// Interleaved gradient noise rather than a Bayer matrix: one line, no table to index, and its
+// pattern is far less regular than an ordered grid, so large flat puffs do not show a visible weave.
+namespace Demiurge
+{
+    // ShaderBaseStream is what declares ShadingPosition (SV_Position). Mixing in Texturing or
+    // Transformation does not bring it: the pixel position is a base-stream thing, not a material
+    // one, and without this the dither has no screen coordinate to key off.
+    shader SmokeSurface<float TAlpha>
+        : IMaterialSurface, ShaderBaseStream, NormalStream, PositionStream, Transformation
+    {
+        override void Compute()
+        {
+            float2 pixel = streams.ShadingPosition.xy;
+            float noise = frac(52.9829189f * frac(0.06711056f * pixel.x + 0.00583715f * pixel.y));
+            if (TAlpha < noise) discard;
+
+            float3 centre = float3(World[3][0], World[3][1], World[3][2]);
+            float3 outward = streams.PositionWS.xyz - centre;
+
+            // Degenerate exactly at the centre, which no surface vertex is; guard anyway so a puff
+            // scaled to nothing does not emit NaNs into the lighting.
+            float length2 = dot(outward, outward);
+            if (length2 > 1e-8f) streams.normalWS = outward * rsqrt(length2);
+        }
+    };
+}

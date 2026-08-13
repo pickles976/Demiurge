@@ -81,7 +81,11 @@ namespace Demiurge
             // The highlight follows the button that is DOWN, so the box moves to the far side of the
             // surface the moment you hold right — you see where the block will go before it goes
             // there. With nothing held it shows the dig, which is the shovel's resting meaning.
-            var action = placeDown ? TerrainAction.Place : TerrainAction.Dig;
+            // Holding place with an empty barrow shows the DIG highlight, not a placement outline
+            // the server would refuse. Same rule as PlacementEnabled: the client must not offer what
+            // will not happen, or the box sits on a voxel that never appears.
+            bool canBuild = Digging.SandbagsFrom(local.Status?.Supplies.Dirt ?? 0) > 0;
+            var action = placeDown && canBuild ? TerrainAction.Place : TerrainAction.Dig;
 
             if (FindTarget(action) is not { } target) return;
             Target = target;

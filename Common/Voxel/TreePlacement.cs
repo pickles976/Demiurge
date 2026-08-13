@@ -36,6 +36,13 @@ namespace Demiurge
         public const float TrunkHeight = 7.75f;
 
         /// <summary>
+        /// What it takes to kill a tree, in the same units a man's health is in — so a grenade that
+        /// would kill a man outright does not quite fell a tree, and it takes real explosive or
+        /// several to clear one.
+        /// </summary>
+        public const ushort MaxHealth = 50;
+
+        /// <summary>
         /// The trees of one patch. The placement grid is fixed to the world rather than to the
         /// centre, so a patch holds exactly the trees a whole-map pass would have put there and
         /// growing the radius adds trees without moving the ones already standing.

@@ -329740,6 +329740,86 @@
   ],
   "placements": [
     {
+      "id": "0eea4982-88aa-4f0d-9a35-40fa27b46838",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": -147,
+        "y": 24,
+        "z": 3,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "6adcda1c-ce65-4695-ad79-af40c6b10158",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 177,
+        "y": 28,
+        "z": -58,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "8670bf39-e978-485d-9ed5-180597f4de9b",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 64,
+        "y": 20,
+        "z": -268,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "cd1b1da6-b8d1-41c5-8580-78d642856cf9",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": -52,
+        "y": 41,
+        "z": -158,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
+      "id": "d0160205-e6dd-4293-875d-601cec92f0e1",
+      "kind": "pickup",
+      "archetypeId": "demiurge:mortar",
+      "cell": {
+        "x": 233,
+        "y": 34,
+        "z": -186,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "yaw": 0,
+      "weaponId": null,
+      "team": 1,
+      "groupId": null
+    },
+    {
       "id": "15203dd9-fc0b-4c86-ba25-3d1ec94efb04",
       "kind": "playerSpawn",
       "archetypeId": "demiurge:spawn/default",
