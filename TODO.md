@@ -5,16 +5,13 @@ For weapons, need to model sights and add anchors for camera to figure out where
 
 Use Codex for actual engineering work, Claude for just adding tiny features.
 
-1. Finish up AI with Codex
-2. Finish PVP MVP
-3. Make the environment richer
-4. Refactor commands
+1. Finish PVP MVP
+2. Make the environment richer
+3. Refactor commands
+4. Finish up AI with Codex
 5. Multiplayer test
 
-# NPC AI
-
-Claude is too stupid for AI behavioral stuff. Just use it for simple stuff.
-The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
+Performance improvements
 
 # Map Editor
 - [ ] improve ergonomics of terminal
@@ -48,6 +45,12 @@ The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
 ## Refactoring and Cleanup
 - Client performance
 - Finish AI
+# NPC AI
+
+Claude is too stupid for AI behavioral stuff. Just use it for simple stuff.
+The consolidated status and remaining work live in [AI_TODO.md](AI_TODO.md).
+  - finish stuff in AI_TODO.md
+  - AI needs to be more challenging and aggressive
 - Finish PVP features
 
 - Codex refactor certain parts of the code
@@ -67,8 +70,6 @@ https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/co
 # Research References
 
 - Grass system: https://nicogo1705.github.io/AssetStore/asset?id=com.nicogo.grass
-- Marching-cubes compute shader:
-  https://nicogo1705.github.io/AssetStore/asset?id=com.nicogo.marching-cube-compute-shader
 - SDSL overview: https://hackmd.io/@vN9HDo5XQAGVCM_epmoJBA/S1LxeorWT
 - Dual contouring:
   https://www.boristhebrave.com/2018/04/15/dual-contouring-tutorial/

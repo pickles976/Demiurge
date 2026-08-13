@@ -161,9 +161,14 @@ namespace Demiurge
 
             foreach (var child in tree.Transform.Children)
             {
+                // DISABLED, not nulled. A ModelComponent whose Model is null is a render object with
+                // nothing behind it: the mesh render feature has already registered it and still
+                // walks it, and what it walks through is a raw pointer. Turning the component off is
+                // the supported way to stop drawing something, and it leaves the component in a
+                // state the renderer understands.
                 if (child.Entity.Name == LeafEntityName
                     && child.Entity.Get<ModelComponent>() is { } leaves)
-                    leaves.Model = null;
+                    leaves.Enabled = false;
             }
         }
 

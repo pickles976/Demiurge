@@ -78,6 +78,13 @@ public sealed class RuntimeClientSession : IClientSession
         private long previousFrame;
         private long percentileWindowStart;
 
+        /// <summary>What the renderer was asked to draw. Set by the caller just before the window
+        /// closes — walking every visible render object is not something to do per frame for a
+        /// diagnostic.</summary>
+        private TriangleCounter.Frame geometry;
+
+        public void SetGeometry(TriangleCounter.Frame sample) => geometry = sample;
+
         public void Record(long t0, long t1, long t2, long t3, long t4)
         {
             frames++;
@@ -107,6 +114,9 @@ public sealed class RuntimeClientSession : IClientSession
 
             double perFrame = 1000.0 / Stopwatch.Frequency / frames;
             Log.Info(
+                $"scene: {geometry.Triangles:N0} tris | {geometry.Meshes:N0} draws "
+              + $"| {geometry.Views} view{(geometry.Views == 1 ? "" : "s")}");
+            Log.Info(
                 $"frame: {frames} fps | server {serverTicks * perFrame:F2} ms "
               + $"| net {networkTicks * perFrame:F2} | drain {drainTicks * perFrame:F2} "
               + $"| terrain {terrainTicks * perFrame:F2} "
@@ -119,6 +129,8 @@ public sealed class RuntimeClientSession : IClientSession
             worstMs = 0;
         }
     }
+    private long lastGeometrySample;
+
     private readonly ClientInputState inputState;
     private readonly PlayerRegistry registry;
     private readonly ObjectRegistry objectRegistry;
@@ -307,6 +319,10 @@ public sealed class RuntimeClientSession : IClientSession
 
     public void Update(GameTime time)
     {
+        // Before anything else looks at the scene: object views are built and torn down here rather
+        // than where the network delivered them, because scene mutation is the main thread's alone.
+        objectViews?.Pump();
+
         long t0 = Stopwatch.GetTimestamp();
         // The local server runs on its own thread; nothing to pump here. The slot is kept so the
         // frame log keeps its shape and so a regression that puts server work back on this thread
@@ -337,6 +353,15 @@ public sealed class RuntimeClientSession : IClientSession
                     lens,
                     lodFocus + System.Numerics.Vector3.UnitY * Digging.EyeHeight,
                     TerrainViewBuilder.Facing(local.Yaw, local.Pitch)));
+        // Sampled once a second, matching the window the breakdown prints on, so a diagnostic that
+        // walks every visible render object does not run sixty times a second to be used once.
+        if (Stopwatch.GetTimestamp() - lastGeometrySample
+            >= Stopwatch.Frequency)
+        {
+            lastGeometrySample = Stopwatch.GetTimestamp();
+            frame.SetGeometry(TriangleCounter.Sample(game.Services));
+        }
+
         frame.Record(t0, t1, t2, t3, Stopwatch.GetTimestamp());
 
         // Hold the player still until the ground they are standing on exists. Spawning into a world

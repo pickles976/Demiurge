@@ -30,6 +30,17 @@ namespace Demiurge
     {
         private const string ModelPath = "assets/models/smoke.gltf";
 
+        /// <summary>
+        /// Bisect switch. Set false to take the whole subsystem out — no entities, no materials, no
+        /// emitters — while leaving every call site in place.
+        ///
+        /// It exists because the access violation in TransformRenderFeature.Prepare names nothing
+        /// that caused it, and smoke and dead trees arrived together: a column appears exactly when
+        /// a tree dies, so "it crashes when smoke shows up" does not distinguish the two. One launch
+        /// with this off answers that, which no amount of reading the stack will.
+        /// </summary>
+        public const bool Enabled = true;
+
         /// <summary>Ceiling on live puffs. Past this the oldest is recycled rather than the pool
         /// grown, so a runaway emitter costs a constant amount.</summary>
         private const int MaxPuffs = 440;
@@ -125,6 +136,10 @@ namespace Demiurge
             public float Scale;
             public float Spin;
             public bool Live;
+
+            /// <summary>Which opacity material is currently on the component, so it is only
+            /// reassigned when it actually changes.</summary>
+            public int Step;
         }
 
         /// <summary>
@@ -210,7 +225,10 @@ namespace Demiurge
         /// later, a long way from the cause.
         /// </summary>
         public void Emit(Vector3 position, float seconds = DefaultEmitterSeconds)
-            => pendingEmitters.Enqueue(new Emitter { Position = position, Remaining = seconds });
+        {
+            if (!Enabled) return;
+            pendingEmitters.Enqueue(new Emitter { Position = position, Remaining = seconds });
+        }
 
         public int LivePuffs
         {
@@ -251,6 +269,7 @@ namespace Demiurge
             puff.Scale = MinScale + Next() * (MaxScale - MinScale);
             puff.Spin = Next() * MathF.Tau;
             puff.Age = 0f;
+            puff.Step = -1;
             puff.Live = true;
             Apply(puff);
             return true;
@@ -277,6 +296,7 @@ namespace Demiurge
 
         public void Update(float dt)
         {
+            if (!Enabled) return;
             if (warmFrames > 0) Warm();
 
             retireCooldown -= dt;
@@ -358,7 +378,17 @@ namespace Demiurge
             float alpha = life <= FadeStart
                 ? 1f
                 : 1f - (life - FadeStart) / (1f - FadeStart);
-            model.Materials[0] = Tint(alpha);
+
+            // Only when the STEP changes, which is twelve times in forty-five seconds rather than
+            // every frame. Assigning a material re-resolves the component's effect and resource
+            // group; doing that for hundreds of components every frame churns exactly the per-object
+            // render state that TransformRenderFeature.Prepare later writes through a raw pointer,
+            // in parallel, having assumed it stable for the frame.
+            int step = Step(alpha);
+            if (step == puff.Step) return;
+
+            puff.Step = step;
+            model.Materials[0] = Tint(step);
         }
 
         /// <summary>
@@ -395,7 +425,7 @@ namespace Demiurge
                     {
                         new ModelComponent(GLTFLoader.LoadModel(game, ModelPath))
                         {
-                            Materials = { [0] = Tint(step / (float)(AlphaSteps - 1)) },
+                            Materials = { [0] = Tint(step) },
                         },
                     };
                     entity.Transform.Scale = new Vector3(0.002f);
@@ -465,9 +495,11 @@ namespace Demiurge
         private const int AlphaSteps = 12;
         private readonly Dictionary<int, Material> alphaMaterials = [];
 
-        private Material Tint(float alpha)
+        private static int Step(float alpha)
+            => Math.Clamp((int)MathF.Round(alpha * (AlphaSteps - 1)), 0, AlphaSteps - 1);
+
+        private Material Tint(int step)
         {
-            int step = Math.Clamp((int)MathF.Round(alpha * (AlphaSteps - 1)), 0, AlphaSteps - 1);
             if (alphaMaterials.TryGetValue(step, out var cached)) return cached;
 
             float quantised = step / (float)(AlphaSteps - 1);
