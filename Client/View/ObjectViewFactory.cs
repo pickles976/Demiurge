@@ -59,37 +59,9 @@ public class ObjectViewFactory : IDisposable
                 },
             },
         };
-        registry.ObjectSpawned += OnSpawned;
-        registry.ObjectDespawned += OnDespawned;
+        registry.ObjectSpawned += CreateView;
+        registry.ObjectDespawned += DestroyView;
         registry.HealthDepleted += OnHealthDepleted;
-    }
-
-    /// <summary>
-    /// Object events as they arrive, and the reason this class does not act on them directly.
-    ///
-    /// NetworkManager.Dispatch delivers on the CALLING thread whenever latency simulation is off,
-    /// so every one of these events runs on the network thread. Building a view means adding an
-    /// entity to the scene, and doing that while the render thread is walking the render-object set
-    /// is how you get an access violation deep inside TransformRenderFeature.Prepare: it writes
-    /// world matrices through a raw pointer into per-draw constant buffers, indexed by arrays sized
-    /// for the object set it believes it has, in parallel. Nothing about the crash points back here.
-    ///
-    /// So the events are recorded and the scene is touched on the main thread, the same way
-    /// TerrainState queues chunks rather than applying them where they land.
-    /// </summary>
-    private readonly ConcurrentQueue<(bool Spawned, NetObject Object)> pendingViews = new();
-
-    private void OnSpawned(NetObject obj) => pendingViews.Enqueue((true, obj));
-    private void OnDespawned(NetObject obj) => pendingViews.Enqueue((false, obj));
-
-    /// <summary>Applies everything the network reported since the last frame. Main thread only.</summary>
-    public void Pump()
-    {
-        while (pendingViews.TryDequeue(out var change))
-        {
-            if (change.Spawned) CreateView(change.Object);
-            else DestroyView(change.Object);
-        }
     }
 
     /// <summary>
@@ -101,7 +73,6 @@ public class ObjectViewFactory : IDisposable
     {
         if (obj.Type != ObjectType.Tree) return;
 
-        // Both of these are already queued internally, so this one may stay where it lands.
         treeViews.Kill(obj.NetworkId);
 
         // A killed tree burns. Smoke marks what has been DESTROYED rather than merely what has been
@@ -119,8 +90,8 @@ public class ObjectViewFactory : IDisposable
 
     public void Dispose()
     {
-        registry.ObjectSpawned -= OnSpawned;
-        registry.ObjectDespawned -= OnDespawned;
+        registry.ObjectSpawned -= CreateView;
+        registry.ObjectDespawned -= DestroyView;
         registry.HealthDepleted -= OnHealthDepleted;
         // Before the sweep below, because the manager owns an entity of its own that the name
         // prefix would not catch.

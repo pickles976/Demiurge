@@ -115,10 +115,10 @@ public sealed class RuntimeClientSession : IClientSession
             double perFrame = 1000.0 / Stopwatch.Frequency / frames;
             Log.Info(
                 $"scene: {geometry.SceneTriangles:N0} tris in {geometry.SceneMeshes:N0} meshes"
+              + $" | {geometry.Views} view{(geometry.Views == 1 ? "" : "s")}"
               + (geometry.HasDrawn
-                  ? $" | drawn {geometry.DrawnTriangles:N0} tris in {geometry.DrawnMeshes:N0} "
-                    + $"across {geometry.Views} view{(geometry.Views == 1 ? "" : "s")}"
-                  : " | drawn n/a"));
+                  ? $" | drawn {geometry.DrawnTriangles:N0} tris in {geometry.DrawnMeshes:N0}"
+                  : " | drawn n/a (collector empty at sample time)"));
             Log.Info(
                 $"frame: {frames} fps | server {serverTicks * perFrame:F2} ms "
               + $"| net {networkTicks * perFrame:F2} | drain {drainTicks * perFrame:F2} "
@@ -322,9 +322,12 @@ public sealed class RuntimeClientSession : IClientSession
 
     public void Update(GameTime time)
     {
-        // Before anything else looks at the scene: object views are built and torn down here rather
-        // than where the network delivered them, because scene mutation is the main thread's alone.
-        objectViews?.Pump();
+        // THE thread boundary. Everything the network reported since the last frame is replayed
+        // here, on the main thread, before anything looks at the scene — see PlayerRegistry's
+        // comment on the sim -> view events for why this is a hard rule rather than a precaution.
+        // Nothing below this line may be reached from a network or worker thread.
+        registry.Pump();
+        objectRegistry.Pump();
 
         long t0 = Stopwatch.GetTimestamp();
         // The local server runs on its own thread; nothing to pump here. The slot is kept so the
@@ -362,7 +365,7 @@ public sealed class RuntimeClientSession : IClientSession
             >= Stopwatch.Frequency)
         {
             lastGeometrySample = Stopwatch.GetTimestamp();
-            frame.SetGeometry(TriangleCounter.Sample(game.Services, scene));
+            frame.SetGeometry(TriangleCounter.Sample(scene));
         }
 
         frame.Record(t0, t1, t2, t3, Stopwatch.GetTimestamp());
@@ -440,14 +443,28 @@ public sealed class RuntimeClientSession : IClientSession
         entity.Remove<ShotEffectsScript>();
     }
 
+    /// <summary>
+    /// The trunks local prediction collides against, built from what the server has replicated.
+    ///
+    /// Add-only, because a tree never despawns — it dies and stays standing as a dead trunk, which
+    /// still stops a man. If they ever do get removed this needs a matching removal or a man will
+    /// walk into something that is no longer there.
+    /// </summary>
+    private readonly TreeColliders treeColliders = new();
+
     private void OnObjectSpawned(NetObject obj)
     {
+        if (obj.Type == ObjectType.Tree) treeColliders.Add(obj.Transform.Position);
         if (registry.LocalPlayer is { } local) LinkOwned(local, obj);
     }
 
     private void OnPlayerJoined(Player player)
     {
         if (player is not LocalPlayer local) return;
+
+        // Prediction has to step against exactly what the server steps against, trees included, or
+        // every stride near a wood produces a reconciliation correction.
+        local.Trees = treeColliders;
         foreach (var obj in objectRegistry.Objects) LinkOwned(local, obj);
     }
 

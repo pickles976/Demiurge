@@ -11,7 +11,7 @@ Use Codex for actual engineering work, Claude for just adding tiny features.
 4. Finish up AI with Codex
 5. Multiplayer test
 
-Performance improvements
+- Performance improvements
 
 # Map Editor
 - [ ] improve ergonomics of terminal

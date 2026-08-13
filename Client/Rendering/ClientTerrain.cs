@@ -53,7 +53,24 @@ namespace Demiurge
         int batchVertices;
         bool batchUrgent;
         bool uploadedBatch;
-        readonly Queue<LodSection> dirtyQueue = new();
+        /// <summary>
+        /// Streaming work, NEAREST FIRST.
+        ///
+        /// It was a plain queue, so sections meshed in whatever order they were marked — which is
+        /// the order the LOD selection walked the quadtree, not the order you can see them in. A box
+        /// behind you could sit ahead of the ground under your feet, and on a busy frame the ground
+        /// under your feet is what waits.
+        ///
+        /// Priority is squared distance from the eye to the box's centre, stamped when the section
+        /// is queued and re-stamped whenever it is put back. Stale for a section that has waited
+        /// while the player moved, and that is fine: this decides which of several thousand boxes to
+        /// mesh next, and being approximately right about that is the whole of the job.
+        /// </summary>
+        readonly PriorityQueue<LodSection, float> dirtyQueue = new();
+
+        /// <summary>Where distances are measured from. Updated with the LOD selection, since that is
+        /// already the point at which the view is considered to have moved.</summary>
+        Vector3 dispatchOrigin;
 
         /// <summary>
         /// Edit-dirtied sections, prioritized over the streaming backlog for visible response.
@@ -197,11 +214,25 @@ namespace Demiurge
         /// Ordinary worker completions are staged to this many geometric sections before allocating
         /// Vulkan buffers. Workers otherwise trickle two or three results into each frame and pay the
         /// driver's fixed allocation cost for every tiny batch. Urgent edit meshes bypass the floor.
+        ///
+        /// REVERTED to 12 after raising it to 32 produced corrupted frames — visible garbage
+        /// triangles over the sky, then an access violation in the mesh render feature. The
+        /// mechanism was never established; what is established is that these caps were 64/150,000
+        /// when the LOD landed and were deliberately reduced to 24/60,000 afterwards, and that
+        /// raising them brought a rendering fault back. Treat that reduction as load-bearing until
+        /// somebody explains it.
+        ///
+        /// The measurement that motivated the change still stands and is worth keeping: cost per
+        /// batch is FLAT across a 2.3x spread in size (1,932 verts cost 5.18 ms, 4,529 cost 5.15),
+        /// so the price is the fixed allocation and fewer-fuller batches genuinely would be cheaper.
+        /// The way to get there is fewer sections needing upload at all — which the cache fix
+        /// delivers — not a bigger cap.
         /// </summary>
         const int MinBatchSections = 12;
 
-        /// <summary>At most one render-node insertion batch per frame. Twenty-four sections per
-        /// frame still clears more than a thousand geometric sections per second at 60 FPS.</summary>
+        /// <summary>At most one render-node insertion batch per frame — one fixed allocation cost is
+        /// what a frame can afford. At the raised floor that is still nearly two thousand sections a
+        /// second at 60 FPS.</summary>
         const int MaxUploadBatchesPerFrame = 1;
 
         /// <summary>Render-node removals per frame. A cache trim may have hundreds of candidates;
@@ -212,10 +243,23 @@ namespace Demiurge
         const int BufferReleaseDelayFrames = 3;
 
         /// <summary>
-        /// GPU-backed section cache ceiling. Batched buffers live until their last section is released;
-        /// <see cref="Diagnostics"/> reports any resulting memory pinning.
+        /// How much GPU-backed geometry may be held BEYOND what is currently on screen.
+        ///
+        /// Expressed as headroom over the live set rather than as a flat ceiling, and that is a fix
+        /// rather than a preference. A flat 1024 never bounded anything: eviction may only take boxes
+        /// that are detached and unwanted, so live geometry is untouchable by it. With 1273 boxes
+        /// live the budget was already blown before a single cached box existed, so the check fired
+        /// every frame and the only thing it could evict was the cache itself. Measured result:
+        /// `reused 0` against `evicted 604` — a cache with a zero percent hit rate, which is to say
+        /// no cache, which is to say every box that left the view and came back was re-meshed.
+        ///
+        /// Headroom cannot invert that way. It is always room for a cache on top of whatever is
+        /// being drawn, and it grows and shrinks with the view rather than with the constant.
         /// </summary>
-        const int MaxCachedGeometry = 1024;
+        const int CachedGeometryHeadroom = 1536;
+
+        /// <summary>Floor for the above, so a nearly empty view still keeps a usable cache.</summary>
+        const int MinCachedGeometry = 1024;
 
         /// <summary>
         /// Total cache entries, empties included. Empties cost a dictionary slot rather than memory,
@@ -289,6 +333,7 @@ namespace Demiurge
             long refreshStart = Stopwatch.GetTimestamp();
 
             lodAnchor = anchor;
+            dispatchOrigin = view.Origin;
             lastForward = view.Forward;
             lastTanHalfFov = view.TanHalfFovY;
             lod.CollectDesired(view, desired);
@@ -321,20 +366,43 @@ namespace Demiurge
             // Scan the small edit lane fully so an in-flight section cannot block ready neighbours.
             int urgentScans = urgentQueue.Count;
             while (urgentScans-- > 0 && inFlight.Count < MaxInFlight && urgentQueue.Count > 0)
-                TryDispatch(urgentQueue.Dequeue(), urgentQueue);
+            {
+                var edit = urgentQueue.Dequeue();
+                if (!TryDispatch(edit, urgentLane: true)) urgentQueue.Enqueue(edit);
+            }
 
             int scans = Math.Min(dirtyQueue.Count, MaxDispatchScan);
 
             while (scans-- > 0 && inFlight.Count < MaxInFlight && dirtyQueue.Count > 0)
-                TryDispatch(dirtyQueue.Dequeue(), dirtyQueue);
+            {
+                var next = dirtyQueue.Dequeue();
+
+                // Re-stamped on the way back in rather than keeping its old key: a section that could
+                // not go yet has been waiting, and where the player is NOW is what should decide when
+                // it is tried again.
+                if (!TryDispatch(next, urgentLane: false))
+                    dirtyQueue.Enqueue(next, DistanceSqFromEye(next));
+            }
+        }
+
+        /// <summary>Squared distance from the eye to a box's centre. Squared because it is only ever
+        /// compared, and the box's centre because its corner would rank a big distant box by whichever
+        /// corner happened to face you.</summary>
+        float DistanceSqFromEye(LodSection section)
+        {
+            float half = section.Size * 0.5f;
+            float dx = section.OriginX + half - dispatchOrigin.X;
+            float dy = section.OriginY + half - dispatchOrigin.Y;
+            float dz = section.OriginZ + half - dispatchOrigin.Z;
+            return dx * dx + dy * dy + dz * dz;
         }
 
         /// <summary>
-        /// Submits one section, or puts it back in <paramref name="requeue"/> if it cannot go yet.
-        /// Returns false only when it was requeued, so a caller draining a lane can stop rather than
-        /// spin on a section that will not become dispatchable this frame.
+        /// Submits one section. Returns FALSE when it cannot go yet and the caller should put it
+        /// back — the caller rather than this, because the two lanes requeue differently: edits keep
+        /// their arrival order, streaming work is re-ranked by distance on the way back in.
         /// </summary>
-        bool TryDispatch(LodSection section, Queue<LodSection> requeue)
+        bool TryDispatch(LodSection section, bool urgentLane)
         {
             // No longer wanted at this level — the player moved and it was replaced by a coarser or
             // finer box, so meshing it would be work nobody will look at.
@@ -349,23 +417,18 @@ namespace Demiurge
 
             // Already being meshed: leave it queued so the newer request is honoured after the
             // in-flight result lands, rather than racing two jobs for one section.
-            if (inFlight.Contains(section))
-            {
-                requeue.Enqueue(section);
-                return false;
-            }
+            if (inFlight.Contains(section)) return false;
 
             // Workers cannot read incomplete footprints. Drop incomplete edit jobs; ChunkCompleted
             // marks them again if they later stream in. Ordinary streaming jobs wait in their queue.
             if (!terrain.FootprintComplete(section))
             {
-                if (ReferenceEquals(requeue, urgentQueue))
+                if (urgentLane)
                 {
                     dirtySet.Remove(section);
                     editTiming.Remove(section);
                     return true;
                 }
-                requeue.Enqueue(section);
                 return false;
             }
 
@@ -559,7 +622,7 @@ namespace Demiurge
                 ReportEditLatency(batch[i].Section);
             }
 
-            stats.Record(hasGeometry: true, cost, factory.LastGpuTicks, batch.Count);
+            stats.Record(hasGeometry: true, cost, factory.LastGpuTicks, batch.Count, batchVertices);
             applied += batch.Count;
             batch.Clear();
             batchVertices = 0;
@@ -690,7 +753,10 @@ namespace Demiurge
         /// </summary>
         void EvictOverBudget()
         {
-            if (cachedGeometry <= MaxCachedGeometry && cache.Count <= MaxCachedSections) return;
+            // The live set is not evictable, so the budget has to be measured from it — see
+            // CachedGeometryHeadroom for what happens when it is not.
+            int geometryCeiling = Math.Max(MinCachedGeometry, attached.Count + CachedGeometryHeadroom);
+            if (cachedGeometry <= geometryCeiling && cache.Count <= MaxCachedSections) return;
 
             evictionScratch.Clear();
             foreach (var (section, entry) in cache)
@@ -699,7 +765,7 @@ namespace Demiurge
 
             evictionScratch.Sort(static (a, b) => a.LastUsed.CompareTo(b.LastUsed));
 
-            int geometryTarget = (int)(MaxCachedGeometry * EvictionTarget);
+            int geometryTarget = (int)(geometryCeiling * EvictionTarget);
             int sectionTarget = (int)(MaxCachedSections * EvictionTarget);
 
             int evictions = 0;
@@ -746,7 +812,15 @@ namespace Demiurge
 
             long windowStart;
             int frames;
-            int uploads;         // sections that produced geometry and so cost a GPU buffer
+            int uploads;             // sections that produced geometry and so cost a GPU buffer
+
+            /// <summary>
+            /// Vertices per batch, reported so the batching question can be settled by measurement
+            /// rather than argument: if the upload cost tracks this, it is proportional to bytes and
+            /// bigger batches buy nothing; if it tracks the batch COUNT instead, the cost is the
+            /// fixed Vulkan allocation and batches should be fewer and fuller.
+            /// </summary>
+            long batchVerts;
             int empties;         // sections that meshed to nothing; effectively free
             long uploadTicks;    // whole Swap: CPU prep + GPU buffers + scene attach
             long gpuTicks;       // just the two Buffer.New calls inside it
@@ -757,9 +831,9 @@ namespace Demiurge
 
             int batches;
 
-            public void Record(bool hasGeometry, long ticks, long gpu, int sections = 1)
+            public void Record(bool hasGeometry, long ticks, long gpu, int sections = 1, long vertices = 0)
             {
-                if (hasGeometry) { uploads += sections; batches++; uploadTicks += ticks; gpuTicks += gpu; }
+                if (hasGeometry) { uploads += sections; batches++; uploadTicks += ticks; gpuTicks += gpu; batchVerts += vertices; }
                 else { empties += sections; emptyTicks += ticks; }
             }
 
@@ -850,7 +924,8 @@ namespace Demiurge
                     Log.Info(
                         $"terrain: {frames} frames | {uploads} sections in {batches} batches "
                       + $"@ {Ms(uploadTicks) / Math.Max(batches, 1):F2} ms/batch "
-                      + $"(gpu {Ms(gpuTicks) / Math.Max(batches, 1):F2}) = {uploads / elapsed:F0} sections/s "
+                      + $"(gpu {Ms(gpuTicks) / Math.Max(batches, 1):F2}, "
+                      + $"{batchVerts / Math.Max(batches, 1):N0} verts) = {uploads / elapsed:F0} sections/s "
                       + $"| empty {empties} | budget cut {budgetHits}/{frames} "
                       + $"| dirty {dirtyDepth} | inFlight {inFlightCount} "
                       + $"| urgent {urgentDepth} blocked {urgentBlocked}/{frames} | notReady {notReady}");
@@ -867,6 +942,7 @@ namespace Demiurge
                 windowStart = now;
                 reused = evicted = invalidated = 0;
                 frames = uploads = empties = budgetHits = batches = urgentBlocked = notReady = 0;
+                batchVerts = 0;
                 editSections = 0;
                 editWaitTicks = editWorkTicks = editWorstTicks = 0;
                 uploadTicks = emptyTicks = gpuTicks = 0;
@@ -892,7 +968,8 @@ namespace Demiurge
             if (markingUrgent)
                 editTiming[section] = (Stopwatch.GetTimestamp(), 0L);
 
-            (markingUrgent ? urgentQueue : dirtyQueue).Enqueue(section);
+            if (markingUrgent) urgentQueue.Enqueue(section);
+            else dirtyQueue.Enqueue(section, DistanceSqFromEye(section));
         }
 
         /// <summary>

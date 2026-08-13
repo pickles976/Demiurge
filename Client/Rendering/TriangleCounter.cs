@@ -1,6 +1,7 @@
 using Stride.Core;
 using Stride.Engine;
 using Stride.Rendering;
+using Stride.Rendering.Compositing;
 
 namespace Demiurge
 {
@@ -17,8 +18,55 @@ namespace Demiurge
     /// drawn figure means the sample landed before the renderer had filled anything, not that
     /// nothing is on screen.
     /// </summary>
+    /// <summary>
+    /// Samples the visible-object counts from inside the DRAW phase, which is the only place they
+    /// exist.
+    ///
+    /// RenderSystem.Views is empty when read from Update — measured, not assumed: the counter
+    /// reported `0 views` from there every second. The compositor populates the view list while
+    /// drawing and it is gone again by the time scripts run, so a post-cull count cannot be taken
+    /// from the session's update at all. A scene renderer runs in the right phase, and the
+    /// compositor already carries one for line drawing.
+    /// </summary>
+    public sealed class GeometryStatsRenderer : SceneRendererBase
+    {
+        protected override void DrawCore(RenderContext context, RenderDrawContext drawContext)
+        {
+            long triangles = 0;
+            int meshes = 0;
+            int views = 0;
+
+            foreach (var view in context.RenderSystem.Views)
+            {
+                views++;
+                foreach (var candidate in view.RenderObjects)
+                {
+                    if (candidate is not RenderMesh mesh) continue;
+                    meshes++;
+                    triangles += TriangleCounter.Triangles(mesh.Mesh);
+                }
+            }
+
+            TriangleCounter.ReportDrawn(triangles, meshes, views);
+        }
+    }
+
     public static class TriangleCounter
     {
+        // Written on the render thread, read on the main one, and neither cares about tearing: it is
+        // a diagnostic printed once a second, and a stale or half-updated triple says the same thing
+        // about a frame as a fresh one.
+        private static long drawnTriangles;
+        private static int drawnMeshes;
+        private static int drawnViews;
+
+        public static void ReportDrawn(long triangles, int meshes, int views)
+        {
+            drawnTriangles = triangles;
+            drawnMeshes = meshes;
+            drawnViews = views;
+        }
+
         public readonly record struct Frame(
             long SceneTriangles,
             int SceneMeshes,
@@ -29,34 +77,14 @@ namespace Demiurge
             public bool HasDrawn => DrawnMeshes > 0;
         }
 
-        public static Frame Sample(IServiceRegistry services, Scene scene)
+        public static Frame Sample(Scene scene)
         {
             long sceneTriangles = 0;
             int sceneMeshes = 0;
             Walk(scene, ref sceneTriangles, ref sceneMeshes);
 
-            long drawnTriangles = 0;
-            int drawnMeshes = 0;
-            int views = 0;
-
-            if (services.GetService<SceneSystem>()?.GraphicsCompositor?.RenderSystem is { } render)
-            {
-                foreach (var view in render.Views)
-                {
-                    views++;
-                    foreach (var candidate in view.RenderObjects)
-                    {
-                        // Meshes only. A render object may be a sprite, a light or a background, and
-                        // none of those has a triangle count worth adding to this one.
-                        if (candidate is not RenderMesh mesh) continue;
-
-                        drawnMeshes++;
-                        drawnTriangles += Triangles(mesh.Mesh);
-                    }
-                }
-            }
-
-            return new Frame(sceneTriangles, sceneMeshes, drawnTriangles, drawnMeshes, views);
+            return new Frame(
+                sceneTriangles, sceneMeshes, drawnTriangles, drawnMeshes, drawnViews);
         }
 
         /// <summary>
@@ -87,6 +115,6 @@ namespace Demiurge
 
         /// <summary>DrawCount is INDICES for an indexed draw and vertices otherwise, and either way
         /// three of them make a triangle — every primitive in this project is a triangle list.</summary>
-        private static long Triangles(Mesh mesh) => mesh.Draw is { } draw ? draw.DrawCount / 3 : 0;
+        internal static long Triangles(Mesh mesh) => mesh.Draw is { } draw ? draw.DrawCount / 3 : 0;
     }
 }

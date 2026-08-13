@@ -176,6 +176,9 @@ namespace Demiurge.GameServer
                 terrain, terrainEdits, weapons, items, flags, grenades,
                 mortars: mortars, intel: intel);
 
+            // After both exist: one collider set, shared by every actor the movement step moves.
+            mobs.UseTreeColliders(trees.Colliders);
+
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
 
@@ -570,7 +573,7 @@ namespace Demiurge.GameServer
                     var intent = player.IsOperating ? Vector3.Zero : move.Intent;
                     PlayerMovement.Step(
                         terrain, ref player.Move, intent, move.State, dt,
-                        items.MoveSpeedScale(player, move.Hotbar));
+                        items.MoveSpeedScale(player, move.Hotbar), trees.Colliders);
                     player.State = move.State;
                     player.Yaw = move.Yaw;
                     player.Pitch = move.Pitch;
@@ -583,7 +586,7 @@ namespace Demiurge.GameServer
                 if (!processedAny)
                     PlayerMovement.Step(
                         terrain, ref player.Move, player.LastIntent, player.State, dt,
-                        items.MoveSpeedScale(player, player.Hotbar));
+                        items.MoveSpeedScale(player, player.Hotbar), trees.Colliders);
             }
             mobs.RecordTick(mobMovementTicks, mobCount);
             while (mobs.TryDequeueStuckMob(out ushort stuckMobId))

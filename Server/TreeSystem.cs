@@ -27,6 +27,13 @@ namespace Demiurge.GameServer
         private readonly ObjectReplication objects;
         private readonly ChunkMap terrain;
         private readonly List<Tree> trees = [];
+
+        /// <summary>
+        /// The trunks movement collides against, kept beside the trees themselves so the two cannot
+        /// drift. The CLIENT builds the same structure from what it has been sent — see
+        /// TreeColliders on why the shared movement step needs both ends to agree.
+        /// </summary>
+        public TreeColliders Colliders { get; } = new();
         private long observedTerrainVersion = long.MinValue;
 
         public TreeSystem(ObjectReplication objects, ChunkMap terrain)
@@ -54,6 +61,7 @@ namespace Demiurge.GameServer
             // Its own floor is where it stands. Resolving it now rather than on the first terrain
             // edit means a tree planted over a hole does not begin life falling.
             trees.Add(new Tree { Object = obj, GroundY = position.Y });
+            Colliders.Add(position);
             return obj;
         }
 

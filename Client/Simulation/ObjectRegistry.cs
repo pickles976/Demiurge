@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Demiurge;
 using Demiurge.GameClient;
 
@@ -11,8 +12,28 @@ public class ObjectRegistry : IDisposable
     private readonly Dictionary<uint, Queue<ObjectStateData>> pendingUpdates = new();
     private const int MaxPendingPerObject = 30;
 
-    public event Action<NetObject>? ObjectSpawned;   // sim -> view boundary
+    /// <summary>
+    /// The sim -> view boundary, which is also a THREAD boundary — see PlayerRegistry for the whole
+    /// argument. Raised from <see cref="Pump"/> on the main thread, never where they are produced.
+    /// </summary>
+    public event Action<NetObject>? ObjectSpawned;
     public event Action<NetObject>? ObjectDespawned;
+
+    private readonly ConcurrentQueue<(int Kind, NetObject Object)> pendingViewEvents = new();
+
+    /// <summary>Replays everything the network reported since the last frame. MAIN THREAD ONLY.</summary>
+    public void Pump()
+    {
+        while (pendingViewEvents.TryDequeue(out var change))
+        {
+            switch (change.Kind)
+            {
+                case 0: ObjectSpawned?.Invoke(change.Object); break;
+                case 1: ObjectDespawned?.Invoke(change.Object); break;
+                default: HealthDepleted?.Invoke(change.Object); break;
+            }
+        }
+    }
     /// <summary>
     /// Raised at the exact state-update boundary when a living object's health reaches zero.
     /// Consumers cannot reliably poll for this: the server follows death with a respawn health
@@ -55,7 +76,7 @@ public class ObjectRegistry : IDisposable
             foreach (var update in queued)
                 Apply(obj, update);
 
-        ObjectSpawned?.Invoke(obj);   // after pending applies, so the view builds from newest state
+        pendingViewEvents.Enqueue((0, obj));   // after pending applies, so the view builds from newest state
     }
 
     private void OnDespawn(ObjectDespawnData data)
@@ -67,7 +88,7 @@ public class ObjectRegistry : IDisposable
         // ObjectDespawnData.Position. Written before the event so a subscriber reading the object's
         // transform gets the final answer rather than the newest broadcast one.
         obj.Transform.Position = data.Position;
-        ObjectDespawned?.Invoke(obj);
+        pendingViewEvents.Enqueue((1, obj));
     }
 
     private void OnState(ObjectStateData data)
@@ -113,7 +134,7 @@ public class ObjectRegistry : IDisposable
             var previous = obj.Health;
             obj.Health = state.Health;
             if (notifyHealthDepleted && previous.Current > 0 && state.Health.Current == 0)
-                HealthDepleted?.Invoke(obj);
+                pendingViewEvents.Enqueue((2, obj));
         }
         if (state.Mask.HasFlag(NetComponents.Weapon)) obj.Weapon = state.Weapon;
         if (state.Mask.HasFlag(NetComponents.Owner)) obj.Owner = state.Owner;

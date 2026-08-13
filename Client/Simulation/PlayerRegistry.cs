@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
 using Demiurge;
@@ -11,8 +12,33 @@ public class PlayerRegistry : IDisposable
     private readonly WeaponMount mount;      // ... and derives its shot origin from it
 
     public LocalPlayer? LocalPlayer {get; private set;}
-    public event Action<Player>? PlayerJoined; // sim -> view boundary
+    /// <summary>
+    /// The sim -> view boundary, and it is a THREAD boundary as much as a layer one.
+    ///
+    /// Everything above this line arrives on the network thread: NetworkManager.Dispatch delivers on
+    /// the calling thread whenever latency simulation is off. Everything below it builds and destroys
+    /// Stride objects — entities, model components, scene membership — and the renderer walks those
+    /// from its own threads during Draw, on the assumption that nobody is changing them.
+    ///
+    /// So these do not fire where they are raised. They are queued and replayed by <see cref="Pump"/>
+    /// on the main thread, which makes the boundary hermetic rather than a rule each subscriber has
+    /// to remember. A subscriber that forgot it produced an access violation deep inside
+    /// TransformRenderFeature, naming nothing that caused it.
+    /// </summary>
+    public event Action<Player>? PlayerJoined;
     public event Action<Player>? PlayerLeft;
+
+    private readonly ConcurrentQueue<(bool Joined, Player Player)> pendingViewEvents = new();
+
+    /// <summary>Replays everything the network reported since the last frame. MAIN THREAD ONLY.</summary>
+    public void Pump()
+    {
+        while (pendingViewEvents.TryDequeue(out var change))
+        {
+            if (change.Joined) PlayerJoined?.Invoke(change.Player);
+            else PlayerLeft?.Invoke(change.Player);
+        }
+    }
     public IEnumerable<Player> Players => players.Values;
 
 
@@ -71,7 +97,7 @@ public class PlayerRegistry : IDisposable
             : new RemotePlayer {Id = data.PlayerId, Position = data.Position, Team = data.Team};
 
         players[data.PlayerId] = player;
-        PlayerJoined?.Invoke(player);
+        pendingViewEvents.Enqueue((true, player));
     }
 
     /// <summary>
@@ -95,7 +121,7 @@ public class PlayerRegistry : IDisposable
     {
         Player player = players[data.PlayerId];
         players.Remove(data.PlayerId);
-        PlayerLeft?.Invoke(player);
+        pendingViewEvents.Enqueue((false, player));
     }
 
     public bool TryGet(ushort playerId, out Player player) => players.TryGetValue(playerId, out player!);

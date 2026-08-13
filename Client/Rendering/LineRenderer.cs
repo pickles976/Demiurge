@@ -72,6 +72,20 @@ namespace Demiurge
                 DrawLine(points[points.Count - 1], points[0], color);
         }
 
+        /// <summary>
+        /// The same chain of segments, reading the scene depth buffer — the polyline counterpart to
+        /// <see cref="DrawDepthTestedLine"/>, for trails belonging to something PHYSICAL rather than
+        /// to the debug overlay.
+        /// </summary>
+        public static void DrawDepthTestedPolyline(
+            IReadOnlyList<Vector3> points, Color color, bool closed = false)
+        {
+            for (int i = 0; i + 1 < points.Count; i++)
+                DrawDepthTestedLine(points[i], points[i + 1], color);
+            if (closed && points.Count > 2)
+                DrawDepthTestedLine(points[points.Count - 1], points[0], color);
+        }
+
         /// <summary>A 3-axis cross marking a world position.</summary>
         public static void DrawPoint(Vector3 p, Color color, float size = 0.1f)
         {

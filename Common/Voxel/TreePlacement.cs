@@ -28,11 +28,17 @@ namespace Demiurge
         /// <see cref="SinkDepth"/> below the surface, so the trunk starts underground and the part
         /// standing above it is shorter by that much.
         ///
-        /// The model's trunk mesh is a one-metre square column 7.75 m tall, so this is the cylinder
-        /// inscribed in it: a shot clips the corners of the drawn trunk rather than being stopped by
-        /// air beside it, which is the side to err on.
+        /// The drawn trunk is not one width: it is a twelve-sided column that TAPERS, half a metre
+        /// across at the crown and a metre at the base, over 7.75 m. One radius has to stand for all
+        /// of it, and this is the narrow end.
+        ///
+        /// That errs toward letting a shot through rather than stopping one in mid-air, and it errs
+        /// hardest low down, where the drawn trunk is twice this wide. The alternative reads worse:
+        /// sized to the base, a man is held off a sapling-thin crown by half a metre of nothing, and
+        /// rounds die against air beside a branch. Being able to clip the foot of a trunk is a
+        /// smaller lie than a trunk with an invisible skirt.
         /// </summary>
-        public const float TrunkRadius = 0.5f;
+        public const float TrunkRadius = 0.25f;
         public const float TrunkHeight = 7.75f;
 
         /// <summary>

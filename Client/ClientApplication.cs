@@ -131,6 +131,7 @@ public sealed class ClientApplication : IDisposable
         var compositor = game.AddGraphicsCompositor();
         compositor.AddCleanUIStage();
         compositor.AddSceneRenderer(new LineSceneRenderer());
+        compositor.AddSceneRenderer(new GeometryStatsRenderer());
 
         // Registered whether or not the compositor accepts the transform, so the feedback script
         // always has something to talk to and a missing post-effect chain degrades to "no tint"

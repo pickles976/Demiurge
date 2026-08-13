@@ -614,8 +614,12 @@ public sealed class MortarRoundScript : SyncScript
         // The live position closes the line every frame, so the trail stays attached to the bomb
         // between samples instead of lagging up to MinimumStep behind it.
         if (trail.Count < 2) return;
-        LineRenderer.DrawPolyline(trail, TrailColor);
-        LineRenderer.DrawLine(trail[^1], here, TrailColor);
+        // Depth-tested, like the bullet tracers: a smoke trail is something in the world, not an
+        // overlay, so a hill between you and the bomb should hide the part of the arc behind it.
+        // Drawn through terrain it read as a marker pointing at the round rather than as the round
+        // leaving a trail.
+        LineRenderer.DrawDepthTestedPolyline(trail, TrailColor);
+        LineRenderer.DrawDepthTestedLine(trail[^1], here, TrailColor);
     }
 
     /// <summary>

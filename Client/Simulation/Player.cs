@@ -49,6 +49,14 @@ public class RemotePlayer : Player
     {
         private readonly NetworkManager network;
         private readonly TerrainState terrain;
+
+        /// <summary>
+        /// Trunks prediction must collide against, the same set the server steps with. Null until the
+        /// session hands it over, and null is correct then: before any tree has been replicated there
+        /// are none to hit, and predicting against an empty set matches a server that has told us
+        /// about none of them yet.
+        /// </summary>
+        public TreeColliders? Trees { get; set; }
         private readonly Queue<PlayerInputData> pendingMoves = new(); // sent but not acked
     private uint sequence;
     private float accumulator;
@@ -402,7 +410,7 @@ public class RemotePlayer : Player
 
             PlayerMovement.Step(
                 terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt,
-                MoveSpeedScaleIn(move.Hotbar));
+                MoveSpeedScaleIn(move.Hotbar), Trees);
             pendingMoves.Enqueue(move);
         }
     }
@@ -458,7 +466,7 @@ public class RemotePlayer : Player
         foreach (var move in pendingMoves)              // ...then re-apply what it hasn't seen
             PlayerMovement.Step(
                 terrain.Map, ref Move, move.Intent, move.State, NetworkConfig.FixedDt,
-                MoveSpeedScaleIn(move.Hotbar));
+                MoveSpeedScaleIn(move.Hotbar), Trees);
 
         // Diagnostic: in the happy path replay reproduces the prediction exactly.
         // Any hit here means client and server sims disagreed (or a bug).

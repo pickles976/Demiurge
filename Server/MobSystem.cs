@@ -80,6 +80,16 @@ namespace Demiurge.GameServer
         internal const float EnemyReloadAwarenessRange = 100f;
 
         private readonly ChunkMap terrain;
+
+        /// <summary>
+        /// Trunks NPCs cannot walk through. Optional because a scenario may have no trees at all, and
+        /// null is cheaper than an empty index every actor consults every tick.
+        /// </summary>
+        private TreeColliders? treeColliders;
+
+        /// <summary>Handed over once the tree system exists — the same set the players collide with,
+        /// because there is one movement path and it must not know which kind of actor it is moving.</summary>
+        public void UseTreeColliders(TreeColliders colliders) => treeColliders = colliders;
         private readonly TerrainSystem terrainEdits;
         private readonly WeaponSystem weapons;
         private readonly ItemSystem items;
@@ -2472,7 +2482,8 @@ namespace Demiurge.GameServer
             // navigation cost model is the only thing that does not know about it, which is
             // survivable because a slower actor arrives late rather than wrong.
             PlayerMovement.Step(
-                terrain, ref mob.Move, intent, mob.State, dt, items.MoveSpeedScale(mob, mob.Hotbar));
+                terrain, ref mob.Move, intent, mob.State, dt, items.MoveSpeedScale(mob, mob.Hotbar),
+                treeColliders);
             timingSolverStopwatchTicks += Stopwatch.GetTimestamp() - started;
         }
 

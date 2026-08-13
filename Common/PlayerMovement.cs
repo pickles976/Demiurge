@@ -129,7 +129,8 @@ namespace Demiurge
             Vector3 intent,
             PlayerStateFlags flags,
             float dt,
-            float speedScale = 1f)
+            float speedScale = 1f,
+            TreeColliders? trees = null)
         {
             intent.Y = 0f;
 
@@ -169,8 +170,8 @@ namespace Demiurge
             if (!state.Grounded)
                 state.Velocity.Y = MathF.Max(state.Velocity.Y - Gravity * dt, -TerminalVelocity);
 
-            Move(terrain, ref state, dt);
-            ProbeGround(terrain, ref state);
+            Move(terrain, ref state, dt, trees);
+            ProbeGround(terrain, ref state, trees);
         }
 
         /// <summary>
@@ -187,7 +188,7 @@ namespace Demiurge
             };
 
         /// <summary>Collide and slide: advance in sub-steps, resolving contact after each.</summary>
-        static void Move(ChunkMap terrain, ref MoveState state, float dt)
+        static void Move(ChunkMap terrain, ref MoveState state, float dt, TreeColliders? trees)
         {
             // From the pre-step velocity, which contact can only reduce — so this is an upper bound
             // on the distance actually travelled.
@@ -210,7 +211,7 @@ namespace Demiurge
                 }
 
                 state.Position = candidate;
-                Resolve(terrain, ref state);
+                Resolve(terrain, ref state, trees);
             }
         }
 
@@ -218,12 +219,17 @@ namespace Demiurge
         /// Pushes the body out of the terrain and takes the velocity that was driving into the
         /// surface with it, leaving whatever was tangential to slide.
         /// </summary>
-        static void Resolve(ChunkMap terrain, ref MoveState state)
+        static void Resolve(ChunkMap terrain, ref MoveState state, TreeColliders? trees)
         {
             float rest = Body.Radius + SkinWidth;
 
             for (int pass = 0; pass < ResolvePasses; pass++)
             {
+                // Trunks first, and inside the same pass loop as the ground rather than after it: a
+                // man shoved off a trunk lands somewhere the terrain may also object to, and one
+                // pushout that ignores the other just trades one intersection for another.
+                ResolveTrunks(trees, ref state);
+
                 if (!TerrainCollision.TryDeepestContact(terrain, Body, state.Position, out var contact))
                     return;
 
@@ -254,11 +260,35 @@ namespace Demiurge
         }
 
         /// <summary>
+        /// Pushes the body out of any trunk it is standing in, and takes the velocity driving into it.
+        ///
+        /// Purely horizontal — see <see cref="TreeColliders.TryResolve"/>. Velocity is cancelled only
+        /// along the push, so walking INTO a tree stops and walking ALONG it slides, which is the same
+        /// contract the terrain resolve above keeps.
+        /// </summary>
+        static void ResolveTrunks(TreeColliders? trees, ref MoveState state)
+        {
+            if (trees is null
+                || !trees.TryResolve(state.Position, Body.Radius, Body.Height, out var pushOut))
+                return;
+
+            state.Position.X += pushOut.X;
+            state.Position.Z += pushOut.Y;
+
+            var normal = Vector2.Normalize(pushOut);
+            float into = state.Velocity.X * normal.X + state.Velocity.Z * normal.Y;
+            if (into >= 0f) return;
+
+            state.Velocity.X -= normal.X * into;
+            state.Velocity.Z -= normal.Y * into;
+        }
+
+        /// <summary>
         /// Grounded means there is standable surface within a snap of the feet — and then pulls the
         /// body down onto it. Without the snap, every sub-voxel bump lifts the body clear for a tick:
         /// grounded flickers, and since grounded gates the jump, jumping flickers with it.
         /// </summary>
-        static void ProbeGround(ChunkMap terrain, ref MoveState state)
+        static void ProbeGround(ChunkMap terrain, ref MoveState state, TreeColliders? trees)
         {
             // Rising: do not probe at all. On the tick a jump starts, the ground is still well inside
             // snapping distance, and snapping to it cancels the jump on the frame it began.
@@ -288,7 +318,7 @@ namespace Demiurge
             if (gap <= 0f) return;
 
             state.Position = state.Position with { Y = state.Position.Y - gap };
-            Resolve(terrain, ref state);
+            Resolve(terrain, ref state, trees);
         }
 
         static float StandabilityY(in FieldPoint contact)
