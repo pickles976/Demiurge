@@ -21,6 +21,10 @@ public static class EditorPlacementBounds
         EditorPlacementKind.Mob or EditorPlacementKind.PlayerSpawn =>
             (new Vector3(-PlayerMovement.Body.Radius, 0f, -PlayerMovement.Body.Radius),
              new Vector3(PlayerMovement.Body.Radius, PlayerMovement.Body.Height, PlayerMovement.Body.Radius)),
+        // The trunk is what you aim at. Boxing the canopy instead would make a tree swallow every
+        // click within four metres of it, including clicks meant for the ground underneath.
+        EditorPlacementKind.Tree =>
+            (new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 8f, 0.5f)),
         _ => (new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 1f, 0.5f)),
     };
 

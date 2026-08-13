@@ -13,13 +13,16 @@ public sealed class EditorPlacementViewFactory : IDisposable
     private readonly Game game;
     private readonly Scene scene;
     private readonly EditorSession session;
+    private readonly ModelLocators locators;
     private readonly Dictionary<Guid, Entity> views = [];
 
-    public EditorPlacementViewFactory(Game game, Scene scene, EditorSession session)
+    public EditorPlacementViewFactory(
+        Game game, Scene scene, EditorSession session, ModelLocators locators)
     {
         this.game = game;
         this.scene = scene;
         this.session = session;
+        this.locators = locators;
         session.Changed += OnChanged;
         RefreshAll();
     }
@@ -55,15 +58,29 @@ public sealed class EditorPlacementViewFactory : IDisposable
             }
             entity.Transform.Position = EditorPlacementPosition.Resolve(
                 session.Terrain, placement).ToStride()
-                + (placement.Kind == EditorPlacementKind.ConquestFlag
-                    ? Stride.Core.Mathematics.Vector3.UnitY * 1.2f
-                    : Stride.Core.Mathematics.Vector3.Zero);
+                + placement.Kind switch
+                {
+                    EditorPlacementKind.ConquestFlag => Stride.Core.Mathematics.Vector3.UnitY * 1.2f,
+                    // The same sink the bake applies, so the preview stands where the tree will.
+                    EditorPlacementKind.Tree =>
+                        -Stride.Core.Mathematics.Vector3.UnitY * TreePlacement.SinkDepth,
+                    _ => Stride.Core.Mathematics.Vector3.Zero,
+                };
             entity.Transform.Rotation = Stride.Core.Mathematics.Quaternion.RotationY(placement.Yaw);
         }
     }
 
     private Entity Create(EditorPlacement placement)
     {
+        // The real thing, not a stand-in: the canopy is where a tree's footprint actually is, so
+        // spacing a grove by eye needs the leaves and not a marker at the trunk.
+        if (placement.Kind == EditorPlacementKind.Tree)
+        {
+            var tree = TreeViewFactory.Create(game, locators);
+            tree.Name = $"EditorPlacement_{placement.Id}";
+            return tree;
+        }
+
         if (placement.Kind == EditorPlacementKind.ConquestFlag)
         {
             var flag = game.Create3DPrimitive(

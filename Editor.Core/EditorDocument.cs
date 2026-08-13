@@ -101,6 +101,9 @@ public enum EditorPlacementKind
 
     /// <summary>A weapon pickup crated as map supply. The archetype is the item it hands out.</summary>
     SupplyCrate,
+
+    /// <summary>Scenery, placed singly here and by the grove brush later.</summary>
+    Tree,
 }
 
 public sealed record EditorPlacement

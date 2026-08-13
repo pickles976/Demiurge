@@ -289,6 +289,7 @@ public sealed class EditorControllerScript : SyncScript
             EditorObjectChoiceKind.Mob => EditorPlacementKind.Mob,
             EditorObjectChoiceKind.Spawn => EditorPlacementKind.PlayerSpawn,
             EditorObjectChoiceKind.ConquestFlag => EditorPlacementKind.ConquestFlag,
+            EditorObjectChoiceKind.Tree => EditorPlacementKind.Tree,
             _ => throw new InvalidOperationException(),
         };
         var placement = new EditorPlacement
@@ -301,7 +302,9 @@ public sealed class EditorControllerScript : SyncScript
             // Null lets the server allocate this NPC as one member of the default mixed squad.
             // `editor object equip` turns it into an explicit per-placement override.
             WeaponId = null,
-            Team = kind == EditorPlacementKind.ConquestFlag ? 0 : Settings.ObjectTeam,
+            Team = kind is EditorPlacementKind.ConquestFlag or EditorPlacementKind.Tree
+                ? 0
+                : Settings.ObjectTeam,
         };
         Session.Execute(new AddPlacementCommand(placement));
         FeedbackRequested?.Invoke(

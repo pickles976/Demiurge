@@ -116,6 +116,12 @@ public static class EditorValidation
                     if (placement.Team != 0)
                         errors.Add($"Conquest flag placement {placement.Id} must start neutral");
                     break;
+                case EditorPlacementKind.Tree:
+                    if (placement.ArchetypeId != "demiurge:tree")
+                        errors.Add($"Placement {placement.Id} has unknown tree {placement.ArchetypeId}");
+                    if (placement.Team != 0)
+                        errors.Add($"Tree placement {placement.Id} belongs to no team");
+                    break;
                 default:
                     errors.Add($"Placement {placement.Id} has unknown kind {placement.Kind}");
                     break;

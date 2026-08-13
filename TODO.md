@@ -29,23 +29,6 @@ spamming sandbags, they should be resource-constrained.
 
 - [ ] add trees
 
-  - [x] tree 3D model
-  - [x] move half a meter down
-  - [x] spawn 10 random billboard quads 1m around each anchor point
-
-  - [x] apply the alpha texture in /assets/textures
-  - [x] add geometry for volume
-
-  - [x] Implement the shader 
-  https://godotshaders.com/shader/simple-cheap-stylized-tree-shader/
-  https://simonschreibt.de/gat/airborn-trees/
-
-  - [x] tune the appearance
-
-  - [ ] tree brush in map editor
-    - [ ] minimum distance between trees
-    - [ ] random rotation to trees
-    - [ ] place single tree as an object
   - [ ] add trees to map
 
   - [ ] stress test

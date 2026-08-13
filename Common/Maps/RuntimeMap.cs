@@ -15,6 +15,9 @@ public enum RuntimePlacementKind : byte
     /// it is a placement kind and not an item.
     /// </summary>
     SupplyCrate = 5,
+
+    /// <summary>Scenery. Carries a position and a yaw and nothing else — no team, no item.</summary>
+    Tree = 6,
 }
 
 public readonly record struct RuntimePlacement(
@@ -37,7 +40,7 @@ public sealed class RuntimeMap
     /// instead of the nearest surface, and until this number moved, every session went on loading a
     /// bake that still had the spawn markers sitting on a roof.
     /// </summary>
-    public const int CurrentFormatVersion = 5;
+    public const int CurrentFormatVersion = 6;
 
     /// <summary>The version this map was read at; <see cref="CurrentFormatVersion"/> for a fresh
     /// bake. Older means the file predates the current baker, not that it failed to load.</summary>

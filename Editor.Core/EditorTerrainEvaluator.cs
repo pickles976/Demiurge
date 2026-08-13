@@ -171,6 +171,16 @@ public sealed class EditorTerrainEvaluator
                 RuntimePlacementKind.ConquestFlag, position, placement.Yaw,
                 SpawnId: "conquest-flag",
                 Team: 0),
+            // Sunk here rather than in the view: the trunk ends in a flat quad and the ground it
+            // stands on is smoothed, so sitting it exactly on the surface leaves a gap under one
+            // side. It has to be baked into the position because NetTransformScript rewrites the
+            // entity transform from the replicated one every frame, so a client-side nudge would
+            // just be overwritten.
+            EditorPlacementKind.Tree => new RuntimePlacement(
+                RuntimePlacementKind.Tree,
+                position - new Vector3(0f, TreePlacement.SinkDepth, 0f),
+                placement.Yaw,
+                Team: 0),
             _ => throw new InvalidDataException($"Unknown placement kind {placement.Kind}"),
         };
     }

@@ -20,6 +20,10 @@ public sealed class EditorClientSession : IClientSession
     private EditorTerrainState? terrainState;
     private ClientTerrain? terrainView;
     private EditorPlacementViewFactory? placementViews;
+
+    /// <summary>Named points measured off the models, needed by any preview whose geometry is built
+    /// rather than loaded — the tree's leaf cards hang off its locators.</summary>
+    private readonly ModelLocators modelLocators = ModelLocators.Load();
     private Entity? camera;
     private RuntimeClientSession? playtest;
 
@@ -102,7 +106,7 @@ public sealed class EditorClientSession : IClientSession
         };
         camera.Add(Controller);
 
-        placementViews = new EditorPlacementViewFactory(game, scene, Editor);
+        placementViews = new EditorPlacementViewFactory(game, scene, Editor, modelLocators);
         var status = HUD.CreateEditorStatus(
             game, Settings, Editor, Controller, interactionState, Structures, inputState);
         status.Scene = scene;
@@ -192,7 +196,7 @@ public sealed class EditorClientSession : IClientSession
             playtest = null;
             RestorePlaytestTerrain();
             if (restorePlacementViews)
-                placementViews = new EditorPlacementViewFactory(game, scene, Editor);
+                placementViews = new EditorPlacementViewFactory(game, scene, Editor, modelLocators);
         }
     }
 

@@ -104,7 +104,6 @@ namespace Demiurge.GameServer
         /// <summary>Spawn column. Y comes off the terrain, never guessed.</summary>
         private const float SpawnX = 0f;
         private const float SpawnZ = 0f;
-        private const float TreeRadius = 60f;
         private readonly RuntimePlacement[] playerSpawns;
         private readonly int[] playableTeams;
         private readonly Vector3? spawnOverride;
@@ -176,11 +175,6 @@ namespace Demiurge.GameServer
             chunks = new ChunkTcpServer(terrain);
             chunks.Start();
 
-            // A patch around the opening spawn rather than the whole map, which is thousands of
-            // objects and has no LOD behind it yet.
-            if (initialPlayerSpawn is { } treeCentre)
-                new TreeSystem(objects, terrain).SpawnTreesAround(treeCentre.Position, TreeRadius);
-
             if (runtimeMap is null)
             {
                 SpawnPickupOnSurface(ItemType.BodyArmor, 3f, 3f);
@@ -239,6 +233,11 @@ namespace Demiurge.GameServer
                         break;
                     case RuntimePlacementKind.ConquestFlag:
                         flags.Spawn(placement.Position);
+                        break;
+                    case RuntimePlacementKind.Tree:
+                        objects.Spawn(
+                            ObjectType.Tree, NetComponents.Transform, placement.Position,
+                            tree => tree.Transform.Yaw = placement.Yaw);
                         break;
                 }
             }
