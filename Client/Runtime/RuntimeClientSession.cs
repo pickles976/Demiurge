@@ -114,8 +114,11 @@ public sealed class RuntimeClientSession : IClientSession
 
             double perFrame = 1000.0 / Stopwatch.Frequency / frames;
             Log.Info(
-                $"scene: {geometry.Triangles:N0} tris | {geometry.Meshes:N0} draws "
-              + $"| {geometry.Views} view{(geometry.Views == 1 ? "" : "s")}");
+                $"scene: {geometry.SceneTriangles:N0} tris in {geometry.SceneMeshes:N0} meshes"
+              + (geometry.HasDrawn
+                  ? $" | drawn {geometry.DrawnTriangles:N0} tris in {geometry.DrawnMeshes:N0} "
+                    + $"across {geometry.Views} view{(geometry.Views == 1 ? "" : "s")}"
+                  : " | drawn n/a"));
             Log.Info(
                 $"frame: {frames} fps | server {serverTicks * perFrame:F2} ms "
               + $"| net {networkTicks * perFrame:F2} | drain {drainTicks * perFrame:F2} "
@@ -359,7 +362,7 @@ public sealed class RuntimeClientSession : IClientSession
             >= Stopwatch.Frequency)
         {
             lastGeometrySample = Stopwatch.GetTimestamp();
-            frame.SetGeometry(TriangleCounter.Sample(game.Services));
+            frame.SetGeometry(TriangleCounter.Sample(game.Services, scene));
         }
 
         frame.Record(t0, t1, t2, t3, Stopwatch.GetTimestamp());

@@ -115,7 +115,7 @@ public sealed class ClientApplication : IDisposable
         if (args.Contains("--singleplayer", StringComparer.OrdinalIgnoreCase))
             return SessionRequest.SourceHost(
                 Option(args, "--map") ?? DefaultSingleplayerMap,
-                initialPlayerTeam: 1,
+                initialPlayerTeam: 2,
                 initialNpcsPerTeam: int.TryParse(Option(args, "--npcs"), out int npcs) ? npcs : 16);
         return SessionRequest.Join(NetworkConfig.ServerHost);
     }
