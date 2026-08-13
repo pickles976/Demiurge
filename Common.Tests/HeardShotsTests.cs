@@ -61,6 +61,20 @@ public class HeardShotsTests
         => Assert.False(new HeardShots().TryMostSalient(0, out _));
 
     [Fact]
+    public void FinishingOneInvestigationRevealsTheNextMostSalientShot()
+    {
+        var shots = new HeardShots();
+        shots.Hear(7, new Vector3(2f, 0f, 0f), 2f, 100);
+        shots.Hear(9, new Vector3(20f, 0f, 0f), 20f, 101);
+
+        shots.Forget(7);
+
+        Assert.True(shots.TryMostSalient(101, out var next));
+        Assert.Equal(9, next.ShooterId);
+        Assert.Equal(1, shots.Count);
+    }
+
+    [Fact]
     public void LocalisationErrorGrowsWithDistanceAndIsNearlyExactUpClose()
     {
         float close = GunshotHearing.LocalisationError(2f);

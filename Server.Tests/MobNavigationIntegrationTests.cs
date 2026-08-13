@@ -5,6 +5,7 @@ using Xunit.Abstractions;
 
 namespace Demiurge.ServerTests;
 
+[Collection(AiIntegrationCollection.Name)]
 public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
 {
     [Fact]
@@ -37,8 +38,15 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
             starts[mob.Id] = mob.Position;
         }
 
-        for (uint tick = 0; tick < 20 * NetworkConfig.TickRate; tick++)
-            world.Step(tick, wallClockDelayMs: 3);
+        // Dense team-two spawns deliberately stabilize a partial-recovery assignment before the
+        // outer members clear the authored base lip. Twenty seconds made the assertion hinge on a
+        // final 0.2 m under concurrent test load; thirty still catches a stranded spawn while
+        // allowing the bounded successor request to complete and execute.
+        for (uint tick = 0; tick < 30 * NetworkConfig.TickRate; tick++)
+            // Navigation is deliberately off-thread; leave enough real wall time for the bounded
+            // recovery queue so the accelerated harness does not simulate thirty seconds while
+            // workers have received only a couple of seconds of CPU.
+            world.Step(tick, wallClockDelayMs: 6);
 
         foreach (var mob in world.Actors.Where(actor => actor.IsMob))
             output.WriteLine(
@@ -159,7 +167,11 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
         var flags = map.Placements
             .Where(placement => placement.Kind == RuntimePlacementKind.ConquestFlag)
             .ToArray();
-        Assert.Equal(4, flags.Length);
+        // The live conquest map has two home flags and three central objectives. This scenario
+        // deliberately exercises the two objectives nearest map centre; its old four-flag shape
+        // assertion prevented either team from ever entering the simulation after the fifth flag
+        // was added.
+        Assert.Equal(5, flags.Length);
         using var world = new MobIntegrationHarness(map.Terrain, seed: 0xD17C + team);
         var centralFlags = flags
             .Select(flag => (Placement: flag, Object: world.Flags.Spawn(flag.Position)))
@@ -185,6 +197,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
         var captured = new bool[centralFlags.Length];
         var capturedBy = new int[centralFlags.Length];
         var stuckEvents = new Dictionary<ushort, (uint Tick, int Team, Vector3 Position)>();
+        var stuckNavigation = new Dictionary<ushort, string>();
         uint completedTick = 0;
         const uint maximumTicks = 300 * NetworkConfig.TickRate;
         for (uint tick = 0; tick < maximumTicks; tick++)
@@ -195,6 +208,7 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
             {
                 var stuck = world.Actors.Single(actor => actor.Id == stuckMobId);
                 stuckEvents.TryAdd(stuckMobId, (tick, stuck.Team, stuck.Position));
+                stuckNavigation.TryAdd(stuckMobId, world.Mobs.DebugNavigation(stuckMobId));
             }
             world.Flags.Tick(NetworkConfig.FixedDt, world.Actors);
 
@@ -215,15 +229,24 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
         for (int flagIndex = 0; flagIndex < centralFlags.Length; flagIndex++)
             output.WriteLine(
                 $"central flag {centralFlags[flagIndex].Placement.Position}: "
+              + $"live position {centralFlags[flagIndex].Object.Transform.Position}, "
               + $"captured {captured[flagIndex]} by team {capturedBy[flagIndex]}, "
               + $"final owner {centralFlags[flagIndex].Object.Team.Value}, "
               + $"progress {centralFlags[flagIndex].Object.Team.Progress:0.00}");
         output.WriteLine(
             $"team {team} captured both central flags at tick {completedTick}/{maximumTicks}; "
           + $"terrain edits {map.Terrain.EditVersion}");
+        var navMetrics = world.Mobs.DebugNavigationMetrics;
+        output.WriteLine(
+            $"nav: requested {navMetrics.Requested} completed {navMetrics.Completed} "
+          + $"complete {navMetrics.CompletePaths} partial {navMetrics.PartialPaths} "
+          + $"cancelled {navMetrics.Cancelled} spatialInvalidations {navMetrics.SpatialInvalidations} "
+          + $"spatialTrims {navMetrics.SpatialTrims} startChunk {navMetrics.StartChunkInvalidations} "
+          + $"sharedReuses {navMetrics.SharedRouteReuses}");
         foreach (var (mobId, stuck) in stuckEvents)
             output.WriteLine(
-                $"STUCK team {stuck.Team} mob {mobId} at tick {stuck.Tick}: {stuck.Position}");
+                $"STUCK team {stuck.Team} mob {mobId} at tick {stuck.Tick}: {stuck.Position}; "
+              + stuckNavigation[mobId]);
 
         Assert.Empty(stuckEvents);
         Assert.All(
@@ -237,7 +260,10 @@ public sealed class MobNavigationIntegrationTests(ITestOutputHelper output)
         Assert.InRange(
             map.Terrain.EditVersion,
             0,
-            64);
+            // Five flags send the far-side team across one additional authored escarpment. The
+            // squad excavation lease keeps this below two planned half-bites per NPC-minute; the
+            // old uncoordinated run made 135 edits and occasionally relocated a stuck digger.
+            96);
     }
 
     [Fact]

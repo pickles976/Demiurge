@@ -722,6 +722,11 @@ public static class NavSearch
     private const int MaximumDigProbes = 64;
     private const float MinimumAirProgressBeforeFallback = 4f;
     private const float MinimumGoalRisePerHorizontalMetreForRecovery = 0.5f;
+    // Small authored terraces and rolling ground are ordinary one-way progress on a long route.
+    // Treating every one-cell fall as an unproved trench entry made bounded searches incapable of
+    // returning a prefix after the first shallow valley. Six cells still catches the six-metre
+    // trench cases while letting normal terrain stream through receding-horizon searches.
+    private const int MinimumUncommittedDescentCells = 6;
 
     private static readonly (int X, int Z)[] Directions =
     [
@@ -957,7 +962,11 @@ public static class NavSearch
                 : !madeAirProgress && furthest.Cell != start
                     ? furthest.Cost + furthest.Heuristic
                     : bestAirScore,
-            allowUncommittedDeepDescent: exhaustedReachable);
+            // Emptying the ordinary region proves there is no walk route; it does not prove that
+            // digging farther down is escapable. Returning such a macro stranded conquest actors
+            // below a trench while an authored exit existed outside the local region. Upward and
+            // level cuts remain eligible, but an irreversible descent needs a completed route.
+            allowUncommittedDeepDescent: false);
         if (bestDig is { } dig)
             return ReconstructDig(map, nodes, dig, expanded, traversal.Hits)
                 with { ExhaustedReachable = exhaustedReachable };
@@ -1424,7 +1433,8 @@ public static class NavSearch
             current.HasUncommittedDeepDescent
             || action is NavAction.Jump or NavAction.Fall
                 && (current.Cell.Y - next.Y > NavTraversal.MaximumFallCells
-                    || DescentMovesVerticallyAwayFromGoal(goal, current.Cell, next));
+                    || current.Cell.Y - next.Y >= MinimumUncommittedDescentCells
+                    && DescentMovesVerticallyAwayFromGoal(goal, current.Cell, next));
         open.EnqueueOrDecrease(next.Key, node.Cost + node.Heuristic * heuristicWeight);
     }
 

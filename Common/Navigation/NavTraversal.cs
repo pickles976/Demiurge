@@ -1035,6 +1035,53 @@ public static class NavTraversal
     /// deliberately does not require a NavCell: resolving an unrelated surface above a cramped
     /// tunnel as the actor's cell is the bug this recovery exists to avoid.
     /// </summary>
+    /// <summary>
+    /// EVERY soil voxel the capsule must lose to step one cell in this direction, rather than the
+    /// first one that blocks it.
+    ///
+    /// This is the difference between our excavation and Baritone's, and it is why AI cuts have
+    /// needed an oversized brush. <see cref="TryDigClearance"/> answers "what is in the way?" with a
+    /// single voxel, so a bite that removes exactly that voxel leaves the rest of the capsule still
+    /// obstructed — a passage one metre wide and one metre tall that a 1.8 m actor cannot use. The
+    /// 0.7 m freehand brush hid that by spilling a third of the way into every face neighbour, which
+    /// removes the missing voxels BY ACCIDENT, along with the stair tread below and the parapet
+    /// beside. Globs instead of stairs.
+    ///
+    /// Naming the whole set instead lets a bite be exact. Head-first ordering is preserved from
+    /// <see cref="TryDigClearance"/> and is load-bearing for the same reason: clearing the lowest
+    /// sample first turns a low lintel into a crawl-height tunnel the standing movement model can
+    /// never use.
+    /// </summary>
+    /// <returns>How many distinct voxels were collected.</returns>
+    public static int CollectDigClearance(
+        ChunkMap map,
+        Vector3 feet,
+        int dx,
+        int dz,
+        List<Vector3> targets)
+    {
+        targets.Clear();
+        if (Math.Abs(dx) + Math.Abs(dz) != 1) return 0;
+        Vector3 direction = Vector3.Normalize(new Vector3(dx, 0f, dz));
+
+        for (int i = CapsuleBody.SampleCount - 1; i >= 0; i--)
+        {
+            Vector3 origin = PlayerMovement.Body.SampleCenter(feet, i);
+            if (!TryDigTargetForCapsuleSample(map, origin, direction, out var target))
+                continue;
+            bool seen = false;
+            foreach (var existing in targets)
+                if (existing == target)
+                {
+                    seen = true;
+                    break;
+                }
+            if (!seen)
+                targets.Add(target);
+        }
+        return targets.Count;
+    }
+
     public static bool TryDigClearance(
         ChunkMap map,
         Vector3 feet,

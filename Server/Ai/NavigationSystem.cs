@@ -45,6 +45,8 @@ internal sealed class NavigationSystem : IDisposable
         long CompletePaths,
         long Cancelled,
         long SpatialInvalidations,
+        long SpatialTrims,
+        long StartChunkInvalidations,
         long SharedRouteReuses,
         long CoalescedTraversalFills);
 
@@ -72,8 +74,6 @@ internal sealed class NavigationSystem : IDisposable
     private readonly PriorityQueue<RequestTicket, (int Priority, long Sequence)> requestOrder = new();
     private readonly Dictionary<ushort, PathRequest> pendingByMob = new();
     private readonly Dictionary<ushort, long> latestRequestByMob = new();
-    private readonly HashSet<long> activeSharedRouteKeys = [];
-    private readonly HashSet<long> sharedRouteOwnerRequests = [];
     private readonly object sharedRouteGate = new();
     private readonly Dictionary<long, NavPath> sharedRoutes = new();
     private readonly ConcurrentQueue<PathResult> completed = new();
@@ -94,6 +94,8 @@ internal sealed class NavigationSystem : IDisposable
     private long completePaths;
     private long cancelledCount;
     private long spatialInvalidations;
+    private long spatialTrims;
+    private long startChunkInvalidations;
     private long sharedRouteReuses;
     private long enqueueSequence;
 
@@ -226,6 +228,8 @@ internal sealed class NavigationSystem : IDisposable
             Interlocked.Read(ref completePaths),
             Interlocked.Read(ref cancelledCount),
             Interlocked.Read(ref spatialInvalidations),
+            Interlocked.Read(ref spatialTrims),
+            Interlocked.Read(ref startChunkInvalidations),
             Interlocked.Read(ref sharedRouteReuses),
             traversalCache.CoalescedFills);
 
@@ -253,14 +257,7 @@ internal sealed class NavigationSystem : IDisposable
 
             if (request is null)
                 continue;
-            try
-            {
-                Process(request);
-            }
-            finally
-            {
-                ReleaseSharedRoute(request);
-            }
+            Process(request);
         }
     }
 
@@ -282,25 +279,50 @@ internal sealed class NavigationSystem : IDisposable
                 >= 12 => 16_384,
                 >= 8 => 8_192,
                 >= 4 => 4_096,
+                >= 1 => 1_024,
                 _ => 0,
             };
             int? failureBudget = searchOptions.FailureExpansionBudget;
+            var effectiveOptions = searchOptions with
+            {
+                AllowJump = request.AllowJump,
+                // The opening march proves ordinary movement first. Excavation is a recovery
+                // action after the follower reaches a real obstruction; admitting speculative dig
+                // macros on the spawn request made actors cut down into the base terrain before
+                // they had consumed the authored exit. Missing-path/combat requests still dig.
+                AllowDig = request.AllowDig
+                    && request.Priority != NavigationPriority.Objective,
+                // The opening request only has to put an actor onto a useful march. Requiring the
+                // full 16 m recovery threshold makes most conquest starts burn the 320-expansion
+                // failure budget before returning a perfectly executable opening prefix. Recovery
+                // and prefetch keep the larger threshold so repeated local stumps are rejected.
+                //
+                // Raising this for a STALLED actor was tried on 2026-08-12 and is a regression, for
+                // a reason worth keeping: rejecting a partial does not produce a better route, it
+                // produces NO route, and no route is no movement. One stalled actor went to 413
+                // requests with 384 empty results, and team-wide terrain edits tripled as actors
+                // with no path fell back on digging. A short prefix that goes nowhere still beats
+                // standing still; the fix for a basin belongs in the global structure that would
+                // have routed around it, not in refusing the local answer.
+                MinimumPartialDistance = request.Priority == NavigationPriority.Objective
+                    ? 3f
+                    : searchOptions.MinimumPartialDistance,
+                PrimaryExpansionBudget = request.Priority == NavigationPriority.Objective
+                    ? Math.Min(searchOptions.PrimaryExpansionBudget ?? 128, 128)
+                    : searchOptions.PrimaryExpansionBudget,
+                // Most requests still return at the 128-expansion primary boundary. This only
+                // raises the hard stop after the actor has consumed several bounded prefixes
+                // without leaving the same basin, which is direct evidence that another stump is
+                // cheaper to compute but useless to execute.
+                FailureExpansionBudget = recoveryFailureBudget > 0
+                        ? Math.Max(failureBudget ?? 0, recoveryFailureBudget)
+                        : failureBudget,
+            };
             path = NavSearch.Find(
                 terrain,
                 request.Start,
                 request.Goal,
-                searchOptions with
-                {
-                    AllowJump = request.AllowJump,
-                    AllowDig = request.AllowDig,
-                    // Most requests still return at the 128-expansion primary boundary. This only
-                    // raises the hard stop after the actor has consumed several bounded prefixes
-                    // without leaving the same basin, which is direct evidence that another stump
-                    // is cheaper to compute but useless to execute.
-                    FailureExpansionBudget = recoveryFailureBudget > 0
-                        ? Math.Max(failureBudget ?? 0, recoveryFailureBudget)
-                        : failureBudget,
-                },
+                effectiveOptions,
                 request.BlockedCellKey,
                 () => IsSuperseded(request),
                 traversalCache,
@@ -315,6 +337,7 @@ internal sealed class NavigationSystem : IDisposable
         path = NavPathSmoothing.RemoveCollinearWalks(path);
         if (path.Waypoints.Count > 0)
         {
+            int producedWaypoints = path.Waypoints.Count;
             if (!NavPathTerrain.TryStamp(
                     terrain,
                     path,
@@ -322,10 +345,16 @@ internal sealed class NavigationSystem : IDisposable
                     out path))
             {
                 Interlocked.Increment(ref spatialInvalidations);
+                if (terrain.ChunkEditVersion(
+                        ChunkTransforms.ChunkAt(request.Start.X, request.Start.Z))
+                    > terrainVersion)
+                    Interlocked.Increment(ref startChunkInvalidations);
                 path = NavPath.Failed(path.ExpandedNodes);
             }
             else
             {
+                if (path.Waypoints.Count < producedWaypoints)
+                    Interlocked.Increment(ref spatialTrims);
                 if (!reusedSharedRoute)
                     StoreSharedRoute(request, path);
                 Interlocked.Add(
@@ -357,69 +386,20 @@ internal sealed class NavigationSystem : IDisposable
     private PathRequest? TakeRequest()
     {
         int candidates = requestOrder.Count;
-        List<(RequestTicket Ticket, (int Priority, long Sequence) Priority)>? deferred = null;
         while (candidates-- > 0
-               && requestOrder.TryDequeue(out var ticket, out var priority))
+               && requestOrder.TryDequeue(out var ticket, out _))
         {
             if (!pendingByMob.TryGetValue(ticket.MobId, out var request)
                 || request.RequestId != ticket.RequestId)
                 continue;
-            bool needsExclusiveSharedRoute =
-                request.SharedRouteKey != 0
-                && (request.Priority == NavigationPriority.Prefetch
-                    || !HasUsableSharedRoute(request.SharedRouteKey));
-            if (needsExclusiveSharedRoute
-                && activeSharedRouteKeys.Contains(request.SharedRouteKey))
-            {
-                (deferred ??= []).Add((ticket, priority));
-                continue;
-            }
-
+            // Incomplete paths are deliberately actor-local. Serialising every request behind a
+            // squad key while no complete route exists therefore buys no sharing and turns six
+            // independent bounded searches into one long queue. Let them fill all workers; any
+            // complete walk-only result is still published atomically for later joiners.
             pendingByMob.Remove(ticket.MobId);
-            if (needsExclusiveSharedRoute)
-            {
-                activeSharedRouteKeys.Add(request.SharedRouteKey);
-                sharedRouteOwnerRequests.Add(request.RequestId);
-            }
-            RequeueDeferred();
             return request;
         }
-
-        RequeueDeferred();
         return null;
-
-        void RequeueDeferred()
-        {
-            if (deferred is null) return;
-            foreach (var item in deferred)
-                requestOrder.Enqueue(item.Ticket, item.Priority);
-        }
-    }
-
-    private void ReleaseSharedRoute(PathRequest request)
-    {
-        if (request.SharedRouteKey == 0) return;
-        int workersToWake;
-        lock (requestGate)
-        {
-            if (!sharedRouteOwnerRequests.Remove(request.RequestId))
-                return;
-            activeSharedRouteKeys.Remove(request.SharedRouteKey);
-            workersToWake = stopping
-                ? 0
-                : Math.Min(workers.Length, pendingByMob.Count);
-        }
-        if (workersToWake > 0)
-            requestReady.Release(workersToWake);
-    }
-
-    private bool HasUsableSharedRoute(long key)
-    {
-        lock (sharedRouteGate)
-            return sharedRoutes.TryGetValue(key, out var route)
-                && route.Waypoints.Count >= 2
-                && !route.Waypoints.Any(waypoint => waypoint.Action == NavAction.Dig)
-                && NavPathTerrain.IsValid(terrain, route);
     }
 
     private bool IsSuperseded(PathRequest request)

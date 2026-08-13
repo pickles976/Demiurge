@@ -33,7 +33,27 @@ namespace Demiurge.GameServer
             this.terrain = terrain;
         }
 
-        public void ApplyDig(ServerPlayer player, PlayerDigData dig, uint tick)
+        /// <param name="plannedExcavation">Full-strength sample change: one bite clears a voxel
+        /// instead of two, so a planned cut does not pay double the rate-limited shovel cycles.</param>
+        /// <param name="narrowCorridor">
+        /// This bite is cutting a ROUTE — a staircase or passage laid out on the 1 m navigation
+        /// lattice — so it uses the 0.5 m brush, which takes its own voxel and leaves the tread below
+        /// it and the squadmate's parapet beside it intact. The freehand 0.7 m brush is 2.7x the
+        /// volume and deliberately spills a third of the way into its face neighbours, which is what
+        /// a player wants under a cursor and is exactly why AI cuts came out as globs rather than
+        /// stairs.
+        ///
+        /// It is NOT the right brush for every AI dig. Clearing standing headroom under a low tunnel
+        /// mouth, or cutting back an unwalkable slope face, is widening rather than routing: a 1 m
+        /// tube through those leaves the actor without clearance, and both integration scenarios fail
+        /// on it. Those call sites keep the wide brush.
+        /// </param>
+        public void ApplyDig(
+            ServerPlayer player,
+            PlayerDigData dig,
+            uint tick,
+            bool plannedExcavation = false,
+            bool narrowCorridor = false)
         {
             if (!IsFinite(dig.Target)) return;
             if (tick < player.NextDigTick) return;
@@ -76,11 +96,13 @@ namespace Demiurge.GameServer
             Apply(new TerrainEditData
             {
                 Centre = target,
-                HalfExtent = Digging.Bite,
+                HalfExtent = narrowCorridor ? Digging.PlannedBite : Digging.Bite,
                 Mode = placing ? EditMode.Add : EditMode.SubtractSoil,
                 Fill = placing ? Digging.PlacedBlock : BlockType.BlockType_Air,
                 Shape = EditShape.Sphere,
-                Strength = Digging.BiteStrength,
+                Strength = plannedExcavation
+                    ? Digging.PlannedBiteStrength
+                    : Digging.BiteStrength,
             });
         }
 

@@ -62,4 +62,25 @@ public class ContactMemoryTests
         Assert.Equal(new Vector3(10, 0, 0), contact.Position);
         Assert.Equal((uint)20, contact.LastSeenTick);
     }
+
+    [Fact]
+    public void ContactCarriesOnlyObservedWeaponAndEngagementEvidenceAcrossSharing()
+    {
+        var scout = new ContactMemory();
+        var squadmate = new ContactMemory();
+        scout.Observe(
+            4,
+            new Vector3(10, 0, 0),
+            tick: 20,
+            observedWeapon: ItemType.Mosin,
+            targetingLikelihood: 0.9f,
+            observedExtraMoa: 12f);
+
+        scout.MergeInto(squadmate, tick: 20);
+
+        Assert.True(squadmate.TryGet(4, 20, out var contact));
+        Assert.Equal(ItemType.Mosin, contact.ObservedWeapon);
+        Assert.Equal(0.9f, contact.TargetingLikelihood);
+        Assert.Equal(12f, contact.ObservedExtraMoa);
+    }
 }

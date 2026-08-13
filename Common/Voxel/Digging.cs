@@ -49,6 +49,13 @@ namespace Demiurge
         /// </summary>
         public const float BiteRadius = 0.7f;
 
+        /// <summary>
+        /// Navigation excavation is laid out on one-metre cells. A half-metre brush removes the
+        /// committed capsule corridor without nibbling its neighbouring tread or a squadmate's
+        /// parapet; freehand player digs retain <see cref="BiteRadius"/>.
+        /// </summary>
+        public const float PlannedBiteRadius = 0.5f;
+
         /// <summary>How many accepted dig edits should amount to one old full-strength bite. Shared
         /// with placement, which is the same brush run the other way — two clicks to take a voxel
         /// out, two to put one back.</summary>
@@ -56,6 +63,13 @@ namespace Demiurge
 
         /// <summary>Strength of one accepted dig relative to the old full bite.</summary>
         public const float BiteStrength = 1f / ClicksPerVoxel;
+
+        /// <summary>
+        /// Planned cuts use a smaller volume and a full-strength sample change. This keeps their
+        /// one-metre corridor precise without doubling the number of rate-limited shovel cycles;
+        /// player freehand digging and placement retain <see cref="BiteStrength"/>.
+        /// </summary>
+        public const float PlannedBiteStrength = 1f;
 
         /// <summary>
         /// Whether the shovel can build as well as dig.
@@ -83,6 +97,10 @@ namespace Demiurge
         /// <summary>The radius packed as an extent, since an edit carries one vector for both
         /// primitives — a half-extent for a box, a radius in X for a sphere.</summary>
         public static readonly Vector3 Bite = new(BiteRadius, BiteRadius, BiteRadius);
+        public static readonly Vector3 PlannedBite = new(
+            PlannedBiteRadius,
+            PlannedBiteRadius,
+            PlannedBiteRadius);
 
         /// <summary>
         /// Where a player looks and reaches FROM, above their feet. Matches

@@ -54,17 +54,9 @@ https://github.com/stride3d/stride-community-toolkit/tree/stride-4.4/examples/co
   - [ ] Configure the scrungy.com domain
 - [ ] Track and fix issues found by the Demo
 
-# Open World
+# Map Editor
 
 - [ ] add map editor and structure editor UI block select, object select
-
-- [ ] Track active chunks per player on the server
-- [ ] Stream chunks as players move
-- [ ] Replicate objects according to active player chunks
-- [ ] Limit client meshing to view distance
-- [ ] Decide the intended maximum view distance
-- [ ] Research and implement cave carving
-- [ ] Add resource deposits
 
 # Debugging And Known Issues
 

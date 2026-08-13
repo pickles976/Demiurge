@@ -6,8 +6,17 @@ namespace Demiurge;
 /// <summary>Camera-facing identification above living friendly NPCs.</summary>
 public sealed class FriendlyMarkerScript : SyncScript
 {
-    private const float Rise = 0.55f;
-    private const float Radius = 0.24f;
+    /// <summary>
+    /// Clearance between the top of the DRAWN head and the bottom of the glyph.
+    ///
+    /// Anchored to the model, not to <see cref="PlayerMovement.Body"/>: the collision capsule is
+    /// 1.80 m tall and the head a player can actually see ends at about 1.46, so measuring from the
+    /// capsule floated these markers the better part of a metre above the visible NPC.
+    /// </summary>
+    private const float Rise = 0.10f;
+    private const float CrownHeight = GunConfig.HeadCenterHeight + GunConfig.HeadRadius;
+    private const float StarRadius = 0.08f;
+    private const float SquareRadius = 0.04f;
     private static readonly Color LeaderColor = new(70, 255, 105, 245);
     private static readonly Color MemberColor = new(255, 220, 55, 245);
 
@@ -31,38 +40,44 @@ public sealed class FriendlyMarkerScript : SyncScript
             var feet = player is RemotePlayer remote
                 ? remote.Snapshots.GetInterpolated(Registry.RenderTick, remote.Position)
                 : player.Position;
+            bool leader = player.State.HasFlag(PlayerStateFlags.SquadLeader);
+            // Radius is part of the offset so both glyphs clear the head by the same Rise, rather
+            // than the smaller one sitting lower for being smaller.
+            float radius = leader ? StarRadius : SquareRadius;
             var centre = feet.ToStride()
-                + Vector3.UnitY * (PlayerMovement.Body.Height + Rise);
+                + Vector3.UnitY * (CrownHeight + Rise + radius);
 
-            if (player.State.HasFlag(PlayerStateFlags.SquadLeader))
-                DrawStar(centre, right, up);
+            if (leader)
+                DrawStar(centre, right, up, radius);
             else
-                DrawSquare(centre, right, up);
+                DrawSquare(centre, right, up, radius);
         }
     }
 
-    private static void DrawSquare(Vector3 centre, Vector3 right, Vector3 up)
+    private static void DrawSquare(Vector3 centre, Vector3 right, Vector3 up, float radius)
     {
-        var x = right * Radius;
-        var y = up * Radius;
+        var x = right * radius;
+        var y = up * radius;
         LineRenderer.DrawLine(centre - x - y, centre + x - y, MemberColor);
         LineRenderer.DrawLine(centre + x - y, centre + x + y, MemberColor);
         LineRenderer.DrawLine(centre + x + y, centre - x + y, MemberColor);
         LineRenderer.DrawLine(centre - x + y, centre - x - y, MemberColor);
     }
 
-    private static void DrawStar(Vector3 centre, Vector3 right, Vector3 up)
+    private static void DrawStar(Vector3 centre, Vector3 right, Vector3 up, float radius)
     {
         const int points = 10;
         Vector3 first = default;
         Vector3 previous = default;
         for (int i = 0; i < points; i++)
         {
-            float angle = -MathF.PI / 2f + i * MathF.PI / 5f;
-            float radius = (i & 1) == 0 ? Radius : Radius * 0.42f;
+            // +PI/2 puts the first OUTER vertex on +up. Starting at -PI/2 put it on -up, which draws
+            // the star point-down.
+            float angle = MathF.PI / 2f + i * MathF.PI / 5f;
+            float vertexRadius = (i & 1) == 0 ? radius : radius * 0.42f;
             var point = centre
-                + right * (MathF.Cos(angle) * radius)
-                + up * (MathF.Sin(angle) * radius);
+                + right * (MathF.Cos(angle) * vertexRadius)
+                + up * (MathF.Sin(angle) * vertexRadius);
             if (i == 0) first = point;
             else LineRenderer.DrawLine(previous, point, LeaderColor);
             previous = point;

@@ -11,16 +11,19 @@ mortars. `CombatOutcome`/`MobAction` also give the per-tick actor output one wri
 
 ## 1. Restore the AI acceptance baseline
 
-- [ ] Fix `MobNavigationIntegrationTests.NpcExcavatesOutOfADeepWidePit`. On 2026-08-12 the NPC made
+- [x] Fix `MobNavigationIntegrationTests.NpcExcavatesOutOfADeepWidePit`. On 2026-08-12 the NPC made
   52 terrain edits but did not escape the six-metre pit within 240 simulated seconds.
 - [ ] Update `EachConquestTeamCapturesBothCentralFlagsWithoutStuckRelocation` for the five-flag
   conquest map, then rerun both teams. The stale `flags.Length == 4` assertion currently prevents
-  the scenario from simulating.
-- [ ] Bring `ConquestNavigationBenchmarkTests.ThirtyTwoNpcInitialObjectiveRoutes` reliably below
+  the scenario from simulating. **The assertion is fixed and the scenario now simulates, but only
+  team 2 passes.** Team 1 reaches both central flags and no longer strands actors, and terrain-edit
+  invalidation is gone (see §3), but it still makes 281-495 terrain edits against the 96 ceiling.
+  The residue is excavation, not navigation: see §4's first item.
+- [x] Bring `ConquestNavigationBenchmarkTests.ThirtyTwoNpcInitialObjectiveRoutes` reliably below
   its 500 ms queue-p95 ceiling. A 2026-08-12 Debug run measured 523.9 ms p95, 652 ms wall time,
   and zero shared-route reuses. Repeat measurements before attributing a small overrun because this
   benchmark is sensitive to CPU contention.
-- [ ] Add the missing end-to-end AI behavior statistics: stationary fraction, terrain edits per NPC
+- [x] Add the missing end-to-end AI behavior statistics: stationary fraction, terrain edits per NPC
   per minute, bounds attempted/completed, engagement range, shared-route reuse, and path requests per
   squad per minute.
 - [ ] Perform and record a visual conquest review after the items above pass. Check that bounds
@@ -29,19 +32,19 @@ mortars. `CombatOutcome`/`MobAction` also give the per-tick actor output one wri
 
 ## 2. Finish the scored decision model
 
-- [ ] Replace `MobSystem`'s ordered `ActorIntent` ternary with a comparison of combat actions in net
+- [x] Replace `MobSystem`'s ordered `ActorIntent` ternary with a comparison of combat actions in net
   HP/second. At minimum, compare holding/fire, repositioning, and entrenching; keep immediate safety
   actions such as blast evasion as explicit preconditions rather than pretending they are ordinary
   tactical choices.
-- [ ] Construct and consume `ActorIntent.HoldAndFire`. It is currently declared but never created.
-- [ ] Remove the remaining fixed entrenchment threshold after entrenching and repositioning are
+- [x] Construct and consume `ActorIntent.HoldAndFire`. It is currently declared but never created.
+- [x] Remove the remaining fixed entrenchment threshold after entrenching and repositioning are
   priced directly against holding.
-- [ ] Wire `ThreatRanking` into perception-ray allocation and combat target selection. The class and
+- [x] Wire `ThreatRanking` into perception-ray allocation and combat target selection. The class and
   tests exist, but runtime perception is still round-robin and combat selects the nearest contact.
-- [ ] Replace `MobBrain`'s single `HeardActorId`/position/tick slot with the existing `HeardShots`
+- [x] Replace `MobBrain`'s single `HeardActorId`/position/tick slot with the existing `HeardShots`
   memory. The tested salience container exists but has no runtime caller, so a later distant shot can
   still replace a nearby one.
-- [ ] Record the observed enemy weapon and aim/engagement evidence in contact memory so scoring uses
+- [x] Record the observed enemy weapon and aim/engagement evidence in contact memory so scoring uses
   information the NPC actually perceived rather than always assuming the unidentified threat
   profile.
 
@@ -58,9 +61,16 @@ mortars. `CombatOutcome`/`MobAction` also give the per-tick actor output one wri
 - [ ] Preserve local connectors, formation exits, jumps, digging, and blocked-edge recovery when
   sharing a trunk. A shared prefix must not make every squad member reconnect to the same local
   minimum.
-- [ ] Replace coarse whole-corridor invalidation during active excavation with validation of the
+- [x] Replace coarse whole-corridor invalidation during active excavation with validation of the
   next executable segment. Edits outside the actor's immediate route should not restart it.
-- [ ] Make `ai stats` label the residual movement bucket honestly. Keep collision solve and actual
+  Done in `NavPathTerrain`, but the premise above was wrong and the correction is the useful part:
+  edits outside the route were never the cost. Measured on conquest, **68-80% of discarded searches
+  were killed by an edit in the actor's own START chunk** — its own shovel, or a squadmate's on the
+  same leased staircase. Trimming to the executable prefix alone recovered almost nothing (24-49
+  trims a match); exempting the first segment's chunks took spatial invalidations from 275-756 per
+  match to **zero**, partial-route yield from ~65% to ~97%, stuck actors from 2-4 per run to 0-1,
+  and both central flags now fall in every run instead of timing out.
+- [x] Make `ai stats` label the residual movement bucket honestly. Keep collision solve and actual
   path-follower time separate rather than presenting the whole residual as `follow`.
 
 ## 4. Complete excavation and fortification
@@ -68,16 +78,16 @@ mortars. `CombatOutcome`/`MobAction` also give the per-tick actor output one wri
 - [ ] Plan a complete local cut as the minimum voxel set needed for traversability, then execute the
   committed cut until completion or a defined external invalidation. Do not choose a new excavation
   direction after every shovel bite.
-- [ ] Add excavation-volume leases to `SquadBlackboard` so squadmates reuse one staircase or trench
+- [x] Add excavation-volume leases to `SquadBlackboard` so squadmates reuse one staircase or trench
   instead of cutting overlapping routes or removing each other's parapets.
 - [ ] Use a dedicated 0.5 m excavation brush for planned one-metre corridors while retaining the
   player's existing hand-dig brush where appropriate.
 - [ ] Verify that planned one-wide corridors admit the authoritative capsule and that removed voxel
   count approaches one shared staircase rather than one staircase per squad member.
-- [ ] Fix the case where an NPC digs downward to cross a large trench when jumping in or routing to
+- [x] Fix the case where an NPC digs downward to cross a large trench when jumping in or routing to
   an existing exit is cheaper.
 - [ ] Add connected fortification plans. Around flags, derive terrain edges from the voxel
-  heightmap; where the terrain supplies no useful design, use connected concentric one-wide,
+  heightmap (sobel filter type system); where the terrain supplies no useful design, use connected concentric one-wide,
   two-deep trenches at approximately 10 m and 17 m as the fallback.
 - [ ] Give fortification plans one strategic owner. NPCs assigned to a plan may remove only planned
   voxels; ordinary combat entrenchment remains a small local fighting position.
@@ -86,7 +96,7 @@ mortars. `CombatOutcome`/`MobAction` also give the per-tick actor output one wri
 
 ## 5. Generalize strategy and crew weapons
 
-- [ ] Replace `CommanderAi`'s direct `FlagSystem` dependency with a game-mode objective provider.
+- [x] Replace `CommanderAi`'s direct `FlagSystem` dependency with a game-mode objective provider.
   Support static objectives first and leave room for carried and delivery objectives used by CTF;
   KOTH should use the same interface.
 - [ ] Add explicit force-at-objective and travel-time strength to strategic allocation. Preserve
@@ -108,7 +118,7 @@ mortars. `CombatOutcome`/`MobAction` also give the per-tick actor output one wri
   imminent assault as additive evidence.
 - [ ] Add elevation to position and engagement scoring using its effect on exposure, hit
   probability, and route cost rather than a flat "high ground" bonus.
-- [ ] Use the ranked threat model for target selection so danger, weapon reach, exposure, and whom
+- [x] Use the ranked threat model for target selection so danger, weapon reach, exposure, and whom
   the enemy appears to be engaging can outweigh raw distance.
 - [ ] Extend `ai track` to show the chosen action, alternatives and scores, range matchup, tactical
   role, committed bearing, objective value, and commander/resource assignment.

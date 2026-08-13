@@ -92,6 +92,19 @@ public sealed class HeardShots
         count = kept;
     }
 
+    /// <summary>Forgets one investigated shooter without discarding other, still-salient sounds.</summary>
+    public void Forget(ushort shooterId)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (shots[i].ShooterId != shooterId) continue;
+            for (int j = i + 1; j < count; j++)
+                shots[j - 1] = shots[j];
+            shots[--count] = default;
+            return;
+        }
+    }
+
     public void Clear()
     {
         Array.Clear(shots);

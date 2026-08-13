@@ -38,6 +38,9 @@ internal sealed class SquadBlackboard
     private const int ClaimLeaseTicks = 2 * NetworkConfig.TickRate;
     private const float ClaimRadius = 1.5f;
     private const float ClaimRadiusSquared = ClaimRadius * ClaimRadius;
+    private const uint ExcavationLeaseTicks = 20 * NetworkConfig.TickRate;
+    private const float ExcavationVolumeRadius = 4f;
+    private const float ExcavationReuseRadius = 16f;
 
     private readonly record struct ContactReport(
         AiContact Contact,
@@ -45,6 +48,11 @@ internal sealed class SquadBlackboard
 
     private readonly record struct PositionClaim(
         Vector3 Position,
+        uint ExpiresTick);
+
+    private readonly record struct ExcavationLease(
+        ushort OwnerId,
+        Vector3 Centre,
         uint ExpiresTick);
 
     // Engagement and advance permits used to live here: rotating two-man leases that decided who was
@@ -64,6 +72,7 @@ internal sealed class SquadBlackboard
     /// ContactMemory.SquadRetentionTicks.</summary>
     private readonly ContactMemory sharedContacts = new(ContactMemory.SquadRetentionTicks);
     private readonly Dictionary<ushort, PositionClaim> claims = new();
+    private readonly List<ExcavationLease> excavations = [];
     private readonly List<ushort> expiredActors = new(MaximumMembers);
     private readonly List<ushort> roster = new(MaximumMembers);
     private readonly Dictionary<ushort, SquadTacticalOrder> orders = new(MaximumMembers);
@@ -179,11 +188,15 @@ internal sealed class SquadBlackboard
             sharedContacts.Observe(
                 report.Contact.ActorId,
                 report.Contact.Position,
-                report.Contact.LastSeenTick);
+                report.Contact.LastSeenTick,
+                report.Contact.ObservedWeapon,
+                report.Contact.TargetingLikelihood,
+                report.Contact.ObservedExtraMoa);
         }
         sharedContacts.Prune(tick);
 
         PruneClaims(tick);
+        excavations.RemoveAll(lease => lease.ExpiresTick < tick);
     }
 
     public void ShareContactsWith(ContactMemory member, uint tick)
@@ -214,6 +227,41 @@ internal sealed class SquadBlackboard
     }
 
     public void ReleaseClaim(ushort actorId) => claims.Remove(actorId);
+
+    /// <summary>
+    /// Publishes a committed cut volume. Nearby bites refresh one lease rather than creating one
+    /// staircase per member; separate obstacles remain separate leases.
+    /// </summary>
+    public void LeaseExcavation(ushort ownerId, Vector3 centre, uint tick)
+    {
+        float mergeSquared = ExcavationVolumeRadius * ExcavationVolumeRadius;
+        for (int i = 0; i < excavations.Count; i++)
+        {
+            if (HorizontalDistanceSquared(excavations[i].Centre, centre) > mergeSquared)
+                continue;
+            excavations[i] = new ExcavationLease(
+                excavations[i].OwnerId,
+                excavations[i].Centre,
+                tick + ExcavationLeaseTicks);
+            return;
+        }
+        excavations.Add(new ExcavationLease(ownerId, centre, tick + ExcavationLeaseTicks));
+    }
+
+    public bool IsExcavationLeasedByOther(
+        ushort actorId,
+        Vector3 actorPosition,
+        uint tick)
+    {
+        foreach (var lease in excavations)
+        {
+            if (lease.OwnerId == actorId || lease.ExpiresTick < tick) continue;
+            if (HorizontalDistanceSquared(actorPosition, lease.Centre)
+                < ExcavationReuseRadius * ExcavationReuseRadius)
+                return true;
+        }
+        return false;
+    }
 
 
 

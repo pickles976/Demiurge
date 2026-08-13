@@ -6,7 +6,7 @@ namespace Demiurge.GameServer;
 /// Server-authoritative, Battlefield-style flag control. An uncontested attacker first drains an
 /// owned flag to neutral, then captures it. Multiple teams in the radius pause all progress.
 /// </summary>
-public sealed class FlagSystem
+public sealed class FlagSystem : IGameModeObjectiveProvider
 {
     private sealed class Flag
     {
@@ -326,6 +326,11 @@ public sealed class FlagSystem
 
         return snapshot;
     }
+
+    IReadOnlyList<StrategicFlag> IGameModeObjectiveProvider.StrategicSnapshot(
+        int team,
+        ICollection<ServerPlayer> actors)
+        => StrategicSnapshot(team, actors);
 
     /// <summary>
     /// Finds the closest flag this team can make useful progress on. Fully secured friendly flags

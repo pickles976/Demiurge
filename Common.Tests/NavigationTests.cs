@@ -241,7 +241,10 @@ public class NavigationTests
             CompleteSearch with { AllowJump = false });
 
         Assert.True(path.ReachedGoal);
-        Assert.Contains(path.Waypoints, waypoint => waypoint.Action == NavAction.Fall);
+        Assert.Contains(
+            path.Waypoints,
+            waypoint => waypoint.Action is NavAction.Fall or NavAction.Jump
+                        && waypoint.Cell.Y < start.Y);
         Assert.True(path.Waypoints[^1].Position.Y < path.Waypoints[0].Position.Y - 4f);
     }
 
@@ -322,6 +325,38 @@ public class NavigationTests
             waypoint => Assert.True(
                 waypoint.Position.Y > ground - 2f,
                 $"Bounded prefix descended into the trench at {waypoint.Position}"));
+    }
+
+    [Fact]
+    public void BoundedLongRouteCanContinueAfterAShallowTerrainDrop()
+    {
+        float upper = SyntheticTerrain.GroundHeight + 4f;
+        var map = SyntheticTerrain.Build(
+            (x, y, _) => MathF.Min(
+                y - SyntheticTerrain.GroundHeight,
+                MathF.Max(x, y - upper)),
+            chunkRadius: 6);
+        var start = CellAt(map, -5, 0, aroundY: (int)upper);
+        var target = CellAt(map, 80, 0);
+
+        var path = NavSearch.Find(
+            map,
+            start,
+            new GoalPosition(target),
+            NavSearchOptions.Deterministic(
+                primaryExpansions: 64,
+                failureExpansions: 64,
+                minimumPartialDistance: 3f) with { HeuristicWeight = 2f });
+
+        Assert.False(path.ReachedGoal);
+        Assert.True(
+            path.Waypoints[^1].Cell.X > 0,
+            $"Prefix ended at {path.Waypoints[^1]}; "
+          + $"actions {string.Join(',', path.Waypoints.Select(waypoint => waypoint.Action))}");
+        Assert.Contains(
+            path.Waypoints,
+            waypoint => waypoint.Action is NavAction.Fall or NavAction.Jump
+                        && waypoint.Cell.Y < start.Y);
     }
 
     /// <summary>
@@ -741,6 +776,104 @@ public class NavigationTests
         Assert.True(arrived, $"Never reached the far bank; got as far as {at}");
     }
 
+    /// <summary>
+    /// The same bridged trench as above, at the budget the SERVER actually issues.
+    ///
+    /// The 20,000-expansion version proves the cost model prefers the bridge. It cannot say whether
+    /// the live search can afford to discover it, and that is the whole complaint from play: squads
+    /// drop into a pit beside a usable bridge and then excavate their way out. Digging is priced per
+    /// voxel, so the first bite is always affordable inside a 128-expansion horizon, while a bridge
+    /// ten metres off the straight line is not reachable within it at all.
+    /// </summary>
+    [Fact]
+    public void BridgedTrenchIsCrossedAtTheProductionExpansionBudget()
+    {
+        const float trenchHalfWidth = 7.5f;
+        const float trenchFloor = 2.5f;
+        const float bridgeHalfWidth = 1.5f;
+        const float ground = SyntheticTerrain.GroundHeight;
+
+        var map = SyntheticTerrain.Build(
+            (x, y, z) =>
+            {
+                float field = y - ground;
+                float trench = MathF.Max(MathF.Abs(z) - trenchHalfWidth, trenchFloor - y);
+                field = MathF.Max(field, -trench);
+                float bridge = MathF.Max(MathF.Abs(x) - bridgeHalfWidth, y - ground);
+                return MathF.Min(field, bridge);
+            },
+            chunkRadius: 2);
+
+        var start = CellAt(map, 10, -12, aroundY: (int)ground);
+        var target = CellAt(map, 10, 12, aroundY: (int)ground);
+        var goal = new GoalPosition(target);
+        var cache = new NavTraversalCache();
+
+        // What a live recovery/prefetch request looks like: the production budget, digging enabled.
+        var options = NavSearchOptions.Default with { AllowDig = true };
+
+        var at = start;
+        bool arrived = false;
+        int digs = 0;
+        for (int request = 0; request < 40 && !arrived; request++)
+        {
+            var path = NavSearch.Find(map, at, goal, options, sharedTraversalCache: cache);
+            if (path.Waypoints.Count == 0) break;
+
+            digs += path.Waypoints.Count(waypoint => waypoint.Action == NavAction.Dig);
+            Assert.All(
+                path.Waypoints,
+                waypoint => Assert.True(
+                    waypoint.Position.Y > ground - 2f,
+                    $"Request {request} descended into the trench at {waypoint.Position}"));
+
+            at = path.Waypoints[^1].Cell;
+            arrived = path.ReachedGoal;
+        }
+
+        Assert.Equal(0, digs);
+        Assert.True(arrived, $"Never reached the far bank; got as far as {at}");
+    }
+
+    /// <summary>
+    /// A cut is the set of voxels the capsule needs gone, not the first one in the way. Naming only
+    /// the first is what forced an oversized brush to remove the others by accident.
+    /// </summary>
+    [Fact]
+    public void ClearanceCollectsEveryVoxelBlockingTheCapsuleNotJustTheFirst()
+    {
+        const float ground = SyntheticTerrain.GroundHeight;
+        var map = SyntheticTerrain.Build(
+            (x, y, z) =>
+            {
+                float open = y - ground;
+                // A wall the full height of a standing actor, two metres in front of him.
+                float wall = MathF.Max(
+                    MathF.Max(2 - x, x - 5),
+                    MathF.Max(ground - y, y - (ground + 5)));
+                return MathF.Min(open, wall);
+            },
+            chunkRadius: 1);
+
+        var feet = new Vector3(1.5f, ground, 0.5f);
+        var targets = new List<Vector3>();
+        int count = NavTraversal.CollectDigClearance(map, feet, 1, 0, targets);
+
+        Assert.True(
+            NavTraversal.TryDigClearance(map, feet, 1, 0, out var single),
+            "the wall should block the capsule at all");
+        Assert.Contains(single, targets);
+        Assert.Equal(targets.Distinct().Count(), targets.Count);
+        Assert.True(
+            count >= 2,
+            $"only {count} voxel(s) collected for a full-height wall: "
+          + string.Join(", ", targets));
+        // The capsule's samples span 1 m, so a complete cut spans more than a single voxel of height.
+        Assert.True(
+            targets.Max(target => target.Y) - targets.Min(target => target.Y) >= 1f,
+            $"the cut does not span the capsule: {string.Join(", ", targets)}");
+    }
+
     [Fact]
     public void SolidStartFailsImmediately()
     {
@@ -917,6 +1050,46 @@ public class NavigationTests
                     smoothed.Waypoints[i - 1].Position,
                     smoothed.Waypoints[i].Position)
                 <= NavPathSmoothing.MaximumWalkSegmentLength);
+    }
+
+    /// <summary>
+    /// Smoothing may not invent an edge the traversal graph would never have admitted. A climb is
+    /// collinear in X/Z while being anything at all in Y, so folding on the horizontal projection
+    /// alone deletes the treads of a staircase and leaves one waypoint several metres overhead —
+    /// observed live as an NPC that believed it could walk straight up about eight blocks, after
+    /// digging a wall left it under an overhang.
+    /// </summary>
+    [Fact]
+    public void CollinearSmoothingKeepsTheTreadsOfAClimb()
+    {
+        // Six steps north, each rising the maximum a single traversal step may climb.
+        var waypoints = Enumerable.Range(0, 7)
+            .Select(step => new NavWaypoint(
+                new NavCell(0, 12 + step * NavTraversal.MaximumTraverseCellDelta, step),
+                new Vector3(
+                    0.5f,
+                    12.5f + step * NavTraversal.MaximumTraverseCellDelta,
+                    step + 0.5f)))
+            .ToArray();
+
+        var smoothed = NavPathSmoothing.RemoveCollinearWalks(
+            new NavPath(waypoints, true, 12f, 0));
+
+        for (int i = 1; i < smoothed.Waypoints.Count; i++)
+        {
+            var from = smoothed.Waypoints[i - 1];
+            var to = smoothed.Waypoints[i];
+            Assert.True(
+                to.Cell.Y - from.Cell.Y <= NavTraversal.MaximumTraverseCellDelta,
+                $"smoothing produced a {to.Cell.Y - from.Cell.Y}-cell climb from {from.Position} "
+              + $"to {to.Position}; one step may climb "
+              + $"{NavTraversal.MaximumTraverseCellDelta}");
+            Assert.True(
+                Vector3.Distance(from.Position, to.Position)
+                    <= NavPathSmoothing.MaximumWalkSegmentLength,
+                $"smoothing produced a {Vector3.Distance(from.Position, to.Position):0.0} m segment "
+              + $"from {from.Position} to {to.Position}");
+        }
     }
 
     [Fact]

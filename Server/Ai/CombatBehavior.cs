@@ -70,7 +70,7 @@ internal sealed class CombatBehavior
         // Suppression keeps a contact alive far longer than aimed fire does: the whole point is to keep
         // shooting at where he is while he has his head down and is therefore not visible.
         uint holdTicks = (uint)(suppressing ? SuppressionMemoryTicks : LostContactHoldTicks);
-        if (!brain.Contacts.TryNearest(mob.Position, tick, out var contact)
+        if (!TryHighestThreat(mob, brain, tick, out var contact)
             || tick - contact.LastSeenTick > holdTicks)
         {
             brain.ClearCombatTarget();
@@ -269,6 +269,35 @@ internal sealed class CombatBehavior
         float dx = a.X - b.X;
         float dz = a.Z - b.Z;
         return MathF.Sqrt(dx * dx + dz * dz);
+    }
+
+    private static bool TryHighestThreat(
+        ServerPlayer mob,
+        MobBrain brain,
+        uint tick,
+        out AiContact contact)
+    {
+        var contacts = brain.Contacts.Snapshot(tick);
+        contact = default;
+        if (contacts.Count == 0) return false;
+
+        var engagements = new Engagement[contacts.Count];
+        for (int i = 0; i < contacts.Count; i++)
+        {
+            var candidate = contacts[i];
+            engagements[i] = new Engagement(
+                HorizontalDistance(mob.Position, candidate.Position),
+                candidate.ObservedWeapon ?? ItemConfig.UnidentifiedThreatWeapon,
+                candidate.ObservedExtraMoa,
+                TargetExposure.Full,
+                brain.SelfExposure,
+                candidate.TargetingLikelihood);
+        }
+
+        Span<ThreatBound> ranked = stackalloc ThreatBound[1];
+        if (ThreatRanking.Rank(engagements, ranked) == 0) return false;
+        contact = contacts[ranked[0].Index];
+        return true;
     }
 
     private static Vector3 Facing(float yaw)

@@ -6,7 +6,10 @@ public readonly record struct AiContact(
     ushort ActorId,
     Vector3 Position,
     uint LastSeenTick,
-    float Confidence);
+    float Confidence,
+    ItemType? ObservedWeapon = null,
+    float TargetingLikelihood = 0.5f,
+    float ObservedExtraMoa = 0f);
 
 /// <summary>
 /// What an agent believes, deliberately separate from live server actors. Observations are exact
@@ -39,11 +42,22 @@ public sealed class ContactMemory
 
     public int Count => observations.Count;
 
-    public void Observe(ushort actorId, Vector3 position, uint tick)
+    public void Observe(
+        ushort actorId,
+        Vector3 position,
+        uint tick,
+        ItemType? observedWeapon = null,
+        float targetingLikelihood = 0.5f,
+        float observedExtraMoa = 0f)
     {
         if (!observations.TryGetValue(actorId, out var existing)
             || tick >= existing.LastSeenTick)
-            observations[actorId] = new Observation(position, tick);
+            observations[actorId] = new Observation(
+                position,
+                tick,
+                observedWeapon ?? existing.ObservedWeapon,
+                Math.Clamp(targetingLikelihood, 0f, 1f),
+                MathF.Max(0f, observedExtraMoa));
     }
 
     /// <summary>
@@ -55,7 +69,13 @@ public sealed class ContactMemory
         foreach (var pair in observations)
         {
             if (Confidence(pair.Value.LastSeenTick, tick) <= 0f) continue;
-            target.Observe(pair.Key, pair.Value.Position, pair.Value.LastSeenTick);
+            target.Observe(
+                pair.Key,
+                pair.Value.Position,
+                pair.Value.LastSeenTick,
+                pair.Value.ObservedWeapon,
+                pair.Value.TargetingLikelihood,
+                pair.Value.ObservedExtraMoa);
         }
     }
 
@@ -68,7 +88,10 @@ public sealed class ContactMemory
                 actorId,
                 observation.Position,
                 observation.LastSeenTick,
-                Confidence(observation.LastSeenTick, tick));
+                Confidence(observation.LastSeenTick, tick),
+                observation.ObservedWeapon,
+                observation.TargetingLikelihood,
+                observation.ObservedExtraMoa);
             return true;
         }
 
@@ -96,7 +119,10 @@ public sealed class ContactMemory
                 pair.Key,
                 pair.Value.Position,
                 pair.Value.LastSeenTick,
-                Confidence(pair.Value.LastSeenTick, tick)))
+                Confidence(pair.Value.LastSeenTick, tick),
+                pair.Value.ObservedWeapon,
+                pair.Value.TargetingLikelihood,
+                pair.Value.ObservedExtraMoa))
             .Where(contact => contact.Confidence > 0f)
             .OrderBy(contact => contact.ActorId)
             .ToArray();
@@ -116,7 +142,10 @@ public sealed class ContactMemory
                 pair.Key,
                 pair.Value.Position,
                 pair.Value.LastSeenTick,
-                confidence);
+                confidence,
+                pair.Value.ObservedWeapon,
+                pair.Value.TargetingLikelihood,
+                pair.Value.ObservedExtraMoa);
         }
         return nearestDistance < float.MaxValue;
     }
@@ -124,5 +153,10 @@ public sealed class ContactMemory
     private float Confidence(uint seen, uint now)
         => Math.Clamp(1f - (now - seen) / (float)retentionTicks, 0f, 1f);
 
-    private readonly record struct Observation(Vector3 Position, uint LastSeenTick);
+    private readonly record struct Observation(
+        Vector3 Position,
+        uint LastSeenTick,
+        ItemType? ObservedWeapon,
+        float TargetingLikelihood,
+        float ObservedExtraMoa);
 }

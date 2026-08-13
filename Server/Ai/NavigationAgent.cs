@@ -39,13 +39,28 @@ internal sealed class NavigationAgent
     public Vector3 Destination { get; private set; }
     public bool HasDestination { get; private set; }
 
+    /// <summary>
+    /// This actor's planned cut is a ROUTE corridor, so its bites use the narrow 1 m-lattice brush.
+    ///
+    /// It is a destination heuristic and it is not a good one — see AI_TODO section 4. The intent it
+    /// is guessing at ("am I cutting a staircase, or widening clearance?") belongs to the PLAN, and
+    /// the plan does not currently carry it. Deleting the guess and giving every planned cut the
+    /// narrow brush was tried on 2026-08-12 and regresses two scenarios outright, because the same
+    /// call site serves both intents: a 1 m tube is right for a stair tread and leaves an actor
+    /// without standing clearance under a low tunnel mouth or across an unwalkable slope face.
+    /// </summary>
+    public bool PreciseExcavation { get; private set; }
+
     public void SetDestination(Vector3 destination, bool clearPath = true)
     {
         Destination = destination;
         HasDestination = true;
+        PreciseExcavation = false;
         if (clearPath)
             Path.Clear();
     }
+
+    public void CommitPreciseExcavation() => PreciseExcavation = true;
 
     public bool HasPending(bool forCover)
         => pending is { } request && request.ForCover == forCover;
@@ -130,6 +145,7 @@ internal sealed class NavigationAgent
         => partialBacktrackCells.ToArray();
 
     public int PartialBacktrackAttempts => partialBacktrackAttempts;
+    public bool HasBegunPartialRecovery => partialBacktrackAttempts > 0;
 
     /// <summary>
     /// Several consumed bounded prefixes without escape means this actor is resolving a local
@@ -150,6 +166,7 @@ internal sealed class NavigationAgent
         nextPrefetchTick = 0;
         Destination = default;
         HasDestination = false;
+        PreciseExcavation = false;
     }
 
     public void ClearPartialBacktrack()

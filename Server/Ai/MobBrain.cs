@@ -145,11 +145,8 @@ internal sealed class MobBrain
     public Vector3 EntrenchOrigin { get; private set; }
     public Vector3 EntrenchToward { get; private set; }
     public float EntrenchGrade { get; private set; }
-    public ushort HeardActorId { get; set; }
-    public Vector3 HeardPosition { get; set; }
-    public uint HeardTick { get; set; }
-    public uint HeardRevision { get; set; }
-    public uint AppliedHeardRevision { get; set; }
+    public ushort AppliedHeardActorId { get; private set; }
+    public Vector3 AppliedHeardPosition { get; private set; }
     public bool ShouldCloseDistance { get; set; }
     public bool AssaultDashActive { get; set; }
     public uint UnderFireUntilTick { get; private set; }
@@ -222,17 +219,36 @@ internal sealed class MobBrain
         EntrenchGrade = 0f;
     }
 
-    public bool HasRecentGunshot(uint tick)
-        => HeardActorId != 0
-           && tick >= HeardTick
-           && tick - HeardTick < GunshotHearing.InvestigationTicks;
-
-    public void ClearGunshot()
+    public bool TryRecentGunshot(uint tick, out HeardShot shot)
     {
-        HeardActorId = 0;
-        HeardPosition = default;
-        HeardTick = 0;
-        HeardRevision = 0;
-        AppliedHeardRevision = 0;
+        Heard.Prune(tick);
+        return Heard.TryMostSalient(tick, out shot);
+    }
+
+    public bool HasAppliedGunshot => AppliedHeardActorId != 0;
+
+    public bool IsAppliedGunshot(in HeardShot shot)
+        => AppliedHeardActorId == shot.ShooterId
+           && Vector3.DistanceSquared(AppliedHeardPosition, shot.Position) <= 4f * 4f;
+
+    public void ApplyGunshot(in HeardShot shot)
+    {
+        AppliedHeardActorId = shot.ShooterId;
+        AppliedHeardPosition = shot.Position;
+    }
+
+    public void ForgetGunshot(ushort shooterId)
+    {
+        Heard.Forget(shooterId);
+        if (AppliedHeardActorId != shooterId) return;
+        AppliedHeardActorId = 0;
+        AppliedHeardPosition = default;
+    }
+
+    public void ClearGunshots()
+    {
+        Heard.Clear();
+        AppliedHeardActorId = 0;
+        AppliedHeardPosition = default;
     }
 }

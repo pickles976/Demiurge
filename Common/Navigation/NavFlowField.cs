@@ -136,6 +136,69 @@ public sealed class NavFlowField
     }
 
     /// <summary>
+    /// Finds the solved cell nearest an actor, including actors outside the field radius. The latter
+    /// is the important case: the nearest boundary cell is a proved gateway into the objective's
+    /// global route, so a bounded local search only has to reach that gateway rather than rediscover
+    /// the whole map.
+    /// </summary>
+    public bool TryNearest(NavCell from, out NavCell nearest)
+    {
+        nearest = default;
+        long bestDistanceSquared = long.MaxValue;
+        foreach (long key in cells.Keys)
+        {
+            var candidate = NavCell.FromKey(key);
+            long dx = candidate.X - from.X;
+            long dy = candidate.Y - from.Y;
+            long dz = candidate.Z - from.Z;
+            // Height matters, but less than horizontal approach distance. A bridge and its ground
+            // can share X/Z; preferring the actor's deck avoids asking a connector to change level
+            // merely to join an otherwise identical trunk.
+            long distanceSquared = dx * dx + dz * dz + dy * dy / 4;
+            if (distanceSquared >= bestDistanceSquared) continue;
+            bestDistanceSquared = distanceSquared;
+            nearest = candidate;
+        }
+        return bestDistanceSquared != long.MaxValue;
+    }
+
+    /// <summary>
+    /// Revalidates and materializes a field suffix against current terrain. This deliberately works
+    /// even when <see cref="TerrainVersion"/> is old: edits outside the suffix do not invalidate a
+    /// route, while an edit on its next coarse edge is caught by the same fine-step proof used when
+    /// the field was built.
+    /// </summary>
+    public bool TryRoute(
+        ChunkMap map,
+        NavCell from,
+        out IReadOnlyList<NavWaypoint> waypoints,
+        int maximumSteps = 4096)
+    {
+        var route = new List<NavWaypoint>();
+        var probes = new NavProbeCache(map);
+        var current = from;
+        while (route.Count < maximumSteps && TryNext(current, out var next))
+        {
+            if (!TryCoarseEdge(probes, current, next, StrideCells, out _)
+                || !NavTraversal.TryPosition(map, next, out var position))
+            {
+                waypoints = [];
+                return false;
+            }
+            route.Add(new NavWaypoint(next, position, NavAction.Walk));
+            current = next;
+        }
+
+        if (current != Destination)
+        {
+            waypoints = [];
+            return false;
+        }
+        waypoints = route;
+        return true;
+    }
+
+    /// <summary>
     /// Solves the field by Dijkstra outward from <paramref name="destination"/>.
     ///
     /// Outward from the goal, with every edge evaluated in the direction an actor will walk it: the

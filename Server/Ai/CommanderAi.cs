@@ -10,7 +10,7 @@ internal sealed class CommanderAi
     internal const uint ReplanTicks = NetworkConfig.TickRate;
     private const float ResourceSearchRadius = 100f;
 
-    private readonly FlagSystem flags;
+    private readonly IGameModeObjectiveProvider objectives;
     private readonly ObjectReplication objects;
     private uint nextPlanTick;
     private int plannedSquadCount = -1;
@@ -20,9 +20,9 @@ internal sealed class CommanderAi
     private readonly List<MortarTarget> fireMissionEnemies = [];
     private readonly List<System.Numerics.Vector3> fireMissionFriendlies = [];
 
-    public CommanderAi(FlagSystem flags, ObjectReplication objects)
+    public CommanderAi(IGameModeObjectiveProvider objectives, ObjectReplication objects)
     {
-        this.flags = flags;
+        this.objectives = objectives;
         this.objects = objects;
     }
 
@@ -55,7 +55,7 @@ internal sealed class CommanderAi
                         ? current.FlagId
                         : 0))
                 .ToArray();
-            var strategicFlags = flags.StrategicSnapshot(team, actors);
+            var strategicFlags = objectives.StrategicSnapshot(team, actors);
             var assignments = StrategicObjectivePlanner.Plan(
                 team,
                 strategicSquads,

@@ -112,8 +112,34 @@ namespace Demiurge.GameServer
         private readonly List<SquadMemberState> tacticalInputs = [];
         private readonly List<SquadTacticalOrder> tacticalOrders = [];
 
+        // TEMPORARY navigation accounting for the conquest stuck-relocation investigation.
+        internal sealed class NavDiag
+        {
+            public int Requests;
+            public int Refused;
+            public int Empty;
+            public int Invalid;
+            public int Trimmed;
+            public int CoverMismatch;
+            public int NotReplaceable;
+            public int Installed;
+            public int Superseded;
+            public override string ToString()
+                => $"req {Requests} refused {Refused} | empty {Empty} invalid {Invalid} "
+                 + $"covermismatch {CoverMismatch} notreplaceable {NotReplaceable} "
+                 + $"superseded {Superseded} trimmed {Trimmed} installed {Installed}";
+        }
+
+        private readonly Dictionary<ushort, NavDiag> navDiag = new();
+
+        private NavDiag DiagFor(ushort actorId)
+            => navDiag.TryGetValue(actorId, out var diag)
+                ? diag
+                : navDiag[actorId] = new NavDiag();
+
         /// <summary>Bounds begun since startup; exposes otherwise-unobservable manoeuvre activity.</summary>
         public int BoundsStarted { get; private set; }
+        public int BoundsCompleted { get; private set; }
 
         /// <summary>Current squad membership and objectives, exposed for churn diagnostics.</summary>
         /// <summary>Personal contact memory; only <see cref="TeamIntelSystem"/> may aggregate it.</summary>
@@ -122,6 +148,8 @@ namespace Demiurge.GameServer
 
         /// <summary>Path requests since startup; repeated requests reveal arrival/replan churn.</summary>
         internal long DebugPathRequests => navigation.SnapshotMetrics().Requested;
+
+        internal NavigationSystem.Metrics DebugNavigationMetrics => navigation.SnapshotMetrics();
 
         internal IEnumerable<(ushort ActorId, int Team, int Squad, uint FlagId, Vector3 Destination)>
             DebugAssignments()
@@ -140,6 +168,25 @@ namespace Demiurge.GameServer
                         : Vector3.Zero);
         }
 
+        internal string DebugNavigation(ushort actorId)
+        {
+            if (!brains.TryGetValue(actorId, out var brain)) return "no brain";
+            var route = brain.Navigation.Path.RemainingWaypoints.Take(4).ToArray();
+            var board = BoardFor(brain);
+            string objective = board.TryGetObjective(out var assigned)
+                ? $"{assigned.FlagId}@{assigned.Position}"
+                : "none";
+            string resource = board.TryGetResourceObjective(actorId, out var assignedResource)
+                ? $"{assignedResource.Kind}@{assignedResource.Position}"
+                : "none";
+            return $"intent {brain.DebugIntent}; squad {brain.SquadIndex}; objective {objective}; "
+                 + $"resource {resource}; destination {brain.Navigation.Destination}; "
+                 + $"pending {brain.Navigation.HasAnyPending}; path {brain.Navigation.Path.HasPath}; "
+                 + $"partial attempts {brain.Navigation.PartialBacktrackAttempts}; "
+                 + $"nav[{DiagFor(actorId)}]; "
+                 + $"route [{string.Join(", ", route.Select(point => $"{point.Action}@{point.Position}"))}]";
+        }
+
         // Temporary diagnostics for the hilltop-assault investigation. Actor-ticks, not events.
         public int DiagNoOrder;
         public int DiagRoleNone;
@@ -155,6 +202,13 @@ namespace Demiurge.GameServer
         private int coverQueriesRemaining;
         private int timingTicks;
         private int timingAgentSamples;
+        private long timingActorSamples;
+        private long timingStationaryActorTicks;
+        private long timingTerrainEdits;
+        private long timingBoundsAttempted;
+        private long timingBoundsCompleted;
+        private double timingEngagementRangeMetres;
+        private long timingEngagementSamples;
         private long timingMovementStopwatchTicks;
 
         /// <summary>
@@ -215,7 +269,7 @@ namespace Demiurge.GameServer
             this.items = items;
             commander = new CommanderAi(flags, items.Objects);
             navigation = new NavigationSystem(terrain);
-            perception = new Perception(terrain);
+            perception = new Perception(terrain, weapons);
             this.grenades = grenades;
             this.mortars = mortars;
             this.intel = intel;
@@ -301,13 +355,33 @@ namespace Demiurge.GameServer
                     continue;
                 if (!brain.Navigation.TryCompleteRequest(
                         result.RequestId,
-                        out bool forCover)
-                    || forCover != brain.HasCoverDestination)
-                    continue;
-
-                if (result.Path.Waypoints.Count > 0
-                    && NavPathTerrain.IsValid(terrain, result.Path))
+                        out bool forCover))
                 {
+                    DiagFor(result.MobId).Superseded++;
+                    continue;
+                }
+                if (forCover != brain.HasCoverDestination)
+                {
+                    DiagFor(result.MobId).CoverMismatch++;
+                    continue;
+                }
+
+                if (result.Path.Waypoints.Count == 0)
+                    DiagFor(result.MobId).Empty++;
+
+                // Terrain moves between the worker stamping this route and the main thread reaching
+                // it, so the arriving path is trimmed to what is still executable rather than
+                // rejected whole. Rejecting it leaves the actor with no path at all, and an actor
+                // with no path digs — which invalidates the next actor's route in the same place.
+                if (result.Path.Waypoints.Count > 0
+                    && NavPathTerrain.TryTrimToValid(terrain, result.Path, out var usable))
+                {
+                    if (usable.Waypoints.Count < result.Path.Waypoints.Count)
+                        DiagFor(result.MobId).Trimmed++;
+                    if (brain.Navigation.Path.CanReplacePath)
+                        DiagFor(result.MobId).Installed++;
+                    else
+                        DiagFor(result.MobId).NotReplaceable++;
                     // A jump path's intent was proved as one continuous movement. A prefetch can
                     // finish after takeoff; installing it then resets the jump executor while the
                     // actor is airborne and is enough to drop a capsule off a narrow bridge.
@@ -318,7 +392,7 @@ namespace Demiurge.GameServer
                             .FirstOrDefault(actor => actor.Id == result.MobId)
                             ?.Position;
                         brain.Navigation.Path.SetPath(
-                            result.Path,
+                            usable,
                             result.TerrainVersion,
                             currentPosition,
                             terrain);
@@ -368,7 +442,41 @@ namespace Demiurge.GameServer
             uint tick,
             ICollection<ServerPlayer> actors)
         {
-            var action = Decide(mob, dt, tick, actors);
+            int boundIndexBefore = brains.TryGetValue(mob.Id, out var existingBrain)
+                ? existingBrain.BoundIndex
+                : 0;
+            long terrainVersionBeforeDecision = terrain.EditVersion;
+            var action = Decide(mob, dt, tick, actors) with
+            {
+                // Measure the authoritative edit, not whether a decision branch wanted to swing.
+                // Cooldowns and already-empty bites legitimately produce no terrain change, while
+                // combat/cover helpers do not otherwise have a clean way to bubble the edit back.
+                TerrainProgress = terrain.EditVersion != terrainVersionBeforeDecision,
+            };
+            timingActorSamples++;
+            if (action.Intent.LengthSquared() < 0.01f)
+                timingStationaryActorTicks++;
+            if (action.TerrainProgress)
+                timingTerrainEdits++;
+            if (brains.TryGetValue(mob.Id, out var sampledBrain))
+            {
+                if (sampledBrain.BoundIndex > boundIndexBefore)
+                {
+                    BoundsCompleted += sampledBrain.BoundIndex - boundIndexBefore;
+                    timingBoundsCompleted += sampledBrain.BoundIndex - boundIndexBefore;
+                }
+                if (sampledBrain.CombatTargetId != 0
+                    && sampledBrain.Contacts.TryGet(
+                        sampledBrain.CombatTargetId,
+                        tick,
+                        out var engagement))
+                {
+                    timingEngagementRangeMetres += HorizontalDistance(
+                        mob.Position,
+                        engagement.Position);
+                    timingEngagementSamples++;
+                }
+            }
             // Charge the stance transition regardless of which decision arm made the actor stand.
             // Keeping this inside the combat arm let a one-tick contact loss bypass the penalty.
             if (mob.State.HasFlag(PlayerStateFlags.Prone)
@@ -512,28 +620,29 @@ namespace Demiurge.GameServer
             // Hearing is free and turning to look is correct; WALKING to the sound is the part that
             // has to be worth it. Same gate as incoming fire, for the same reason — a firefight two
             // hundred metres away is information, not an order to abandon an objective.
-            bool heardGunshot = brain.HasRecentGunshot(tick)
+            bool hasRememberedShot = brain.TryRecentGunshot(tick, out var heardShot);
+            bool heardGunshot = hasRememberedShot
                 && ThreatResponse.IsWorthAnswering(
                     SelfCombatant(mob, brain),
-                    IncomingFrom(mob, brain, brain.HeardPosition),
+                    IncomingFrom(mob, brain, heardShot.Position),
                     StrategicValue.TicketsPerSecondPerFlag);
             if (heardGunshot
-                && brain.AppliedHeardRevision != brain.HeardRevision)
+                && !brain.IsAppliedGunshot(heardShot))
             {
-                brain.AppliedHeardRevision = brain.HeardRevision;
+                brain.ApplyGunshot(heardShot);
                 brain.ObjectiveReached = false;
                 brain.Navigation.Path.Clear();
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
                 brain.Navigation.SetDestination(
                     SurfaceQuery.SurfacePosition(
                         terrain,
-                        brain.HeardPosition.X,
-                        brain.HeardPosition.Z));
+                        heardShot.Position.X,
+                        heardShot.Position.Z));
                 destination = brain.Navigation.Destination;
             }
-            else if (!heardGunshot && brain.AppliedHeardRevision != 0)
+            else if (!heardGunshot && brain.HasAppliedGunshot)
             {
-                brain.ClearGunshot();
+                brain.ClearGunshots();
                 brain.ObjectiveReached = false;
                 brain.Navigation.Path.Clear();
                 CancelPending(mob.Id, brain.Navigation, forCover: false);
@@ -598,49 +707,20 @@ namespace Demiurge.GameServer
                     extraMoa: 0f,
                     brain.SkillFactor).DamagePerSecond <= 0f;
 
-            // Digging is what a base of fire does when the ground has not already given it cover, and
-            // it is never what a moving man does.
-            //
-            // This used to be `assault && ...`, i.e. PPSh carriers dug a fighting position before
-            // doing anything else — and because the movement branch below is `bounding &&
-            // !mustEntrench`, an SMG man ORDERED TO FLANK would dig instead. That is the weapon
-            // identity branch the scoring layer exists to remove: entrenchment now follows from being
-            // static and unprotected, which is true of a rifleman on bare ground and false of anyone
-            // already behind a wall.
-            // Digging has to be WORTH something, not merely permitted, and "worth" is the same
-            // currency as everything else: how much incoming damage the hole actually removes.
-            //
-            // A man already behind terrain, or already in a finished fighting position, has his
-            // exposure down near the floor — so another hole buys almost nothing and he should be
-            // shooting or moving instead. That is exactly what CombatValueTests pins as
-            // EntrenchingBuysNothingWhenAlreadyProtected, applied here rather than approximated by
-            // "is he at cover".
-            bool mustEntrench = false;
-            if (hasOrder
-                && order.Role == SquadRole.BaseOfFire
-                && !brain.HasCompletedInitialEntrenchment
-                && !brain.Entrenched
-                && brain.Contacts.TryNearest(mob.Position, tick, out var incomingFrom))
-            {
-                var self = new Combatant(
-                    weapons.TryGetPrimaryWeapon(mob, out var selfWeapon)
-                        ? selfWeapon.Item.Type
-                        : ItemConfig.UnidentifiedThreatWeapon,
-                    0f,
-                    brain.SkillFactor);
-                float range = HorizontalDistance(mob.Position, incomingFrom.Position);
-
-                float takenNow = CombatValue.Taken(
-                    self,
-                    [new Engagement(range, ItemConfig.UnidentifiedThreatWeapon, 0f, TargetExposure.Full,
-                        brain.SelfExposure, 1f)]);
-                float takenDugIn = CombatValue.Taken(
-                    self,
-                    [new Engagement(range, ItemConfig.UnidentifiedThreatWeapon, 0f, TargetExposure.Full,
-                        MobBrain.EntrenchedSelfExposure, 1f)]);
-
-                mustEntrench = takenNow - takenDugIn >= EntrenchWorthwhileDamagePerSecond;
-            }
+            ActorIntent decision = bounding
+                ? new ActorIntent.Bound(order.Destination, order.Bearing)
+                : hasNearestContact
+                    ? ScoreCombatIntent(
+                        mob,
+                        brain,
+                        nearestContact,
+                        mayEntrench: hasOrder
+                            && order.Role == SquadRole.BaseOfFire
+                            && !brain.HasCompletedInitialEntrenchment
+                            && !brain.Entrenched)
+                    : brain.Entrenching || brain.Entrenched
+                        ? new ActorIntent.HoldFightingPosition()
+                        : new ActorIntent.PursueObjective();
 
             bool readyAtEntrenchPeek = !brain.Entrenched
                 || (!ShouldCrouchAtCover(brain, tick)
@@ -650,8 +730,8 @@ namespace Demiurge.GameServer
             // the blackboard used to hand out two rotating three-second firing turns per squad, so
             // four of six men were forbidden to fire at any moment while the allocation had them
             // down as the base of fire.
-            bool mayFire = !holdingForEffectiveRange
-                && !mustEntrench
+            bool mayFire = decision is ActorIntent.HoldAndFire
+                && !holdingForEffectiveRange
                 && readyAtEntrenchPeek;
             bool underFire =
                 brain.IsUnderFire(tick)
@@ -685,8 +765,7 @@ namespace Demiurge.GameServer
             //   Bound first, because a squad manoeuvre outranks this actor's own combat state — a
             //     flanker cannot see the man he is flanking, so requiring his personal agreement was
             //     what stopped half the bounds executing.
-            //   Entrench and SeekCover next, both inside combat: with combat live, digging in and
-            //     relocating are the two things worth doing and mustEntrench chooses between them.
+            //   Holding, entrenching and seeking cover are compared in net HP/s once combat is live.
             //   HoldFightingPosition and PursueObjective last, both outside combat. A man in or
             //     building a hole works it; only a man with neither goes back to his objective.
             //     Getting entrenchment ABOVE PursueObjective is what stopped every NPC digging at
@@ -697,13 +776,6 @@ namespace Demiurge.GameServer
             // pursue its objective. That is what made the claim above ("nothing recomputes whether
             // this man may move") false, and made the states overlay draw OBJECTIVE over a man in a
             // foxhole.
-            ActorIntent decision =
-                bounding && !mustEntrench ? new ActorIntent.Bound(order.Destination, order.Bearing)
-                : combatOwnsTick && mustEntrench ? new ActorIntent.Entrench()
-                : combatOwnsTick ? new ActorIntent.SeekCover(MayAdvance: true)
-                : brain.Entrenching || brain.Entrenched ? new ActorIntent.HoldFightingPosition()
-                : new ActorIntent.PursueObjective();
-
             // Every path below this point is downstream of the one decision, so labelling it here
             // covers all of them and cannot drift from what the actor actually did.
             brain.DebugIntent = decision.DebugLabel;
@@ -816,6 +888,57 @@ namespace Demiurge.GameServer
                     Yaw = combatDigging ? mob.Yaw : combatOutcome.Yaw,
                     Pitch = combatDigging ? mob.Pitch : combatOutcome.Pitch,
                     TurnTo = combatOwnsTick || combatDigging,
+                };
+            }
+
+            if (decision is ActorIntent.HoldAndFire)
+            {
+                Vector3 holdIntent = Vector3.Zero;
+                bool holdJump = false;
+                bool tucked = false;
+                if (brain.Entrenched)
+                {
+                    tucked = ShouldCrouchAtCover(brain, tick);
+                    Vector3 desired = tucked
+                        ? brain.CoverDestination
+                        : brain.CoverPeekPosition;
+                    Vector3 delta = desired - mob.Position;
+                    if (HorizontalDistanceSquared(desired, mob.Position)
+                        > CornerArrivalDistance * CornerArrivalDistance)
+                    {
+                        delta.Y = 0f;
+                        if (delta.LengthSquared() > 1e-6f)
+                            holdIntent = Vector3.Normalize(delta);
+                    }
+                    holdJump = !tucked
+                        && desired.Y > mob.Position.Y + 0.2f
+                        && mob.Move.Grounded;
+                }
+                // A finished foxhole is designed around a crouched protected station and a
+                // standing peek. Going prone here leaves the capsule below the planned stations,
+                // so it never reaches the peek and never fires despite having completed the cut.
+                bool prone = !brain.Entrenched && ShouldGoProne(
+                    holdIntent,
+                    underFire,
+                    brain.AtCover,
+                    digging: false,
+                    combatOwnsTick,
+                    engagementRange,
+                    tick,
+                    brain.NextProneTick);
+                return new MobAction
+                {
+                    Intent = holdIntent,
+                    Jump = holdJump,
+                    Crouch = !prone && brain.AtCover
+                        && (brain.Entrenched ? tucked : ShouldCrouchAtCover(brain, tick)),
+                    Prone = prone,
+                    Shooting = combatOutcome.Flags.HasFlag(PlayerStateFlags.Shooting),
+                    Aiming = combatOutcome.Flags.HasFlag(PlayerStateFlags.Aiming),
+                    Reloading = combatOutcome.Flags.HasFlag(PlayerStateFlags.Reloading),
+                    Yaw = combatOutcome.Yaw,
+                    Pitch = combatOutcome.Pitch,
+                    TurnTo = combatOwnsTick,
                 };
             }
 
@@ -956,7 +1079,13 @@ namespace Demiurge.GameServer
                         // The same wedge the destination uses, applied as a lane during the march
                         // rather than only as a place to end up — which is why a squad crossing open
                         // ground used to arrive in formation having been a single file the whole way.
-                        WedgeLateralOffset(mob, brain, squad),
+                        // Formation is an open-ground preference, not recovery geometry. Once a
+                        // bounded prefix has failed to carry the actor out, use the proved route's
+                        // centre line; continuing to add the wedge lane can hold an outer member
+                        // against the same spawn wall while the rest of its squad departs.
+                        brain.Navigation.HasBegunPartialRecovery
+                            ? Vector3.Zero
+                            : WedgeLateralOffset(mob, brain, squad),
                         out intent,
                         out jump,
                         out var digTarget,
@@ -979,11 +1108,14 @@ namespace Demiurge.GameServer
                                 Target = digTarget,
                                 Hotbar = HotbarSlot.Shovel,
                             },
-                            tick);
+                            tick,
+                            plannedExcavation: true,
+                            narrowCorridor: brain.Navigation.PreciseExcavation);
                         terrainProgress = terrain.EditVersion != versionBeforeDig;
                         if (terrainProgress)
                         {
                             brain.Navigation.RememberDigSite(digTarget, tick);
+                            squad.LeaseExcavation(mob.Id, digTarget, tick);
                             // The edit invalidates the executor's old collision evidence. Let the
                             // next authoritative search reconsider the changed edge from scratch.
                             brain.Navigation.ResetBlocked();
@@ -996,7 +1128,7 @@ namespace Demiurge.GameServer
                         follower.Clear();
                         if (reachedGoal && heardGunshot)
                         {
-                            brain.ClearGunshot();
+                            brain.ForgetGunshot(heardShot.ShooterId);
                             heardGunshot = false;
                             brain.Navigation.SetDestination(
                                 hasObjective
@@ -1051,7 +1183,7 @@ namespace Demiurge.GameServer
                     priority: NavigationPriority.MissingPath);
                 if (!requested && heardGunshot)
                 {
-                    brain.ClearGunshot();
+                    brain.ForgetGunshot(heardShot.ShooterId);
                     heardGunshot = false;
                     brain.Navigation.SetDestination(
                         hasObjective
@@ -1089,7 +1221,7 @@ namespace Demiurge.GameServer
                     MathF.Atan2(intent.X, intent.Z),
                     TurnRadiansPerSecond * dt);
             else if (!digging && heardGunshot)
-                followYaw = YawTowardHorizontal(mob, brain.HeardPosition, dt);
+                followYaw = YawTowardHorizontal(mob, heardShot.Position, dt);
             else if (!digging && holdingObjective)
                 followYaw = NormalizeRadians(mob.Yaw + IdleScanRadiansPerSecond * dt);
 
@@ -1207,7 +1339,7 @@ namespace Demiurge.GameServer
             mob.OperatingObjectId = 0;
             ClearCover(mob.Id, brain, squad);
             brain.ClearCombatTarget();
-            brain.ClearGunshot();
+            brain.ClearGunshots();
             brain.ClearUnderFire();
             brain.NextProneTick = 0;
             brain.Contacts.Forget();
@@ -1327,7 +1459,11 @@ namespace Demiurge.GameServer
                     // proximity, so a replan cannot change his bearing and bound index under him
                     // while he is crossing open ground.
                     if (brain.MovingSinceTick != 0
-                        || brain.Navigation.IsRecoveringFromPartialTrap
+                        // The first consumed bounded prefix already has a successor in flight.
+                        // Re-forming the squad at that point changes the destination and cancels
+                        // it; dense spawn groups then repeat one short prefix forever and never
+                        // reach the four-attempt "trap" threshold that used to protect them.
+                        || brain.Navigation.HasBegunPartialRecovery
                         || brain.SquadIndex == squadIndex)
                         continue;
 
@@ -1388,16 +1524,11 @@ namespace Demiurge.GameServer
             {
                 var squad = pair.Value;
                 bool hasThreat = squad.TryGetPrimaryThreat(tick, out var threat);
-                var threatActor = hasThreat
-                    ? actors.FirstOrDefault(candidate => candidate.Id == threat.ActorId)
-                    : null;
                 // The threat's weapon is what makes the range matchup decidable, so it is read from
                 // the believed contact rather than assumed. An unidentified threat is costed as a
                 // carbine: the middle of the range, and the safe error in both directions.
-                ItemType threatWeapon = threatActor is { } armed
-                    && weapons.TryGetPrimaryWeapon(armed, out var threatPrimary)
-                        ? threatPrimary.Item.Type
-                        : ItemConfig.UnidentifiedThreatWeapon;
+                ItemType threatWeapon = threat.ObservedWeapon
+                    ?? ItemConfig.UnidentifiedThreatWeapon;
 
                 tacticalInputs.Clear();
                 foreach (ushort actorId in squad.Roster)
@@ -1443,6 +1574,7 @@ namespace Demiurge.GameServer
                             {
                                 brain.MovingSinceTick = tick;
                                 BoundsStarted++;
+                                timingBoundsAttempted++;
                             }
                             brain.BoundBearing = brain.BoundBearing.Renew(
                                 order.Bearing, tick, SquadTactics.BearingCommitmentTicks);
@@ -1986,7 +2118,12 @@ namespace Demiurge.GameServer
                     brain.EntrenchGrade) is { } target)
             {
                 digging = true;
-                PerformNavigationDig(mob, brain, target, tick);
+                PerformNavigationDig(
+                    mob,
+                    brain,
+                    target,
+                    tick,
+                    plannedExcavation: true);
                 return true;
             }
 
@@ -2125,7 +2262,8 @@ namespace Demiurge.GameServer
             ServerPlayer mob,
             MobBrain brain,
             Vector3 target,
-            uint tick)
+            uint tick,
+            bool plannedExcavation = true)
         {
             mob.Hotbar = HotbarSlot.Shovel;
             // Aim only. Callers report the swing through their `digging` out-parameter, which the
@@ -2139,9 +2277,13 @@ namespace Demiurge.GameServer
                     Target = target,
                     Hotbar = HotbarSlot.Shovel,
                 },
-                tick);
+                tick,
+                plannedExcavation);
             if (terrain.EditVersion != versionBeforeDig)
+            {
                 brain.Navigation.RememberDigSite(target, tick);
+                BoardFor(mob, brain).LeaseExcavation(mob.Id, target, tick);
+            }
         }
 
         private static bool ShouldCrouchAtCover(MobBrain brain, uint tick)
@@ -2345,12 +2487,34 @@ namespace Demiurge.GameServer
             double metresPerPath =
                 partial + complete == 0 ? 0d : metres / (double)(partial + complete);
             double agents = timingAgentSamples / (double)timingTicks;
+            double stationaryFraction = timingActorSamples == 0
+                ? 0d
+                : timingStationaryActorTicks / (double)timingActorSamples;
+            double editsPerNpcMinute = agents <= 0d
+                ? 0d
+                : timingTerrainEdits * 60d / agents;
+            double engagementRange = timingEngagementSamples == 0
+                ? 0d
+                : timingEngagementRangeMetres / timingEngagementSamples;
+            double requestsPerSquadMinute = squads.Count == 0
+                ? 0d
+                : requests * 60d / squads.Count;
+            double orchestrationUs = Math.Max(
+                0d,
+                movementUsPerTick - solverUsPerTick - combatUsPerTick - entrenchUsPerTick);
 
             latestStats = FormattableString.Invariant(
-                $"AI 1s avg: agents {agents:0.0}; movement {movementUsPerTick:0.0} us/tick (solver {solverUsPerTick:0.0} | combat {combatUsPerTick:0.0}, entrench {entrenchUsPerTick:0.0}, follow {movementUsPerTick - combatUsPerTick - entrenchUsPerTick:0.0} [headroom {headroomUs:0.0}, path {followerUs:0.0}]); perception {perceptionUsPerTick:0.0} us/tick; cover {coverUsPerTick:0.0} us/tick ({timingCoverQueries} searches; revalidate {timingCoverRevalidationsKept}/{timingCoverRevalidations} kept); {navigation.WorkerCount} path workers {pathUsPerTick:0.0} aggregate us/tick off-thread; paths {requests} requested, {completed} completed ({complete} full/{partial} partial), queue {queueUsPerPath:0} us/path p50/p95 {queueP50}/{queueP95} us, search p50/p95 {searchP50}/{searchP95} us, {nodesPerPath:0} nodes/path, {metresPerPath:0.0} m/path, traversal cache {cacheHits} hits, shared routes {sharedReuses}, {cancelled} cancelled, {invalidated} spatially invalidated");
+                $"AI 1s avg: agents {agents:0.0}; stationary {stationaryFraction:P1}; terrain edits {editsPerNpcMinute:0.0}/NPC/min; bounds {timingBoundsCompleted}/{timingBoundsAttempted} completed/attempted; engagement {engagementRange:0.0} m avg; movement {movementUsPerTick:0.0} us/tick (solver {solverUsPerTick:0.0} | combat {combatUsPerTick:0.0}, entrench {entrenchUsPerTick:0.0}, orchestration {orchestrationUs:0.0} [headroom {headroomUs:0.0}, path-follower {followerUs:0.0}]); perception {perceptionUsPerTick:0.0} us/tick; cover {coverUsPerTick:0.0} us/tick ({timingCoverQueries} searches; revalidate {timingCoverRevalidationsKept}/{timingCoverRevalidations} kept); {navigation.WorkerCount} path workers {pathUsPerTick:0.0} aggregate us/tick off-thread; paths {requests} requested ({requestsPerSquadMinute:0.0}/squad/min), {completed} completed ({complete} full/{partial} partial), queue {queueUsPerPath:0} us/path p50/p95 {queueP50}/{queueP95} us, search p50/p95 {searchP50}/{searchP95} us, {nodesPerPath:0} nodes/path, {metresPerPath:0.0} m/path, traversal cache {cacheHits} hits, shared routes {sharedReuses}, {cancelled} cancelled, {invalidated} spatially invalidated");
 
             timingTicks = 0;
             timingAgentSamples = 0;
+            timingActorSamples = 0;
+            timingStationaryActorTicks = 0;
+            timingTerrainEdits = 0;
+            timingBoundsAttempted = 0;
+            timingBoundsCompleted = 0;
+            timingEngagementRangeMetres = 0d;
+            timingEngagementSamples = 0;
             timingMovementStopwatchTicks = 0;
             timingSolverStopwatchTicks = 0;
             timingCombatStopwatchTicks = 0;
@@ -2493,7 +2657,10 @@ namespace Demiurge.GameServer
                     destination,
                     horizontalRadius: 8,
                     out var target))
+            {
+                DiagFor(mob.Id).Refused++;
                 return false;
+            }
             if (priority == NavigationPriority.Prefetch)
             {
                 NavCell? partialStart = navigationAgent.Path.PartialStartCell;
@@ -2502,10 +2669,30 @@ namespace Demiurge.GameServer
                 else
                     navigationAgent.RememberPartialBacktrack(partialStart);
             }
+            float destinationRise = destination.Y - mob.Position.Y;
+            float destinationRange = HorizontalDistance(mob.Position, destination);
+            if (!forCover
+                && destinationRise >= 5f
+                // A large rise with a shallow global bearing is a pit: the local wall needs narrow
+                // staircase bites that preserve its tread. A genuinely steep destination (a soil
+                // ramp) keeps the broader planned brush so clearance progresses across the face.
+                && destinationRise < destinationRange * 0.5f)
+                navigationAgent.CommitPreciseExcavation();
             long? blockedCellKey = navigationAgent.TakeAvoidedCell();
             IReadOnlyList<long> partialBacktrackCellKeys =
                 navigationAgent.PartialBacktrackCellKeys;
             NavCell? preferredDigSite = navigationAgent.PreferredDigSite(tick);
+            bool excavationLeasedByOther = BoardFor(mob, brains[mob.Id])
+                    .IsExcavationLeasedByOther(mob.Id, mob.Position, tick)
+                // A lease coordinates useful work; it is not a permanent veto. If following the
+                // owner's cut has produced no actor or terrain progress for five seconds, this
+                // member may solve its own edge. That preserves one staircase in the normal case
+                // while preventing one bad lease from pinning the rest of a squad for the entire
+                // twenty-second lease window (or forever while its owner keeps refreshing it).
+                && !navigationAgent.Progress.HasStalledFor(
+                    mob.Position,
+                    tick,
+                    5u * NetworkConfig.TickRate);
             bool recoveringFromBlockedEdge = blockedCellKey is not null;
             long sharedRouteKey = 0;
             var brain = brains[mob.Id];
@@ -2535,7 +2722,7 @@ namespace Demiurge.GameServer
                 // exactly when it is in a trench -- could never dig, because combat owns movement and
                 // the objective path that permits digging never runs. The caller decides now; short
                 // reposition requests still leave it at its default of false.
-                allowDig: allowDig,
+                allowDig: allowDig && !excavationLeasedByOther,
                 blockedCellKey: blockedCellKey,
                 partialBacktrackCellKeys: partialBacktrackCellKeys,
                 partialBacktrackAttempts: navigationAgent.PartialBacktrackAttempts,
@@ -2544,6 +2731,7 @@ namespace Demiurge.GameServer
                 preferredDigSite: preferredDigSite);
             if (requestId != 0)
             {
+                DiagFor(mob.Id).Requests++;
                 navigationAgent.RecordRequest(requestId, forCover);
                 if (priority == NavigationPriority.Prefetch)
                     navigationAgent.RecordPrefetch(tick);
@@ -2551,15 +2739,50 @@ namespace Demiurge.GameServer
             return requestId != 0;
         }
 
+        /// <summary>
+        /// How far above its feet a resolved start cell may sit. One traversal step: a cell the actor
+        /// could not reach by stepping is not a cell the actor is standing on.
+        /// </summary>
+        private const float MaximumStartRise = NavTraversal.MaximumTraverseCellDelta;
+
         private bool TryCellAt(
             Vector3 position,
             out NavCell cell,
             int horizontalRadius = 3)
-            => NavTraversal.TryFindNearestStandable(
-                terrain,
-                position,
-                horizontalRadius,
-                out cell);
+        {
+            // The actor's own column is the truth whenever it answers; the neighbourhood search is
+            // the recovery for a capsule straddling a trench lip or wall foot.
+            if (TryActorCell(position, out cell))
+                return true;
+            if (!NavTraversal.TryFindNearestStandable(
+                    terrain,
+                    position,
+                    horizontalRadius,
+                    out cell))
+                return false;
+            // That search takes the FIRST cell that answers — six cells UP before one cell down —
+            // and then falls back to the column's HIGHEST surface. An actor that has just dug into a
+            // wall is standing UNDER an overhang with no headroom of its own, so both rules resolve
+            // to the roof: measured 9.8 m above the actor, which planned a perfectly good route from
+            // up there and handed the follower a first waypoint it tried to walk straight up to.
+            if (IsPlausibleStart(cell)) return true;
+
+            // Refusing outright is worse than the roof: it leaves the actor with no request at all,
+            // which measured 1,817 refusals against 22 requests for one man and parked him. So pay
+            // for the exhaustive nearest-in-3D resolution HERE, where it is rare, rather than on
+            // every request — that is the cost its own documentation says live navigation cannot
+            // afford per tick.
+            return NavTraversal.TryFindNearestStandableForActor(
+                    terrain,
+                    position,
+                    horizontalRadius,
+                    out cell)
+                && IsPlausibleStart(cell);
+
+            bool IsPlausibleStart(NavCell candidate)
+                => NavTraversal.TryPosition(terrain, candidate, out var resolved)
+                   && resolved.Y - position.Y <= MaximumStartRise;
+        }
 
         private bool TryActorCell(Vector3 position, out NavCell cell)
         {
@@ -2682,14 +2905,6 @@ namespace Demiurge.GameServer
         /// </summary>
         private const float CombatAdvanceStandoff = 25f;
 
-        /// <summary>
-        /// Incoming damage, in health per second, below which digging a fighting position is not
-        /// worth the time it costs. Roughly a tenth of a man's health per second — enough that being
-        /// shot at seriously justifies a hole, and being shot at ineffectually from across the map
-        /// does not.
-        /// </summary>
-        private const float EntrenchWorthwhileDamagePerSecond = 10f;
-
         private bool TryCombatAdvancePosition(
             ServerPlayer mob,
             Vector3 threat,
@@ -2770,24 +2985,13 @@ namespace Demiurge.GameServer
                         shot.Tick);
 
                     if (!listener.IsMob
-                        || !brains.TryGetValue(listener.Id, out var brain)
-                        || shot.Tick < brain.HeardTick)
+                        || !brains.TryGetValue(listener.Id, out var brain))
                         continue;
-
-                    bool newInvestigation =
-                        brain.HeardActorId != shot.ShooterId
-                        || Vector3.DistanceSquared(
-                            brain.HeardPosition,
-                            shot.Position) > 4f * 4f;
-                    if (newInvestigation)
-                    {
-                        brain.HeardActorId = shot.ShooterId;
-                        brain.HeardPosition = shot.Position;
-                        brain.HeardRevision++;
-                        if (brain.HeardRevision == 0)
-                            brain.HeardRevision = 1;
-                    }
-                    brain.HeardTick = shot.Tick;
+                    brain.Heard.Hear(
+                        shot.ShooterId,
+                        shot.Position,
+                        Vector3.Distance(listener.Position, shot.Position),
+                        shot.Tick);
                 }
         }
 
@@ -2799,6 +3003,100 @@ namespace Demiurge.GameServer
                     : ItemConfig.UnidentifiedThreatWeapon,
                 0f,
                 brain.SkillFactor);
+
+        /// <summary>
+        /// Prices the actor's ordinary tactical alternatives in net HP/s. Squad bounds and blast
+        /// evasion are decided outside this comparison: one is a joint manoeuvre already scored by
+        /// SquadTactics, and the other is immediate survival rather than doctrine.
+        /// </summary>
+        private ActorIntent ScoreCombatIntent(
+            ServerPlayer actor,
+            MobBrain brain,
+            AiContact threat,
+            bool mayEntrench)
+        {
+            // Abandoning a completed fighting position is not an actor-local reposition. The
+            // squad may still order a bound (that precondition is resolved before this method),
+            // but without that covering manoeuvre the actor works the protected crouch/peek cycle
+            // it already paid to construct. Treating an exposed solo advance as an ordinary cover
+            // alternative immediately cleared the foxhole and stranded its owner in the cut.
+            if (brain.Entrenched)
+                return new ActorIntent.HoldAndFire();
+
+            var self = SelfCombatant(actor, brain);
+            float range = HorizontalDistance(actor.Position, threat.Position);
+            ItemType threatWeapon = threat.ObservedWeapon
+                ?? ItemConfig.UnidentifiedThreatWeapon;
+
+            Engagement At(float candidateRange, SelfExposure exposure)
+                => new(
+                    candidateRange,
+                    threatWeapon,
+                    threat.ObservedExtraMoa,
+                    brain.PerceivedExposure,
+                    exposure,
+                    threat.TargetingLikelihood);
+
+            float hold = CombatValue.Score(
+                self,
+                [At(range, brain.SelfExposure)],
+                CombatValue.DefaultAggression);
+
+            float preferred = WeaponEffectiveness.PreferredRange(
+                self.Weapon,
+                brain.SkillFactor);
+            float repositionRange = range > preferred + 2f
+                ? MathF.Max(preferred, range - 8f)
+                : range;
+            var transitExposure = SelfExposure.Of(
+                (brain.SelfExposure.Fraction + 0.35f) * 0.5f);
+            float reposition = 0.5f * (
+                CombatValue.Score(
+                    self,
+                    [new Engagement(
+                        (range + repositionRange) * 0.5f,
+                        threatWeapon,
+                        threat.ObservedExtraMoa,
+                        brain.PerceivedExposure,
+                        transitExposure,
+                        // An actor crossing alone is the obvious target. SquadTactics prices a
+                        // covered bound separately; this local alternative has no suppressor.
+                        TheirTargetingLikelihood: 1f)],
+                    CombatValue.DefaultAggression)
+                + CombatValue.Score(
+                    self,
+                    // Do not price imaginary cover. Until CoverBehavior has actually supplied a
+                    // protected destination, repositioning changes range but ends in the open.
+                    // Assuming 35% exposure here made a flat-field advance beat constructing the
+                    // foxhole whose protection was real and immediately available.
+                    [At(repositionRange, brain.AtCover
+                        ? SelfExposure.Of(0.35f)
+                        : SelfExposure.Full)],
+                    CombatValue.DefaultAggression));
+
+            float entrench = float.NegativeInfinity;
+            if (mayEntrench)
+            {
+                float protectedScore = CombatValue.Score(
+                    self,
+                    [At(range, MobBrain.EntrenchedSelfExposure)],
+                    CombatValue.DefaultAggression);
+                // Four seconds of forgone fire amortized over a thirty-second fighting-position
+                // horizon. This is a cost in the same HP/s currency, not a second threshold.
+                float constructionOpportunity = CombatValue.Dealt(
+                    self,
+                    [At(range, brain.SelfExposure)]) * (4f / 30f);
+                entrench = protectedScore - constructionOpportunity;
+            }
+
+            const float commitmentHysteresis = 0.5f;
+            if (entrench > hold + commitmentHysteresis
+                && entrench >= reposition)
+                return new ActorIntent.Entrench();
+            if (reposition > hold + commitmentHysteresis)
+                return new ActorIntent.SeekCover(MayAdvance: repositionRange < range);
+            return new ActorIntent.HoldAndFire();
+        }
 
         /// <summary>
         /// An unseen shooter, as an engagement. His weapon is unknown by construction — he was heard

@@ -21,8 +21,13 @@ internal sealed class Perception
     private static readonly TargetExposure PeekingExposure = TargetExposure.Of(0.2f);
 
     private readonly ChunkMap terrain;
+    private readonly WeaponSystem weapons;
 
-    public Perception(ChunkMap terrain) => this.terrain = terrain;
+    public Perception(ChunkMap terrain, WeaponSystem weapons)
+    {
+        this.terrain = terrain;
+        this.weapons = weapons;
+    }
 
     public AiContact? Tick(
         ServerPlayer observer,
@@ -33,7 +38,8 @@ internal sealed class Perception
         brain.Contacts.Prune(tick);
         if (actors.Count <= 1) return null;
 
-        int start = brain.PerceptionCursor % actors.Count;
+        int start = HighestRankedContactIndex(observer, actors, brain, tick)
+            ?? brain.PerceptionCursor % actors.Count;
         if (TrySenseRange(
                 observer,
                 actors,
@@ -53,6 +59,38 @@ internal sealed class Perception
             return observed;
 
         brain.PerceptionCursor = (start + 1) % actors.Count;
+        return null;
+    }
+
+    private static int? HighestRankedContactIndex(
+        ServerPlayer observer,
+        ICollection<ServerPlayer> actors,
+        MobBrain brain,
+        uint tick)
+    {
+        var contacts = brain.Contacts.Snapshot(tick);
+        if (contacts.Count == 0) return null;
+        var engagements = new Engagement[contacts.Count];
+        for (int i = 0; i < contacts.Count; i++)
+        {
+            var contact = contacts[i];
+            engagements[i] = new Engagement(
+                Vector3.Distance(observer.Position, contact.Position),
+                contact.ObservedWeapon ?? ItemConfig.UnidentifiedThreatWeapon,
+                contact.ObservedExtraMoa,
+                TargetExposure.Full,
+                brain.SelfExposure,
+                contact.TargetingLikelihood);
+        }
+        Span<ThreatBound> ranked = stackalloc ThreatBound[1];
+        if (ThreatRanking.Rank(engagements, ranked) == 0) return null;
+        ushort actorId = contacts[ranked[0].Index].ActorId;
+        int index = 0;
+        foreach (var actor in actors)
+        {
+            if (actor.Id == actorId) return index;
+            index++;
+        }
         return null;
     }
 
@@ -121,7 +159,18 @@ internal sealed class Perception
                 var hit = TerrainRaycast.Cast(terrain, origin, delta, aimDistance);
                 if (hit is { } blocked && blocked.Distance < aimDistance - 0.1f) continue;
 
-                brain.Contacts.Observe(target.Id, target.Position, tick);
+                ItemType? observedWeapon = weapons.TryGetPrimaryWeapon(target, out var weapon)
+                    ? weapon.Item.Type
+                    : null;
+                float targetingLikelihood = TargetingLikelihood(target, observer);
+                float observedExtraMoa = target.Spread.StateMoa(target.State);
+                brain.Contacts.Observe(
+                    target.Id,
+                    target.Position,
+                    tick,
+                    observedWeapon,
+                    targetingLikelihood,
+                    observedExtraMoa);
                 brain.PerceivedTargetId = target.Id;
                 brain.PerceivedAimHeight = height;
 
@@ -134,12 +183,33 @@ internal sealed class Perception
                     ? FullyExposed
                     : PeekingExposure;
 
-                observed = new AiContact(target.Id, target.Position, tick, 1f);
+                observed = new AiContact(
+                    target.Id,
+                    target.Position,
+                    tick,
+                    1f,
+                    observedWeapon,
+                    targetingLikelihood,
+                    observedExtraMoa);
                 break;
             }
             return true;
         }
 
         return false;
+    }
+
+    private static float TargetingLikelihood(ServerPlayer target, ServerPlayer observer)
+    {
+        if (!target.State.HasFlag(PlayerStateFlags.Aiming)
+            && !target.State.HasFlag(PlayerStateFlags.Shooting))
+            return 0.35f;
+        Vector3 towardObserver = observer.Position - target.Position;
+        towardObserver.Y = 0f;
+        if (towardObserver.LengthSquared() <= 1e-6f) return 1f;
+        towardObserver = Vector3.Normalize(towardObserver);
+        var facing = new Vector3(MathF.Sin(target.Yaw), 0f, MathF.Cos(target.Yaw));
+        float alignment = Math.Clamp((Vector3.Dot(facing, towardObserver) + 1f) * 0.5f, 0f, 1f);
+        return 0.2f + 0.8f * alignment;
     }
 }
