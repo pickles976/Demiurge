@@ -24,6 +24,18 @@ namespace Demiurge
         public const float SinkDepth = 0.5f;
 
         /// <summary>
+        /// The trunk as a bullet blocker, measured from the placement position — which is
+        /// <see cref="SinkDepth"/> below the surface, so the trunk starts underground and the part
+        /// standing above it is shorter by that much.
+        ///
+        /// The model's trunk mesh is a one-metre square column 7.75 m tall, so this is the cylinder
+        /// inscribed in it: a shot clips the corners of the drawn trunk rather than being stopped by
+        /// air beside it, which is the side to err on.
+        /// </summary>
+        public const float TrunkRadius = 0.5f;
+        public const float TrunkHeight = 7.75f;
+
+        /// <summary>
         /// The trees of one patch. The placement grid is fixed to the world rather than to the
         /// centre, so a patch holds exactly the trees a whole-map pass would have put there and
         /// growing the radius adds trees without moving the ones already standing.

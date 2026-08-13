@@ -9,7 +9,7 @@ namespace Demiurge.Editor;
 /// so "block mode" already meant two different tools depending on a field somewhere else.
 /// </summary>
 public enum EditorToolMode { Terrain, Block, Object, Structure }
-public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, ConquestFlag, Crate, Tree }
+public enum EditorObjectChoiceKind { None, Pickup, Mob, Spawn, ConquestFlag, Crate, Tree, TreeBrush }
 
 public sealed record EditorToolSettings
 {
@@ -28,6 +28,7 @@ public sealed record EditorToolSettings
     public string? ObjectId { get; set; }
     public float ObjectYaw { get; set; }
     public int ObjectTeam { get; set; } = 1;
+    public TreeBrushSettings TreeBrush { get; init; } = new();
 }
 
 public readonly record struct EditorCommandResult(bool Success, string Output)
@@ -57,6 +58,7 @@ public static class EditorCommandParser
                 "terrain" => SetTerrain(tokens, settings),
                 "block" => SetBlock(tokens, settings),
                 "object" => SetObject(tokens, settings),
+                "grove" => SetGrove(tokens, settings),
                 "rotate" => Rotate(tokens, settings),
                 "undo" => EditorCommandResult.Ok(session.Undo() is null ? "Nothing to undo" : "Undid editor action"),
                 "redo" => EditorCommandResult.Ok(session.Redo() is null ? "Nothing to redo" : "Redid editor action"),
@@ -75,6 +77,58 @@ public static class EditorCommandParser
             return EditorCommandResult.Fail("Usage: editor mode <terrain|block|object|structure>");
         settings.Mode = mode;
         return EditorCommandResult.Ok($"Editor mode: {mode.ToString().ToLowerInvariant()}");
+    }
+
+    private static EditorCommandResult SetGrove(string[] tokens, EditorToolSettings settings)
+    {
+        if (tokens.Length != 3)
+            return EditorCommandResult.Fail(
+                "Usage: editor grove <radius|spacing|density|terrain> <value>");
+
+        var brush = settings.TreeBrush;
+        switch (tokens[1].ToLowerInvariant())
+        {
+            case "radius":
+                if (!Number(tokens[2], out float radius)
+                    || radius < TreeBrushSettings.MinRadius
+                    || radius > TreeBrushSettings.MaxRadius)
+                    return EditorCommandResult.Fail(
+                        $"Usage: editor grove radius <{TreeBrushSettings.MinRadius}..{TreeBrushSettings.MaxRadius}>");
+                brush.Radius = radius;
+                break;
+            case "spacing":
+                if (!Number(tokens[2], out float spacing)
+                    || spacing < TreeScatter.MinimumSpacing
+                    || spacing > TreeScatter.MaximumSpacing)
+                    return EditorCommandResult.Fail(
+                        $"Usage: editor grove spacing <{TreeScatter.MinimumSpacing}..{TreeScatter.MaximumSpacing}>");
+                brush.Spacing = spacing;
+                break;
+            case "density":
+                if (!Number(tokens[2], out float density) || density is < 0f or > 1f)
+                    return EditorCommandResult.Fail("Usage: editor grove density <0..1>");
+                brush.Density = density;
+                break;
+            case "terrain":
+                brush.RespectTerrain = tokens[2].ToLowerInvariant() switch
+                {
+                    "on" => true,
+                    "off" => false,
+                    _ => throw new ArgumentException("Usage: editor grove terrain <on|off>"),
+                };
+                break;
+            default:
+                return EditorCommandResult.Fail(
+                    "Usage: editor grove <radius|spacing|density|terrain> <value>");
+        }
+
+        return EditorCommandResult.Ok(
+            $"Grove brush: radius {brush.Radius:0.#} m, spacing {brush.Spacing:0.#} m, "
+            + $"density {brush.Density:0.##}, terrain filter {(brush.RespectTerrain ? "on" : "off")}");
+
+        static bool Number(string token, out float value)
+            => float.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+               && float.IsFinite(value);
     }
 
     private static EditorCommandResult SetTerrain(string[] tokens, EditorToolSettings settings)
@@ -155,7 +209,7 @@ public static class EditorCommandParser
     {
         if (tokens.Length < 2)
             return EditorCommandResult.Fail(
-                "Usage: editor object <pickup|crate|mob|spawn|conquest-flag|tree|team|clear> ...");
+                "Usage: editor object <pickup|crate|mob|spawn|conquest-flag|tree|grove|team|clear> ...");
         switch (tokens[1].ToLowerInvariant())
         {
             case "pickup":
@@ -188,7 +242,13 @@ public static class EditorCommandParser
                 if (tokens.Length != 2)
                     return EditorCommandResult.Fail("Usage: editor object tree");
                 settings.ObjectKind = EditorObjectChoiceKind.Tree;
-                settings.ObjectId = "demiurge:tree";
+                settings.ObjectId = TreeBrush.ArchetypeId;
+                break;
+            case "grove":
+                if (tokens.Length != 2)
+                    return EditorCommandResult.Fail("Usage: editor object grove");
+                settings.ObjectKind = EditorObjectChoiceKind.TreeBrush;
+                settings.ObjectId = TreeBrush.ArchetypeId;
                 break;
             case "team":
                 if (tokens.Length != 3
@@ -222,7 +282,10 @@ public static class EditorCommandParser
 
     private static string Status(EditorToolSettings settings, EditorSession? session)
     {
-        string status = $"mode={settings.Mode.ToString().ToLowerInvariant()} terrain={settings.TerrainMode.ToString().ToLowerInvariant()}/{settings.TerrainShape.ToString().ToLowerInvariant()} size={settings.TerrainHalfExtent * 2f} strength={settings.TerrainStrength:0.##} material={BlockCatalog.Id(settings.TerrainMaterial)} block={BlockCatalog.Id(settings.Block)} blockSize={settings.BlockSize.X}x{settings.BlockSize.Y}x{settings.BlockSize.Z} object={settings.ObjectId ?? "none"} team={settings.ObjectTeam}";
+        string status = $"mode={settings.Mode.ToString().ToLowerInvariant()} terrain={settings.TerrainMode.ToString().ToLowerInvariant()}/{settings.TerrainShape.ToString().ToLowerInvariant()} size={settings.TerrainHalfExtent * 2f} strength={settings.TerrainStrength:0.##} material={BlockCatalog.Id(settings.TerrainMaterial)} block={BlockCatalog.Id(settings.Block)} blockSize={settings.BlockSize.X}x{settings.BlockSize.Y}x{settings.BlockSize.Z} object={settings.ObjectId ?? "none"} team={settings.ObjectTeam}"
+            + $" grove=r{settings.TreeBrush.Radius:0.#}/s{settings.TreeBrush.Spacing:0.#}"
+            + $"/d{settings.TreeBrush.Density:0.##}"
+            + $"/{(settings.TreeBrush.RespectTerrain ? "grass" : "any")}";
         if (session is null) return status;
         var diagnostics = session.Diagnostics();
         return status

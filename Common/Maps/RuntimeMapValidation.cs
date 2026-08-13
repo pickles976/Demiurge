@@ -104,6 +104,13 @@ public static class RuntimeMapValidation
                         errors.Add("Conquest flags must start neutral");
                     WarnIfUnsupported(map, placement, warnings);
                     break;
+                case RuntimePlacementKind.Tree:
+                    if (placement.Team != 0)
+                        errors.Add("Trees belong to no team");
+                    // No support warning: a tree is deliberately sunk into the ground by
+                    // TreePlacement.SinkDepth, so the surface is NOT at its position and the check
+                    // would report every tree on the map as unsupported.
+                    break;
                 default:
                     errors.Add($"Unknown placement kind {(byte)placement.Kind}");
                     break;

@@ -28,16 +28,30 @@ namespace Demiurge
         private const string LeafTexturePath = "assets/textures/leaf_alpha_texture.png";
         private const int LeafMaterialSlot = 1;
         private const int AnchorCount = 5;
-        // A billboard always shows its whole area, where a fixed card mostly showed a foreshortened
-        // sliver of it, so this wants fewer and smaller cards than the tangent version did.
-        private const int ShellQuadsPerAnchor = 14;
-
-        /// <summary>Cards filling each cluster's interior, standing in for the hidden blob's volume,
-        /// and how far out of the shell's radius they reach.</summary>
-        private const int InnerQuadsPerAnchor = 8;
         private const float InnerReach = 0.7f;
 
-        private const int QuadsPerAnchor = ShellQuadsPerAnchor + InnerQuadsPerAnchor;
+        /// <summary>
+        /// How much canopy a tree gets. Near, a billboard shows its whole area where a fixed card
+        /// showed a foreshortened sliver, so it wants many small ones; far, all that survives is the
+        /// silhouette, and a handful of big cards draw the same shape for a sixth of the work.
+        ///
+        /// The cards do NOT line up between the two — the scatter is keyed on the card's index, and
+        /// there are different numbers of them — so the swap is a change of shape, not a change of
+        /// resolution. Keeping both on the same shell radius is what stops that reading as a jump.
+        /// </summary>
+        public enum LeafDetail { Near, Far }
+
+        private readonly record struct CardDetail(
+            int ShellPerAnchor, int InnerPerAnchor, float Size)
+        {
+            public int PerAnchor => ShellPerAnchor + InnerPerAnchor;
+        }
+
+        private static readonly CardDetail NearCards = new(14, 8, 2.4f);
+        private static readonly CardDetail FarCards = new(3, 0, 5.2f);
+
+        private static CardDetail Cards(LeafDetail detail)
+            => detail == LeafDetail.Near ? NearCards : FarCards;
         /// <summary>Reach of each cluster's contribution to the canopy density that drives per-card
         /// occlusion. It has to be wide enough that neighbouring clusters overlap near the trunk —
         /// that overlap IS the middle of the tree.</summary>
@@ -66,7 +80,6 @@ namespace Demiurge
         /// x 3.75, so this clears their faces by a little and sits well inside their corners.</summary>
         private const float SurfaceRadius = 2.4f;
         private const float SurfaceJitter = 0.15f;
-        private const float QuadSize = 2.4f;
 
         /// <summary>The unit square in cyclic order, so stepping through it turns a card.</summary>
         private static readonly Vector2[] CardCorners =
@@ -92,58 +105,84 @@ namespace Demiurge
         /// region cannot hold a different one.</summary>
         private static readonly Color4 LeafColor = new(0.225f, 0.48f, 0.195f, 1f);
 
-        private static Model? trunkModel;
-        private static Model? quadModel;
-        private static Material? quadMaterial;
+        private static readonly Dictionary<LeafDetail, Model> woodyModels = [];
+        private static readonly Dictionary<LeafDetail, Model> quadModels = [];
+        private static readonly Dictionary<LeafDetail, Material> quadMaterials = [];
         private static Material? leafMaterial;
         private static Texture? leafTexture;
 
-        public static Entity Create(Game game, ModelLocators locators)
+        public static Entity Create(Game game, ModelLocators locators, LeafDetail detail)
         {
-            var root = new Entity
-            {
-                new ModelComponent(WithoutBlobs(GLTFLoader.LoadModel(game, ModelPath))),
-            };
+            var root = new Entity { new ModelComponent(Woody(game, detail)) };
             root.Transform.Children.Add(
-                new Entity("TreeLeafCards")
+                new Entity(LeafEntityName)
                 {
-                    new ModelComponent(ScatterQuads(game, locators)),
+                    new ModelComponent(ScatterQuads(game, locators, detail)),
                 }.Transform);
 
             return root;
         }
 
         /// <summary>
-        /// The tree with its leaf blobs left out: the same meshes and the same draw data, minus
-        /// everything on the leaf material slot. Filtering the model rather than hiding the
-        /// material means the blobs cost no draw call and no pixels, instead of being drawn and
-        /// then thrown away.
-        ///
-        /// Built off the cached source model but never mutating it — Content.Load hands the same
-        /// instance to every tree and to the editor preview.
-        ///
-        /// Note what goes with them: the blobs were also the OCCLUDER that hid cards on the far
-        /// side of the canopy, so the cards now overdraw each other freely. <see cref="LeafMaterial"/>
-        /// is parked rather than deleted for when they come back.
+        /// Moves an existing tree between detail levels by swapping the two models it draws. The
+        /// entity, its transform and its place in the scene are untouched, which is the point: a
+        /// tree never stops being drawn, it only stops being drawn in detail.
         /// </summary>
-        private static Model WithoutBlobs(Model tree)
+        public static void SetDetail(Entity tree, Game game, ModelLocators locators, LeafDetail detail)
         {
-            if (trunkModel != null) return trunkModel;
+            if (tree.Get<ModelComponent>() is { } woody) woody.Model = Woody(game, detail);
 
+            foreach (var child in tree.Transform.Children)
+            {
+                if (child.Entity.Name == LeafEntityName
+                    && child.Entity.Get<ModelComponent>() is { } leaves)
+                    leaves.Model = ScatterQuads(game, locators, detail);
+            }
+        }
+
+        private const string LeafEntityName = "TreeLeafCards";
+
+        /// <summary>
+        /// The solid parts: trunk and branches near, trunk alone far.
+        ///
+        /// The blobs are dropped from both. Filtering the model rather than hiding the material
+        /// means they cost no draw call and no pixels, instead of being drawn and then thrown away —
+        /// and note what went with them, since the blob was also the OCCLUDER that hid cards on the
+        /// far side of the canopy. <see cref="LeafMaterial"/> is parked for if they come back.
+        ///
+        /// Far, the four branches go too. They are a metre or two of geometry seen at a hundred, and
+        /// they are four of the six draw calls a tree costs. The trunk is found by height rather
+        /// than by mesh order, so re-exporting the model with the parts in a different order — or
+        /// with more branches — does not quietly promote a branch to being the trunk.
+        ///
+        /// Built off the cached source model but never mutating it: Content.Load hands the same
+        /// instance to every tree and to the editor preview.
+        /// </summary>
+        private static Model Woody(Game game, LeafDetail detail)
+        {
+            if (woodyModels.TryGetValue(detail, out var cached)) return cached;
+
+            var tree = GLTFLoader.LoadModel(game, ModelPath);
             var model = new Model
             {
                 BoundingBox = tree.BoundingBox,
                 BoundingSphere = tree.BoundingSphere,
                 Skeleton = tree.Skeleton,
             };
-
             model.Add(tree.Materials[0]);
-            foreach (var mesh in tree.Meshes)
+
+            var solid = tree.Meshes.Where(mesh => mesh.MaterialIndex != LeafMaterialSlot);
+            if (detail == LeafDetail.Far)
             {
-                if (mesh.MaterialIndex != LeafMaterialSlot) model.Add(mesh);
+                var trunk = solid
+                    .OrderByDescending(mesh => mesh.BoundingBox.Maximum.Y - mesh.BoundingBox.Minimum.Y)
+                    .FirstOrDefault();
+                solid = trunk is null ? [] : [trunk];
             }
 
-            return trunkModel = model;
+            foreach (var mesh in solid) model.Add(mesh);
+
+            return woodyModels[detail] = model;
         }
 
         /// <summary>
@@ -191,11 +230,12 @@ namespace Demiurge
         /// mesh-less nodes are extracted into the manifest, deliberately, so that a mesh and a
         /// locator may share a name.
         /// </summary>
-        private static Model ScatterQuads(Game game, ModelLocators locators)
+        private static Model ScatterQuads(Game game, ModelLocators locators, LeafDetail detail)
         {
-            if (quadModel != null) return quadModel;
+            if (quadModels.TryGetValue(detail, out var cached)) return cached;
 
-            const int quads = AnchorCount * QuadsPerAnchor;
+            var cards = Cards(detail);
+            int quads = AnchorCount * cards.PerAnchor;
 
             var clusters = new Vector3[AnchorCount];
             for (int anchor = 0; anchor < AnchorCount; anchor++)
@@ -206,9 +246,9 @@ namespace Demiurge
 
             for (int anchor = 0; anchor < AnchorCount; anchor++)
             {
-                for (int q = 0; q < QuadsPerAnchor; q++)
+                for (int q = 0; q < cards.PerAnchor; q++)
                 {
-                    int quad = anchor * QuadsPerAnchor + q;
+                    int quad = anchor * cards.PerAnchor + q;
 
                     // One direction does both jobs: where the card sits, and the normal it lights
                     // with. Interior cards keep the radial normal too — they are standing in for
@@ -219,7 +259,7 @@ namespace Demiurge
                     // hidden blob used to occupy, so the canopy is not a hollow shell seen through
                     // its own gaps. Cube-rooting spreads them evenly through that volume instead of
                     // piling them near the outside.
-                    float radius = q < ShellQuadsPerAnchor
+                    float radius = q < cards.ShellPerAnchor
                         ? SurfaceRadius * RadiusJitter(quad)
                         : SurfaceRadius * InnerReach * MathF.Cbrt(Hash01(quad, 5));
 
@@ -275,13 +315,13 @@ namespace Demiurge
             // the camera happens to be, and a box that does not allow for it culls the whole mesh
             // while its outermost leaves are still on screen.
             var bounds = BoundingBox.FromPoints(Array.ConvertAll(vertices, v => v.Position));
-            float reach = QuadSize * 0.5f * MathF.Sqrt(2f);
+            float reach = cards.Size * 0.5f * MathF.Sqrt(2f);
             bounds = new BoundingBox(
                 bounds.Minimum - new Vector3(reach),
                 bounds.Maximum + new Vector3(reach));
 
-            quadModel = new Model();
-            quadModel.Add(new Mesh
+            var model = new Model();
+            model.Add(new Mesh
             {
                 Draw = new MeshDraw
                 {
@@ -297,9 +337,10 @@ namespace Demiurge
                 BoundingBox = bounds,
                 BoundingSphere = BoundingSphere.FromBox(bounds),
             });
-            quadModel.Add(new MaterialInstance(QuadMaterial(game)));
+            model.Add(new MaterialInstance(QuadMaterial(game, detail)));
 
-            return quadModel;
+            quadModels[detail] = model;
+            return model;
         }
 
         /// <summary>
@@ -449,15 +490,23 @@ namespace Demiurge
                 VertexElement.TextureCoordinate<Vector2>(1));
         }
 
-        private static Material QuadMaterial(Game game)
-            => quadMaterial ??= Material.New(game.GraphicsDevice, new MaterialDescriptor
+        /// <summary>
+        /// One material per detail level, because the card's size is a shader GENERIC on the
+        /// billboard feature rather than a bound parameter — two sizes cannot share a compiled
+        /// shader. Everything else about them is identical.
+        /// </summary>
+        private static Material QuadMaterial(Game game, LeafDetail detail)
+        {
+            if (quadMaterials.TryGetValue(detail, out var cached)) return cached;
+
+            return quadMaterials[detail] = Material.New(game.GraphicsDevice, new MaterialDescriptor
             {
                 Attributes =
                 {
                     // The card is built facing the camera but lit by the blob's outward normal, so
                     // its two sides are the same surface and either may be the one you see.
                     CullMode = CullMode.None,
-                    Displacement = new MaterialTreeBillboardFeature(QuadSize),
+                    Displacement = new MaterialTreeBillboardFeature(Cards(detail).Size),
                     // Two occlusions multiply here and they answer different questions. The texture
                     // carries per-TEXEL occlusion — which parts of a leaf clump are buried in the
                     // clump — and the vertex stream carries per-CARD occlusion, which cards are
@@ -482,6 +531,7 @@ namespace Demiurge
                     },
                 },
             });
+        }
 
         /// <summary>
         /// The PNG is a greyscale shape mask with no colour of its own. It becomes a hard cut-out:

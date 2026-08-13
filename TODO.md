@@ -27,17 +27,9 @@ spamming sandbags, they should be resource-constrained.
 - [ ] Digging sends dirt to your inventory, 2 dirt - 1 sandbag. Can hold 4 sandbags before you need to dig more. Show sandbag "ammo" when digging with the shovel.
 
 
-- [ ] add trees
+There is a model for dead trees. Trees should have 50 health and take damage from explosions, but NOT bullets. When they hit zero health, they should be replaced by the dead tree model. If the terrain under a tree is dug, it should become a dead tree, and the trunk should fall, similar to how the flag falls currently.
 
-  - [ ] add trees to map
-
-  - [ ] stress test
-  - [ ] Low-LOD tree
-    - [ ] no quads, just use the blob geometry
-    - [ ] low LOD tree, add a billboard for the leaves
-
-  - [ ] trees have health and take damage and change models to a broken version
-  - [ ] trees delete if the terrain beneath them goes away
+  - [ ] trees block LOS for NPCs
 
 # Map Editor
 

@@ -14,6 +14,7 @@ public class ObjectViewFactory : IDisposable
     private readonly PlayerRegistry players;
     private readonly Entity cameraEntity;
     private readonly LocalWeaponView weaponView;
+    private readonly TreeViewManager treeViews;
     private readonly ObjectRegistry registry;
     private readonly ModelLocators modelLocators;
 
@@ -35,9 +36,9 @@ public class ObjectViewFactory : IDisposable
         this.cameraEntity = cameraEntity;
         this.weaponView = weaponView;
         this.modelLocators = modelLocators;
+        treeViews = new TreeViewManager(game, scene, players, modelLocators);
         builders = new()
         {
-            [ObjectType.Tree] = _ => TreeViewFactory.Create(game, modelLocators),
             [ObjectType.Crate] = _ => new Entity
             {
                 new ModelComponent(GLTFLoader.LoadModel(game, ItemCosmetics.SupplyCrateModel)),
@@ -65,6 +66,9 @@ public class ObjectViewFactory : IDisposable
     {
         registry.ObjectSpawned -= CreateView;
         registry.ObjectDespawned -= DestroyView;
+        // Before the sweep below, because the manager owns an entity of its own that the name
+        // prefix would not catch.
+        treeViews.Dispose();
         foreach (var entity in scene.Entities.Where(entity => entity.Name.StartsWith("NetObject_", StringComparison.Ordinal)).ToArray())
             entity.Scene = null;
     }
@@ -72,6 +76,15 @@ public class ObjectViewFactory : IDisposable
     private void CreateView(NetObject obj)
     {
         bool isItem = obj.Has.HasFlag(NetComponents.Item);
+
+        // Trees leave here rather than getting an entity each. There are hundreds of them, they do
+        // not move, and only the nearby ones are worth drawing — TreeViewManager owns all of that,
+        // including setting the transform once instead of running a script per frame per tree.
+        if (!isItem && obj.Type == ObjectType.Tree)
+        {
+            treeViews.Add(obj);
+            return;
+        }
 
         // The type's own view first, so a crated pickup draws as its crate.
         bool typedView = builders.TryGetValue(obj.Type, out var build);
@@ -139,6 +152,12 @@ public class ObjectViewFactory : IDisposable
 
     private void DestroyView(NetObject obj)
     {
+        if (obj.Type == ObjectType.Tree)
+        {
+            treeViews.Remove(obj.NetworkId);
+            return;
+        }
+
         if (weaponView.NetworkId == obj.NetworkId) weaponView.Clear();
 
         if (scene.Entities.FirstOrDefault(e => e.Name == $"NetObject_{obj.NetworkId}") is { } entity)

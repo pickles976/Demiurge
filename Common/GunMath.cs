@@ -13,6 +13,54 @@ namespace Demiurge
         public static float? HitDistance(Vector3 origin, Vector3 direction, Vector3 center, float segmentLength)
             => SphereDistance(origin, direction, center, GunConfig.HitRadius, segmentLength);
 
+        /// <summary>
+        /// Where a shot meets a standing trunk: an upright cylinder from <paramref name="baseCentre"/>
+        /// up by <paramref name="height"/>. Null on a miss, or past <paramref name="segmentLength"/>.
+        ///
+        /// A sphere will not do for this. Every other object in the world is roughly as wide as it is
+        /// tall and one sphere at its origin is a fair description; a tree is eight metres of thin,
+        /// and the sphere that covers its trunk would also swallow everything standing beside it.
+        ///
+        /// A shot that starts INSIDE the cylinder is stopped where it leaves — someone with his back
+        /// to a trunk shoots out of it rather than being trapped in it.
+        /// </summary>
+        public static float? TrunkHitDistance(
+            Vector3 origin,
+            Vector3 direction,
+            Vector3 baseCentre,
+            float radius,
+            float height,
+            float segmentLength)
+        {
+            // Solved in plan: an upright cylinder is a circle to anything looking down at it, and the
+            // height only decides whether the crossing counts.
+            float ox = origin.X - baseCentre.X;
+            float oz = origin.Z - baseCentre.Z;
+            float a = direction.X * direction.X + direction.Z * direction.Z;
+
+            // Straight up or down. It can only be inside the trunk if it started there, and a shot
+            // fired from inside one is already stopped by the branch below.
+            if (a < 1e-8f) return null;
+
+            float b = ox * direction.X + oz * direction.Z;
+            float c = ox * ox + oz * oz - radius * radius;
+            float discriminant = b * b - a * c;
+            if (discriminant < 0f) return null;
+
+            float root = MathF.Sqrt(discriminant);
+            float near = (-b - root) / a;
+            float far = (-b + root) / a;
+
+            return Crossing(near) ?? Crossing(far);
+
+            float? Crossing(float t)
+            {
+                if (t < 0f || t > segmentLength) return null;
+                float y = origin.Y + direction.Y * t;
+                return y >= baseCentre.Y && y <= baseCentre.Y + height ? t : null;
+            }
+        }
+
         /// <summary>The same test against an arbitrary radius. One implementation, so a head and a
         /// crate cannot end up disagreeing about what "the ray passed within r" means.</summary>
         private static float? SphereDistance(

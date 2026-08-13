@@ -313,11 +313,20 @@ namespace Demiurge.GameServer
             foreach (var obj in objects.All)
             {
                 if (!obj.Has.HasFlag(NetComponents.Transform)) continue;
-                if (GunMath.HitDistance(start, direction, obj.Transform.Position, length) is not { } t) continue;
-                if (t >= nearestT) continue;
+
+                // A tree is the one object whose shape a sphere at its origin does not describe:
+                // it is eight metres of trunk, and its origin is buried half a metre under the
+                // ground. Everything else is about as wide as it is tall.
+                float? t = obj.Type == ObjectType.Tree
+                    ? GunMath.TrunkHitDistance(
+                        start, direction, obj.Transform.Position,
+                        TreePlacement.TrunkRadius, TreePlacement.TrunkHeight, length)
+                    : GunMath.HitDistance(start, direction, obj.Transform.Position, length);
+
+                if (t is not { } distance || distance >= nearestT) continue;
                 hit = obj;
                 headshot = false;   // an object has an origin, not a body
-                nearestT = t;
+                nearestT = distance;
             }
 
             foreach (var player in players)

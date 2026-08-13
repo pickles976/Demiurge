@@ -115,6 +115,75 @@ public sealed class AddPlacementCommand : IEditorCommand
     }
 }
 
+/// <summary>
+/// Many placements as one undo step. A brush stroke that painted forty trees and took forty presses
+/// of undo to remove would be unusable, which is the same reason <see cref="SetBlocksCommand"/>
+/// exists for blocks.
+/// </summary>
+public sealed class AddPlacementsCommand : IEditorCommand
+{
+    private readonly IReadOnlyList<EditorPlacement> placements;
+    public string Description { get; }
+
+    public AddPlacementsCommand(string description, IReadOnlyList<EditorPlacement> placements)
+    {
+        this.placements = placements;
+        Description = description;
+    }
+
+    public EditorChange Apply(EditorDocument document, EditorTerrainEvaluator evaluator)
+    {
+        var existing = document.Placements.Select(placement => placement.Id).ToHashSet();
+        foreach (var placement in placements)
+        {
+            if (!existing.Add(placement.Id))
+                throw new InvalidOperationException($"Placement {placement.Id} already exists");
+            document.Placements.Add(placement);
+        }
+
+        return Changed();
+    }
+
+    public EditorChange Revert(EditorDocument document, EditorTerrainEvaluator evaluator)
+    {
+        var removing = placements.Select(placement => placement.Id).ToHashSet();
+        document.Placements.RemoveAll(placement => removing.Contains(placement.Id));
+        return Changed();
+    }
+
+    private EditorChange Changed()
+        => EditorChange.ForPlacements([.. placements.Select(placement => placement.Id)]);
+}
+
+/// <summary>The inverse, for the eraser: a stroke's worth of removals as one step.</summary>
+public sealed class DeletePlacementsCommand : IEditorCommand
+{
+    private readonly IReadOnlyList<EditorPlacement> placements;
+    public string Description { get; }
+
+    public DeletePlacementsCommand(string description, IReadOnlyList<EditorPlacement> placements)
+    {
+        this.placements = placements;
+        Description = description;
+    }
+
+    public EditorChange Apply(EditorDocument document, EditorTerrainEvaluator evaluator)
+    {
+        var removing = placements.Select(placement => placement.Id).ToHashSet();
+        document.Placements.RemoveAll(placement => removing.Contains(placement.Id));
+        return Changed();
+    }
+
+    public EditorChange Revert(EditorDocument document, EditorTerrainEvaluator evaluator)
+    {
+        document.Placements.AddRange(placements);
+        return Changed();
+    }
+
+    private EditorChange Changed()
+        => EditorChange.ForPlacements([.. placements.Select(placement => placement.Id)]);
+}
+
 public sealed class UpdatePlacementCommand : IEditorCommand
 {
     private readonly EditorPlacement before;

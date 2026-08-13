@@ -19,6 +19,8 @@ public sealed class EditorControllerScript : SyncScript
     public Action<string>? FeedbackRequested { get; init; }
 
     private readonly List<Float3> strokeDabs = [];
+    private readonly List<System.Numerics.Vector2> groveDabs = [];
+    private bool groveErasing;
     private readonly Dictionary<EInt3, EditorBlockPlacement?> blockBefore = [];
     private readonly HashSet<EInt3> blockCells = [];
     private bool leftWasDown;
@@ -124,7 +126,13 @@ public sealed class EditorControllerScript : SyncScript
                     HandleStructures(blockSamples, leftPressed);
                     break;
                 case EditorToolMode.Object:
-                    if (leftPressed) HandleObject(objectCells);
+                    // The grove brush is a brush, and strokes here work the way they do everywhere
+                    // else in the editor: accumulate while held, resolve once on release.
+                    if (Settings.ObjectKind == EditorObjectChoiceKind.TreeBrush)
+                        HandleGrove(
+                            objectCells, left, right, leftPressed, rightPressed,
+                            leftReleased, rightReleased);
+                    else if (leftPressed) HandleObject(objectCells);
                     break;
             }
         }
@@ -132,6 +140,7 @@ public sealed class EditorControllerScript : SyncScript
         {
             CommitTerrain();
             CommitBlocks();
+            CommitGrove();
         }
 
         if (Settings.Mode == EditorToolMode.Object)
@@ -139,7 +148,10 @@ public sealed class EditorControllerScript : SyncScript
             // Selecting an object needs no terrain under the cursor; placing one does, and that
             // path stays inside the terrain-hit branch above.
             if (hit is null && leftPressed && HoveredPlacementId is { } picked) SelectPlacement(picked);
-            if (rightPressed) HandleObjectRightClick();
+            // Right-drag is the grove eraser, so it must not also mean "delete the placement under
+            // the cursor" — which would fight it, one tree per click, over the same ground.
+            if (rightPressed && Settings.ObjectKind != EditorObjectChoiceKind.TreeBrush)
+                HandleObjectRightClick();
             DrawHoveredPlacement();
         }
 
@@ -282,6 +294,7 @@ public sealed class EditorControllerScript : SyncScript
         }
 
         if (Settings.ObjectKind == EditorObjectChoiceKind.None || Settings.ObjectId is null) return;
+
         var kind = Settings.ObjectKind switch
         {
             EditorObjectChoiceKind.Pickup => EditorPlacementKind.Pickup,
@@ -298,7 +311,12 @@ public sealed class EditorControllerScript : SyncScript
             Kind = kind,
             ArchetypeId = Settings.ObjectId,
             Cell = cells.Air,
-            Yaw = Settings.ObjectYaw,
+            // A tree has no facing anybody authors, and a stand of them all pointing the same way
+            // is the one thing that gives away that they are the same model. Rolled once here and
+            // saved, so it stays put across reloads.
+            Yaw = kind == EditorPlacementKind.Tree
+                ? Random.Shared.NextSingle() * MathF.Tau
+                : Settings.ObjectYaw,
             // Null lets the server allocate this NPC as one member of the default mixed squad.
             // `editor object equip` turns it into an explicit per-placement override.
             WeaponId = null,
@@ -310,6 +328,78 @@ public sealed class EditorControllerScript : SyncScript
         FeedbackRequested?.Invoke(
             $"Placed {kind.ToString().ToLowerInvariant()}; placement ID " +
             $"{EditorPlacementIds.Display(placement.Id)}");
+    }
+
+    /// <summary>
+    /// A grove stroke, shaped exactly like a terrain stroke: the press decides whether it plants or
+    /// clears, the drag records where it went, and the release resolves the lot as one action. Right
+    /// drag is the eraser, the same way right drag inverts the terrain operation.
+    /// </summary>
+    private void HandleGrove(
+        EditorTargetCells cells,
+        bool left,
+        bool right,
+        bool leftPressed,
+        bool rightPressed,
+        bool leftReleased,
+        bool rightReleased)
+    {
+        if (leftPressed || rightPressed)
+        {
+            groveDabs.Clear();
+            groveErasing = rightPressed;
+        }
+
+        if (left || right)
+        {
+            if (!TargetIsValid) return;
+            AddGroveDab(new System.Numerics.Vector2(cells.Air.X + 0.5f, cells.Air.Z + 0.5f));
+        }
+
+        if (leftReleased || rightReleased) CommitGrove();
+    }
+
+    /// <summary>
+    /// Dabs are thinned to half a brush width apart, as terrain dabs are: a stroke is a path, not a
+    /// frame rate, and recording one dab per frame would make a slow drag cost more than a fast one
+    /// for a grove that comes out identical either way.
+    /// </summary>
+    private void AddGroveDab(System.Numerics.Vector2 point)
+    {
+        float spacing = MathF.Max(0.5f, Settings.TreeBrush.Radius * 0.5f);
+        if (groveDabs.Count > 0
+            && System.Numerics.Vector2.DistanceSquared(groveDabs[^1], point) < spacing * spacing)
+            return;
+        groveDabs.Add(point);
+    }
+
+    private void CommitGrove()
+    {
+        if (groveDabs.Count == 0) return;
+
+        if (groveErasing)
+        {
+            var erased = TreeBrush.Erase(Session.Document, groveDabs, Settings.TreeBrush.Radius);
+            if (erased.Count > 0)
+            {
+                if (erased.Any(placement => placement.Id == selectedPlacement))
+                    selectedPlacement = null;
+                Session.Execute(new DeletePlacementsCommand($"Erase {erased.Count} trees", erased));
+                FeedbackRequested?.Invoke($"Erased {erased.Count} trees");
+            }
+        }
+        else
+        {
+            var painted = TreeBrush.Paint(
+                Session.Document, Session.Terrain, groveDabs, Settings.TreeBrush);
+            if (painted.Count > 0)
+            {
+                Session.Execute(new AddPlacementsCommand($"Paint {painted.Count} trees", painted));
+                FeedbackRequested?.Invoke($"Painted {painted.Count} trees");
+            }
+        }
+
+        groveDabs.Clear();
     }
 
     /// <summary>
@@ -432,6 +522,7 @@ public sealed class EditorControllerScript : SyncScript
     {
         HoveredPlacementId = null;
         strokeDabs.Clear();
+        groveDabs.Clear();
         blockBefore.Clear();
         blockCells.Clear();
         leftWasDown = Input.IsMouseButtonDown(MouseButton.Left);
@@ -519,9 +610,19 @@ public sealed class EditorControllerScript : SyncScript
                 }
                 break;
             case EditorToolMode.Object:
-                WorldPreviewRenderer.Cell(
-                    objectCells.Air,
-                    TargetIsValid ? new Color(255, 220, 80, 230) : targetColor);
+                // A brush needs its footprint shown, not the one cell under the cursor: the radius
+                // is the whole of what you are aiming.
+                if (Settings.ObjectKind == EditorObjectChoiceKind.TreeBrush)
+                    WorldPreviewRenderer.Sphere(
+                        hit.Point,
+                        Settings.TreeBrush.Radius,
+                        Input.IsMouseButtonDown(MouseButton.Right)
+                            ? new Color(255, 120, 90, 200)
+                            : new Color(120, 230, 120, 200));
+                else
+                    WorldPreviewRenderer.Cell(
+                        objectCells.Air,
+                        TargetIsValid ? new Color(255, 220, 80, 230) : targetColor);
                 break;
         }
 
@@ -620,6 +721,7 @@ public sealed class EditorControllerScript : SyncScript
     {
         HoveredPlacementId = null;
         strokeDabs.Clear();
+        groveDabs.Clear();
         blockBefore.Clear();
         blockCells.Clear();
         leftWasDown = rightWasDown = false;

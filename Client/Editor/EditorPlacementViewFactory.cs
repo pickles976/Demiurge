@@ -76,7 +76,7 @@ public sealed class EditorPlacementViewFactory : IDisposable
         // spacing a grove by eye needs the leaves and not a marker at the trunk.
         if (placement.Kind == EditorPlacementKind.Tree)
         {
-            var tree = TreeViewFactory.Create(game, locators);
+            var tree = TreeViewFactory.Create(game, locators, TreeViewFactory.LeafDetail.Near);
             tree.Name = $"EditorPlacement_{placement.Id}";
             return tree;
         }

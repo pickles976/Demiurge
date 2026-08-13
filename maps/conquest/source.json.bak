@@ -29178,19 +29178,6 @@
       "groupId": null
     },
     {
-      "id": "eb9425f5-d560-40a4-8c69-339a6ddac7cf",
-      "sequence": 2373,
-      "cell": {
-        "x": -29,
-        "y": 19,
-        "z": 91,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
       "id": "953e580c-7950-4661-98e5-1642fa7dbd65",
       "sequence": 2374,
       "cell": {
@@ -33624,19 +33611,6 @@
       "groupId": null
     },
     {
-      "id": "f5ded6f2-16df-4013-a9c3-4bfa440bb243",
-      "sequence": 2855,
-      "cell": {
-        "x": -27,
-        "y": 20,
-        "z": 82,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
       "id": "eda21580-a49a-4446-8353-188112ae64e9",
       "sequence": 2856,
       "cell": {
@@ -33746,357 +33720,6 @@
       "cell": {
         "x": -28,
         "y": 20,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "2d4633a6-972f-4f2d-a694-b89e5f0e53b5",
-      "sequence": 2865,
-      "cell": {
-        "x": -27,
-        "y": 20,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "65c475ae-db55-46c5-90c7-c20ac752d0c6",
-      "sequence": 2866,
-      "cell": {
-        "x": -26,
-        "y": 20,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "ae24dd05-b31e-4533-b18a-ff9fe6c3b4cc",
-      "sequence": 2867,
-      "cell": {
-        "x": -30,
-        "y": 21,
-        "z": 80,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "05e1ddf0-33cc-43f8-9b60-2c6f3da72305",
-      "sequence": 2868,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 80,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "e11dda02-20a0-4493-b7bf-f2d1d207ef32",
-      "sequence": 2869,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 80,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "caa06ebf-9b68-4d01-8f84-5a1e86c00003",
-      "sequence": 2870,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 80,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "c48be2d3-dd15-4e1c-888c-2c8ff286d77d",
-      "sequence": 2871,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 80,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "e49c9249-90b4-4a0e-846a-49a2cff93f94",
-      "sequence": 2872,
-      "cell": {
-        "x": -30,
-        "y": 21,
-        "z": 81,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "e8820236-ad28-4a7d-92a7-abae5f6136eb",
-      "sequence": 2873,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 81,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "f0e3bf59-b298-406c-8164-70da611044a7",
-      "sequence": 2874,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 81,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "91f31170-b808-43cd-90f0-c9ae52b51651",
-      "sequence": 2875,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 81,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "1c385a49-b177-4097-8d7b-75c7c11e4454",
-      "sequence": 2876,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 81,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "beb26e5e-70d2-447d-9934-3100042844d9",
-      "sequence": 2877,
-      "cell": {
-        "x": -30,
-        "y": 21,
-        "z": 82,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "f3f9d94e-6ebc-4cd4-af72-b148be20d563",
-      "sequence": 2878,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 82,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "9ad7adb4-51b9-4683-8d4d-e18796d91e66",
-      "sequence": 2879,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 82,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "7e5cd97f-b7c6-491e-ad95-cae31adb3900",
-      "sequence": 2880,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 82,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "cdf78efb-745d-4a49-a52d-cdbeb252fbf4",
-      "sequence": 2881,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 82,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "32b75126-e491-4735-b468-66a183fa6a35",
-      "sequence": 2882,
-      "cell": {
-        "x": -30,
-        "y": 21,
-        "z": 83,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "5f71c3db-7475-47dc-a233-f9193f894337",
-      "sequence": 2883,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 83,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "378c65c5-a746-42ec-9a59-20ad0b83a387",
-      "sequence": 2884,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 83,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "a9b830e2-1057-4b30-967e-5c04201b45b7",
-      "sequence": 2885,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 83,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "12053914-9a4d-495c-aa3b-b9fcf4086432",
-      "sequence": 2886,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 83,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "9ccf7546-ba1c-40d0-b942-2f72492ccbb3",
-      "sequence": 2887,
-      "cell": {
-        "x": -30,
-        "y": 21,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "075b09be-446b-458b-8100-9b8205c6edd1",
-      "sequence": 2888,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "e2876c93-8951-4a76-b777-1100a51a52d9",
-      "sequence": 2889,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "2dfa97d0-7686-4dad-9ba1-f59e287be33d",
-      "sequence": 2890,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 84,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "d7f13c87-244f-41bf-a5bb-f1f96d5e4408",
-      "sequence": 2891,
-      "cell": {
-        "x": -26,
-        "y": 21,
         "z": 84,
         "samplePosition": {},
         "centre": {}
@@ -35158,32 +34781,6 @@
       "groupId": null
     },
     {
-      "id": "cece6216-4b83-4c41-841a-26b57f7ea65c",
-      "sequence": 2973,
-      "cell": {
-        "x": -28,
-        "y": 20,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "3205b2f1-8771-483d-b12d-733945dfbe64",
-      "sequence": 2974,
-      "cell": {
-        "x": -27,
-        "y": 20,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
       "id": "fc38f799-7a78-4c8b-a5e5-5f1269e257f8",
       "sequence": 2975,
       "cell": {
@@ -35262,32 +34859,6 @@
       "groupId": null
     },
     {
-      "id": "55d4a2fa-b17f-48d4-b123-bef46e2c40d3",
-      "sequence": 2981,
-      "cell": {
-        "x": -25,
-        "y": 20,
-        "z": 87,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "12b87b16-2870-4eed-b8ab-586b9e6cbe40",
-      "sequence": 2982,
-      "cell": {
-        "x": -29,
-        "y": 20,
-        "z": 88,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
       "id": "8b039cec-5dc0-447a-b1c6-7bf953c325d4",
       "sequence": 2983,
       "cell": {
@@ -35340,36 +34911,10 @@
       "groupId": null
     },
     {
-      "id": "6333c340-2c48-4e8b-8a09-ac6ac186554d",
-      "sequence": 2987,
-      "cell": {
-        "x": -29,
-        "y": 20,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
       "id": "7350446c-46c5-4240-a1a4-c87536ead313",
       "sequence": 2988,
       "cell": {
         "x": -28,
-        "y": 20,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "1b4a853d-5dd0-411d-b95d-6e622b6be297",
-      "sequence": 2989,
-      "cell": {
-        "x": -27,
         "y": 20,
         "z": 89,
         "samplePosition": {},
@@ -35397,331 +34942,6 @@
       "cell": {
         "x": -25,
         "y": 20,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "73b924ed-db52-4b7c-895b-4ec80ac1fbdf",
-      "sequence": 2992,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 85,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "c3a45a7f-ffd2-4505-be1f-364fc407df86",
-      "sequence": 2993,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 85,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "f1e7ff95-ad40-44f5-a489-47508ee1c461",
-      "sequence": 2994,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 85,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "a9f96ff2-2940-4e3a-a8cf-aeee35e09498",
-      "sequence": 2995,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 85,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "30d0e6c7-37a8-4339-bf29-2ff3dbf5fdd3",
-      "sequence": 2996,
-      "cell": {
-        "x": -25,
-        "y": 21,
-        "z": 85,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "2c6c9446-385a-4451-b12b-b6e3ff9429f9",
-      "sequence": 2997,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "5c2792db-f4f0-46ee-841d-8c2c0e5b04e5",
-      "sequence": 2998,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "1796029d-691a-48a5-8f58-de0f63c6de1b",
-      "sequence": 2999,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "f4cc687f-cda0-42bb-a7c5-a48f899b93dd",
-      "sequence": 3000,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "fc537ca1-da94-4366-9fb0-cc77c26d5523",
-      "sequence": 3001,
-      "cell": {
-        "x": -25,
-        "y": 21,
-        "z": 86,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "30ad9640-6bbb-4d89-8189-4530469cd8a5",
-      "sequence": 3002,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 87,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "7c15b90e-9a63-4de1-9282-e185217a49f6",
-      "sequence": 3003,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 87,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "ca4c713b-04bc-4b1a-97f6-80ed3ada5d29",
-      "sequence": 3004,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 87,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "3f62c2ec-f5c0-4f31-9c97-84cb45749b50",
-      "sequence": 3005,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 87,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "a90ab191-2d3a-498b-8271-8082a122521c",
-      "sequence": 3006,
-      "cell": {
-        "x": -25,
-        "y": 21,
-        "z": 87,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "ee58cfca-079d-47e1-8305-c81838be42b2",
-      "sequence": 3007,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 88,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "a0eddd78-6679-4676-bccb-8c8b4d08b435",
-      "sequence": 3008,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 88,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "d528d3cf-d955-460f-9bfc-469307197d92",
-      "sequence": 3009,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 88,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "079679b3-28c8-4d04-926f-fef792107cf1",
-      "sequence": 3010,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 88,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "21895cd6-0756-4cf9-b823-a98a2a98c721",
-      "sequence": 3011,
-      "cell": {
-        "x": -25,
-        "y": 21,
-        "z": 88,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "02b81c2c-33bd-42bd-92c3-aad2f3e9c760",
-      "sequence": 3012,
-      "cell": {
-        "x": -29,
-        "y": 21,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "2abfc2b4-7eb8-482e-9143-672bc4f4857a",
-      "sequence": 3013,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "f04ec562-d3ce-42ca-8d1e-d680e7c12705",
-      "sequence": 3014,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "a1de52f3-ae64-4930-b69b-9020ba2cfbfa",
-      "sequence": 3015,
-      "cell": {
-        "x": -26,
-        "y": 21,
-        "z": 89,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "5c34e1e6-944f-4298-ace1-d62c147906c8",
-      "sequence": 3016,
-      "cell": {
-        "x": -25,
-        "y": 21,
         "z": 89,
         "samplePosition": {},
         "centre": {}
@@ -35774,58 +34994,6 @@
       "cell": {
         "x": -27,
         "y": 20,
-        "z": 91,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "cbb8e498-48b3-4ae7-b1a5-9bde4d4df0b5",
-      "sequence": 3021,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 90,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "0c71eb65-cece-4e36-b512-05b2741b68cf",
-      "sequence": 3022,
-      "cell": {
-        "x": -27,
-        "y": 21,
-        "z": 90,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "5bf0dae3-32ff-45f8-acbb-a23985d26dcd",
-      "sequence": 3023,
-      "cell": {
-        "x": -28,
-        "y": 21,
-        "z": 91,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone",
-      "groupId": null
-    },
-    {
-      "id": "0f67b79f-62ad-45e2-9eb0-435f77a2a16e",
-      "sequence": 3024,
-      "cell": {
-        "x": -27,
-        "y": 21,
         "z": 91,
         "samplePosition": {},
         "centre": {}
@@ -294846,19 +294014,6 @@
       "groupId": null
     },
     {
-      "id": "e1381a65-0656-4620-aac0-4fab62c0122e",
-      "sequence": 30029,
-      "cell": {
-        "x": 7,
-        "y": 19,
-        "z": 85,
-        "samplePosition": {},
-        "centre": {}
-      },
-      "blockId": "demiurge:stone_bricks",
-      "groupId": null
-    },
-    {
       "id": "a0b1b1bc-7537-4194-b504-2cfcb465114a",
       "sequence": 30030,
       "cell": {
@@ -330138,6 +329293,448 @@
         "centre": {}
       },
       "blockId": "demiurge:stone_bricks",
+      "groupId": null
+    },
+    {
+      "id": "7f31a717-6f79-4370-9cb8-3f19b8ebfdc6",
+      "sequence": 33826,
+      "cell": {
+        "x": -27,
+        "y": 20,
+        "z": 89,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "85ba66d7-4663-4f95-ad6d-25bbed2eb273",
+      "sequence": 33827,
+      "cell": {
+        "x": -26,
+        "y": 20,
+        "z": 90,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "c4965342-0ecb-440f-930a-c533b4d6d812",
+      "sequence": 33828,
+      "cell": {
+        "x": -26,
+        "y": 20,
+        "z": 91,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "25b31440-2c95-47ba-9084-fe6eb40d6dca",
+      "sequence": 33829,
+      "cell": {
+        "x": -26,
+        "y": 20,
+        "z": 92,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "2f819170-5e44-4f3a-8e04-a7b9cf01dcb4",
+      "sequence": 33831,
+      "cell": {
+        "x": -27,
+        "y": 20,
+        "z": 92,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "fb86f98c-065d-4d36-a152-7eb9c704720c",
+      "sequence": 33832,
+      "cell": {
+        "x": -29,
+        "y": 20,
+        "z": 91,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "a0086118-9757-4214-b731-c305d7269889",
+      "sequence": 33833,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 91,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "001459ea-9949-4822-89e8-f9f237416386",
+      "sequence": 33834,
+      "cell": {
+        "x": -29,
+        "y": 20,
+        "z": 88,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "b4e9b5ee-effb-4ba4-98d5-a38a1503deaa",
+      "sequence": 33835,
+      "cell": {
+        "x": -29,
+        "y": 20,
+        "z": 89,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "d86f2551-38f2-41c9-875d-e2280db59edf",
+      "sequence": 33836,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 90,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "bbb49f24-c70d-448b-9783-2ae9075eee2f",
+      "sequence": 33837,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 92,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "9cf1a576-663f-4d4f-9f8a-9610338b6d5c",
+      "sequence": 33838,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 89,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "987586bd-a766-4d4a-b4d2-ab01d268a4c8",
+      "sequence": 33839,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 88,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "90e3383b-ae01-4941-ac90-5233bf31c151",
+      "sequence": 33840,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 87,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "12befa81-4cf9-4afa-ba08-35147b63f1b4",
+      "sequence": 33841,
+      "cell": {
+        "x": -27,
+        "y": 20,
+        "z": 86,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "eaa71c4e-9f1e-41c9-ae62-b02426c0934a",
+      "sequence": 33842,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 86,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "9123a85a-3d34-43a5-9942-a67bf1c669ea",
+      "sequence": 33843,
+      "cell": {
+        "x": -30,
+        "y": 20,
+        "z": 85,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "6faba7b5-5fab-4922-b977-9332e5777050",
+      "sequence": 33844,
+      "cell": {
+        "x": -28,
+        "y": 20,
+        "z": 86,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "9662ecb7-3e6c-473d-8e91-a56757511b68",
+      "sequence": 33845,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 87,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "be992c88-862c-4afe-a375-e1c1d90074b2",
+      "sequence": 33846,
+      "cell": {
+        "x": -27,
+        "y": 20,
+        "z": 84,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "fdd41cb7-e1b2-408a-9fc0-d813e5bab704",
+      "sequence": 33847,
+      "cell": {
+        "x": -26,
+        "y": 20,
+        "z": 84,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "7ca30d1c-26b1-4544-be73-11060b792223",
+      "sequence": 33848,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 84,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "34259f7c-d362-49fd-973a-d5abddbd4801",
+      "sequence": 33849,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 83,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "055b735a-327c-4965-83c0-fa6257221393",
+      "sequence": 33850,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 81,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "9b297706-c530-4b82-b6ab-157a0cfbc6a1",
+      "sequence": 33851,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 79,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "bc3625f3-560a-484e-8028-efdf8d538d6f",
+      "sequence": 33852,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 80,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "9005c302-2acc-41e8-9b71-95b6aacd8367",
+      "sequence": 33853,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 82,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "155856d8-ec6e-4a2c-afe5-54e75b9d824c",
+      "sequence": 33854,
+      "cell": {
+        "x": -27,
+        "y": 20,
+        "z": 82,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "310ef025-cc0c-4ae1-86cc-6ab6e833c7b9",
+      "sequence": 33855,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 94,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "0ad1013d-9412-4f06-9283-369bdf8d7ada",
+      "sequence": 33856,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 95,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "4fe6f812-14b4-44c2-921b-c6b938a3f13a",
+      "sequence": 33857,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 93,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "6a6c44ec-f820-4ddc-9a86-a471e18ac1b5",
+      "sequence": 33858,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 92,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "a11230ad-8f74-4359-8757-cec80cbe74db",
+      "sequence": 33859,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 91,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
+      "groupId": null
+    },
+    {
+      "id": "cedae5bb-796e-459a-a7af-69e07926cfb4",
+      "sequence": 33860,
+      "cell": {
+        "x": -25,
+        "y": 20,
+        "z": 90,
+        "samplePosition": {},
+        "centre": {}
+      },
+      "blockId": "demiurge:stone",
       "groupId": null
     }
   ],
